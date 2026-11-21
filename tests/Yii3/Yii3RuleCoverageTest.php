@@ -55,9 +55,9 @@ final class Yii3RuleCoverageTest extends TestCase
         $dto = $container->hydrate($namespace . '\Holder', ['it' => ['n' => 7]]);
 
         self::assertInstanceOf(
-            $member,
-            $dto->getIt(),
-            'the property must be the DOCUMENT\'s class, not the framework one the import would have won',
+            expected: $member,
+            actual: $dto->getIt(),
+            message: 'the property must be the DOCUMENT\'s class, not the framework one the import would have won',
         );
         self::assertTrue($container->validate($dto)->isValid(), 'and the emitted rules must still run');
     }
@@ -85,14 +85,14 @@ final class Yii3RuleCoverageTest extends TestCase
         mixed $invalid,
     ): void {
         self::assertTrue(
-            $this->verdictFor($schema, $valid)->isValid(),
-            sprintf('the valid value %s was rejected', json_encode($valid)),
+            condition: $this->verdictFor($schema, $valid)->isValid(),
+            message: sprintf('the valid value %s was rejected', json_encode($valid)),
         );
 
         $result = $this->verdictFor($schema, $invalid);
         self::assertFalse(
-            $result->isValid(),
-            sprintf('the invalid value %s was accepted', json_encode($invalid)),
+            condition: $result->isValid(),
+            message: sprintf('the invalid value %s was accepted', json_encode($invalid)),
         );
         self::assertNotSame([], $this->messages($result), 'a rejection must carry a message');
     }
@@ -135,12 +135,12 @@ final class Yii3RuleCoverageTest extends TestCase
         mixed $invalid,
     ): void {
         self::assertTrue(
-            $this->verdictFor($schema, $valid)->isValid(),
-            sprintf('the valid value %s was rejected', json_encode($valid)),
+            condition: $this->verdictFor($schema, $valid)->isValid(),
+            message: sprintf('the valid value %s was rejected', json_encode($valid)),
         );
         self::assertFalse(
-            $this->verdictFor($schema, $invalid)->isValid(),
-            sprintf('the invalid value %s was accepted', json_encode($invalid)),
+            condition: $this->verdictFor($schema, $invalid)->isValid(),
+            message: sprintf('the invalid value %s was accepted', json_encode($invalid)),
         );
     }
 
@@ -205,11 +205,11 @@ final class Yii3RuleCoverageTest extends TestCase
     public function testAMessageAboutAnItemIsPinnedToItsIndex(): void
     {
         $result = $this->verdictFor(
-            [
+            propertySchema: [
                 'type' => 'array',
                 'items' => ['required' => ['a'], 'properties' => ['a' => ['type' => 'integer']]],
             ],
-            [['a' => 1], ['b' => 1]],
+            value: [['a' => 1], ['b' => 1]],
         );
 
         self::assertSame(['f.1.a' => 'field "f"[1].a is required.'], $this->messages($result));
@@ -243,13 +243,13 @@ final class Yii3RuleCoverageTest extends TestCase
         self::assertFalse($result->isValid());
 
         $messages = array_map(
-            static fn(object $error): string => $error->getMessage(),
-            $result->getErrors(),
+            callback: static fn(object $error): string => $error->getMessage(),
+            array: $result->getErrors(),
         );
         self::assertCount(2, $messages, 'two absent properties, two messages: ' . implode(' | ', $messages));
         self::assertSame(
-            ['field "name" is required.', 'field "age" is required.'],
-            $messages,
+            expected: ['field "name" is required.', 'field "age" is required.'],
+            actual: $messages,
         );
     }
 
@@ -286,7 +286,7 @@ final class Yii3RuleCoverageTest extends TestCase
 
         $container = new Yii3Container();
         $validate = static fn(array $payload): \Yiisoft\Validator\Result => $container->validate(
-            $container->hydrate($namespace . '\Cat', $payload),
+            input: $container->hydrate($namespace . '\Cat', $payload),
         );
 
         self::assertTrue($validate(['name' => 'kitty', 'meow' => 'mew'])->isValid());
@@ -333,13 +333,13 @@ final class Yii3RuleCoverageTest extends TestCase
 
         foreach (['name' => 'string', 'tags' => 'array'] as $property => $type) {
             $result = $container->validate(
-                $container->hydrate($class, ['keep' => 'x', $property => null]),
+                input: $container->hydrate($class, ['keep' => 'x', $property => null]),
             );
 
             self::assertFalse($result->isValid(), $property . ' sent as null must be refused');
             self::assertSame(
-                [sprintf('field "%s" must be of type %s.', $property, $type)],
-                array_map(static fn(object $error): string => $error->getMessage(), $result->getErrors()),
+                expected: [sprintf('field "%s" must be of type %s.', $property, $type)],
+                actual: array_map(static fn(object $error): string => $error->getMessage(), $result->getErrors()),
             );
         }
     }
@@ -369,7 +369,7 @@ final class Yii3RuleCoverageTest extends TestCase
 
         $container = new Yii3Container();
         $result = $container->validate(
-            $container->hydrate($namespace . '\Probe', ['keep' => 'x', 'name' => null, 'tags' => null]),
+            input: $container->hydrate($namespace . '\Probe', ['keep' => 'x', 'name' => null, 'tags' => null]),
         );
 
         self::assertTrue($result->isValid(), implode(' | ', $this->messages($result)));
@@ -394,12 +394,12 @@ final class Yii3RuleCoverageTest extends TestCase
 
         self::assertTrue($container->validate($container->hydrate($class, ['name' => 'alice']))->isValid());
         self::assertStringContainsString(
-            'at least 3 characters',
-            implode(' ', $this->messages($container->validate($container->hydrate($class, ['name' => 'ab'])))),
+            needle: 'at least 3 characters',
+            haystack: implode(' ', $this->messages($container->validate($container->hydrate($class, ['name' => 'ab'])))),
         );
         self::assertStringContainsString(
-            'invalid',
-            implode(' ', $this->messages($container->validate($container->hydrate($class, ['name' => 'Alice'])))),
+            needle: 'invalid',
+            haystack: implode(' ', $this->messages($container->validate($container->hydrate($class, ['name' => 'Alice'])))),
         );
     }
 }

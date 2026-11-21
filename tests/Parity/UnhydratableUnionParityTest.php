@@ -48,15 +48,15 @@ final class UnhydratableUnionParityTest extends TestCase
             $warnings = $this->generate($mode);
 
             $matching = array_values(array_filter(
-                $warnings,
-                static fn(string $warning): bool => str_contains($warning, 'an undiscriminated oneOf union'),
+                array: $warnings,
+                callback: static fn(string $warning): bool => str_contains($warning, 'an undiscriminated oneOf union'),
             ));
 
             // Two properties reach the same union: directly, and as the items of an array.
             $this->assertCount(
-                2,
-                $matching,
-                sprintf("%s mode did not name both properties:\n %s", $mode->value, implode("\n ", $warnings)),
+                expectedCount: 2,
+                haystack: $matching,
+                message: sprintf("%s mode did not name both properties:\n %s", $mode->value, implode("\n ", $warnings)),
             );
 
             $this->assertStringContainsString('Property "shape" of Probe refers to Shape', $matching[0]);
@@ -153,8 +153,8 @@ final class UnhydratableUnionParityTest extends TestCase
                     $suffix = 'Inline' . ucfirst($keyword) . ($nested ? 'Nested' : '');
                     $warnings = $this->generate($mode, $spec, $suffix);
                     $matching = array_values(array_filter(
-                        $warnings,
-                        static fn(string $warning): bool => str_contains($warning, 'an undiscriminated ' . $keyword . ' union'),
+                        array: $warnings,
+                        callback: static fn(string $warning): bool => str_contains($warning, 'an undiscriminated ' . $keyword . ' union'),
                     ));
                     self::assertCount(3, $matching, $mode->value . ': ' . implode(' ', $warnings));
                     foreach ($matching as $warning) {
@@ -250,10 +250,10 @@ final class UnhydratableUnionParityTest extends TestCase
 
         $generator = new GenerateDtoCommand();
         $generator->generateFromArray(
-            $spec ?? self::spec(),
-            $this->outputDirectory,
-            'UnionWarn' . $mode->tag() . $suffix,
-            $mode->value,
+            openApi: $spec ?? self::spec(),
+            outputDirectory: $this->outputDirectory,
+            namespace: 'UnionWarn' . $mode->tag() . $suffix,
+            mode: $mode->value,
         );
 
         return $generator->getGenerationWarnings();

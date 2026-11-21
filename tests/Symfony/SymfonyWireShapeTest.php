@@ -79,8 +79,8 @@ final class SymfonyWireShapeTest extends TestCase
         $dto->setPart(new $gadget(tint: 'azure'));
 
         $this->assertSame(
-            '{"alpha":"a","beta":"b","gamma":"g","delta":null,"part":{"tint":"azure"},"size":3}',
-            $this->serializer()->serialize($dto, 'json'),
+            expected: '{"alpha":"a","beta":"b","gamma":"g","delta":null,"part":{"tint":"azure"},"size":3}',
+            actual: $this->serializer()->serialize($dto, 'json'),
         );
     }
 
@@ -105,12 +105,12 @@ final class SymfonyWireShapeTest extends TestCase
         $nested = new $widget(beta: 'b', delta: null);
         $nested->setPart(new $gadget(tint: null));
         $this->assertSame(
-            '{"beta":"b","gamma":null,"delta":null,"part":{"tint":null},"size":3}',
-            $this->serializer()->serialize($nested, 'json'),
+            expected: '{"beta":"b","gamma":null,"delta":null,"part":{"tint":null},"size":3}',
+            actual: $this->serializer()->serialize($nested, 'json'),
         );
         $this->assertSame(
-            '{"beta":"b","gamma":null,"delta":null,"part":{"tint":null},"size":3}',
-            $this->serializer()->serialize($nested, 'json', [AbstractObjectNormalizer::SKIP_NULL_VALUES => true]),
+            expected: '{"beta":"b","gamma":null,"delta":null,"part":{"tint":null},"size":3}',
+            actual: $this->serializer()->serialize($nested, 'json', [AbstractObjectNormalizer::SKIP_NULL_VALUES => true]),
         );
     }
 
@@ -236,8 +236,8 @@ final class SymfonyWireShapeTest extends TestCase
         $this->assertTrue($dto->isAlphaProvided());
         $this->assertFalse($dto->isGammaProvided());
         $this->assertSame(
-            '{"alpha":"a","beta":"b","gamma":null,"delta":null,"part":{"tint":"azure"},"size":3}',
-            $this->serializer()->serialize($dto, 'json'),
+            expected: '{"alpha":"a","beta":"b","gamma":null,"delta":null,"part":{"tint":"azure"},"size":3}',
+            actual: $this->serializer()->serialize($dto, 'json'),
         );
     }
 
@@ -575,8 +575,8 @@ final class SymfonyWireShapeTest extends TestCase
         $generator = new GenerateDtoCommand();
         $generator->generateFromArray($spec, $target, 'WireNull', 'symfony');
         $this->assertCount(1, array_filter(
-            $generator->getGenerationWarnings(),
-            static fn(string $warning): bool => str_contains($warning, '"Rating" lists "phantom" in `required`'),
+            array: $generator->getGenerationWarnings(),
+            callback: static fn(string $warning): bool => str_contains($warning, '"Rating" lists "phantom" in `required`'),
         ));
         require_once $target . '/Rating.php';
         require_once $target . '/RatingsGetQueryParams.php';
@@ -766,7 +766,7 @@ final class SymfonyWireShapeTest extends TestCase
         $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
 
         return new Serializer(
-            [
+            normalizers: [
                 new BackedEnumNormalizer(),
                 new DateTimeNormalizer(),
                 new ObjectNormalizer(
@@ -776,7 +776,7 @@ final class SymfonyWireShapeTest extends TestCase
                 ),
                 new ArrayDenormalizer(),
             ],
-            [new JsonEncoder()],
+            encoders: [new JsonEncoder()],
         );
     }
 

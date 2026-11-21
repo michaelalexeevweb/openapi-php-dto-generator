@@ -18,6 +18,7 @@ use Symfony\Component\Serializer\Normalizer\BackedEnumNormalizer;
 use Symfony\Component\Serializer\Normalizer\DateTimeNormalizer;
 use Symfony\Component\Serializer\Normalizer\ObjectNormalizer;
 use Symfony\Component\Serializer\Serializer;
+use Symfony\Component\Validator\Validation;
 
 /**
  * Verifies that the Symfony-mode DTOs actually deserialize (denormalize) and serialize (normalize)
@@ -70,7 +71,7 @@ final class SymfonySerdeRoundTripTest extends TestCase
         $objectNormalizer = new ObjectNormalizer($classMetadataFactory, $nameConverter, null, $typeExtractor);
 
         return new Serializer(
-            [new BackedEnumNormalizer(), new DateTimeNormalizer(), $objectNormalizer, new ArrayDenormalizer()],
+            normalizers: [new BackedEnumNormalizer(), new DateTimeNormalizer(), $objectNormalizer, new ArrayDenormalizer()],
         );
     }
 
@@ -427,8 +428,8 @@ final class SymfonySerdeRoundTripTest extends TestCase
 
         // created_at may re-serialize with a normalized offset; compare the instant separately.
         $this->assertSame(
-            (new DateTimeImmutable($payload['created_at']))->getTimestamp(),
-            (new DateTimeImmutable((string)$roundTripped['created_at']))->getTimestamp(),
+            expected: (new DateTimeImmutable($payload['created_at']))->getTimestamp(),
+            actual: (new DateTimeImmutable((string)$roundTripped['created_at']))->getTimestamp(),
         );
         unset($payload['created_at'], $roundTripped['created_at']);
         // Key order is not part of the contract — optional properties are declared before the
@@ -487,6 +488,49 @@ final class SymfonySerdeRoundTripTest extends TestCase
 
         // The suffix is a PHP identifier only: `nAme2` must not leak onto the wire.
         $this->assertSame(self::sortedByKey($payload), self::sortedByKey($serializer->normalize($dto)));
+    }
+
+    /**
+     * What the serializer writes must be what the validator then accepts. An optional untyped property
+     * whose schema refuses null (`const: zed`) was written as `"pin": null` when never set, and that
+     * body came back as `field "pin" must equal "zed"`. The untyped `{}` beside it admits null, so its
+     * null is still written — and still read back.
+     */
+    public function testAnAbsentPinnedUntypedPropertyRoundTrips(): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $ns = 'SerdeAbsentPin';
+        $this->generateAndRequire($ns, [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Widget' => [
+                        'type' => 'object',
+                        'required' => ['id'],
+                        'properties' => ['id' => ['type' => 'integer'], 'pin' => ['const' => 'zed'], 'any' => []],
+                    ],
+                ],
+            ],
+        ], ['Widget']);
+
+        $serializer = $this->serializer();
+        $validator = Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator();
+        $cls = $ns . '\Widget';
+
+        foreach ([['id' => 1], ['id' => 1, 'pin' => 'zed']] as $payload) {
+            $written = $serializer->normalize($serializer->denormalize($payload, $cls));
+            $this->assertIsArray($written);
+            $this->assertSame($payload['pin'] ?? 'absent', $written['pin'] ?? 'absent', (string)json_encode($payload));
+            $this->assertArrayHasKey('any', $written);
+            $this->assertNull($written['any']);
+            $this->assertCount(0, $validator->validate($serializer->denormalize($written, $cls)), (string)json_encode($written));
+        }
+
+        $this->assertNotCount(0, $validator->validate($serializer->denormalize(['id' => 1, 'pin' => null], $cls)));
     }
 
     /**

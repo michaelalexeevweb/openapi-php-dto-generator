@@ -68,9 +68,9 @@ final class Yii3RequestShapeTest extends TestCase
 
         self::assertNotSame([], $body->getAttributes(\Yiisoft\Input\Http\Attribute\Data\FromBody::class));
         self::assertSame(
-            [],
-            $tag->getAttributes(\Yiisoft\Input\Http\Attribute\Data\FromBody::class),
-            'A nested schema must not re-read the request body.',
+            expected: [],
+            actual: $tag->getAttributes(\Yiisoft\Input\Http\Attribute\Data\FromBody::class),
+            message: 'A nested schema must not re-read the request body.',
         );
 
         // …and it still hydrates and validates through the nested value.
@@ -123,8 +123,8 @@ final class Yii3RequestShapeTest extends TestCase
         $sources = [];
         foreach ((new ReflectionClass($class))->getProperties() as $property) {
             $names = array_map(
-                static fn(ReflectionAttribute $a): string => (new ReflectionClass($a->getName()))->getShortName(),
-                $property->getAttributes(),
+                callback: static fn(ReflectionAttribute $a): string => (new ReflectionClass($a->getName()))->getShortName(),
+                array: $property->getAttributes(),
             );
             $sources[$property->getName()] = $names;
         }
@@ -162,12 +162,12 @@ final class Yii3RequestShapeTest extends TestCase
         $class = $namespace . '\Probe';
 
         self::assertTrue(
-            $container->validate($container->hydrate($class, ['keep' => 'x', 'nullable' => null]))->isValid(),
-            'a nullable property must accept its own null',
+            condition: $container->validate($container->hydrate($class, ['keep' => 'x', 'nullable' => null]))->isValid(),
+            message: 'a nullable property must accept its own null',
         );
         self::assertFalse(
-            $container->validate($container->hydrate($class, ['keep' => 'x', 'plain' => null]))->isValid(),
-            'optional is not nullable: a null the schema never allowed must be rejected',
+            condition: $container->validate($container->hydrate($class, ['keep' => 'x', 'plain' => null]))->isValid(),
+            message: 'optional is not nullable: a null the schema never allowed must be rejected',
         );
     }
 
@@ -408,8 +408,8 @@ final class Yii3RequestShapeTest extends TestCase
         $input = $container->hydrate($namespace . '\Board', ['byId' => ['first' => ['id' => 1], 'second' => ['id' => 2]]]);
 
         $byId = array_map(
-            static fn(object|array $item): object => $item instanceof $detail ? $item : $hydrator->create($detail, $item),
-            $input->getById() ?? [],
+            callback: static fn(object|array $item): object => $item instanceof $detail ? $item : $hydrator->create($detail, $item),
+            array: $input->getById() ?? [],
         );
 
         self::assertSame(['first', 'second'], array_keys($byId));
@@ -675,8 +675,8 @@ final class Yii3RequestShapeTest extends TestCase
         self::assertTrue(is_subclass_of($ident, \Yiisoft\Validator\DataSetInterface::class));
         self::assertTrue(is_subclass_of($ident, \Yiisoft\Validator\RulesProviderInterface::class));
         self::assertSame(
-            ['city' => $namespace . '\CityIdent', 'region' => $namespace . '\RegionIdent'],
-            constant($ident . '::OPENAPI_DISCRIMINATOR_MAPPING'),
+            expected: ['city' => $namespace . '\CityIdent', 'region' => $namespace . '\RegionIdent'],
+            actual: constant($ident . '::OPENAPI_DISCRIMINATOR_MAPPING'),
         );
     }
 
@@ -782,7 +782,7 @@ final class Yii3RequestShapeTest extends TestCase
             ],
         ]);
         $verdict = fn(array $payload, bool $nestedPaths): array => $this->messages(
-            (new Yii3Container())->hydrateValidated(class: $namespace . '\Filter', payload: $payload, nestedPaths: $nestedPaths),
+            result: (new Yii3Container())->hydrateValidated(class: $namespace . '\Filter', payload: $payload, nestedPaths: $nestedPaths),
         );
 
         self::assertSame(['begin'], array_keys($verdict(['range' => ['begin' => 'nonsense']], nestedPaths: false)));
@@ -846,7 +846,7 @@ final class Yii3RequestShapeTest extends TestCase
         }
         self::assertNotNull($class, 'the operation must produce a parameters class');
         $verdict = fn(array $query): array => $this->messages(
-            (new Yii3Container())->hydrateValidated(class: $class, payload: [], method: 'GET', query: $query),
+            result: (new Yii3Container())->hydrateValidated(class: $class, payload: [], method: 'GET', query: $query),
         );
 
         // A query string carries text, so "1" is the integer 1.
@@ -894,7 +894,7 @@ final class Yii3RequestShapeTest extends TestCase
         self::assertSame([true, false], $input->getFlags());
 
         $refused = $this->messages(
-            (new Yii3Container())->hydrateValidated(class: $class, payload: [], method: 'GET', query: ['ids' => ['11', 'abc'], 'weights' => ['x'], 'flags' => ['maybe']]),
+            result: (new Yii3Container())->hydrateValidated(class: $class, payload: [], method: 'GET', query: ['ids' => ['11', 'abc'], 'weights' => ['x'], 'flags' => ['maybe']]),
         );
         self::assertArrayHasKey('ids.1', $refused);
         self::assertArrayHasKey('weights.0', $refused);
@@ -1084,7 +1084,7 @@ final class Yii3RequestShapeTest extends TestCase
 
         $container = new Yii3Container();
         $messages = $this->messages($container->validate(
-            $container->hydrate($namespace . '\Probe', ['name' => '', 'tags' => []]),
+            input: $container->hydrate($namespace . '\Probe', ['name' => '', 'tags' => []]),
         ));
 
         self::assertArrayHasKey('name', $messages);
@@ -1194,8 +1194,8 @@ final class Yii3RequestShapeTest extends TestCase
         ]);
 
         $member = (new Yii3Container())->hydrate(
-            $namespace . '\Dog',
-            ['petType' => 'dog', 'bark' => 'woof'],
+            class: $namespace . '\Dog',
+            payload: ['petType' => 'dog', 'bark' => 'woof'],
         );
 
         // assertSame on the ARRAY is what sees the order; the keys and values alone would pass either
@@ -1229,17 +1229,17 @@ final class Yii3RequestShapeTest extends TestCase
         $class = $namespace . '\Probe';
 
         self::assertSame(
-            'array|string|int|float|bool|null',
-            (string)(new ReflectionProperty($class, 'any'))->getType(),
-            'a free-form property must not be typed `mixed`: the hydrator will not fill one',
+            expected: 'array|string|int|float|bool|null',
+            actual: (string)(new ReflectionProperty($class, 'any'))->getType(),
+            message: 'a free-form property must not be typed `mixed`: the hydrator will not fill one',
         );
 
         foreach (['text', 42, 1.5, true, ['k' => 1], null] as $value) {
             $dto = $container->hydrate($class, ['s' => 'a', 'any' => $value]);
 
             self::assertTrue(
-                $dto->isAnyProvided(),
-                sprintf('%s was dropped by the hydrator', json_encode($value)),
+                condition: $dto->isAnyProvided(),
+                message: sprintf('%s was dropped by the hydrator', json_encode($value)),
             );
             self::assertSame(['s' => 'a', 'any' => $value], $dto->getData());
             self::assertTrue($container->validate($dto)->isValid());
@@ -1265,8 +1265,8 @@ final class Yii3RequestShapeTest extends TestCase
         ]);
 
         $files = array_map(
-            'basename',
-            (array)glob($this->outputDirectory . '/' . $namespace . '/*.php'),
+            callback: 'basename',
+            array: (array)glob($this->outputDirectory . '/' . $namespace . '/*.php'),
         );
 
         self::assertSame(['Probe.php'], $files);

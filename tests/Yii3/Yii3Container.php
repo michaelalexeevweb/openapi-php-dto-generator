@@ -111,7 +111,7 @@ final class Yii3Container implements ContainerInterface
         bool $nestedPaths = false,
     ): AbstractInput {
         $this->requestProvider->set(
-            (new ServerRequest($method, $uri))->withParsedBody($payload)->withQueryParams($query),
+            request: (new ServerRequest($method, $uri))->withParsedBody($payload)->withQueryParams($query),
         );
         $validator = $this->instances[ValidatorInterface::class];
         $resolver = $this->instances[ValidateResolver::class];
@@ -158,7 +158,7 @@ final class Yii3Container implements ContainerInterface
     public function hydrate(string $class, array $payload, string $method = 'POST', string $uri = '/'): object
     {
         $this->requestProvider->set(
-            (new ServerRequest($method, $uri))->withParsedBody($payload),
+            request: (new ServerRequest($method, $uri))->withParsedBody($payload),
         );
 
         // Fed BOTH ways on purpose. A class that IS a request payload carries `#[FromBody]`, which

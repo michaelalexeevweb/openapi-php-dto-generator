@@ -109,9 +109,9 @@ final class SymfonyConstraintMatrixTest extends TestCase
 
         $this->assertCount(0, $validator->validate(new $fqcn(v: $valid)), 'valid value must pass');
         $this->assertGreaterThan(
-            0,
-            count($validator->validate(new $fqcn(v: $invalid))),
-            'invalid value must produce a violation',
+            expected: 0,
+            actual: count($validator->validate(new $fqcn(v: $invalid))),
+            message: 'invalid value must produce a violation',
         );
     }
 
@@ -305,7 +305,7 @@ final class SymfonyConstraintMatrixTest extends TestCase
         $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
         $nameConverter = new MetadataAwareNameConverter($classMetadataFactory);
         $serializer = new Serializer(
-            [new ObjectNormalizer($classMetadataFactory, $nameConverter), new ArrayDenormalizer()],
+            normalizers: [new ObjectNormalizer($classMetadataFactory, $nameConverter), new ArrayDenormalizer()],
         );
 
         // The wire payload uses the OpenAPI snake_case key; SerializedName must map it to $userName.
@@ -427,9 +427,9 @@ final class SymfonyConstraintMatrixTest extends TestCase
         $validator = Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator();
 
         $this->assertCount(
-            0,
-            $validator->validate(
-                new $fqcn(
+            expectedCount: 0,
+            haystack: $validator->validate(
+                value: new $fqcn(
                     mode: 'ok',
                     choice: 'b',
                     tags: ['hit', 'other'],
@@ -440,9 +440,9 @@ final class SymfonyConstraintMatrixTest extends TestCase
         );
 
         $this->assertGreaterThan(
-            0,
-            count($validator->validate(
-                new $fqcn(
+            expected: 0,
+            actual: count($validator->validate(
+                value: new $fqcn(
                     mode: 'forbidden',
                     choice: 'c',
                     tags: ['miss'],
@@ -496,8 +496,8 @@ final class SymfonyConstraintMatrixTest extends TestCase
         $validator = Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator();
 
         $this->assertCount(
-            0,
-            $validator->validate(new $fqcn(
+            expectedCount: 0,
+            haystack: $validator->validate(new $fqcn(
                 notMinLen: 'ab',
                 notInteger: 'ok',
                 thenPattern: 'zoo',
@@ -945,8 +945,8 @@ final class SymfonyConstraintMatrixTest extends TestCase
             $messages[] = (string)$violation->getMessage();
         }
         $this->assertStringContainsString(
-            'field "pet" discriminator kind must match concrete class',
-            implode("\n", $messages),
+            needle: 'field "pet" discriminator kind must match concrete class',
+            haystack: implode("\n", $messages),
         );
     }
 
@@ -1036,8 +1036,8 @@ final class SymfonyConstraintMatrixTest extends TestCase
             $messages[] = (string)$violation->getMessage();
         }
         $this->assertStringContainsString(
-            'field "value" has invalid regex pattern in schema: [a-z',
-            implode("\n", $messages),
+            needle: 'field "value" has invalid regex pattern in schema: [a-z',
+            haystack: implode("\n", $messages),
         );
     }
 

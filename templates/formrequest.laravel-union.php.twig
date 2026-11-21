@@ -32,7 +32,7 @@ use {{ import }};
  * **Authorization is not generated.** An OpenAPI document describes payload shape, not policy, so this
  * class defines no `authorize()` — add one if the route needs it.
  */
-final class {{ className }} extends FormRequest
+final class {{ className }} extends \Illuminate\Foundation\Http\FormRequest
 {
     /**
      * @return array<string, array<int, mixed>>
@@ -43,7 +43,7 @@ final class {{ className }} extends FormRequest
 
         // No variant to take the rules from: the discriminator itself is what is wrong.
         return $variant === null
-            ? ['{{ discriminatorProperty|php_string }}' => ['present', Rule::in([{% for arm in arms %}'{{ arm.value|php_string }}'{% if not loop.last %}, {% endif %}{% endfor %}])]]
+            ? ['{{ discriminatorProperty|php_string }}' => ['present', \Illuminate\Validation\Rule::in([{% for arm in arms %}'{{ arm.value|php_string }}'{% if not loop.last %}, {% endif %}{% endfor %}])]]
             : $variant::rules();
     }
 
@@ -51,7 +51,7 @@ final class {{ className }} extends FormRequest
      * The chosen variant's schema checks, against the raw payload; with none chosen, only that
      * `validated()` keeps its containers whole.
      */
-    public function withValidator(Validator $validator): void
+    public function withValidator(\Illuminate\Validation\Validator $validator): void
     {
         $variant = $this->variant();
         if ($variant === null) {
@@ -71,7 +71,7 @@ final class {{ className }} extends FormRequest
     {
         /** @var array<string, mixed> $validated */
         $validated = $this->validated();
-        $variant = $this->variant() ?? throw new LogicException('A validated payload always names a variant.');
+        $variant = $this->variant() ?? throw new \LogicException('A validated payload always names a variant.');
 
         return $variant::fromValidated($validated);
     }

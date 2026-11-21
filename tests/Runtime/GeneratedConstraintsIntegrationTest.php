@@ -88,7 +88,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     {
         $namespace = 'RuntimeCollide' . $schemaName;
         (new GenerateDtoCommand())->generateFromArray(
-            [
+            openApi: [
                 'openapi' => '3.1.0',
                 'info' => ['title' => 'T', 'version' => '1.0.0'],
                 'components' => ['schemas' => [
@@ -108,8 +108,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
                     ],
                 ]],
             ],
-            $this->outputDirectory,
-            $namespace,
+            outputDirectory: $this->outputDirectory,
+            namespace: $namespace,
         );
 
         $files = glob($this->outputDirectory . '/*.php');
@@ -125,9 +125,9 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $dto = (new DtoDeserializer())->deserialize($this->jsonPostRequest('{"it":{"n":7}}'), $holder);
 
         self::assertInstanceOf(
-            $member,
-            $dto->getIt(),
-            'the property must be the DOCUMENT\'s class, not the library one the import would have won',
+            expected: $member,
+            actual: $dto->getIt(),
+            message: 'the property must be the DOCUMENT\'s class, not the library one the import would have won',
         );
         self::assertSame(7, $dto->getIt()->getN(), 'and it must carry the payload, not a default');
     }
@@ -267,7 +267,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
         try {
             $accepted = (new DtoNormalizer())->validate(
-                (new DtoDeserializer())->deserialize($request, $fqcn),
+                dto: (new DtoDeserializer())->deserialize($request, $fqcn),
             ) === [];
         } catch (Throwable) {
             $accepted = false;
@@ -426,14 +426,14 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
         // The wire names survive untouched, which is the half a client can see.
         $this->assertSame(
-            ['имя' => 'Аня', '名前' => '太郎', 'plain' => 'x'],
-            (new DtoNormalizer())->validateAndNormalizeToArray($dto),
+            expected: ['имя' => 'Аня', '名前' => '太郎', 'plain' => 'x'],
+            actual: (new DtoNormalizer())->validateAndNormalizeToArray($dto),
         );
 
         // And the two names stayed apart, which is what used to fail.
         $properties = array_map(
-            static fn(ReflectionProperty $property): string => $property->getName(),
-            (new ReflectionClass($dto))->getProperties(),
+            callback: static fn(ReflectionProperty $property): string => $property->getName(),
+            array: (new ReflectionClass($dto))->getProperties(),
         );
         $this->assertContains('имя', $properties);
         $this->assertContains('名前', $properties);
@@ -456,16 +456,16 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         foreach (['runtime', 'symfony', 'laravel', 'laravel-data', 'yii3'] as $mode) {
             $namespace = 'BoolAllOf' . str_replace('-', '', ucfirst($mode));
             (new GenerateDtoCommand())->generateFromArray(
-                self::booleanAllOfSpec(),
-                $this->outputDirectory,
-                $namespace,
-                $mode,
+                openApi: self::booleanAllOfSpec(),
+                outputDirectory: $this->outputDirectory,
+                namespace: $namespace,
+                mode: $mode,
             );
 
             $this->assertNotSame(
-                [],
-                glob($this->outputDirectory . '/*.php') ?: [],
-                $mode . ' mode wrote no files for a boolean member of allOf',
+                expected: [],
+                actual: glob($this->outputDirectory . '/*.php') ?: [],
+                message: $mode . ' mode wrote no files for a boolean member of allOf',
             );
         }
     }
@@ -570,16 +570,16 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $fqcn = $this->generateFromInlineSpec($spec, 'ClosedObjNs', 'Closed');
 
         $accepted = (new DtoDeserializer())->deserialize(
-            $this->jsonPostRequest('{"known":"a"}'),
-            $fqcn,
+            request: $this->jsonPostRequest('{"known":"a"}'),
+            dtoClass: $fqcn,
         );
         self::assertSame('a', $accepted->getKnown());
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('Unknown property "extra" is not allowed by the schema.');
         (new DtoDeserializer())->deserialize(
-            $this->jsonPostRequest('{"known":"a","extra":"b"}'),
-            $fqcn,
+            request: $this->jsonPostRequest('{"known":"a","extra":"b"}'),
+            dtoClass: $fqcn,
         );
     }
 
@@ -605,8 +605,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $fqcn = $this->generateFromInlineSpec($spec, 'OpenObjNs', 'Open');
 
         $dto = (new DtoDeserializer())->deserialize(
-            $this->jsonPostRequest('{"known":"a","extra":"b"}'),
-            $fqcn,
+            request: $this->jsonPostRequest('{"known":"a","extra":"b"}'),
+            dtoClass: $fqcn,
         );
         self::assertSame('a', $dto->getKnown());
     }
@@ -636,8 +636,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('Unknown property "extra" is not allowed by the schema.');
         (new DtoDeserializer())->deserialize(
-            $this->jsonPostRequest('{"known":"a","extra":"b"}'),
-            $fqcn,
+            request: $this->jsonPostRequest('{"known":"a","extra":"b"}'),
+            dtoClass: $fqcn,
         );
     }
 
@@ -696,8 +696,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $fqcn = $this->generateFromInlineSpec($spec, 'AliasedClosedNs', 'Aliased');
 
         $dto = (new DtoDeserializer())->deserialize(
-            $this->jsonPostRequest('{"first_name":"Ada"}'),
-            $fqcn,
+            request: $this->jsonPostRequest('{"first_name":"Ada"}'),
+            dtoClass: $fqcn,
         );
         self::assertSame('Ada', $dto->getFirstName());
     }
@@ -732,8 +732,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
         // Body alone.
         self::assertSame(
-            'from-body',
-            $deserializer->deserialize($this->jsonPostRequest('{"id":"from-body"}'), $fqcn)->getId(),
+            expected: 'from-body',
+            actual: $deserializer->deserialize($this->jsonPostRequest('{"id":"from-body"}'), $fqcn)->getId(),
         );
 
         // A router-verified path attribute OUTRANKS the body — a request body must never be able to
@@ -874,8 +874,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
         // The value is in the form bag, not in a JSON body.
         $dto = (new DtoDeserializer())->deserialize(
-            Request::create('/', 'POST', ['name' => 'from-form']),
-            $fqcn,
+            request: Request::create('/', 'POST', ['name' => 'from-form']),
+            dtoClass: $fqcn,
         );
 
         self::assertSame('from-form', $dto->getName());
@@ -909,8 +909,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
         try {
             $deserializer->deserialize(
-                Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'text/plain'], '{"name":"v"}'),
-                $fqcn,
+                request: Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'text/plain'], '{"name":"v"}'),
+                dtoClass: $fqcn,
             );
             self::fail('a body that was never decoded must not deserialize');
         } catch (RuntimeException $e) {
@@ -936,25 +936,25 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         foreach (['{}', '{"name":"v","extra":1}'] as $readableBody) {
             try {
                 $deserializer->deserialize(
-                    Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $readableBody),
-                    $fqcn,
+                    request: Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $readableBody),
+                    dtoClass: $fqcn,
                 );
                 if ($readableBody === '{}') {
                     self::fail('a missing required field must be refused');
                 }
             } catch (RuntimeException $e) {
                 self::assertStringNotContainsString(
-                    'The request body was not read',
-                    $e->getMessage(),
-                    'the body WAS read: ' . $readableBody,
+                    needle: 'The request body was not read',
+                    haystack: $e->getMessage(),
+                    message: 'the body WAS read: ' . $readableBody,
                 );
             }
         }
 
         // …and a JSON body still works, hint or no hint.
         self::assertSame(
-            'v',
-            $deserializer->deserialize($this->jsonPostRequest('{"name":"v"}'), $fqcn)->getName(),
+            expected: 'v',
+            actual: $deserializer->deserialize($this->jsonPostRequest('{"name":"v"}'), $fqcn)->getName(),
         );
     }
 
@@ -1178,8 +1178,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
         // Deserialize a JSON object body → keys preserved, values cast to the enum.
         $deserialized = (new DtoDeserializer())->deserialize(
-            $this->jsonPostRequest('{"fieldTypes":{"0":"text","5":"date"}}'),
-            $cls,
+            request: $this->jsonPostRequest('{"fieldTypes":{"0":"text","5":"date"}}'),
+            dtoClass: $cls,
         );
         $map = $deserialized->getFieldTypes();
         $this->assertSame([0, 5], array_keys($map));
@@ -1191,8 +1191,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $built->addItemToFieldTypes('5', $enum::DATE);
         $built->addItemToFieldTypes('label', $enum::NUMBER);
         $this->assertSame(
-            '{"fieldTypes":{"0":"text","5":"date","label":"number"}}',
-            $built->toJson(),
+            expected: '{"fieldTypes":{"0":"text","5":"date","label":"number"}}',
+            actual: $built->toJson(),
         );
     }
 
@@ -1323,8 +1323,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
         /** @var object{getStartDate: callable, getStartDateAsDateTime: callable, getCreatedAt: callable, getCreatedAtAsDateTime: callable} $dto */
         $dto = (new DtoDeserializer())->deserialize(
-            $this->jsonPostRequest('{"startDate":"2026-01-15","createdAt":"2026-02-20T08:30:00+00:00"}'),
-            $cls,
+            request: $this->jsonPostRequest('{"startDate":"2026-01-15","createdAt":"2026-02-20T08:30:00+00:00"}'),
+            dtoClass: $cls,
         );
 
         // String getter: formatted per the OpenAPI format.
@@ -1340,12 +1340,12 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
         // Reflect the declared return types.
         $this->assertSame(
-            'DateTimeImmutable',
-            (string)(new ReflectionMethod($cls, 'getStartDateAsDateTime'))->getReturnType(),
+            expected: 'DateTimeImmutable',
+            actual: (string)(new ReflectionMethod($cls, 'getStartDateAsDateTime'))->getReturnType(),
         );
         $this->assertSame(
-            '?DateTimeImmutable',
-            (string)(new ReflectionMethod($cls, 'getCreatedAtAsDateTime'))->getReturnType(),
+            expected: '?DateTimeImmutable',
+            actual: (string)(new ReflectionMethod($cls, 'getCreatedAtAsDateTime'))->getReturnType(),
         );
     }
 
@@ -1357,8 +1357,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $cls = $this->generateEventModel('GapArrDt');
 
         $dto = (new DtoDeserializer())->deserialize(
-            $this->jsonPostRequest('{"dates":["2026-01-15T12:00:00+00:00","2026-02-20T08:30:00+00:00"]}'),
-            $cls,
+            request: $this->jsonPostRequest('{"dates":["2026-01-15T12:00:00+00:00","2026-02-20T08:30:00+00:00"]}'),
+            dtoClass: $cls,
         );
 
         $dates = $dto->getDatesAsDateTime();
@@ -1368,8 +1368,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
         // The string getter formats every item per the ITEMS format, exactly like the scalar one.
         $this->assertSame(
-            ['2026-01-15T12:00:00+00:00', '2026-02-20T08:30:00+00:00'],
-            $dto->getDates(),
+            expected: ['2026-01-15T12:00:00+00:00', '2026-02-20T08:30:00+00:00'],
+            actual: $dto->getDates(),
         );
     }
 
@@ -1407,8 +1407,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $fqcn = $this->generateFromInlineSpec($spec, 'DateItemsNs', 'Report');
 
         $dto = (new DtoDeserializer())->deserialize(
-            $this->jsonPostRequest('{"dates":["2026-01-15","2026-02-20"],"byDay":{"mon":"2026-01-19"}}'),
-            $fqcn,
+            request: $this->jsonPostRequest('{"dates":["2026-01-15","2026-02-20"],"byDay":{"mon":"2026-01-19"}}'),
+            dtoClass: $fqcn,
         );
 
         $this->assertSame(['2026-01-15', '2026-02-20'], $dto->getDates());
@@ -1427,8 +1427,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
         // A map still encodes as a JSON object, not a list.
         $this->assertSame(
-            '{"dates":["2026-01-15","2026-02-20"],"byDay":{"mon":"2026-01-19"}}',
-            $dto->toJson(),
+            expected: '{"dates":["2026-01-15","2026-02-20"],"byDay":{"mon":"2026-01-19"}}',
+            actual: $dto->toJson(),
         );
     }
 
@@ -1458,8 +1458,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $fqcn = $this->generateFromInlineSpec($spec, 'OptionalDateItemsNs', 'Optional');
 
         $withItems = (new DtoDeserializer())->deserialize(
-            $this->jsonPostRequest('{"dates":["2026-01-15",null]}'),
-            $fqcn,
+            request: $this->jsonPostRequest('{"dates":["2026-01-15",null]}'),
+            dtoClass: $fqcn,
         );
         $this->assertSame(['2026-01-15', null], $withItems->getDates());
         $this->assertSame(['2026-01-15', null], $withItems->toArray()['dates']);
@@ -1479,17 +1479,17 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $cls = $this->generateEventModel('GapArrDtFmt');
 
         $dto = (new DtoDeserializer())->deserialize(
-            $this->jsonPostRequest('{"dates":["2026-01-15T12:00:00+00:00","2026-02-20T08:30:00.123456+00:00"]}'),
-            $cls,
+            request: $this->jsonPostRequest('{"dates":["2026-01-15T12:00:00+00:00","2026-02-20T08:30:00.123456+00:00"]}'),
+            dtoClass: $cls,
         );
 
         $this->assertSame(
-            ['2026-01-15T12:00:00+00:00', '2026-02-20T08:30:00.123456+00:00'],
-            $dto->getDates(),
+            expected: ['2026-01-15T12:00:00+00:00', '2026-02-20T08:30:00.123456+00:00'],
+            actual: $dto->getDates(),
         );
         $this->assertSame(
-            ['2026-01-15T12:00:00+00:00', '2026-02-20T08:30:00.123456+00:00'],
-            (new DtoNormalizer())->toArray($dto)['dates'],
+            expected: ['2026-01-15T12:00:00+00:00', '2026-02-20T08:30:00.123456+00:00'],
+            actual: (new DtoNormalizer())->toArray($dto)['dates'],
         );
     }
 
@@ -1542,8 +1542,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $cls = $this->generateBoxModel('GapBox');
 
         $dto = (new DtoDeserializer())->deserialize(
-            $this->jsonPostRequest('{"colors":["red","blue"],"tags":[{"name":"a"},{"name":"b"}]}'),
-            $cls,
+            request: $this->jsonPostRequest('{"colors":["red","blue"],"tags":[{"name":"a"},{"name":"b"}]}'),
+            dtoClass: $cls,
         );
 
         $colors = $dto->getColors();
@@ -1562,8 +1562,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('colors.0');
         (new DtoDeserializer())->deserialize(
-            $this->jsonPostRequest('{"colors":["magenta"],"tags":[]}'),
-            $cls,
+            request: $this->jsonPostRequest('{"colors":["magenta"],"tags":[]}'),
+            dtoClass: $cls,
         );
     }
 
@@ -1623,8 +1623,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
         // `Premium` requires `tier`; without it the condition does not hold and `then` must stay out.
         $notPremium = (new DtoDeserializer())->deserialize(
-            $this->jsonPostRequest('{"profile":{"plan":"free"}}'),
-            $cls,
+            request: $this->jsonPostRequest('{"profile":{"plan":"free"}}'),
+            dtoClass: $cls,
         );
         $this->assertSame([], (new DtoNormalizer())->validate($notPremium));
 
@@ -1632,8 +1632,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $premiumWithout = false;
         try {
             (new DtoDeserializer())->deserialize(
-                $this->jsonPostRequest('{"profile":{"tier":"gold"}}'),
-                $cls,
+                request: $this->jsonPostRequest('{"profile":{"tier":"gold"}}'),
+                dtoClass: $cls,
             );
         } catch (RuntimeException) {
             $premiumWithout = true;
@@ -1642,8 +1642,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $this->assertTrue($premiumWithout, 'a matching `if` must make `then` apply');
 
         $premiumWith = (new DtoDeserializer())->deserialize(
-            $this->jsonPostRequest('{"profile":{"tier":"gold","discountCode":"X"}}'),
-            $cls,
+            request: $this->jsonPostRequest('{"profile":{"tier":"gold","discountCode":"X"}}'),
+            dtoClass: $cls,
         );
         $this->assertSame([], (new DtoNormalizer())->validate($premiumWith));
     }
@@ -1670,8 +1670,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
         $cls = '\GapNestedWo\Wrap';
         $dto = (new DtoDeserializer())->deserialize(
-            $this->jsonPostRequest('{"child":{"name":"Bob","secret":"sekret"}}'),
-            $cls,
+            request: $this->jsonPostRequest('{"child":{"name":"Bob","secret":"sekret"}}'),
+            dtoClass: $cls,
         );
 
         $array = (new DtoNormalizer())->toArray($dto);
@@ -1751,7 +1751,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     {
         // Regression: a oneOf with a $ref variant extracted an empty branch that the
         // validator treated as always-matching → false "matches more than one oneOf
-        // branch". The unvalidatable union must be dropped from getConstraints().
+        // branch". The `$ref` branch is "is that class" now, never an empty branch: the
+        // union is kept, and a value of the other branch matches exactly one.
         $openApi = Yaml::parseFile(__DIR__ . '/../fixtures/oneof-ref.yaml');
         (new GenerateDtoCommand())->generateFromArray($openApi, $this->outputDirectory, 'GapOneOfRef');
         $files = glob($this->outputDirectory . '/*.php');
@@ -1762,12 +1763,16 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         /** @var class-string<GeneratedDtoInterface> $cls */
         $cls = '\GapOneOfRef\Holder';
         $constraints = $cls::getConstraints();
-        // The whole unvalidatable oneOf is dropped → no 'oneOf' (the 'value' entry may be absent entirely).
-        $this->assertArrayNotHasKey('oneOf', $constraints['value'] ?? []);
+        $this->assertSame(
+            expected: ['oneOf' => [['x-php-instanceof' => 'GapOneOfRef\Detailed'], ['type' => 'string', 'minLength' => 3]]],
+            actual: $constraints['value'] ?? [],
+        );
 
         // A value matching the inline string branch must validate cleanly (no false positive).
         $dto = (new DtoDeserializer())->deserialize($this->jsonPostRequest('{"value":"hello"}'), $cls);
         $this->assertSame([], (new DtoNormalizer())->validate($dto));
+        $detailed = (new DtoDeserializer())->deserialize($this->jsonPostRequest('{"value":{"note":"n"}}'), $cls);
+        $this->assertSame([], (new DtoNormalizer())->validate($detailed));
     }
 
     public function testInt32FormatRangeIsEnforcedThroughGeneratedDto(): void
@@ -1890,8 +1895,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         // allOf — inline branches kept, fully-unresolvable ($ref-only) ones dropped.
         $this->assertArrayHasKey('allOf', $constraints['intersection']);
         $this->assertSame(
-            [['minLength' => 2], ['maxLength' => 5]],
-            $constraints['intersection']['allOf'],
+            expected: [['minLength' => 2], ['maxLength' => 5]],
+            actual: $constraints['intersection']['allOf'],
         );
     }
 
@@ -1992,8 +1997,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         // A third item is not covered by prefixItems → rejected.
         $errors = $normalizer->validate(new $cls(['x', 1, 'extra']));
         $matched = array_filter(
-            $errors,
-            static fn(string $e): bool => str_contains($e, 'unevaluated item at index 2'),
+            array: $errors,
+            callback: static fn(string $e): bool => str_contains($e, 'unevaluated item at index 2'),
         );
         $this->assertNotEmpty($matched, 'expected an unevaluated-item error, got: ' . implode(' | ', $errors));
     }
@@ -2043,8 +2048,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $validator = new DtoValidator();
         $this->assertSame([], $validator->validate('config', ['a' => 'x', 'b' => 1], $constraints['config']));
         $this->assertContains(
-            'config has unevaluated property "extra" which is not allowed.',
-            $validator->validate('config', ['a' => 'x', 'b' => 1, 'extra' => 9], $constraints['config']),
+            needle: 'config has unevaluated property "extra" which is not allowed.',
+            haystack: $validator->validate('config', ['a' => 'x', 'b' => 1, 'extra' => 9], $constraints['config']),
         );
     }
 
@@ -2094,8 +2099,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         /** @var class-string<GeneratedDtoInterface> $holder */
         $holder = '\GenDefs\DefsHolder';
         $dto = (new DtoDeserializer())->deserialize(
-            $this->jsonPostRequest('{"addr":{"city":"Berlin"}}'),
-            $holder,
+            request: $this->jsonPostRequest('{"addr":{"city":"Berlin"}}'),
+            dtoClass: $holder,
         );
         $this->assertSame('Berlin', $dto->getAddr()->getCity());
     }
@@ -2181,8 +2186,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
         // The generator emitted the per-source binding map.
         $this->assertSame(
-            ['id' => 'path', 'page' => 'query', 'token' => 'header', 'sid' => 'cookie'],
-            $cls::getParameterSources(),
+            expected: ['id' => 'path', 'page' => 'query', 'token' => 'header', 'sid' => 'cookie'],
+            actual: $cls::getParameterSources(),
         );
 
         // Each value arrives only from its declared source.
@@ -2312,7 +2317,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $cls = '\CorpusStyles\ApiTestSerializationGetQueryParams';
 
         $request = Request::create(
-            '/api/test/serialization'
+            uri: '/api/test/serialization'
             . '?exploded=1&exploded=2'          // form + explode: true — the repeated key
             . '&joined=a,b'                     // form + explode: false — comma
             . '&spaced=3%204'                   // spaceDelimited
@@ -2322,7 +2327,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             . '&strict=s'                       // allowEmptyValue: false, so a value is required
             . '&raw=a+b'                        // allowReserved — the plus stays a plus
             . '&filter=%7B%22since%22%3A%222026-03-10%22%7D',  // content: application/json
-            'GET',
+            method: 'GET',
         );
         $request->headers->set('X-Codes', 'p,q');
         $request->cookies->set('session', 'sess-1');
@@ -2535,8 +2540,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
                 $this->fail("Expected {$invalid} to be refused.");
             } catch (RuntimeException $e) {
                 $this->assertStringContainsString(
-                    'param "f" expects a date in Y-m-d format or a valid date-time',
-                    $e->getMessage(),
+                    needle: 'param "f" expects a date in Y-m-d format or a valid date-time',
+                    haystack: $e->getMessage(),
                 );
             }
         }
@@ -2606,13 +2611,13 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         /** @var GeneratedDtoInterface $unset */
         $unset = new $fqcn(title: 'T');
         $this->assertStringContainsString(
-            '"serverId":null',
-            $normalizer->toJson($unset),
-            'the key stays in the body — the schema still requires it of a response',
+            needle: '"serverId":null',
+            haystack: $normalizer->toJson($unset),
+            message: 'the key stays in the body — the schema still requires it of a response',
         );
         $this->assertNotEmpty(
-            $normalizer->validate($unset),
-            'and a response that never set it is refused',
+            actual: $normalizer->validate($unset),
+            message: 'and a response that never set it is refused',
         );
 
         // writeOnly is unaffected and still dropped on the way out.
@@ -2638,16 +2643,16 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $this->assertNotNull($constructor);
 
         $names = array_map(
-            static fn(ReflectionParameter $p): string => $p->getName(),
-            $constructor->getParameters(),
+            callback: static fn(ReflectionParameter $p): string => $p->getName(),
+            array: $constructor->getParameters(),
         );
         $this->assertSame(['title', 'serverId', 'writtenAt', 'secret'], $names);
 
         $title = $constructor->getParameters()[0];
         $this->assertFalse($title->isOptional(), 'the only request-required property stays required');
         $this->assertTrue(
-            $constructor->getParameters()[1]->isOptional(),
-            'the readOnly one is optional, which is what moved it',
+            condition: $constructor->getParameters()[1]->isOptional(),
+            message: 'the readOnly one is optional, which is what moved it',
         );
     }
 
@@ -2876,8 +2881,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $cls = $this->generateParameterStyleQueryParams('GenRepeatedKeys');
 
         $dto = (new DtoDeserializer())->deserialize(
-            Request::create('/search?exploded=p&exploded=q&exploded=p', 'GET'),
-            $cls,
+            request: Request::create('/search?exploded=p&exploded=q&exploded=p', 'GET'),
+            dtoClass: $cls,
         );
 
         /** @var object{getExploded: callable} $dto */
@@ -2960,16 +2965,16 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
         /** @var object{getIds: callable, getOther: callable} $fromString */
         $fromString = $deserializer->deserialize(
-            Request::create('/mixed?ids=1&&ids=2&other[]=x&other[]=y', 'GET'),
-            $cls,
+            request: Request::create('/mixed?ids=1&&ids=2&other[]=x&other[]=y', 'GET'),
+            dtoClass: $cls,
         );
         $this->assertSame([1, 2], $fromString->getIds(), 'the empty pair is not a key');
         $this->assertSame(['x', 'y'], $fromString->getOther(), 'the bracket spelling is not doubled');
 
         /** @var object{getIds: callable} $fromArray */
         $fromArray = $deserializer->deserialize(
-            new Request(query: ['ids' => '7']),
-            $cls,
+            request: new Request(query: ['ids' => '7']),
+            dtoClass: $cls,
         );
         $this->assertSame([7], $fromArray->getIds(), 'no QUERY_STRING to scan, so the value stands alone');
     }
@@ -2994,8 +2999,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
         /** @var object{getTags: callable, getCodes: callable, getIds: callable, getExploded: callable} $dto */
         $dto = (new DtoDeserializer())->deserialize(
-            Request::create('/search?tags=a,b&codes=x%20y&ids=1%7C2&exploded[]=p&exploded[]=q', 'GET'),
-            $cls,
+            request: Request::create('/search?tags=a,b&codes=x%20y&ids=1%7C2&exploded[]=p&exploded[]=q', 'GET'),
+            dtoClass: $cls,
         );
 
         $this->assertSame(['a', 'b'], $dto->getTags(), 'form + explode=false stays comma-split');
@@ -3052,8 +3057,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
         /** @var object{getPage: callable, getIds: callable} $dto */
         $dto = (new DtoDeserializer())->deserialize(
-            Request::create('/page?page=1&page=2&ids=7&ids=8', 'GET'),
-            $cls,
+            request: Request::create('/page?page=1&page=2&ids=7&ids=8', 'GET'),
+            dtoClass: $cls,
         );
 
         $this->assertSame(2, $dto->getPage(), 'the scalar keeps the last occurrence');
@@ -3096,8 +3101,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         // items: {type: string, nullable: true} — a null element must be accepted, not rejected.
         /** @var object{getTags: callable} $dto */
         $dto = (new DtoDeserializer())->deserialize(
-            $this->jsonPostRequest('{"tags":["a",null,"b"]}'),
-            $cls,
+            request: $this->jsonPostRequest('{"tags":["a",null,"b"]}'),
+            dtoClass: $cls,
         );
 
         $this->assertSame(['a', null, 'b'], $dto->getTags());
@@ -3124,8 +3129,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         // Deserialize with scope actually present → flag flipped true via reflection.
         /** @var object{isScopeInQuery: callable} $provided */
         $provided = (new DtoDeserializer())->deserialize(
-            Request::create('/things?scope=active', 'GET'),
-            $cls,
+            request: Request::create('/things?scope=active', 'GET'),
+            dtoClass: $cls,
         );
         $this->assertTrue($provided->isScopeInQuery());
     }
@@ -3182,7 +3187,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
         // Deserialization of a payload without the field → default applied, presence stays false.
         $deserialized = (new DtoDeserializer())->deserialize(
-            Request::create(
+            request: Request::create(
                 uri: '/',
                 method: 'POST',
                 parameters: [],
@@ -3191,14 +3196,14 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
                 server: ['CONTENT_TYPE' => 'application/json'],
                 content: (string)json_encode(['itemIds' => [1]]),
             ),
-            $cls,
+            dtoClass: $cls,
         );
         $this->assertSame($enum::ALPHA, $deserialized->getStage());
         $this->assertFalse($deserialized->isStageInRequest());
 
         // Deserialization of a payload WITH the field → value taken from payload, presence true.
         $provided = (new DtoDeserializer())->deserialize(
-            Request::create(
+            request: Request::create(
                 uri: '/',
                 method: 'POST',
                 parameters: [],
@@ -3207,7 +3212,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
                 server: ['CONTENT_TYPE' => 'application/json'],
                 content: (string)json_encode(['itemIds' => [1], 'stage' => 'beta']),
             ),
-            $cls,
+            dtoClass: $cls,
         );
         $this->assertSame($enum::BETA, $provided->getStage());
         $this->assertTrue($provided->isStageInRequest());
@@ -3243,8 +3248,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         // Happy path: top-level array of objects → list of DTOs.
         /** @var array<int, object{getId: callable}> $items */
         $items = $deserializer->deserializeCollection(
-            $this->jsonPostRequest('[{"id":1},{"id":2},{"id":3}]'),
-            $itemClass,
+            request: $this->jsonPostRequest('[{"id":1},{"id":2},{"id":3}]'),
+            itemType: $itemClass,
         );
         $this->assertCount(3, $items);
         $this->assertSame([1, 2, 3], array_map(static fn(object $i): int => $i->getId(), $items));
@@ -3278,13 +3283,13 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $deserializer = new DtoDeserializer();
 
         $textRequest = Request::create(
-            '/bulk',
-            'POST',
-            [],
-            [],
-            [],
-            ['CONTENT_TYPE' => 'text/plain'],
-            '[{"id":1}]',
+            uri: '/bulk',
+            method: 'POST',
+            parameters: [],
+            cookies: [],
+            files: [],
+            server: ['CONTENT_TYPE' => 'text/plain'],
+            content: '[{"id":1}]',
         );
 
         try {
@@ -3419,26 +3424,26 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $fqcn = $this->generateFromInlineSpec($spec, 'JsonSlashNs', 'Probe');
 
         $dto = (new DtoDeserializer())->deserialize(
-            $this->jsonPostRequest('{"url":"https://example.com/a/b"}'),
-            $fqcn,
+            request: $this->jsonPostRequest('{"url":"https://example.com/a/b"}'),
+            dtoClass: $fqcn,
         );
         $normalizer = new DtoNormalizer();
 
         $this->assertSame('{"url":"https://example.com/a/b"}', $normalizer->toJson($dto));
         $this->assertSame(
-            '{"url":"https://example.com/a/b"}',
-            $normalizer->validateAndNormalizeToJson($dto),
-            'the validating twin encodes the same way',
+            expected: '{"url":"https://example.com/a/b"}',
+            actual: $normalizer->validateAndNormalizeToJson($dto),
+            message: 'the validating twin encodes the same way',
         );
         $this->assertSame(
-            '{"url":"https://example.com/a/b"}',
-            $dto->toJson(),
-            'and so does the DTO asked directly',
+            expected: '{"url":"https://example.com/a/b"}',
+            actual: $dto->toJson(),
+            message: 'and so does the DTO asked directly',
         );
         $this->assertSame(
-            '{"url":"https://example.com/a/b"}',
-            (string)$dto,
-            'and its string cast',
+            expected: '{"url":"https://example.com/a/b"}',
+            actual: (string)$dto,
+            message: 'and its string cast',
         );
     }
 
@@ -3476,9 +3481,9 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $this->assertSame('{}', json_encode($dto), 'json_encode via jsonSerialize()');
         $this->assertSame('{}', $normalizer->toJson($dto), 'the normalizer');
         $this->assertSame(
-            '{}',
-            $normalizer->validateAndNormalizeToJson($dto),
-            'and the validating twin',
+            expected: '{}',
+            actual: $normalizer->validateAndNormalizeToJson($dto),
+            message: 'and the validating twin',
         );
 
         $this->assertSame([], $dto->toArray(), 'the ARRAY view stays an array');
@@ -3531,9 +3536,9 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
             $this->assertNotNull($message, $case . ': the violation must be reported');
             $this->assertSame(
-                1,
-                preg_match_all('/Element \d+:/', $message),
-                $case . ': one prefix, got ' . $message,
+                expected: 1,
+                actual: preg_match_all('/Element \d+:/', $message),
+                message: $case . ': one prefix, got ' . $message,
             );
         }
     }
@@ -3544,20 +3549,20 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $deserializer = new DtoDeserializer();
 
         $this->assertSame(
-            [1, 2, 3],
-            $deserializer->deserializeCollection($this->jsonPostRequest('[1,2,3]'), 'int'),
+            expected: [1, 2, 3],
+            actual: $deserializer->deserializeCollection($this->jsonPostRequest('[1,2,3]'), 'int'),
         );
         $this->assertSame(
-            [1.5, 2.5],
-            $deserializer->deserializeCollection($this->jsonPostRequest('[1.5,2.5]'), 'float'),
+            expected: [1.5, 2.5],
+            actual: $deserializer->deserializeCollection($this->jsonPostRequest('[1.5,2.5]'), 'float'),
         );
         $this->assertSame(
-            ['test1', 'test2'],
-            $deserializer->deserializeCollection($this->jsonPostRequest('["test1","test2"]'), 'string'),
+            expected: ['test1', 'test2'],
+            actual: $deserializer->deserializeCollection($this->jsonPostRequest('["test1","test2"]'), 'string'),
         );
         $this->assertSame(
-            [true, false, true],
-            $deserializer->deserializeCollection($this->jsonPostRequest('[true,false,true]'), 'bool'),
+            expected: [true, false, true],
+            actual: $deserializer->deserializeCollection($this->jsonPostRequest('[true,false,true]'), 'bool'),
         );
 
         // A wrong-typed element is reported with its index.
@@ -3597,13 +3602,13 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
         /** @var array<int, UnitEnum> $enums */
         $enums = $deserializer->deserializeCollection(
-            $this->jsonPostRequest('["early","late","early"]'),
-            $enumClass,
+            request: $this->jsonPostRequest('["early","late","early"]'),
+            itemType: $enumClass,
         );
         $this->assertCount(3, $enums);
         $this->assertSame(
-            [$enumClass::EARLY, $enumClass::LATE, $enumClass::EARLY],
-            $enums,
+            expected: [$enumClass::EARLY, $enumClass::LATE, $enumClass::EARLY],
+            actual: $enums,
         );
 
         // An unknown enum value is reported with its index.
@@ -3671,8 +3676,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $baseClass = '\\' . $namespace . '\Pet';
 
         $pets = (new DtoDeserializer())->deserializeCollection(
-            $this->jsonPostRequest('[{"petType":"dog","bark":"woof"},{"petType":"cat","meow":"mew"}]'),
-            $baseClass,
+            request: $this->jsonPostRequest('[{"petType":"dog","bark":"woof"},{"petType":"cat","meow":"mew"}]'),
+            itemType: $baseClass,
         );
 
         $this->assertCount(2, $pets);
@@ -3808,20 +3813,20 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $deserializer = new DtoDeserializer();
 
         $dates = $deserializer->deserializeCollection(
-            $this->jsonPostRequest('["2026-03-10","2026-03-11"]'),
-            DateTimeImmutable::class,
-            false,
-            'Y-m-d',
+            request: $this->jsonPostRequest('["2026-03-10","2026-03-11"]'),
+            itemType: DateTimeImmutable::class,
+            itemsNullable: false,
+            itemTemporalFormat: 'Y-m-d',
         );
         $this->assertCount(2, $dates);
         $this->assertSame(
-            ['2026-03-10', '2026-03-11'],
-            array_map(static fn(DateTimeImmutable $d): string => $d->format('Y-m-d'), $dates),
+            expected: ['2026-03-10', '2026-03-11'],
+            actual: array_map(static fn(DateTimeImmutable $d): string => $d->format('Y-m-d'), $dates),
         );
 
         $this->assertSame(
-            [1, null, 3],
-            $deserializer->deserializeCollection($this->jsonPostRequest('[1,null,3]'), 'int', true),
+            expected: [1, null, 3],
+            actual: $deserializer->deserializeCollection($this->jsonPostRequest('[1,null,3]'), 'int', true),
         );
 
         // Defaults unchanged: a null element without itemsNullable still fails, still by index.
@@ -3833,8 +3838,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         }
 
         $this->assertSame(
-            [1, 2, 3],
-            $deserializer->deserializeCollection($this->jsonPostRequest('[1,2,3]'), 'int'),
+            expected: [1, 2, 3],
+            actual: $deserializer->deserializeCollection($this->jsonPostRequest('[1,2,3]'), 'int'),
         );
     }
 
@@ -3892,8 +3897,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
         $signature = static function (string $class, string $method): array {
             return array_map(
-                static fn(ReflectionParameter $p): string => $p->getName(),
-                (new ReflectionMethod($class, $method))->getParameters(),
+                callback: static fn(ReflectionParameter $p): string => $p->getName(),
+                array: (new ReflectionMethod($class, $method))->getParameters(),
             );
         };
 
@@ -3915,8 +3920,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
                     continue;
                 }
                 $this->assertTrue(
-                    $parameter->isOptional(),
-                    sprintf('DtoDeserializerInterface::%s($%s) must stay optional.', $method, $parameter->getName()),
+                    condition: $parameter->isOptional(),
+                    message: sprintf('DtoDeserializerInterface::%s($%s) must stay optional.', $method, $parameter->getName()),
                 );
             }
         }
@@ -3974,8 +3979,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $deserializer = new DtoDeserializer();
 
         $fromStdClass = $deserializer->deserializeValue(
-            json_decode('{"id":1,"tag":"a"}', false),
-            $itemClass,
+            data: json_decode('{"id":1,"tag":"a"}', false),
+            type: $itemClass,
         );
         $fromArray = $deserializer->deserializeValue(['id' => 1, 'tag' => 'a'], $itemClass);
 
@@ -4045,12 +4050,12 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $deserializer = new DtoDeserializer();
 
         $this->assertInstanceOf(
-            '\\' . $namespace . '\Dog',
-            $deserializer->deserializeValue(json_decode('{"petType":"dog","bark":"woof"}', false), $baseClass),
+            expected: '\\' . $namespace . '\Dog',
+            actual: $deserializer->deserializeValue(json_decode('{"petType":"dog","bark":"woof"}', false), $baseClass),
         );
         $this->assertInstanceOf(
-            '\\' . $namespace . '\Cat',
-            $deserializer->deserializeValue(json_decode('{"petType":"cat","meow":"mew"}', false), $baseClass),
+            expected: '\\' . $namespace . '\Cat',
+            actual: $deserializer->deserializeValue(json_decode('{"petType":"cat","meow":"mew"}', false), $baseClass),
         );
     }
 
@@ -4141,8 +4146,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         // difference the method is there to remove.
         try {
             $deserializer->deserializeCollection(
-                $this->jsonPostRequest('[{"id":1},{},{"id":3},{"id":"x"}]'),
-                $itemClass,
+                request: $this->jsonPostRequest('[{"id":1},{},{"id":3},{"id":"x"}]'),
+                itemType: $itemClass,
             );
             $this->fail('Expected the collection path to fail on the invalid elements.');
         } catch (RuntimeException $e) {
@@ -4185,8 +4190,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         }
 
         $this->assertSame(
-            array_map(static fn(GeneratedDtoInterface $i): array => $i->toArray(), $viaCollection),
-            array_map(static fn(GeneratedDtoInterface $i): array => $i->toArray(), $viaValue),
+            expected: array_map(static fn(GeneratedDtoInterface $i): array => $i->toArray(), $viaCollection),
+            actual: array_map(static fn(GeneratedDtoInterface $i): array => $i->toArray(), $viaValue),
         );
     }
 
@@ -4205,16 +4210,16 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         // Microseconds are preserved on output (not silently dropped by 'c').
         /** @var object{getAt: callable} $withMicros */
         $withMicros = (new DtoDeserializer())->deserialize(
-            $this->jsonPostRequest('{"at":"2026-01-01T12:00:00.123456+00:00"}'),
-            $cls,
+            request: $this->jsonPostRequest('{"at":"2026-01-01T12:00:00.123456+00:00"}'),
+            dtoClass: $cls,
         );
         $this->assertSame('2026-01-01T12:00:00.123456+00:00', $withMicros->getAt());
 
         // Whole-second values keep the plain RFC 3339 ('c') form — no spurious fraction.
         /** @var object{getAt: callable} $wholeSecond */
         $wholeSecond = (new DtoDeserializer())->deserialize(
-            $this->jsonPostRequest('{"at":"2026-01-01T12:00:00+00:00"}'),
-            $cls,
+            request: $this->jsonPostRequest('{"at":"2026-01-01T12:00:00+00:00"}'),
+            dtoClass: $cls,
         );
         $this->assertSame('2026-01-01T12:00:00+00:00', $wholeSecond->getAt());
     }
@@ -4324,8 +4329,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $this->assertSame(['id' => 7, 'name' => 'alpha', 'labels' => ['a', 'b']], $dto->toArray());
         $this->assertSame(['id' => 7, 'name' => 'alpha', 'labels' => ['a', 'b']], $dto->jsonSerialize());
         $this->assertSame(
-            ['id' => 7, 'name' => 'alpha', 'labels' => ['a', 'b']],
-            (new DtoNormalizer())->toArray($dto),
+            expected: ['id' => 7, 'name' => 'alpha', 'labels' => ['a', 'b']],
+            actual: (new DtoNormalizer())->toArray($dto),
         );
     }
 
@@ -4418,8 +4423,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $leafInstance = new $leaf($enumFqcn::from('leaf'), 'mid-value', 42);
         $this->assertInstanceOf($root, $leafInstance);
         $this->assertSame(
-            ['midField' => 'mid-value', 'leafField' => 42],
-            array_intersect_key($leafInstance->toArray(), ['midField' => 1, 'leafField' => 1]),
+            expected: ['midField' => 'mid-value', 'leafField' => 42],
+            actual: array_intersect_key($leafInstance->toArray(), ['midField' => 1, 'leafField' => 1]),
         );
         $this->assertArrayHasKey('kind', $leafInstance->toArray());
     }
@@ -4573,8 +4578,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $this->assertTrue(is_a($dog, $base, true));
         $this->assertTrue(method_exists($base, 'getDiscriminatorMapping'));
         $this->assertSame(
-            ['dog' => 'OneOfDiscNs\DogPet', 'cat' => 'OneOfDiscNs\CatPet'],
-            $base::getDiscriminatorMapping(),
+            expected: ['dog' => 'OneOfDiscNs\DogPet', 'cat' => 'OneOfDiscNs\CatPet'],
+            actual: $base::getDiscriminatorMapping(),
         );
 
         // A base-typed property deserializes to the concrete variant chosen by the discriminator.
@@ -4838,9 +4843,9 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
                 $this->fail(sprintf('%s was accepted', $spelling));
             } catch (RuntimeException $exception) {
                 $this->assertStringContainsString(
-                    'length must be at least 2 characters',
-                    $exception->getMessage(),
-                    $spelling,
+                    needle: 'length must be at least 2 characters',
+                    haystack: $exception->getMessage(),
+                    message: $spelling,
                 );
                 $this->assertSame(1, substr_count($exception->getMessage(), "\n") + 1, $spelling);
             }
@@ -4886,9 +4891,9 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $json = '{"listOfNullable":["a",null],"mapOfNullable":{"k":null,"j":"b"}}';
         $dto = (new DtoDeserializer())->deserialize($this->jsonPostRequest($json), $fqcn);
         $this->assertSame(
-            $json,
-            (string)json_encode((new DtoNormalizer())->toArray($dto)),
-            'a null the document allows must survive the cast in BOTH spellings',
+            expected: $json,
+            actual: (string)json_encode((new DtoNormalizer())->toArray($dto)),
+            message: 'a null the document allows must survive the cast in BOTH spellings',
         );
         $this->assertSame([], (new DtoNormalizer())->validate($dto));
 
@@ -5008,9 +5013,9 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $json = '{"listOfLists":[["ab","cd"]],"listOfMaps":[{"a":7}],"mapOfLists":{"k":["ef"]}}';
         $dto = (new DtoDeserializer())->deserialize($this->jsonPostRequest($json), $fqcn);
         $this->assertSame(
-            $json,
-            (string)json_encode((new DtoNormalizer())->toArray($dto)),
-            'the payload must round-trip: no dangling class, no empty one swallowing the keys',
+            expected: $json,
+            actual: (string)json_encode((new DtoNormalizer())->toArray($dto)),
+            message: 'the payload must round-trip: no dangling class, no empty one swallowing the keys',
         );
         $this->assertSame([], (new DtoNormalizer())->validate($dto));
     }
@@ -5076,17 +5081,20 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         // whether the component was unrolled once, twice or ten times. What the rule actually says is
         // `REF_REPEAT_LIMIT`: a `$ref` repeats twice on a path and then stops.
         $this->assertSame(
-            2,
-            substr_count($source, "'required' => ['title', 'children']"),
-            'the recursive branch is unrolled exactly REF_REPEAT_LIMIT times',
+            expected: 2,
+            actual: substr_count($source, "'required' => ['title', 'children']"),
+            message: 'the recursive branch is unrolled exactly REF_REPEAT_LIMIT times',
         );
+        // The deepest level keeps its union with the bare `$ref` as a class branch. Under the map the
+        // value is never hydrated, so an object there is not judged — as when the union was dropped —
+        // but a scalar no longer passes branches that are both objects.
         $this->assertSame(
-            1,
-            substr_count(
-                $source,
-                "'properties' => ['title' => ['type' => 'string', 'minLength' => 1], 'children' => ['type' => 'object']]",
+            expected: 1,
+            actual: substr_count(
+                haystack: $source,
+                needle: "'properties' => ['title' => ['type' => 'string', 'minLength' => 1], 'children' => ['type' => 'object', 'additionalProperties' => ['oneOf' => [['x-php-instanceof' => 'UnionUnderContainerNs\\Node']",
             ),
-            'and the deepest unrolled level collapses, once',
+            message: 'and the deepest unrolled level stops at a class branch, once',
         );
 
         $valid = '{"report":{"title":"root","children":{"sub":{"title":"sub","children":{}},"leaves":{"s1":{"value":7}}}}}';
@@ -5360,26 +5368,26 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         // Five hops of a chain that names something new each time.
         for ($level = 0; $level <= 4; $level++) {
             $this->assertStringContainsString(
-                sprintf("'minLength' => %d", 10 + $level),
-                $source,
-                sprintf('level %d is within the ceiling', $level),
+                needle: sprintf("'minLength' => %d", 10 + $level),
+                haystack: $source,
+                message: sprintf('level %d is within the ceiling', $level),
             );
         }
 
         // And nothing past it — the honest statement of the limit, not a claim that there is none.
         foreach ([5, 6, 7] as $level) {
             $this->assertStringNotContainsString(
-                sprintf("'minLength' => %d", 10 + $level),
-                $source,
-                sprintf('level %d is past the ceiling', $level),
+                needle: sprintf("'minLength' => %d", 10 + $level),
+                haystack: $source,
+                message: sprintf('level %d is past the ceiling', $level),
             );
         }
 
         // The self-referential one is unrolled twice per path, not to the ceiling.
         $this->assertSame(
-            2,
-            substr_count($source, "'minLength' => 42"),
-            'a cycle costs REF_REPEAT_LIMIT hops, not the whole budget',
+            expected: 2,
+            actual: substr_count($source, "'minLength' => 42"),
+            message: 'a cycle costs REF_REPEAT_LIMIT hops, not the whole budget',
         );
     }
 
@@ -5599,8 +5607,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             $refused = false;
             try {
                 (new DtoDeserializer())->deserialize(
-                    $this->jsonPostRequest('{"f":{"kind":"long","code":"short"}}'),
-                    $fqcn,
+                    request: $this->jsonPostRequest('{"f":{"kind":"long","code":"short"}}'),
+                    dtoClass: $fqcn,
                 );
             } catch (RuntimeException) {
                 $refused = true;
@@ -5670,9 +5678,9 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
         $source = (string)file_get_contents($this->outputDirectory . '/Probe.php');
         $this->assertSame(
-            4,
-            substr_count($source, "'minLength' => 7"),
-            "the referenced component's bound reaches all four applicators",
+            expected: 4,
+            actual: substr_count($source, "'minLength' => 7"),
+            message: "the referenced component's bound reaches all four applicators",
         );
 
         $valid = '{"mustContain":[{"marker":"loooong"}],"positions":[{"marker":"loooong"}],'
@@ -5741,15 +5749,15 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $payload = (new DtoNormalizer())->toArray($dto);
 
         $this->assertSame(
-            '{"tags":["a","c"],"byKey":{"second":"b","first":"a"}}',
-            (string)json_encode($payload),
-            'the list is reindexed, the map keeps its keys and their order',
+            expected: '{"tags":["a","c"],"byKey":{"second":"b","first":"a"}}',
+            actual: (string)json_encode($payload),
+            message: 'the list is reindexed, the map keeps its keys and their order',
         );
 
         // The report is not silenced by the fix: it reads the property, which still has the gap.
         $this->assertSame(
-            ['field "tags" must be a JSON array (list with sequential keys), got an associative array.'],
-            (new DtoNormalizer())->validate($dto),
+            expected: ['field "tags" must be a JSON array (list with sequential keys), got an associative array.'],
+            actual: (new DtoNormalizer())->validate($dto),
         );
     }
 
@@ -5794,16 +5802,16 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
         $map = new $fqcn(values: ['second' => 'b', 'first' => 'a'], listOnly: $filtered);
         $this->assertSame(
-            '{"values":{"second":"b","first":"a"},"listOnly":["a","c"]}',
-            (string)json_encode((new DtoNormalizer())->toArray($map)),
-            'the map branch keeps its keys, the all-array union is still reindexed',
+            expected: '{"values":{"second":"b","first":"a"},"listOnly":["a","c"]}',
+            actual: (string)json_encode((new DtoNormalizer())->toArray($map)),
+            message: 'the map branch keeps its keys, the all-array union is still reindexed',
         );
 
         $list = new $fqcn(values: ['a', 'c'], listOnly: []);
         $this->assertSame(
-            '{"values":["a","c"],"listOnly":[]}',
-            (string)json_encode((new DtoNormalizer())->toArray($list)),
-            'the list branch of the same property still goes out as a JSON array',
+            expected: '{"values":["a","c"],"listOnly":[]}',
+            actual: (string)json_encode((new DtoNormalizer())->toArray($list)),
+            message: 'the list branch of the same property still goes out as a JSON array',
         );
     }
 
@@ -5887,20 +5895,20 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         );
 
         $this->assertSame(
-            '{"nestedMixed":{"second":"b","first":"a"},"nestedAllArrays":["a","c"],'
+            expected: '{"nestedMixed":{"second":"b","first":"a"},"nestedAllArrays":["a","c"],'
             . '"allOfWrapped":{"second":"b","first":"a"},"refToArrayAlias":["a","c"],'
             . '"refToFreeForm":{"second":"b","first":"a"},"nullBranch":["a","c"],'
             . '"nullableIdiom":["a","c"],"typeListWithNull":["a","c"],'
             . '"typeListMixed":{"second":"b","first":"a"}}',
-            (string)json_encode((new DtoNormalizer())->toArray($dto)),
-            'nested unions, allOf wrappers and $refs resolve to the same answer the flat case gives',
+            actual: (string)json_encode((new DtoNormalizer())->toArray($dto)),
+            message: 'nested unions, allOf wrappers and $refs resolve to the same answer the flat case gives',
         );
 
         // The self-referential union generated at all, and its property is raw.
         $cyclic = new $fqcn(cyclicRef: $map);
         $this->assertSame(
-            '{"cyclicRef":{"second":"b","first":"a"}}',
-            (string)json_encode((new DtoNormalizer())->toArray($cyclic)),
+            expected: '{"cyclicRef":{"second":"b","first":"a"}}',
+            actual: (string)json_encode((new DtoNormalizer())->toArray($cyclic)),
         );
     }
 
@@ -5956,8 +5964,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
         try {
             (new DtoDeserializer())->deserialize(
-                $this->jsonPostRequest((string)json_encode($payload)),
-                $fqcn,
+                request: $this->jsonPostRequest((string)json_encode($payload)),
+                dtoClass: $fqcn,
             );
             $this->fail('the payload was accepted: ' . (string)json_encode($payload));
         } catch (RuntimeException $exception) {
@@ -6068,17 +6076,17 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         foreach ([$baseFqcn => $body, $childFqcn => $body + ['extra' => 1]] as $fqcn => $payload) {
             /** @var class-string<GeneratedDtoInterface> $fqcn */
             $dto = $deserializer->deserialize(
-                $this->jsonPostRequest((string)json_encode($payload)),
-                $fqcn,
+                request: $this->jsonPostRequest((string)json_encode($payload)),
+                dtoClass: $fqcn,
             );
             $label = (new ReflectionClass($fqcn))->getShortName();
 
             $this->assertContainsOnlyInstancesOf($sourceFqcn, $dto->getSources(), $label . ': enum items');
             $this->assertContainsOnlyInstancesOf($tagFqcn, $dto->getTags(), $label . ': DTO items');
             $this->assertContainsOnlyInstancesOf(
-                DateTimeImmutable::class,
-                $dto->getStampsAsDateTime(),
-                $label . ': date-time items',
+                className: DateTimeImmutable::class,
+                haystack: $dto->getStampsAsDateTime(),
+                message: $label . ': date-time items',
             );
             $this->assertContainsOnlyInstancesOf($tagFqcn, $dto->getMatrix()[0], $label . ': nested DTO items');
 
@@ -6086,8 +6094,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             $this->assertFalse($dto->isOptionalFlagFieldInRequest(), $label . ': flag for an absent field');
 
             $sent = $deserializer->deserialize(
-                $this->jsonPostRequest((string)json_encode($payload + ['optionalFlagField' => 7])),
-                $fqcn,
+                request: $this->jsonPostRequest((string)json_encode($payload + ['optionalFlagField' => 7])),
+                dtoClass: $fqcn,
             );
             $this->assertTrue($sent->isOptionalFlagFieldInRequest(), $label . ': flag for a sent field');
             $this->assertSame(7, $sent->getOptionalFlagField(), $label . ': the sent value');
@@ -6206,8 +6214,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $this->assertStringContainsString('@param array<array<Tag>> $tagRows', $source);
         // No class is synthesized down there — one that nothing references would still be written out.
         $this->assertSame(
-            ['Kind.php', 'Nested.php', 'Tag.php'],
-            array_map('basename', glob($this->outputDirectory . '/*.php') ?: []),
+            expected: ['Kind.php', 'Nested.php', 'Tag.php'],
+            actual: array_map('basename', glob($this->outputDirectory . '/*.php') ?: []),
         );
 
         $valid = '{"matrix":[[1,2],[3]],"byKey":{"a":["x"]},"kindRows":[["a"]],"tagRows":[[{"id":9}]]}';
@@ -6221,9 +6229,9 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $this->assertSame('a', $dto->getKindRows()[0][0]);
         $this->assertSame([], (new DtoNormalizer())->validate($dto));
         $this->assertSame(
-            $valid,
-            (string)json_encode((new DtoNormalizer())->toArray($dto)),
-            'a nested list must not turn into a map on the way out, nor a nested map into a list',
+            expected: $valid,
+            actual: (string)json_encode((new DtoNormalizer())->toArray($dto)),
+            message: 'a nested list must not turn into a map on the way out, nor a nested map into a list',
         );
 
         // THE case that passed in silence: a member the enum does not have, two containers deep.

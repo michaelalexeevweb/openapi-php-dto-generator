@@ -64,7 +64,7 @@ final class SymfonyDtoBehaviorTest extends TestCase
     private function serializer(): Serializer
     {
         return new Serializer(
-            [
+            normalizers: [
                 new BackedEnumNormalizer(),
                 new DateTimeNormalizer(),
                 new ObjectNormalizer(),
@@ -372,9 +372,9 @@ final class SymfonyDtoBehaviorTest extends TestCase
         require_once $file;
 
         $this->assertStringNotContainsString(
-            "#[Assert\\All([new Assert\\Type('array')])]",
-            (string)file_get_contents($file),
-            'the interpreter owns the item shape here; a native duplicate reports it twice',
+            needle: "#[Assert\\All([new Assert\\Type('array')])]",
+            haystack: (string)file_get_contents($file),
+            message: 'the interpreter owns the item shape here; a native duplicate reports it twice',
         );
 
         /** @var class-string $fqcn */
@@ -668,9 +668,9 @@ final class SymfonyDtoBehaviorTest extends TestCase
         // which is also what lets an integral float through where `Assert\Type` would not.
         $this->assertGreaterThan(0, count($validator->validate(new $cls(counts: ['a' => 'x']))));
         $this->assertCount(
-            0,
-            $validator->validate(new $cls(counts: ['a' => 42.0])),
-            'a zero-fraction float IS an integer (JSON Schema 2020-12 §6.1.1)',
+            expectedCount: 0,
+            haystack: $validator->validate(new $cls(counts: ['a' => 42.0])),
+            message: 'a zero-fraction float IS an integer (JSON Schema 2020-12 §6.1.1)',
         );
     }
 
@@ -1043,7 +1043,7 @@ final class SymfonyDtoBehaviorTest extends TestCase
         // metadata-aware normalizer — the wiring README.symfony.md already requires.
         $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
         $serializer = new Serializer(
-            [new ObjectNormalizer($classMetadataFactory), new ArrayDenormalizer()],
+            normalizers: [new ObjectNormalizer($classMetadataFactory), new ArrayDenormalizer()],
         );
         /** @var class-string $fqcn */
         $fqcn = $namespace . '\Patch';
@@ -1095,31 +1095,31 @@ final class SymfonyDtoBehaviorTest extends TestCase
 
         $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
         $serializer = new Serializer(
-            [new DateTimeNormalizer(), new ObjectNormalizer($classMetadataFactory), new ArrayDenormalizer()],
+            normalizers: [new DateTimeNormalizer(), new ObjectNormalizer($classMetadataFactory), new ArrayDenormalizer()],
         );
         /** @var class-string $fqcn */
         $fqcn = $namespace . '\Stamp';
 
         $withMicroseconds = $serializer->denormalize(
-            ['at' => '2026-03-10T12:00:00.123456+03:00', 'on' => '2026-03-10'],
-            $fqcn,
+            data: ['at' => '2026-03-10T12:00:00.123456+03:00', 'on' => '2026-03-10'],
+            type: $fqcn,
         );
         $this->assertInstanceOf(DateTimeImmutable::class, $withMicroseconds->getAt());
         $this->assertSame('123456', $withMicroseconds->getAt()->format('u'));
         $this->assertSame('2026-03-10', $withMicroseconds->getOn()->format('Y-m-d'));
 
         $withoutMicroseconds = $serializer->denormalize(
-            ['at' => '2026-03-10T12:00:00+00:00', 'on' => '2026-03-10'],
-            $fqcn,
+            data: ['at' => '2026-03-10T12:00:00+00:00', 'on' => '2026-03-10'],
+            type: $fqcn,
         );
         $this->assertSame(
-            ['at' => '2026-03-10T12:00:00+00:00', 'on' => '2026-03-10'],
-            $serializer->normalize($withoutMicroseconds),
+            expected: ['at' => '2026-03-10T12:00:00+00:00', 'on' => '2026-03-10'],
+            actual: $serializer->normalize($withoutMicroseconds),
         );
         $this->assertSame(
-            ['at' => '2026-03-10T12:00:00.123456+03:00', 'on' => '2026-03-10'],
-            $serializer->normalize($withMicroseconds),
-            'a date must not grow a time part, a date-time keeps its precision',
+            expected: ['at' => '2026-03-10T12:00:00.123456+03:00', 'on' => '2026-03-10'],
+            actual: $serializer->normalize($withMicroseconds),
+            message: 'a date must not grow a time part, a date-time keeps its precision',
         );
     }
 }

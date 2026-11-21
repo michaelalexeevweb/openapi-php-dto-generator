@@ -859,17 +859,17 @@ final class DtoDeserializerCoverageTest extends TestCase
 
         // query/path/form deliver ints as strings, so "1" must match the int-backed case value 1.
         $this->assertSame(
-            CovIntPriority::LOW,
-            $castToEnum->invoke($this->deserializer, '1', CovIntPriority::class, 'p', 'query'),
+            expected: CovIntPriority::LOW,
+            actual: $castToEnum->invoke($this->deserializer, '1', CovIntPriority::class, 'p', 'query'),
         );
         $this->assertSame(
-            CovIntPriority::HIGH,
-            $castToEnum->invoke($this->deserializer, '2', CovIntPriority::class, 'p', 'form'),
+            expected: CovIntPriority::HIGH,
+            actual: $castToEnum->invoke($this->deserializer, '2', CovIntPriority::class, 'p', 'form'),
         );
         // The int itself still matches from any source.
         $this->assertSame(
-            CovIntPriority::LOW,
-            $castToEnum->invoke($this->deserializer, 1, CovIntPriority::class, 'p', 'json'),
+            expected: CovIntPriority::LOW,
+            actual: $castToEnum->invoke($this->deserializer, 1, CovIntPriority::class, 'p', 'json'),
         );
     }
 

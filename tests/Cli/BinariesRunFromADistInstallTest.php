@@ -52,9 +52,9 @@ final class BinariesRunFromADistInstallTest extends TestCase
         $text = implode("\n", $output);
 
         self::assertStringNotContainsString(
-            'Failed to open stream',
-            $text,
-            sprintf('bin/%s cannot resolve the autoloader from a vendor install', $binary),
+            needle: 'Failed to open stream',
+            haystack: $text,
+            message: sprintf('bin/%s cannot resolve the autoloader from a vendor install', $binary),
         );
         self::assertStringNotContainsString('Unable to find Composer autoload file', $text, $text);
         self::assertSame(0, $status, sprintf("bin/%s exited %d:\n%s", $binary, $status, $text));

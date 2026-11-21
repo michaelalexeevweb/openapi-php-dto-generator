@@ -81,8 +81,8 @@ final class ValidateAndCreateTest extends TestCase
             $fqcn::validateAndCreate(['m' => ['nope' => 1], 'n' => 9]);
         } catch (ValidationException $exception) {
             $this->assertSame(
-                ['m' => ['m key "nope" must match pattern ^x.']],
-                $exception->errors(),
+                expected: ['m' => ['m key "nope" must match pattern ^x.']],
+                actual: $exception->errors(),
             );
 
             throw $exception;
@@ -105,14 +105,14 @@ final class ValidateAndCreateTest extends TestCase
 
         $dto = $fqcn::validateAndCreate($asArray);
         $this->assertSame(
-            [1, 2],
-            $dto->m,
-            'without a request the wire shape is unknowable, so the array is accepted',
+            expected: [1, 2],
+            actual: $dto->m,
+            message: 'without a request the wire shape is unknowable, so the array is accepted',
         );
 
         $rejection = LaravelDataContainer::withRequest(
-            '{"m":[1,2],"n":9}',
-            static function (Request $request) use ($fqcn): ?array {
+            json: '{"m":[1,2],"n":9}',
+            work: static function (Request $request) use ($fqcn): ?array {
                 try {
                     $fqcn::from($request);
 
@@ -124,10 +124,33 @@ final class ValidateAndCreateTest extends TestCase
         );
 
         $this->assertSame(
-            ['m' => ['m expects object, got array.']],
-            $rejection,
-            'through a request the same payload must be refused',
+            expected: ['m' => ['m expects object, got array.']],
+            actual: $rejection,
+            message: 'through a request the same payload must be refused',
         );
+    }
+
+    /**
+     * A boolean for an integer is refused WITHOUT a request too: unlike the wire-shape check it does not
+     * need the raw body, because a decoded `true` is still a boolean. A numeric string stays accepted —
+     * the leniency this mode documents.
+     */
+    public function testABooleanForAnIntegerIsRefusedOnTheArrayPath(): void
+    {
+        /** @var class-string $fqcn */
+        $fqcn = $this->generate() . '\Probe';
+
+        foreach ([['m' => ['xa' => 1], 'n' => true], ['m' => ['xa' => true], 'n' => 9]] as $payload) {
+            try {
+                $fqcn::validateAndCreate($payload);
+                $this->fail('a boolean is not an integer: ' . json_encode($payload));
+            } catch (ValidationException $exception) {
+                // `n` is reported by `min:5` already — `true` reads as 1 there — and stays reported once.
+                $this->assertSame([is_bool($payload['n']) ? 'n' : 'm.xa'], array_keys($exception->errors()));
+            }
+        }
+
+        $this->assertSame(9, $fqcn::validateAndCreate(['m' => ['xa' => 1], 'n' => '9'])->n);
     }
 
     /**
@@ -156,10 +179,10 @@ final class ValidateAndCreateTest extends TestCase
         }
 
         (new GenerateDtoCommand())->generateFromArray(
-            self::spec(),
-            $this->outputDirectory,
-            $namespace,
-            GenerateDtoCommand::ATTRIBUTE_MODE_LARAVEL_DATA,
+            openApi: self::spec(),
+            outputDirectory: $this->outputDirectory,
+            namespace: $namespace,
+            mode: GenerateDtoCommand::ATTRIBUTE_MODE_LARAVEL_DATA,
         );
 
         $target = $this->outputDirectory;

@@ -57,8 +57,8 @@ final class DtoNormalizerCoverageTest extends TestCase
             $result = $normalizer->validateAndNormalizeToArray($dto);
 
             $this->assertSame(
-                ['originalName' => 'orig.txt', 'clientMimeType' => 'text/csv'],
-                $result['file'],
+                expected: ['originalName' => 'orig.txt', 'clientMimeType' => 'text/csv'],
+                actual: $result['file'],
             );
         } finally {
             @unlink($tmpPath);

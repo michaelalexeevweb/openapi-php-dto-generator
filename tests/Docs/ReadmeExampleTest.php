@@ -57,8 +57,8 @@ final class ReadmeExampleTest extends TestCase
         $source = $this->generateFromTheReadmeSpec();
 
         $this->assertStringContainsString(
-            'final class UserPostRequest implements GeneratedDtoInterface, Stringable',
-            $source,
+            needle: 'final class UserPostRequest implements GeneratedDtoInterface, Stringable',
+            haystack: $source,
         );
 
         // Every line the README prints inside the class body. An optional property defaults to the
@@ -106,14 +106,14 @@ final class ReadmeExampleTest extends TestCase
         $this->generateFromTheReadmeSpec();
 
         $this->assertSame(
-            'Required parameter "email" not found in request.',
-            $this->refusalFor('{"age":30}'),
+            expected: 'Required parameter "email" not found in request.',
+            actual: $this->refusalFor('{"age":30}'),
         );
 
         $this->assertSame(
-            "param \"email\" must match format email.\nparam \"age\" must be greater than or equal to 18.",
-            $this->refusalFor('{"email":"nope","age":12}'),
-            'both problems are reported together, in the order the page prints them',
+            expected: "param \"email\" must match format email.\nparam \"age\" must be greater than or equal to 18.",
+            actual: $this->refusalFor('{"email":"nope","age":12}'),
+            message: 'both problems are reported together, in the order the page prints them',
         );
     }
 
@@ -141,9 +141,9 @@ final class ReadmeExampleTest extends TestCase
         file_put_contents($specFile, $spec);
 
         (new GenerateDtoCommand())->generateFromFile(
-            $specFile,
-            $this->outputDirectory,
-            'ReadmeExample',
+            filePath: $specFile,
+            outputDirectory: $this->outputDirectory,
+            namespace: 'ReadmeExample',
         );
 
         $class = $this->outputDirectory . '/UserPostRequest.php';
@@ -156,13 +156,13 @@ final class ReadmeExampleTest extends TestCase
     private function deserialize(string $json): object
     {
         return (new DtoDeserializer())->deserialize(
-            Request::create(
+            request: Request::create(
                 uri: '/',
                 method: 'POST',
                 server: ['CONTENT_TYPE' => 'application/json'],
                 content: $json,
             ),
-            'ReadmeExample\UserPostRequest',
+            dtoClass: 'ReadmeExample\UserPostRequest',
         );
     }
 

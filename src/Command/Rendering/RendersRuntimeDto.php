@@ -102,10 +102,10 @@ trait RendersRuntimeDto
             // When this union is itself a branch of another union (a nested union), its interface
             // must extend the outer union interface so that its members satisfy the outer type too.
             $interfaceExtends = array_values(array_unique(array_map(
-                fn(string $type): string => $this->formatClassNameForNamespace($type, $namespace),
-                array_filter(
-                    $this->unionInterfacesByClass[$className] ?? [],
-                    static fn(string $parent): bool => $parent !== $className,
+                callback: fn(string $type): string => $this->formatClassNameForNamespace($type, $namespace),
+                array: array_filter(
+                    array: $this->unionInterfacesByClass[$className] ?? [],
+                    callback: static fn(string $parent): bool => $parent !== $className,
                 ),
             )));
 
@@ -123,10 +123,10 @@ trait RendersRuntimeDto
                 'runtimeExceptionRef' => 'RuntimeException',
                 'jsonExceptionRef' => 'JsonException',
                 'unionMembers' => implode(
-                    '|',
-                    array_map(
-                        fn(string $type): string => $this->formatClassNameForNamespace($type, $namespace),
-                        $unionTypes,
+                    separator: '|',
+                    array: array_map(
+                        callback: fn(string $type): string => $this->formatClassNameForNamespace($type, $namespace),
+                        array: $unionTypes,
                     ),
                 ),
                 'interfaceExtends' => $interfaceExtends,
@@ -166,8 +166,8 @@ trait RendersRuntimeDto
             $stringableRef,
         ]));
         $implementedInterfaces = array_map(
-            fn(string $type): string => $this->formatClassNameForNamespace($type, $namespace),
-            $implementedInterfaces,
+            callback: fn(string $type): string => $this->formatClassNameForNamespace($type, $namespace),
+            array: $implementedInterfaces,
         );
 
         $signature = $classModifiers . 'class ' . $className;
@@ -190,7 +190,7 @@ trait RendersRuntimeDto
 
             if (!$this->isPropertyOverrideCompatible($parentByName[$name], $ownProperty)) {
                 throw new RuntimeException(
-                    sprintf(
+                    message: sprintf(
                         'Property override conflict in %s extends %s for $%s: parent type %s, child type %s.',
                         $className,
                         (string)$extends,
@@ -246,9 +246,9 @@ trait RendersRuntimeDto
 
         $constructorParams = [...$requiredConstructorParams, ...$optionalConstructorParams];
         $constructorDocParams = array_values(
-            array_filter(
-                $constructorParams,
-                static fn(array $param): bool => $param['shouldDocument'],
+            array: array_filter(
+                array: $constructorParams,
+                callback: static fn(array $param): bool => $param['shouldDocument'],
             ),
         );
 
@@ -300,8 +300,8 @@ trait RendersRuntimeDto
         $parameterAllowEmptyValueAssignments = $this->resolveParameterAllowEmptyValueAssignments($ownProperties);
 
         $needsUnsetValueImport = array_filter(
-            $constructorParams,
-            static fn(array $param): bool => $param['usesUnsetSentinel'],
+            array: $constructorParams,
+            callback: static fn(array $param): bool => $param['usesUnsetSentinel'],
         ) !== [];
         $unsetValueRef = $needsUnsetValueImport
             ? $this->libraryClassRef($this->unsetValueImportFqcn, $namespace, $useStatements)
@@ -513,9 +513,11 @@ trait RendersRuntimeDto
 
         // Optional, presence-tracked properties carry the UnsetValue sentinel so they can be
         // omitted. A declared default (if any) stays as the constructor default — the sentinel only
-        // adds the ability to pass UnsetValue::UNSET explicitly. Inherited (parent) properties are
-        // tracked by the parent, so they are excluded via $tracksArgPresence.
-        $usesUnsetSentinel = $tracksArgPresence && $this->propertyUsesUnsetSentinel($property);
+        // adds the ability to pass UnsetValue::UNSET explicitly. An inherited property is tracked by
+        // the parent, but its argument still has to carry the sentinel THROUGH to it: defaulted to
+        // `null`, an omitted argument reached the parent as an explicit null, so a child built in code
+        // wrote `"name": null` for every inherited optional and failed its own validation.
+        $usesUnsetSentinel = $this->propertyUsesUnsetSentinel($property);
         if ($usesUnsetSentinel) {
             // Add union type with UnsetValue and null. Strip any existing nullability first
             // (leading ? or a null union member) so the result never has a duplicate null.
@@ -523,8 +525,8 @@ trait RendersRuntimeDto
             // (null_adjustment: always_last).
             $baseType = strpos($type, '?') === 0 ? substr($type, 1) : $type;
             $members = array_filter(
-                explode('|', $baseType),
-                static fn(string $member): bool => $member !== '' && $member !== 'null',
+                array: explode('|', $baseType),
+                callback: static fn(string $member): bool => $member !== '' && $member !== 'null',
             );
 
             // `mixed` cannot take part in a union: `mixed|UnsetValue|null` is a COMPILE-TIME fatal, so an

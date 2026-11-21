@@ -334,14 +334,14 @@ final class DtoDeserializerParameterStyleTest extends TestCase
 
         $class = 'EncodingRuntime\UploadPostRequest';
         $this->assertSame(
-            ['meta' => ['style' => 'json', 'explode' => false], 'tags' => ['style' => 'form', 'explode' => false]],
-            call_user_func([$class, 'getParameterStyles']),
+            expected: ['meta' => ['style' => 'json', 'explode' => false], 'tags' => ['style' => 'form', 'explode' => false]],
+            actual: call_user_func([$class, 'getParameterStyles']),
         );
 
         // A multipart body: the JSON part arrives as a string, the non-exploded array as "a,b".
         $dto = $this->deserializer->deserialize(
-            Request::create('/upload', 'POST', ['meta' => '{"title":"Report"}', 'tags' => 'a,b']),
-            $class,
+            request: Request::create('/upload', 'POST', ['meta' => '{"title":"Report"}', 'tags' => 'a,b']),
+            dtoClass: $class,
         );
 
         $this->assertSame('Report', $dto->getMeta()->getTitle());
@@ -351,8 +351,8 @@ final class DtoDeserializerParameterStyleTest extends TestCase
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessageMatches('/at least 3 characters/');
         $this->deserializer->deserialize(
-            Request::create('/upload', 'POST', ['meta' => '{"title":"no"}', 'tags' => 'a']),
-            $class,
+            request: Request::create('/upload', 'POST', ['meta' => '{"title":"no"}', 'tags' => 'a']),
+            dtoClass: $class,
         );
     }
 
@@ -428,8 +428,8 @@ final class DtoDeserializerParameterStyleTest extends TestCase
         [$class] = $this->generateQueryStringDto('QueryStringJson', 'application/json');
 
         $dto = $this->deserializer->deserialize(
-            Request::create('/search?' . rawurlencode('{"q":"cats","page":"2"}'), 'GET'),
-            $class,
+            request: Request::create('/search?' . rawurlencode('{"q":"cats","page":"2"}'), 'GET'),
+            dtoClass: $class,
         );
 
         $this->assertSame('cats', $dto->getCriteria()->getQ());
@@ -448,8 +448,8 @@ final class DtoDeserializerParameterStyleTest extends TestCase
     public function testAllowEmptyValueTrueAcceptsAnEmptyQueryValue(): void
     {
         $dto = $this->deserializer->deserialize(
-            $this->styleRequest('emptyAllowed='),
-            'StyleRuntime\StylesGetQueryParams',
+            request: $this->styleRequest('emptyAllowed='),
+            dtoClass: 'StyleRuntime\StylesGetQueryParams',
         );
 
         $this->assertSame('', $dto->getEmptyAllowed());
@@ -461,16 +461,16 @@ final class DtoDeserializerParameterStyleTest extends TestCase
         $this->expectExceptionMessage('Parameter "emptyForbidden" does not allow an empty value.');
 
         $this->deserializer->deserialize(
-            $this->styleRequest('emptyForbidden='),
-            'StyleRuntime\StylesGetQueryParams',
+            request: $this->styleRequest('emptyForbidden='),
+            dtoClass: 'StyleRuntime\StylesGetQueryParams',
         );
     }
 
     public function testAllowEmptyValueFalseStillAcceptsANonEmptyValue(): void
     {
         $dto = $this->deserializer->deserialize(
-            $this->styleRequest('emptyForbidden=x'),
-            'StyleRuntime\StylesGetQueryParams',
+            request: $this->styleRequest('emptyForbidden=x'),
+            dtoClass: 'StyleRuntime\StylesGetQueryParams',
         );
 
         $this->assertSame('x', $dto->getEmptyForbidden());
@@ -481,8 +481,8 @@ final class DtoDeserializerParameterStyleTest extends TestCase
         // The spec says nothing, so `?emptySilent=` stays an empty string instead of being
         // rejected — tightening that would change every existing DTO.
         $dto = $this->deserializer->deserialize(
-            $this->styleRequest('emptySilent='),
-            'StyleRuntime\StylesGetQueryParams',
+            request: $this->styleRequest('emptySilent='),
+            dtoClass: 'StyleRuntime\StylesGetQueryParams',
         );
 
         $this->assertSame('', $dto->getEmptySilent());
@@ -546,8 +546,8 @@ final class DtoDeserializerParameterStyleTest extends TestCase
     public function testAllowReservedKeepsThePlusSignWhileOtherParametersDecodeIt(): void
     {
         $dto = $this->deserializer->deserialize(
-            $this->styleRequest('reserved=a+b&notReserved=a+b'),
-            'StyleRuntime\StylesGetQueryParams',
+            request: $this->styleRequest('reserved=a+b&notReserved=a+b'),
+            dtoClass: 'StyleRuntime\StylesGetQueryParams',
         );
 
         $this->assertSame('a+b', $dto->getReserved());

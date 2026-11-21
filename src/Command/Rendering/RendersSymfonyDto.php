@@ -139,25 +139,13 @@ trait RendersSymfonyDto
         }
 
         $params = [];
-        $needsSerializedName = false;
         $needsGroups = false;
-        $needsIgnore = false;
         foreach ($properties as $property) {
             $param = $this->resolveSymfonyParam($property, $namespace);
-            if ($param['serializedName'] !== null) {
-                $needsSerializedName = true;
-            }
             foreach ($param['attributes'] as $attribute) {
                 if (str_contains($attribute, 'Groups(')) {
                     $needsGroups = true;
                 }
-                if ($attribute === '#[Ignore]') {
-                    $needsIgnore = true;
-                }
-            }
-            // Every optional property carries a presence flag plus an #[Ignore]d accessor for it.
-            if ($param['required'] !== true) {
-                $needsIgnore = true;
             }
             $params[] = $param;
         }
@@ -178,6 +166,7 @@ trait RendersSymfonyDto
             allowScalarKeywords: false,
             forceScalarOnProperties: $forceRootCallbackBounds,
         );
+        $validationConstraints = $this->symfonyWithoutUncountableMinProperties($validationConstraints);
 
         // Map php name -> openapi name for constraints matching
         $phpToOpenApiNameMap = [];
@@ -220,6 +209,7 @@ trait RendersSymfonyDto
         ) {
             $validationParts['methods'] = $this->renderSymfonyStandalonePayloadMethod($params);
         }
+        $validationParts['methods'] .= $this->renderSymfonyScalarUnionCascade($properties);
 
         // Only where an attribute uses it: since NotNull and the empty callback went, many classes
         // carry no constraint at all, and an unused import trips `no_unused_imports` in the consumer.
@@ -232,21 +222,10 @@ trait RendersSymfonyDto
         if ($usesAssert) {
             $useStatements[] = 'Symfony\Component\Validator\Constraints as Assert';
         }
-        if (str_contains($validationParts['methods'], 'ExecutionContextInterface')) {
-            $useStatements[] = 'Symfony\Component\Validator\Context\ExecutionContextInterface';
-        }
-        foreach ($validationParts['imports'] as $validationImport) {
-            $useStatements[] = $validationImport;
-        }
-        if ($needsSerializedName) {
-            $useStatements[] = 'Symfony\Component\Serializer\Attribute\SerializedName';
-        }
-        if ($needsGroups) {
-            $useStatements[] = 'Symfony\Component\Serializer\Attribute\Groups';
-        }
-        if ($needsIgnore) {
-            $useStatements[] = 'Symfony\Component\Serializer\Attribute\Ignore';
-        }
+        // The serializer's attributes, the callback's context and the formatters' `DateTimeInterface` are
+        // written out in full; the rendered file imports each one under its short name only where no
+        // class of the document owns that name. A schema named `Context` or `Ignore` was a file that
+        // never loaded, and in a sibling the import silently retargeted a property's type.
         $queryReaders = [];
         $queryListReaders = [];
         foreach ($params as $param) {
@@ -264,16 +243,6 @@ trait RendersSymfonyDto
         foreach ($params as $param) {
             if ($param['temporalFormatter'] !== null) {
                 $temporalFormatters[$param['temporalFormatter']] = $param['temporalFormatter'];
-            }
-        }
-        if ($temporalFormatters !== []) {
-            $useStatements[] = 'DateTimeInterface';
-        }
-        foreach ($params as $param) {
-            if ($param['contextAttribute'] !== null) {
-                $useStatements[] = 'Symfony\Component\Serializer\Attribute\Context';
-                $useStatements[] = 'Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer';
-                break;
             }
         }
         $implementedInterfaces = [];
@@ -378,14 +347,55 @@ trait RendersSymfonyDto
         // `false` is the default, and it is spelled out on purpose: it is the contrasting half of
         // the argument below. Scalar keywords are OFF everywhere and ON for exactly these
         // properties — dropping the `false` leaves the reader to guess what is being overridden.
-        return $this->filterInterpreterConstraints(
+        return $this->symfonyWithoutUncountableMinProperties($this->filterInterpreterConstraints(
             constraints: $this->withConstraintSourceOf(
                 className: $className,
                 extraction: fn(): array => $this->extractValidationConstraints($this->classSchemaWithInlineAllOfMerged(schemaDefinition: $schemaDefinition, className: $className)),
             ),
             allowScalarKeywords: false,
             forceScalarOnProperties: $forceRootCallbackBounds,
-        );
+        ));
+    }
+
+    /**
+     * The class's own `minProperties`, dropped where the payload may carry keys the class does not
+     * declare.
+     *
+     * The serializer drops an undeclared key before anything validates, so the callback counts only
+     * the declared ones that arrived. Where the document gives other keys a schema of their own —
+     * `additionalProperties: {…}` or `true`, `patternProperties` — they are part of the payload it
+     * describes, the count is short by however many were dropped, and `{"alpha":"a","x":1}` against
+     * `minProperties: 2` came back a 422 although the document allows it. A lower bound that cannot
+     * be counted refuses valid bodies, so it is not checked there. `maxProperties` stays: the count it
+     * reads can only be too low, which never refuses a valid body.
+     *
+     * A schema that merely does not forbid other keys keeps the bound: there the dropped key is the
+     * documented "unknown JSON key" of README.symfony, and counting what the class declares is what
+     * makes `minProperties` mean anything in this mode at all.
+     *
+     * @param array<string, mixed> $constraints
+     * @return array<string, mixed>
+     */
+    private function symfonyWithoutUncountableMinProperties(array $constraints): array
+    {
+        if (!array_key_exists('minProperties', $constraints)) {
+            return $constraints;
+        }
+
+        $additional = $constraints['additionalProperties'] ?? null;
+        $patterns = $constraints['patternProperties'] ?? null;
+        if (!is_array($additional) && $additional !== true && (!is_array($patterns) || $patterns === [])) {
+            return $constraints;
+        }
+
+        $countable = [];
+        foreach ($constraints as $keyword => $value) {
+            if ($keyword !== 'minProperties') {
+                $countable[$keyword] = $value;
+            }
+        }
+
+        return $countable;
     }
 
     /**
@@ -655,9 +665,8 @@ PHP;
                     $this->formatClassNameForNamespace($mappedClass, $namespace),
                 );
             }
-            $imports[] = 'Symfony\Component\Serializer\Attribute\DiscriminatorMap';
             $discriminatorMap = sprintf(
-                "#[DiscriminatorMap(typeProperty: '%s', mapping: [%s])]",
+                "#[\\Symfony\\Component\\Serializer\\Attribute\\DiscriminatorMap(typeProperty: '%s', mapping: [%s])]",
                 $this->escapeSingleQuoted($discriminator['propertyName']),
                 implode(', ', $entries),
             );
@@ -681,8 +690,8 @@ PHP;
             'unionMembers' => $memberNames === []
                 ? null
                 : implode('|', array_map(
-                    fn(string $member): string => $this->formatClassNameForNamespace($member, $namespace),
-                    $memberNames,
+                    callback: fn(string $member): string => $this->formatClassNameForNamespace($member, $namespace),
+                    array: $memberNames,
                 )),
             'interfaceExtends' => $interfaceExtends,
             'interfaceGetters' => $interfaceGetters,
@@ -901,10 +910,38 @@ PHP;
             'factoryDocType' => $factoryDocType,
             'contextAttribute' => $this->symfonyContextAttribute(
                 name: $property['name'],
-                skipNullValues: $schemaNullable || $phpType === 'mixed' ? false : ($declaredNullable ? true : null),
+                skipNullValues: $schemaNullable || ($phpType === 'mixed' && !$this->symfonyUntypedValueRefusesNull($property)) ? false : ($declaredNullable ? true : null),
                 temporalFormatter: $this->symfonyTemporalFormatter($property),
             ),
         ];
+    }
+
+    /**
+     * An untyped (`mixed`) property admits null unless its schema pins the value: `{}` takes null like
+     * anything else, so its null is kept on the way out, but `const: zed` does not — and a property
+     * never set was written as `"c": null`, a response its own schema refuses. Only the keywords that
+     * settle it alone are read; anything subtler keeps the null, as before.
+     *
+     * @param SchemaProperty $property
+     */
+    private function symfonyUntypedValueRefusesNull(array $property): bool
+    {
+        $constraints = is_array($property['constraints'] ?? null) ? $property['constraints'] : [];
+        if (array_key_exists('const', $constraints)) {
+            return $constraints['const'] !== null;
+        }
+        if (is_array($constraints['enum'] ?? null)) {
+            return !in_array(null, $constraints['enum'], true);
+        }
+        $type = $constraints['type'] ?? null;
+        if (is_string($type)) {
+            return $type !== 'null' && ($constraints['nullable'] ?? null) !== true;
+        }
+        if (is_array($type) && $type !== []) {
+            return !in_array('null', $type, true) && ($constraints['nullable'] ?? null) !== true;
+        }
+
+        return false;
     }
 
     /**
@@ -993,11 +1030,11 @@ PHP;
     {
         $entries = [];
         if ($skipNullValues !== null) {
-            $entries[] = 'AbstractObjectNormalizer::SKIP_NULL_VALUES => ' . ($skipNullValues ? 'true' : 'false');
+            $entries[] = '\Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer::SKIP_NULL_VALUES => ' . ($skipNullValues ? 'true' : 'false');
         }
         if ($temporalFormatter !== null) {
             $entries[] = sprintf(
-                'AbstractObjectNormalizer::CALLBACKS => [%s => [self::class, %s]]',
+                '\Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer::CALLBACKS => [%s => [self::class, %s]]',
                 var_export($name, true),
                 var_export($temporalFormatter, true),
             );
@@ -1007,11 +1044,11 @@ PHP;
             return null;
         }
         if ($temporalFormatter === null) {
-            return '#[Context(normalizationContext: [' . implode(', ', $entries) . '])]';
+            return '#[\Symfony\Component\Serializer\Attribute\Context(normalizationContext: [' . implode(', ', $entries) . '])]';
         }
 
         // With a callback the line runs long; one entry per line, as php-cs-fixer would lay it out.
-        return "#[Context(normalizationContext: [\n        " . implode(",\n        ", $entries) . ",\n    ])]";
+        return "#[\\Symfony\\Component\\Serializer\\Attribute\\Context(normalizationContext: [\n        " . implode(",\n        ", $entries) . ",\n    ])]";
     }
 
     /**
@@ -1057,7 +1094,7 @@ PHP;
     private function resolveSymfonyAttributes(array $property): array
     {
         $constraints = $this->foldScalarAllOfConstraints(
-            is_array($property['constraints'] ?? null) ? $property['constraints'] : [],
+            constraints: is_array($property['constraints'] ?? null) ? $property['constraints'] : [],
         );
         $attributes = [];
 
@@ -1171,7 +1208,7 @@ PHP;
             if (!$readable && !$writable) {
                 // readOnly and writeOnly together is a contradiction; runtime mode drops such a
                 // field in both directions, and #[Ignore] is the exact equivalent here.
-                $attributes[] = '#[Ignore]';
+                $attributes[] = '#[\Symfony\Component\Serializer\Attribute\Ignore]';
             } else {
                 $groups = [];
                 if ($readable) {
@@ -1180,7 +1217,7 @@ PHP;
                 if ($writable) {
                     $groups[] = "'write'";
                 }
-                $attributes[] = '#[Groups([' . implode(', ', $groups) . '])]';
+                $attributes[] = '#[\Symfony\Component\Serializer\Attribute\Groups([' . implode(', ', $groups) . '])]';
             }
         }
 
@@ -1419,6 +1456,16 @@ PHP;
     {
         $expressions = [];
 
+        // A branch naming a generated class: holding that class is the whole branch here, and its own
+        // rules are the cascade's (`symfonyPropertyCascades()`), so `Valid` reports them at their path.
+        // An enum the same: the serializer has already turned a member into its case, so holding the
+        // enum IS the member check. Left out, the branch had no expression, the whole `AtLeastOneOf`
+        // was dropped with it, and the scalar branch beside it — `minimum: 5` — checked nothing.
+        $branchClass = $schema['x-php-instanceof'] ?? null;
+        if (is_string($branchClass) && (array_key_exists($branchClass, $this->dtoSchemas) || array_key_exists($branchClass, $this->enumSchemas))) {
+            return ['new Assert\Type(' . $branchClass . '::class)'];
+        }
+
         $symfonyType = $this->openApiTypeToSymfonyType($schema['type'] ?? null);
         if ($symfonyType !== null) {
             $expressions[] = "new Assert\\Type('" . $symfonyType . "')";
@@ -1491,22 +1538,137 @@ PHP;
      * True when the property references a generated DTO (directly or as an array of DTOs), so a
      * cascade (#[Assert\Valid]) should be emitted. Enums validate by type and do not cascade.
      *
+     * A union holding a scalar beside a class is the exception: Symfony refuses to cascade into a
+     * scalar ("Cannot create metadata for non-objects"), so that one is cascaded by hand —
+     * `symfonyScalarUnionCascades()`.
+     *
      * @param SchemaProperty $property
      */
     private function symfonyPropertyCascades(array $property): bool
     {
-        // Down through every container, a map's key type included: `array<string, array<Item>>` holds
-        // Items as surely as `array<Item>` does. Read one level only, a map of lists never cascaded,
-        // and an Item with a callback of its own went unchecked — the parent's callback leaves a DTO
-        // with one to the cascade.
+        $members = $this->symfonyCascadeCandidateMembers($property);
+
+        return $this->symfonyMembersNameAClass($members)
+            && ($this->symfonyTypeIsContainer($property) || !$this->symfonyMembersNameAScalar($members));
+    }
+
+    /**
+     * A property typed `string|Alpha`: it holds a class only some of the time, and `Assert\Valid`
+     * throws on the scalar the rest of the time. Inside a list the same union is fine — Symfony
+     * cascades into the objects of an array and steps over its scalars.
+     *
+     * @param SchemaProperty $property
+     */
+    private function symfonyScalarUnionCascades(array $property): bool
+    {
+        $members = $this->symfonyCascadeCandidateMembers($property);
+
+        return !$this->symfonyTypeIsContainer($property)
+            && $this->symfonyMembersNameAClass($members)
+            && $this->symfonyMembersNameAScalar($members);
+    }
+
+    /**
+     * The members of the type the property finally holds.
+     *
+     * Down through every container, a map's key type included: `array<string, array<Item>>` holds
+     * Items as surely as `array<Item>` does. Read one level only, a map of lists never cascaded, and
+     * an Item with a callback of its own went unchecked — the parent's callback leaves a DTO with one
+     * to the cascade.
+     *
+     * @param SchemaProperty $property
+     * @return array<int, string>
+     */
+    private function symfonyCascadeCandidateMembers(array $property): array
+    {
         $type = ltrim($property['type'], '?');
         while (preg_match('/^array<(?:[^,<>]+,\s*)?(.+)>$/', $type, $matches) === 1) {
             $type = ltrim(trim($matches[1]), '?');
         }
-        $type = (string)preg_replace('/\|null$/', '', $type);
-        $shortName = $this->shortClassName($type);
 
-        return array_key_exists($shortName, $this->dtoSchemas);
+        $members = [];
+        foreach (explode('|', $type) as $member) {
+            $member = ltrim(trim($member), '?');
+            if ($member !== '' && $member !== 'null') {
+                $members[] = $member;
+            }
+        }
+
+        return $members;
+    }
+
+    /**
+     * A union holds ONE of its members, so any member that is a generated class needs the cascade:
+     * `Alpha|Beta` was looked up as a single class name, matched nothing, and `{"a":"x"}` went through
+     * against Alpha's `minLength`.
+     *
+     * @param array<int, string> $members
+     */
+    private function symfonyMembersNameAClass(array $members): bool
+    {
+        foreach ($members as $member) {
+            if (array_key_exists($this->shortClassName($member), $this->dtoSchemas)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<int, string> $members
+     */
+    private function symfonyMembersNameAScalar(array $members): bool
+    {
+        return array_intersect($members, ['string', 'int', 'float', 'bool', 'true', 'false', 'mixed']) !== [];
+    }
+
+    /**
+     * @param SchemaProperty $property
+     */
+    private function symfonyTypeIsContainer(array $property): bool
+    {
+        return str_starts_with(ltrim($property['type'], '?'), 'array');
+    }
+
+    /**
+     * The cascade `Assert\Valid` cannot give a `string|Alpha` property, as a callback of its own: it
+     * validates the object such a property holds, at the property's path, exactly where the attribute
+     * would have reported it.
+     *
+     * @param array<int, SchemaProperty> $properties
+     */
+    private function renderSymfonyScalarUnionCascade(array $properties): string
+    {
+        $lines = [];
+        foreach ($properties as $property) {
+            if (!$this->symfonyScalarUnionCascades($property)) {
+                continue;
+            }
+            $name = $property['name'];
+            $lines[] = sprintf('        if (is_object($this->%s)) {', $name);
+            $lines[] = sprintf("            \$context->getValidator()->inContext(\$context)->atPath('%s')->validate(\$this->%s, null, \$context->getGroup());", $name, $name);
+            $lines[] = '        }';
+        }
+        if ($lines === []) {
+            return '';
+        }
+
+        $body = implode("\n", $lines);
+
+        return <<<PHP
+
+    /**
+     * Cascades into the object a property holds beside a scalar member of its type. `#[Assert\\Valid]`
+     * would do it, but Symfony throws when that attribute meets the scalar instead.
+     */
+    #[Assert\\Callback]
+    private function validateOpenApiUnionMembers(\\Symfony\\Component\\Validator\\Context\\ExecutionContextInterface \$context): void
+    {
+{$body}
+    }
+
+PHP;
     }
 
     /**
@@ -1607,8 +1769,8 @@ PHP;
     private function isCallbackOnlyStringFormat(string $format): bool
     {
         return in_array(
-            $format,
-            [
+            needle: $format,
+            haystack: [
                 'uuid',
                 'email',
                 'idn-email',
@@ -1630,7 +1792,7 @@ PHP;
                 'int64',
                 'uint64',
             ],
-            true,
+            strict: true,
         );
     }
 }

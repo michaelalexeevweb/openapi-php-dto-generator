@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Command\Rendering;
 
+use RuntimeException;
+
 /**
  * Laravel-mode emitter: a plain DTO that carries a `rules()` array for `illuminate/validation`.
  *
@@ -121,7 +123,7 @@ trait RendersLaravelDto
             nestedChildren: $nestedChildren,
             objectPaths: $objectShapePaths,
             scalarPaths: $scalarTypePaths,
-            readsRawBody: $readsRawBody,
+            checksScalarPaths: $readsRawBody,
         );
         $checksPaths = $nestedVars['checksObjectPaths'] || $nestedVars['checksScalarPaths'];
 
@@ -134,12 +136,13 @@ trait RendersLaravelDto
         );
         $hasWithValidator = $interpreter['methods'] !== '' || $checksPaths;
         $this->laravelClassesWithInterpreter[$className] = $hasWithValidator;
-        foreach ($interpreter['imports'] as $interpreterImport) {
-            $useStatements[] = $interpreterImport;
-        }
-        // `withValidator()` is emitted for every class now (it keeps `validated()` containers whole).
-        $useStatements[] = 'Illuminate\Validation\Validator';
-        if ($checksPaths) {
+        // `withValidator()` is emitted for every class now (it keeps `validated()` containers whole). The
+        // template names the validator, the FormRequest base and PHP's own classes in full, so a schema
+        // called `Validator` or `JsonSerializable` gets them under an alias instead of a fatal.
+        $this->importLibraryClass(fqcn: 'Illuminate\Validation\Validator', namespace: $namespace, useStatements: $useStatements);
+        // The template spells `\stdClass` out; the import shortens it unless the document owns a
+        // `StdClass` here, where the import would be a fatal and the full name is the only safe one.
+        if ($checksPaths && !$this->namespaceDeclaresClass('stdClass', $namespace)) {
             $useStatements[] = 'stdClass';
         }
 
@@ -150,10 +153,15 @@ trait RendersLaravelDto
             $this->appendImportForClass($useStatements, $unionInterface, $namespace, $className);
             $implementedInterfaces[] = $this->formatClassNameForNamespace($unionInterface, $namespace);
         }
+        $ownDiscriminator = $this->laravelVariantOwnDiscriminator($className);
+        $ownVariants = [];
+        foreach ($ownDiscriminator['variants'] ?? [] as $value => $variant) {
+            $this->appendImportForClass($useStatements, $variant, $namespace, $className);
+            $ownVariants[] = ['value' => $value, 'className' => $this->shortClassName($variant)];
+        }
         // `json_encode()` and `response()->json()` write the DTO as `toArray()` does. PHP's own interface,
         // nothing of a framework's.
-        $useStatements[] = 'JsonSerializable';
-        $implementedInterfaces[] = 'JsonSerializable';
+        $implementedInterfaces[] = $this->libraryClassRef('JsonSerializable', $namespace, $useStatements);
 
         $useStatements = array_values(array_unique($useStatements));
         sort($useStatements);
@@ -166,6 +174,9 @@ trait RendersLaravelDto
             'rulesKeyType' => $this->laravelRulesKeyType(array_column($rules, 'path')),
             'rootIsObject' => $readsRawBody && array_key_exists($className, $this->requestPayloadClasses),
             'implementedInterfaces' => $implementedInterfaces,
+            'ownDiscriminatorProperty' => $ownDiscriminator['property'] ?? null,
+            'ownDiscriminatorVariants' => $ownVariants,
+            'ownDiscriminatorUnions' => array_map($this->shortClassName(...), $ownDiscriminator['unions'] ?? []),
             'interpreterConstsBlock' => $interpreter['consts'],
             // Emit the object-level pass only where the document actually states something about the
             // object: otherwise every class with an interpreter would carry three inert lines.
@@ -187,13 +198,88 @@ trait RendersLaravelDto
             'scalarTypePaths' => $scalarTypePaths,
             'laravelFormRequest' => $this->laravelFormRequest,
             'rawPathsEscapeDots' => $nestedVars['nestedPathsEscapeDots'] || array_filter(
-                [...$objectShapePaths, ...array_keys($scalarTypePaths)],
-                static fn(string $rawPath): bool => str_contains($rawPath, '\.'),
+                array: [...$objectShapePaths, ...array_keys($scalarTypePaths)],
+                callback: static fn(string $rawPath): bool => str_contains($rawPath, '\.'),
             ) !== [],
             ...$nestedVars,
             'unionMembers' => null,
             'interfaceExtends' => [],
         ]);
+    }
+
+    /**
+     * The discriminator values a union interface publishes in `VARIANTS`: value => variant class.
+     *
+     * @param array<string, mixed>|null $discriminator
+     * @return array<string, string>
+     */
+    private function laravelPublishedVariants(?array $discriminator): array
+    {
+        $mapping = is_array($discriminator) && is_array($discriminator['mapping'] ?? null) ? $discriminator['mapping'] : [];
+        $variants = [];
+        foreach ($mapping as $value => $variant) {
+            if (is_string($variant) && array_key_exists($variant, $this->dtoSchemas)) {
+                $variants[(string)$value] = $variant;
+            }
+        }
+
+        return $variants;
+    }
+
+    /**
+     * The discriminator constants a variant has to declare itself, because it is a variant of more than
+     * one discriminated union.
+     *
+     * Each union's interface publishes `DISCRIMINATOR_PROPERTY` and `VARIANTS`, and PHP refuses a class
+     * that inherits one constant from two interfaces: "inherits both … which is ambiguous", a fatal on
+     * autoload of a document that generated without a word. A constant the class declares itself
+     * overrides both, so the variant restates them: the property the unions agree on and every value any
+     * of them maps. `Animal::VARIANTS` keeps reading its own union's map, which is what callers use.
+     *
+     * Unions that discriminate by different properties, or map one value to different classes, have no
+     * single answer to restate; generation stops and says so rather than writing a class that cannot load.
+     *
+     * @return array{property: string, variants: array<string, string>, unions: array<int, string>}|null
+     */
+    private function laravelVariantOwnDiscriminator(string $className): ?array
+    {
+        $unions = [];
+        foreach ($this->laravelImplementedUnionInterfaces($className) as $unionInterface) {
+            if ($this->laravelPublishedVariants($this->discriminatorSchemas[$unionInterface] ?? null) !== []) {
+                $unions[] = $unionInterface;
+            }
+        }
+        if (count($unions) < 2) {
+            return null;
+        }
+
+        $propertyNames = [];
+        $variants = [];
+        foreach ($unions as $union) {
+            $propertyNames[] = $this->discriminatorSchemas[$union]['propertyName'];
+            foreach ($this->laravelPublishedVariants($this->discriminatorSchemas[$union]) as $value => $variant) {
+                if (($variants[$value] ?? $variant) !== $variant) {
+                    throw new RuntimeException(sprintf(
+                        '%s is a variant of the discriminated unions %s, which map the value "%s" to different classes; laravel mode cannot declare one VARIANTS map for it.',
+                        $className,
+                        implode(', ', $unions),
+                        $value,
+                    ));
+                }
+                $variants[$value] = $variant;
+            }
+        }
+        $propertyNames = array_values(array_unique($propertyNames));
+        if (count($propertyNames) > 1) {
+            throw new RuntimeException(sprintf(
+                '%s is a variant of the discriminated unions %s, which discriminate by different properties (%s); laravel mode cannot declare one DISCRIMINATOR_PROPERTY for it.',
+                $className,
+                implode(', ', $unions),
+                implode(', ', $propertyNames),
+            ));
+        }
+
+        return ['property' => $propertyNames[0], 'variants' => $variants, 'unions' => $unions];
     }
 
     /**
@@ -216,8 +302,7 @@ trait RendersLaravelDto
         $imports = [];
         // Every member is JsonSerializable, so a value typed as the union can be encoded as one.
         if ($interfaceExtends === []) {
-            $interfaceExtends[] = 'JsonSerializable';
-            $imports[] = 'JsonSerializable';
+            $interfaceExtends[] = $this->libraryClassRef('JsonSerializable', $namespace, $imports);
         }
         $interfaceGetters = [];
         foreach ($sharedProperties as $property) {
@@ -238,13 +323,9 @@ trait RendersLaravelDto
         // The discriminator's map, public: a caller validating one variant on its own — an item of a
         // batch, say — picks the class by the value and calls that class's `rules()` directly.
         $variants = [];
-        $mapping = is_array($discriminator) && is_array($discriminator['mapping'] ?? null) ? $discriminator['mapping'] : [];
-        foreach ($mapping as $value => $variant) {
-            if (!is_string($variant) || !array_key_exists($variant, $this->dtoSchemas)) {
-                continue;
-            }
+        foreach ($this->laravelPublishedVariants($discriminator) as $value => $variant) {
             $this->appendImportForClass($imports, $variant, $namespace, $className);
-            $variants[] = ['value' => (string)$value, 'className' => $this->shortClassName($variant)];
+            $variants[] = ['value' => $value, 'className' => $this->shortClassName($variant)];
         }
 
         $imports = array_values(array_unique($imports));
@@ -474,9 +555,9 @@ trait RendersLaravelDto
                 mapping: $inlineDiscriminator['mapping'],
             ),
             $dtoClass !== null => $this->laravelNestedDtoExpression(
-                $dtoClass,
-                $containerRaw,
-                $property['openApiName'],
+                dtoClass: $dtoClass,
+                rawAccess: $containerRaw,
+                wireName: $property['openApiName'],
             ),
             $itemClass !== null && $this->laravelIsEnumClass($itemClass) && $itemsNullable => sprintf(
                 'array_map(static fn(int|string|null $item): ?%1$s => $item === null ? null : %1$s::from(%3$s), %2$s)',
@@ -871,7 +952,9 @@ trait RendersLaravelDto
 
         // `withValidator()` is always forwarded: besides the interpreter it keeps the containers
         // `validated()` returns whole (see the DTO's method).
-        $imports = ['Illuminate\Foundation\Http\FormRequest', 'Illuminate\Validation\Validator'];
+        $imports = [];
+        $this->importLibraryClass(fqcn: 'Illuminate\Foundation\Http\FormRequest', namespace: $namespace, useStatements: $imports);
+        $this->importLibraryClass(fqcn: 'Illuminate\Validation\Validator', namespace: $namespace, useStatements: $imports);
         sort($imports);
 
         // Laravel validates the query string and the body only. A parameter declared `in: path`,
@@ -916,12 +999,15 @@ trait RendersLaravelDto
     private function renderLaravelVariantFormRequestClass(string $namespace, string $dtoClassName): string
     {
         $discriminator = $this->discriminatorSchemas[$dtoClassName];
-        $imports = [
-            'Illuminate\Foundation\Http\FormRequest',
-            'Illuminate\Validation\Rule',
-            'Illuminate\Validation\Validator',
-            'LogicException',
-        ];
+        $imports = [];
+        $this->importLibraryClass(fqcn: 'Illuminate\Foundation\Http\FormRequest', namespace: $namespace, useStatements: $imports);
+        $this->importLibraryClass(fqcn: 'Illuminate\Validation\Validator', namespace: $namespace, useStatements: $imports);
+        $this->importLibraryClass(fqcn: 'LogicException', namespace: $namespace, useStatements: $imports);
+        // The template names the facade in full, as the enum rule does; a document's own `Rule` gets it
+        // an alias from the import pass instead of this plain import.
+        if (!$this->namespaceDeclaresClass('Rule', $namespace)) {
+            $imports[] = 'Illuminate\Validation\Rule';
+        }
         $arms = [];
         foreach ($discriminator['mapping'] as $value => $variant) {
             $this->appendImportForClass($imports, $variant, $namespace, $dtoClassName . 'FormRequest');
@@ -1019,7 +1105,7 @@ trait RendersLaravelDto
     private function laravelUnhydratableUnionThrow(string $unionClass, string $wireName): string
     {
         return sprintf(
-            'throw new RuntimeException(%s)',
+            'throw new \RuntimeException(%s)',
             $this->phpStringLiteral(sprintf(
                 'Property "%s" is typed as %s, a union with no discriminator: the document does not say '
                     . 'which member a payload is, so it cannot be hydrated. Add a discriminator to %s, or '
@@ -1084,7 +1170,7 @@ trait RendersLaravelDto
         }
 
         return sprintf(
-            'match (%s[%s] ?? null) { %s, default => throw new InvalidArgumentException(sprintf(\'Unknown %s "%%s".\', (string)(%s[%s] ?? \'\'))) }',
+            'match (%s[%s] ?? null) { %s, default => throw new \InvalidArgumentException(sprintf(\'Unknown %s "%%s".\', (string)(%s[%s] ?? \'\'))) }',
             $rawAccess,
             $this->phpStringLiteral($propertyName),
             implode(', ', $arms),
@@ -1094,68 +1180,6 @@ trait RendersLaravelDto
             $rawAccess,
             $this->phpStringLiteral($propertyName),
         );
-    }
-
-    /**
-     * A discriminated `oneOf` property checked the way it is hydrated: by the variant its discriminator
-     * names. Matched branch by branch instead, a payload that fit none was reported against EVERY
-     * branch — `{"kind": "circle"}` was told it lacks `side` as well as `radius` — and once each error
-     * is keyed by its own field, a client highlights fields of a variant it never sent.
-     *
-     * Null when a branch is not a `$ref` the mapping names: then there is no variant to dispatch to,
-     * and the branch-by-branch match stays.
-     *
-     * @param array<int|string, mixed> $variants
-     * @param array<int, mixed> $branchConstraints
-     * @param array<string, string> $classMap
-     * @return array<string, mixed>|null
-     */
-    private function laravelDiscriminatorDispatch(
-        array $variants,
-        array $branchConstraints,
-        string $propertyName,
-        array $classMap,
-    ): ?array {
-        $branchByClass = [];
-        $acceptsNull = false;
-        foreach (array_values($variants) as $index => $variant) {
-            $branch = $branchConstraints[$index] ?? null;
-            if ($branch === ['type' => 'null']) {
-                $acceptsNull = true;
-
-                continue;
-            }
-            $ref = is_array($variant) ? ($variant['$ref'] ?? null) : null;
-            $class = is_string($ref) ? $this->schemaRefToClassName($ref) : 'mixed';
-            if (!is_array($branch) || !in_array($class, $classMap, true)) {
-                return null;
-            }
-            $branchByClass[$class] = $branch;
-        }
-        // `nullable: true` beside the union is appended as one more branch, past the variants.
-        $acceptsNull = $acceptsNull || in_array(['type' => 'null'], $branchConstraints, true);
-
-        $allOf = [[
-            'required' => [$propertyName],
-            'properties' => [$propertyName => ['enum' => array_map('strval', array_keys($classMap))]],
-        ]];
-        foreach ($classMap as $value => $class) {
-            $allOf[] = [
-                'if' => ['type' => 'object', 'properties' => [$propertyName => ['const' => $value]], 'required' => [$propertyName]],
-                'then' => $branchByClass[$class] ?? [],
-            ];
-        }
-
-        // `type` at the top, where the rule map turns it into `array` — and `nullable` into `nullable`.
-        // The discriminator stays for the hydrator, which builds the variant it names.
-        $dispatched = [
-            'type' => 'object',
-            'allOf' => $allOf,
-            'x-discriminator-property' => $propertyName,
-            'x-discriminator-map' => $classMap,
-        ];
-
-        return $acceptsNull ? [...$dispatched, 'nullable' => true] : $dispatched;
     }
 
     /**

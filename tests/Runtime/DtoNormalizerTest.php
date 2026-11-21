@@ -30,11 +30,11 @@ final class DtoNormalizerTest extends TestCase
         $payload = $normalizer->toArray($dto);
 
         $this->assertSame(
-            [
+            expected: [
                 'availableFilters' => ['availableFilters'],
                 'primaryFilter' => 'availableFilters',
             ],
-            $payload,
+            actual: $payload,
         );
     }
 
@@ -235,7 +235,7 @@ final class DtoNormalizerTest extends TestCase
     {
         // Asymmetric public read access was removed — the injected validator is fully private.
         $this->assertTrue(
-            (new ReflectionProperty(DtoNormalizer::class, 'constraintValidator'))->isPrivate(),
+            condition: (new ReflectionProperty(DtoNormalizer::class, 'constraintValidator'))->isPrivate(),
         );
     }
 
@@ -426,8 +426,8 @@ final class DtoNormalizerTest extends TestCase
 
         $this->assertNotEmpty($errors);
         $this->assertTrue(
-            array_reduce($errors, fn(bool $carry, string $e) => $carry || str_contains($e, 'items.1'), false),
-            'Expected error path containing items.1',
+            condition: array_reduce($errors, fn(bool $carry, string $e) => $carry || str_contains($e, 'items.1'), false),
+            message: 'Expected error path containing items.1',
         );
     }
 
@@ -653,12 +653,12 @@ final class DtoNormalizerTest extends TestCase
         // as the separator alone. Naming it is the whole fix; the capital is `finalizeMessage()`
         // opening a sentence, as it does for every message that is not a `field "…"` one.
         $this->assertSame(
-            [
+            expected: [
                 'Body must have at least 2 properties.',
                 'Body.gamma is required when beta is present.',
             ],
-            $errors,
-            'the object keywords are answered from the reflection payload, not from the throwing toArray()',
+            actual: $errors,
+            message: 'the object keywords are answered from the reflection payload, not from the throwing toArray()',
         );
     }
 }

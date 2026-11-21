@@ -763,8 +763,8 @@ final class GenerateSymfonyDtoTest extends TestCase
         $petContent = (string)file_get_contents($target . '/Pet.php');
         $this->assertStringContainsString('interface Pet', $petContent);
         $this->assertStringContainsString(
-            "#[DiscriminatorMap(typeProperty: 'kind', mapping: ['cat' => Cat::class, 'dog' => Dog::class])]",
-            $petContent,
+            needle: "#[DiscriminatorMap(typeProperty: 'kind', mapping: ['cat' => Cat::class, 'dog' => Dog::class])]",
+            haystack: $petContent,
         );
         $this->assertStringContainsString('use Symfony\Component\Serializer\Attribute\DiscriminatorMap;', $petContent);
 
@@ -775,18 +775,18 @@ final class GenerateSymfonyDtoTest extends TestCase
         $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
         $typeExtractor = new PropertyInfoExtractor([], [new PhpDocExtractor(), new ReflectionExtractor()]);
         $serializer = new Serializer(
-            [
+            normalizers: [
                 new ObjectNormalizer($classMetadataFactory, new MetadataAwareNameConverter($classMetadataFactory), null, $typeExtractor),
                 new ArrayDenormalizer(),
             ],
-            [new JsonEncoder()],
+            encoders: [new JsonEncoder()],
         );
 
         $owner = $serializer->deserialize('{"pet":{"kind":"dog","bark":"wuf"}}', $namespace . '\Owner', 'json');
         $this->assertInstanceOf($namespace . '\Dog', $owner->getPet());
         $this->assertSame(
-            ['pet' => ['kind' => 'dog', 'bark' => 'wuf']],
-            $serializer->normalize($owner),
+            expected: ['pet' => ['kind' => 'dog', 'bark' => 'wuf']],
+            actual: $serializer->normalize($owner),
         );
     }
 
@@ -937,14 +937,14 @@ final class GenerateSymfonyDtoTest extends TestCase
         }
 
         $queryParameter = static fn(string $name, ?bool $allowEmptyValue): array => array_filter(
-            [
+            array: [
                 'name' => $name,
                 'in' => 'query',
                 'required' => false,
                 'schema' => ['type' => 'string'],
                 'allowEmptyValue' => $allowEmptyValue,
             ],
-            static fn(mixed $value): bool => $value !== null,
+            callback: static fn(mixed $value): bool => $value !== null,
         );
 
         $spec = [
@@ -975,10 +975,10 @@ final class GenerateSymfonyDtoTest extends TestCase
         // the explicit prohibition — and only on that one parameter.
         $this->assertSame(1, substr_count($content, '#[Assert\NotBlank(allowNull: true)]'));
         $this->assertStringContainsString(
-            "#[Assert\\NotBlank(allowNull: true)]\n"
+            needle: "#[Assert\\NotBlank(allowNull: true)]\n"
             . "    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]\n"
             . '    private ?string $forbidden',
-            $content,
+            haystack: $content,
         );
 
         require_once $path;

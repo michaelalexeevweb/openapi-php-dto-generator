@@ -85,8 +85,8 @@ final class DataShapeTest extends TestCase
         /** @var class-string $holder */
         $holder = $namespace . '\Holder';
         $built = LaravelDataContainer::withRequest(
-            '{"palette":{"kind":"warm","label":"a","score":3},"palettes":[{"kind":"cold","label":"b","depth":2},{"kind":"warm","label":"c","score":1}]}',
-            static fn(Request $request): object => $holder::from($request),
+            json: '{"palette":{"kind":"warm","label":"a","score":3},"palettes":[{"kind":"cold","label":"b","depth":2},{"kind":"warm","label":"c","score":1}]}',
+            work: static fn(Request $request): object => $holder::from($request),
         );
 
         $this->assertInstanceOf($namespace . '\WarmPalette', $built->palette);
@@ -96,17 +96,17 @@ final class DataShapeTest extends TestCase
         // The schema's order: the base's properties first, as `allOf` lists them — not the member's own
         // first and the inherited ones after, which is how PHP lists a subclass's properties.
         $this->assertSame(
-            [
+            expected: [
                 'palette' => ['kind' => 'warm', 'label' => 'a', 'score' => 3],
                 'palettes' => [['kind' => 'cold', 'label' => 'b', 'depth' => 2], ['kind' => 'warm', 'label' => 'c', 'score' => 1]],
             ],
-            $built->toArray(),
+            actual: $built->toArray(),
         );
 
         $this->expectException(ValidationException::class);
         LaravelDataContainer::withRequest(
-            '{"palette":{"kind":"warm","label":"a"},"palettes":[]}',
-            static fn(Request $request): object => $holder::from($request),
+            json: '{"palette":{"kind":"warm","label":"a"},"palettes":[]}',
+            work: static fn(Request $request): object => $holder::from($request),
         );
     }
 
@@ -188,13 +188,13 @@ final class DataShapeTest extends TestCase
         $holder = $namespace . '\Holder';
 
         $built = LaravelDataContainer::withRequest(
-            '{"grants":{"2":"view","label":"a","7":"own"},"all":[{"2":"edit","label":"b","4":"x"}]}',
-            static fn(Request $request): object => $holder::from($request),
+            json: '{"grants":{"2":"view","label":"a","7":"own"},"all":[{"2":"edit","label":"b","4":"x"}]}',
+            work: static fn(Request $request): object => $holder::from($request),
         );
 
         $this->assertSame(
-            '{"grants":{"2":"view","label":"a","7":"own"},"all":[{"2":"edit","label":"b","4":"x"}]}',
-            $built->toJson(),
+            expected: '{"grants":{"2":"view","label":"a","7":"own"},"all":[{"2":"edit","label":"b","4":"x"}]}',
+            actual: $built->toJson(),
         );
     }
 
@@ -212,8 +212,8 @@ final class DataShapeTest extends TestCase
             ]],
         ]);
         $classes = array_map(
-            static fn(string $file): string => basename($file, '.php'),
-            glob($this->outputDirectory . '/*.php') ?: [],
+            callback: static fn(string $file): string => basename($file, '.php'),
+            array: glob($this->outputDirectory . '/*.php') ?: [],
         );
         $this->assertCount(1, $classes);
         /** @var class-string $params */
@@ -255,8 +255,8 @@ final class DataShapeTest extends TestCase
             ]],
         ]);
         $classes = array_values(array_filter(
-            array_map(static fn(string $file): string => basename($file, '.php'), glob($this->outputDirectory . '/*.php') ?: []),
-            static fn(string $class): bool => $class !== 'Level',
+            array: array_map(static fn(string $file): string => basename($file, '.php'), glob($this->outputDirectory . '/*.php') ?: []),
+            callback: static fn(string $class): bool => $class !== 'Level',
         ));
         /** @var class-string $params */
         $params = $namespace . '\\' . $classes[0];
@@ -410,8 +410,8 @@ final class DataShapeTest extends TestCase
         $this->assertInstanceOf(Optional::class, $built->cursor);
         $this->assertSame(['perPage' => 50, 'sort' => 'desc'], $built->toArray());
         $this->assertSame(7, LaravelDataContainer::withRequest(
-            '{"perPage":7}',
-            static fn(Request $request): object => $page::from($request),
+            json: '{"perPage":7}',
+            work: static fn(Request $request): object => $page::from($request),
         )->perPage);
     }
 
@@ -440,15 +440,15 @@ final class DataShapeTest extends TestCase
         $envelope = $namespace . '\Envelope';
 
         $built = LaravelDataContainer::withRequest(
-            '{"payload":[{"id":1}],"message":"m","success":true}',
-            static fn(Request $request): object => $envelope::from($request),
+            json: '{"payload":[{"id":1}],"message":"m","success":true}',
+            work: static fn(Request $request): object => $envelope::from($request),
         );
 
         $this->assertInstanceOf($namespace . '\Entry', $built->payload[0]);
         $this->assertSame(['success', 'message', 'payload', 'limit'], array_keys($built->toArray()));
         $this->assertSame(
-            ['success' => true, 'payload' => [], 'limit' => 25],
-            (new $envelope(success: true, payload: []))->toArray(),
+            expected: ['success' => true, 'payload' => [], 'limit' => 25],
+            actual: (new $envelope(success: true, payload: []))->toArray(),
         );
     }
 
@@ -477,8 +477,8 @@ final class DataShapeTest extends TestCase
         /** @var class-string $swatch */
         $swatch = $namespace . '\Swatch';
         $build = static fn(string $json): object => LaravelDataContainer::withRequest(
-            $json,
-            static fn(Request $request): object => $swatch::from($request),
+            json: $json,
+            work: static fn(Request $request): object => $swatch::from($request),
         );
 
         $named = $build('{"tone":"warm","code":"a"}');
@@ -516,8 +516,8 @@ final class DataShapeTest extends TestCase
         $tone = $namespace . '\Tone';
 
         $built = LaravelDataContainer::withRequest(
-            '{"tones":["warm","cold"],"byName":{"sky":"cold"}}',
-            static fn(Request $request): object => $palette::from($request),
+            json: '{"tones":["warm","cold"],"byName":{"sky":"cold"}}',
+            work: static fn(Request $request): object => $palette::from($request),
         );
 
         $this->assertSame([$tone::from('warm'), $tone::from('cold')], $built->tones);
@@ -543,8 +543,8 @@ final class DataShapeTest extends TestCase
         $window = $namespace . '\Window';
 
         $built = LaravelDataContainer::withRequest(
-            '{"since":"2022-01-01"}',
-            static fn(Request $request): object => $window::from($request),
+            json: '{"since":"2022-01-01"}',
+            work: static fn(Request $request): object => $window::from($request),
         );
 
         $this->assertSame('2022-01-01T00:00:00.000000', $built->since->format('Y-m-d\TH:i:s.u'));
@@ -568,10 +568,10 @@ final class DataShapeTest extends TestCase
             $spec['components'] = ['schemas' => $schemas];
         }
         (new GenerateDtoCommand())->generateFromArray(
-            $spec,
-            $this->outputDirectory,
-            $namespace,
-            GenerateDtoCommand::ATTRIBUTE_MODE_LARAVEL_DATA,
+            openApi: $spec,
+            outputDirectory: $this->outputDirectory,
+            namespace: $namespace,
+            mode: GenerateDtoCommand::ATTRIBUTE_MODE_LARAVEL_DATA,
         );
 
         $target = $this->outputDirectory;

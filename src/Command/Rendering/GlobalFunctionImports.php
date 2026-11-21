@@ -155,13 +155,13 @@ final class GlobalFunctionImports
         // reads the style of the code this generator writes. A `use const` group stays below it, which is
         // the order php-cs-fixer keeps: classes, functions, constants.
         return (string)preg_replace_callback(
-            '/^(namespace [^;]+;\n\n)((?:use (?!const )[^;]+;\n)*)\n*/m',
-            static fn(array $match): string => $match[1]
+            pattern: '/^(namespace [^;]+;\n\n)((?:use (?!const )[^;]+;\n)*)\n*/m',
+            callback: static fn(array $match): string => $match[1]
                 . ($match[2] === '' ? '' : $match[2] . "\n")
                 . $group
                 . "\n",
-            $php,
-            1,
+            subject: $php,
+            limit: 1,
         );
     }
 

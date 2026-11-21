@@ -1,4 +1,4 @@
-# yii3 mode — 80 files, 35876 lines
+# yii3 mode — 80 files, 35879 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -12201,6 +12201,7 @@ use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
 use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\Rule\Date\Date;
+use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
@@ -12260,8 +12261,8 @@ final class ApiTestSerializationGetQueryParamsFilter extends AbstractInput imple
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Date(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()), new Date(format: 'php:Y-m-d', skipOnEmpty: new WhenNull(), skipOnError: true))]
     #[ToDateTime(format: 'php:Y-m-d')]
-    #[Validate(new Date(format: 'php:Y-m-d', skipOnEmpty: new WhenNull()))]
     public readonly ?DateTimeImmutable $since;
 
     public function getSince(): ?DateTimeImmutable
@@ -14373,15 +14374,15 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
     public readonly ?array $closedFirstSlot;
 
     #[Nested(skipOnEmpty: new WhenNull())]
-    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenMissing()))]
     public readonly ?ApplicatorRefsPoisonedKey $poisonedKey;
 
     #[Nested(skipOnEmpty: new WhenNull())]
-    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenMissing()))]
     public readonly ?ApplicatorRefsConditional $conditional;
 
     #[Nested(skipOnEmpty: new WhenNull())]
-    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenMissing()))]
     public readonly ?ApplicatorRefsKeyed $keyed;
 
     /** @return array<array<string, mixed>> */
@@ -27654,11 +27655,11 @@ final class ReadOnlyFields extends AbstractInput implements DataSetInterface, Ru
     public readonly string $title;
 
     #[DateTime(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()), new AnyRule([new DateTime(format: 'php:Y-m-d\TH:i:sP'), new DateTime(format: 'php:Y-m-d\TH:i:s.up'), new DateTime(format: 'php:Y-m-d H:i:s'), new DateTime(format: 'php:Y-m-d\TH:i:s')], message: 'WrittenAt must be a date.', skipOnEmpty: new WhenNull(), skipOnError: true))]
     #[ToDateTime(format: 'php:Y-m-d\TH:i:sP')]
     #[ToDateTime(format: 'php:Y-m-d\TH:i:s.up')]
     #[ToDateTime(format: 'php:Y-m-d H:i:s')]
     #[ToDateTime(format: 'php:Y-m-d\TH:i:s')]
-    #[Validate(new AnyRule([new DateTime(format: 'php:Y-m-d\TH:i:sP'), new DateTime(format: 'php:Y-m-d\TH:i:s.up'), new DateTime(format: 'php:Y-m-d H:i:s'), new DateTime(format: 'php:Y-m-d\TH:i:s')], message: '{Property} must be a date.', skipOnEmpty: new WhenNull()))]
     public readonly ?DateTimeImmutable $writtenAt;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
@@ -29860,11 +29861,11 @@ final class Test2 extends AbstractInput implements DataSetInterface, RulesProvid
     public readonly array $tags;
 
     #[Nested(skipOnEmpty: new WhenNull())]
-    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenMissing()))]
     public readonly ?User $user;
 
     #[Nested(skipOnEmpty: new WhenNull())]
-    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenMissing()))]
     public readonly ?Test2UserType $userType;
 
     #[Validate(new In(['cat', 'dog'], strict: true, skipOnEmpty: new WhenMissing()))]
@@ -31223,6 +31224,7 @@ use Yiisoft\Validator\EmptyCondition\WhenMissing;
 use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
+use Yiisoft\Validator\Rule\AnyRule;
 use Yiisoft\Validator\Rule\Callback;
 use Yiisoft\Validator\Rule\Integer;
 use Yiisoft\Validator\Rule\StringValue;
@@ -31332,6 +31334,7 @@ final class TestPostRequest extends AbstractInput implements DataSetInterface, R
     #[Validate(new StringValue(skipOnEmpty: new WhenMissing()))]
     public readonly string $name;
 
+    #[Validate(new AnyRule([new Integer(), new StringValue()], message: 'Code must be an integer or a string.', skipOnEmpty: new WhenMissing()))]
     public readonly int|string $code;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
@@ -34323,11 +34326,11 @@ final class User extends AbstractInput implements DataSetInterface, RulesProvide
     public readonly Animal2|array|null $pet;
 
     #[DateTime(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()), new AnyRule([new DateTime(format: 'php:Y-m-d\TH:i:sP'), new DateTime(format: 'php:Y-m-d\TH:i:s.up'), new DateTime(format: 'php:Y-m-d H:i:s'), new DateTime(format: 'php:Y-m-d\TH:i:s')], message: 'CreatedAt must be a date.', skipOnEmpty: new WhenMissing(), skipOnError: true))]
     #[ToDateTime(format: 'php:Y-m-d\TH:i:sP')]
     #[ToDateTime(format: 'php:Y-m-d\TH:i:s.up')]
     #[ToDateTime(format: 'php:Y-m-d H:i:s')]
     #[ToDateTime(format: 'php:Y-m-d\TH:i:s')]
-    #[Validate(new AnyRule([new DateTime(format: 'php:Y-m-d\TH:i:sP'), new DateTime(format: 'php:Y-m-d\TH:i:s.up'), new DateTime(format: 'php:Y-m-d H:i:s'), new DateTime(format: 'php:Y-m-d\TH:i:s')], message: '{Property} must be a date.', skipOnEmpty: new WhenMissing()))]
     public readonly DateTimeImmutable $createdAt;
 
     public function getId(): int
@@ -34899,8 +34902,8 @@ final class User2 extends AbstractInput implements DataSetInterface, RulesProvid
     public readonly ?User2Pet $pet;
 
     #[Date(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()), new Date(format: 'php:Y-m-d', skipOnEmpty: new WhenMissing(), skipOnError: true))]
     #[ToDateTime(format: 'php:Y-m-d')]
-    #[Validate(new Date(format: 'php:Y-m-d', skipOnEmpty: new WhenMissing()))]
     public readonly DateTimeImmutable $createdAt;
 
     public function getId(): int

@@ -87,7 +87,7 @@ final class DocumentTextChoosesNoClassTest extends TestCase
         $namespace = 'DocText' . bin2hex(random_bytes(8));
         $directory = $this->root . '/' . $namespace;
         (new GenerateDtoCommand())->generateFromArray(
-            [
+            openApi: [
                 'openapi' => '3.0.0',
                 'info' => ['title' => 'Widgets', 'version' => '1.0.0'],
                 'paths' => [],
@@ -96,8 +96,8 @@ final class DocumentTextChoosesNoClassTest extends TestCase
                     'Probe' => ['type' => 'object', 'properties' => $properties],
                 ]],
             ],
-            $directory,
-            $namespace,
+            outputDirectory: $directory,
+            namespace: $namespace,
         );
         spl_autoload_register(static function (string $class) use ($namespace, $directory): void {
             if (str_starts_with($class, $namespace . '\\')) {

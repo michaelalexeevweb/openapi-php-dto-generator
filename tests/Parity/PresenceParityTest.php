@@ -72,8 +72,8 @@ final class PresenceParityTest extends TestCase
         bool $noteProvided,
     ): void {
         $this->assertEveryModeYields(
-            ['nickname' => $nicknameProvided, 'note' => $noteProvided],
-            fn(GenerationMode $mode): array => $this->presence($mode, $json),
+            expected: ['nickname' => $nicknameProvided, 'note' => $noteProvided],
+            observe: fn(GenerationMode $mode): array => $this->presence($mode, $json),
             context: $json,
         );
     }
@@ -103,8 +103,8 @@ final class PresenceParityTest extends TestCase
         $json = '{"id":1,"child":{"kept":"k"}}';
 
         $this->assertEveryModeYields(
-            ['kept' => true, 'dropped' => false],
-            fn(GenerationMode $mode): array => $this->nestedPresence($mode, $json),
+            expected: ['kept' => true, 'dropped' => false],
+            observe: fn(GenerationMode $mode): array => $this->nestedPresence($mode, $json),
             context: 'nested ' . $json,
         );
     }
@@ -237,8 +237,8 @@ final class PresenceParityTest extends TestCase
         $json = '{"title":"t"}';
 
         $this->assertEveryModeYields(
-            ['serverId' => false],
-            fn(GenerationMode $mode): array => $this->readOnlyPresence($mode, $json),
+            expected: ['serverId' => false],
+            observe: fn(GenerationMode $mode): array => $this->readOnlyPresence($mode, $json),
             context: 'readOnly property listed in required, ' . $json,
         );
     }
@@ -310,16 +310,16 @@ final class PresenceParityTest extends TestCase
     private function laravelDataDto(array $spec, string $rootClass, string $json): object
     {
         $fqcn = $this->generate(
-            $spec,
-            $this->namespaceFor(GenerationMode::LaravelData, $json . $rootClass),
-            'laravel-data',
-            $rootClass,
+            spec: $spec,
+            namespace: $this->namespaceFor(GenerationMode::LaravelData, $json . $rootClass),
+            mode: 'laravel-data',
+            rootClass: $rootClass,
         );
         LaravelDataContainer::boot();
 
         $dto = LaravelDataContainer::withRequest(
-            $json,
-            static fn(LaravelRequest $request): object => $fqcn::from($request),
+            json: $json,
+            work: static fn(LaravelRequest $request): object => $fqcn::from($request),
         );
 
         return is_object($dto) ? $dto : throw new RuntimeException('laravel-data returned no object');
@@ -490,18 +490,18 @@ final class PresenceParityTest extends TestCase
         $typeExtractor = new PropertyInfoExtractor([], [new PhpDocExtractor(), new ReflectionExtractor()]);
 
         return new Serializer(
-            [
+            normalizers: [
                 new BackedEnumNormalizer(),
                 new DateTimeNormalizer(),
                 new ObjectNormalizer(
-                    $classMetadataFactory,
-                    new MetadataAwareNameConverter($classMetadataFactory),
-                    null,
-                    $typeExtractor,
+                    classMetadataFactory: $classMetadataFactory,
+                    nameConverter: new MetadataAwareNameConverter($classMetadataFactory),
+                    propertyAccessor: null,
+                    propertyTypeExtractor: $typeExtractor,
                 ),
                 new ArrayDenormalizer(),
             ],
-            [new JsonEncoder()],
+            encoders: [new JsonEncoder()],
         );
     }
 

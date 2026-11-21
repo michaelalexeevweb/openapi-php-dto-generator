@@ -21513,7 +21513,7 @@ final class TreeNode implements GeneratedDtoInterface, Stringable
     {
         $constraints = [];
         $constraints['label'] = ['type' => 'string', 'minLength' => 1];
-        $constraints['children'] = ['type' => 'object', 'additionalProperties' => ['oneOf' => [['type' => 'object', 'required' => ['label', 'children'], 'properties' => ['label' => ['type' => 'string', 'minLength' => 1], 'children' => ['type' => 'object', 'additionalProperties' => ['oneOf' => [['type' => 'object', 'required' => ['label', 'children'], 'properties' => ['label' => ['type' => 'string', 'minLength' => 1], 'children' => ['type' => 'object']]], ['type' => 'object', 'additionalProperties' => ['type' => 'object', 'required' => ['id', 'name'], 'properties' => ['id' => ['type' => 'integer'], 'name' => ['type' => 'string']]]]]]]]], ['type' => 'object', 'additionalProperties' => ['type' => 'object', 'required' => ['id', 'name'], 'properties' => ['id' => ['type' => 'integer'], 'name' => ['type' => 'string']]]]]]];
+        $constraints['children'] = ['type' => 'object', 'additionalProperties' => ['oneOf' => [['type' => 'object', 'required' => ['label', 'children'], 'properties' => ['label' => ['type' => 'string', 'minLength' => 1], 'children' => ['type' => 'object', 'additionalProperties' => ['oneOf' => [['type' => 'object', 'required' => ['label', 'children'], 'properties' => ['label' => ['type' => 'string', 'minLength' => 1], 'children' => ['type' => 'object', 'additionalProperties' => ['oneOf' => [['x-php-instanceof' => 'GoldenCorpus\TreeNode'], ['type' => 'object', 'additionalProperties' => ['type' => 'object', 'required' => ['id', 'name'], 'properties' => ['id' => ['type' => 'integer'], 'name' => ['type' => 'string']]]]]]]]], ['type' => 'object', 'additionalProperties' => ['type' => 'object', 'required' => ['id', 'name'], 'properties' => ['id' => ['type' => 'integer'], 'name' => ['type' => 'string']]]]]]]]], ['type' => 'object', 'additionalProperties' => ['type' => 'object', 'required' => ['id', 'name'], 'properties' => ['id' => ['type' => 'integer'], 'name' => ['type' => 'string']]]]]]];
 
         return $constraints;
     }
@@ -23255,16 +23255,16 @@ use function json_encode;
  */
 final class User2Pet implements GeneratedDtoInterface, Stringable
 {
-    private bool $meowInRequest = false;
-    private bool $meowInPath = false;
-    private bool $meowInQuery = false;
-    private bool $meowInHeader = false;
-    private bool $meowInCookie = false;
     private bool $nameInRequest = false;
     private bool $nameInPath = false;
     private bool $nameInQuery = false;
     private bool $nameInHeader = false;
     private bool $nameInCookie = false;
+    private bool $meowInRequest = false;
+    private bool $meowInPath = false;
+    private bool $meowInQuery = false;
+    private bool $meowInHeader = false;
+    private bool $meowInCookie = false;
     private bool $barkInRequest = false;
     private bool $barkInPath = false;
     private bool $barkInQuery = false;
@@ -23277,50 +23277,15 @@ final class User2Pet implements GeneratedDtoInterface, Stringable
     private bool $testInCookie = false;
 
     public function __construct(
-        private readonly string $meow,
         private readonly string $name,
+        private readonly string $meow,
         private readonly string $bark,
         private readonly string $test,
     ) {
-        $this->meowInRequest = true;
         $this->nameInRequest = true;
+        $this->meowInRequest = true;
         $this->barkInRequest = true;
         $this->testInRequest = true;
-    }
-
-    public function getMeow(): string
-    {
-        return $this->meow;
-    }
-
-    public function isMeowRequired(): bool
-    {
-        return true;
-    }
-
-    public function isMeowInPath(): bool
-    {
-        return $this->meowInPath;
-    }
-
-    public function isMeowInQuery(): bool
-    {
-        return $this->meowInQuery;
-    }
-
-    public function isMeowInHeader(): bool
-    {
-        return $this->meowInHeader;
-    }
-
-    public function isMeowInCookie(): bool
-    {
-        return $this->meowInCookie;
-    }
-
-    public function isMeowInRequest(): bool
-    {
-        return $this->meowInRequest;
     }
 
     public function getName(): string
@@ -23356,6 +23321,41 @@ final class User2Pet implements GeneratedDtoInterface, Stringable
     public function isNameInRequest(): bool
     {
         return $this->nameInRequest;
+    }
+
+    public function getMeow(): string
+    {
+        return $this->meow;
+    }
+
+    public function isMeowRequired(): bool
+    {
+        return true;
+    }
+
+    public function isMeowInPath(): bool
+    {
+        return $this->meowInPath;
+    }
+
+    public function isMeowInQuery(): bool
+    {
+        return $this->meowInQuery;
+    }
+
+    public function isMeowInHeader(): bool
+    {
+        return $this->meowInHeader;
+    }
+
+    public function isMeowInCookie(): bool
+    {
+        return $this->meowInCookie;
+    }
+
+    public function isMeowInRequest(): bool
+    {
+        return $this->meowInRequest;
     }
 
     public function getBark(): string
@@ -23434,8 +23434,8 @@ final class User2Pet implements GeneratedDtoInterface, Stringable
     public function toArray(): array
     {
         $result = [];
-        $result['meow'] = $this->meow;
         $result['name'] = $this->name;
+        $result['meow'] = $this->meow;
         $result['bark'] = $this->bark;
         $result['test'] = $this->test;
 
@@ -23483,25 +23483,6 @@ final class User2Pet implements GeneratedDtoInterface, Stringable
         $constraints = self::getConstraints();
 
         $map = [];
-        $map['meow'] = [
-            'getter' => 'getMeow',
-            'type' => 'string',
-            'nullable' => false,
-            'metadata' => [
-                'openApiName' => 'meow',
-                'required' => true,
-                'inPathFlagGetter' => 'isMeowInPath',
-                'inQueryFlagGetter' => 'isMeowInQuery',
-                'inHeaderFlagGetter' => 'isMeowInHeader',
-                'inCookieFlagGetter' => 'isMeowInCookie',
-                'inRequestFlagGetter' => 'isMeowInRequest',
-                'constraints' => $constraints['meow'] ?? [],
-                'writeOnly' => false,
-                'readOnly' => false,
-                'isParameter' => false,
-                'arrayItemType' => '',
-            ],
-        ];
         $map['name'] = [
             'getter' => 'getName',
             'type' => 'string',
@@ -23515,6 +23496,25 @@ final class User2Pet implements GeneratedDtoInterface, Stringable
                 'inCookieFlagGetter' => 'isNameInCookie',
                 'inRequestFlagGetter' => 'isNameInRequest',
                 'constraints' => $constraints['name'] ?? [],
+                'writeOnly' => false,
+                'readOnly' => false,
+                'isParameter' => false,
+                'arrayItemType' => '',
+            ],
+        ];
+        $map['meow'] = [
+            'getter' => 'getMeow',
+            'type' => 'string',
+            'nullable' => false,
+            'metadata' => [
+                'openApiName' => 'meow',
+                'required' => true,
+                'inPathFlagGetter' => 'isMeowInPath',
+                'inQueryFlagGetter' => 'isMeowInQuery',
+                'inHeaderFlagGetter' => 'isMeowInHeader',
+                'inCookieFlagGetter' => 'isMeowInCookie',
+                'inRequestFlagGetter' => 'isMeowInRequest',
+                'constraints' => $constraints['meow'] ?? [],
                 'writeOnly' => false,
                 'readOnly' => false,
                 'isParameter' => false,
@@ -23577,8 +23577,8 @@ final class User2Pet implements GeneratedDtoInterface, Stringable
     public static function getConstraints(): array
     {
         $constraints = [];
-        $constraints['meow'] = ['type' => 'string'];
         $constraints['name'] = ['type' => 'string'];
+        $constraints['meow'] = ['type' => 'string'];
         $constraints['bark'] = ['type' => 'string'];
         $constraints['test'] = ['type' => 'string'];
 
@@ -23606,16 +23606,16 @@ final class User2Pet implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $meowGiven = array_key_exists('meow', $data);
-        if (!$meowGiven) {
-            $errors[] = 'Required parameter "meow" not found in request.';
-        }
-        $meow = $meowGiven ? $cast('meow', $data['meow'], $errors) : null;
         $nameGiven = array_key_exists('name', $data);
         if (!$nameGiven) {
             $errors[] = 'Required parameter "name" not found in request.';
         }
         $name = $nameGiven ? $cast('name', $data['name'], $errors) : null;
+        $meowGiven = array_key_exists('meow', $data);
+        if (!$meowGiven) {
+            $errors[] = 'Required parameter "meow" not found in request.';
+        }
+        $meow = $meowGiven ? $cast('meow', $data['meow'], $errors) : null;
         $barkGiven = array_key_exists('bark', $data);
         if (!$barkGiven) {
             $errors[] = 'Required parameter "bark" not found in request.';
@@ -23631,13 +23631,13 @@ final class User2Pet implements GeneratedDtoInterface, Stringable
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var string $meow */
         /** @var string $name */
+        /** @var string $meow */
         /** @var string $bark */
         /** @var string $test */
         $dto = new self(
-            meow: $meow,
             name: $name,
+            meow: $meow,
             bark: $bark,
             test: $test,
         );

@@ -127,6 +127,24 @@ interface {{ className }}
 final class {{ className }}{% if implementedInterfaces is not empty %} implements {{ implementedInterfaces|join(', ') }}{% endif %}
 
 {
+{% if ownDiscriminatorProperty|default(null) is not null %}
+    /**
+     * Restated here because this class is a variant of {{ ownDiscriminatorUnions|join(' and ') }}, and PHP refuses
+     * a class that inherits one constant from two interfaces. Read a union's own map through the union
+     * (`{{ ownDiscriminatorUnions|first }}::VARIANTS`); this one holds every value any of them maps.
+     */
+    public const string DISCRIMINATOR_PROPERTY = '{{ ownDiscriminatorProperty|php_string }}';
+
+    /**
+     * @var array<string, class-string>
+     */
+    public const array VARIANTS = [
+{% for variant in ownDiscriminatorVariants %}
+        '{{ variant.value|php_string }}' => {{ variant.className }}::class,
+{% endfor %}
+    ];
+
+{% endif %}
 {% if interpreterConstsBlock is not empty %}
 {{ interpreterConstsBlock|raw }}
 
@@ -225,10 +243,10 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
 {% endif %}
 {% if parameterReads|default([]) is not empty %}
     /**
-     * The query and path parameters as the document serializes them: `?ids=1,2` for an `explode: false`
-     * list, `?active=true` for a boolean, `?levels[]=2` for a list of ints. Laravel hands them over as
-     * strings, and its `boolean` and `list` rules refuse those spellings. The FormRequest calls this on
-     * the data it validates; validating without it, call it first.
+     * The query, path, header and cookie parameters as the document serializes them: `?ids=1,2` for an
+     * `explode: false` list, `?active=true` for a boolean, `?levels[]=2` for a list of ints. Laravel
+     * hands them over as strings, and its `boolean` and `list` rules refuse those spellings. The
+     * FormRequest calls this on the data it validates; validating without it, call it first.
      *
      * @param array<array-key, mixed> $input
      * @return array<array-key, mixed>
@@ -328,7 +346,7 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
      * says it was a string. Omit the argument and that check is skipped; everything else still runs.
 {% endif %}
      */
-    public static function withValidator(Validator $validator, ?string $rawJson = null): void
+    public static function withValidator(\Illuminate\Validation\Validator $validator, ?string $rawJson = null): void
     {
         // `validated()` otherwise rebuilds every container that has rules below it out of the leaves
         // those rules reach: a list came back reordered when an empty item sat between non-empty ones,
@@ -337,7 +355,7 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
         $validator->excludeUnvalidatedArrayKeys = false;
 {% if interpreterMethodsBlock is not empty or checksObjectPaths or checksScalarPaths or rootIsObject|default(false) %}
 
-        $validator->after(static function (Validator $validator) use ($rawJson): void {
+        $validator->after(static function (\Illuminate\Validation\Validator $validator) use ($rawJson): void {
 {% if interpreterMethodsBlock is not empty %}
             // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema names them
             // literally, so `required: [a.b]` failed against the very key it asks for.
@@ -405,17 +423,17 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
      * Adds an error for every `type: object` path the raw body sent as a JSON array.
 {% endif %}
 {% if checksScalarPaths %}
-     * Adds an error for every integer, number or boolean path the raw body sent as a string, or a boolean
-     * path it sent as 0 or 1 — values Laravel's rules let through. A path a rule already failed is left
-     * alone, so one mistake is reported once.
+     * Adds an error for every integer, number or boolean path the raw body sent as a string, a boolean
+     * path it sent as 0 or 1, or a number path it sent as a boolean — values Laravel's rules let through.
+     * A path a rule already failed is left alone, so one mistake is reported once.
 {% endif %}
      */
-    private static function assertRawJsonShapes(Validator $validator, string $rawJson): void
+    private static function assertRawJsonShapes(\Illuminate\Validation\Validator $validator, string $rawJson): void
     {
         // Decoded WITHOUT the assoc flag on purpose: that is what keeps a JSON object apart from a
         // JSON array. Laravel's own `$validator->getData()` cannot answer this question.
         $decoded = json_decode($rawJson, false);
-        if (!$decoded instanceof stdClass) {
+        if (!$decoded instanceof \stdClass) {
             return;
         }
 {% if checksObjectPaths %}
@@ -434,7 +452,9 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
 
         foreach ({{ scalarPathsExpression }} as $path => $type) {
 {{ splitPath }}            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
-                $lenient = is_string($node) || ($type === 'boolean' && ($node === 0 || $node === 1));
+                // A JSON `true` passes Laravel's `integer` and `numeric` too: `filter_var()` reads it as 1.
+                $lenient = is_string($node)
+                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node));
                 if ($lenient && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }
@@ -458,7 +478,7 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
         $segment = array_shift($segments);
         if ($segment === '*') {
             // `*` stands for both an array index and a map key, so a JSON object node is walked too.
-            if ($node instanceof stdClass) {
+            if ($node instanceof \stdClass) {
                 $node = get_object_vars($node);
             }
             if (!is_array($node)) {
@@ -476,7 +496,7 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
             return $found;
         }
 
-        if (!$node instanceof stdClass || !property_exists($node, $segment)) {
+        if (!$node instanceof \stdClass || !property_exists($node, $segment)) {
             return [];
         }
 
@@ -595,7 +615,7 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
      * A path the payload does not lead along — one into a JSON string's decoded `contentSchema` — is not
      * a field of the request, so that message stays on the property with its own sentence.
      */
-    private static function addOpenApiFieldError(Validator $validator, string $property, mixed $value, string $error): void
+    private static function addOpenApiFieldError(\Illuminate\Validation\Validator $validator, string $property, mixed $value, string $error): void
     {
         // `shape.radius is required`, `levels[0] must be one of: 1, 2`: the deeper segments, then the claim.
         $rest = str_starts_with($error, $property) ? substr($error, strlen($property)) : '';

@@ -84,6 +84,7 @@ use function str_replace;
 use function str_starts_with;
 use function strcmp;
 use function strlen;
+use function strpbrk;
 use function strpos;
 use function strrpos;
 use function strtolower;
@@ -100,6 +101,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
     // A union whose branches are `format: date` and `format: date-time` — one getter, two wire shapes.
     // Not an OpenAPI format: it only ever travels from resolveOpenApiFormat() to the temporal parser.
     private const string FORMAT_DATE_OR_DATE_TIME = 'date|date-time';
+
+    /**
+     * The characters PHP's request parser turns into `_` in a top-level name, for `$_GET`, `$_POST`
+     * and `$_COOKIE` alike: `page.size` arrives as `page_size`.
+     */
+    private const string PHP_RENAMED_NAME_CHARACTERS = '. ';
 
     // -----------------------------------------------------------------------
     // Static per-class reflection caches (populated once, shared across all
@@ -239,6 +246,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             rawQueryProvider: $rawQueryProvider,
             formData: $request->request->all(),
             request: $request,
+            bodySource: 'json',
         );
 
         return $dto;
@@ -421,17 +429,25 @@ final class DtoDeserializer implements DtoDeserializerInterface
     }
 
     /**
-     * Deserializes a nested DTO directly from a decoded JSON array, bypassing the
-     * Symfony Request entirely. Nested objects only ever come from the JSON body, so
-     * there are no path/query/form/file sources to consider — this avoids allocating a
-     * fresh Request + initialize() for every nested object.
+     * Deserializes a nested DTO directly from an already-split array, bypassing the
+     * Symfony Request entirely. A nested object has no path/query/form/file sources of its own
+     * — this avoids allocating a fresh Request + initialize() for every nested object.
+     *
+     * `$source` is where the OUTER value came from, and it decides how the fields are read. A JSON
+     * body carries its own types, so `"1"` stays a string there. Everything else — a deepObject
+     * `?rng[lo]=1`, a `r=1,g=2` path or header object, a form body's `s[lo]=1` — reaches here as
+     * strings, because a URL, a header and a form field have no other type. Reading those as JSON
+     * refused every typed field one level down (`rng.lo expects int, got string`), while the same
+     * value one level up was converted. So a non-JSON source keeps its conversion all the way in;
+     * it travels as `form`, the one string source with no style of its own, so no path or query
+     * style rule meant for the parameter is applied a second time to its fields.
      *
      * @template T of object
      * @param array<string, mixed> $data
      * @param class-string<T> $dtoClass
      * @return T
      */
-    private function deserializeFromArray(array $data, string $dtoClass): object
+    private function deserializeFromArray(array $data, string $dtoClass, string $source): object
     {
         /** @var T $dto */
         $dto = $this->deserializeInternal(
@@ -441,6 +457,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             rawQueryProvider: static fn(): array => [],
             formData: [],
             request: null,
+            bodySource: $source === 'json' ? 'json' : 'form',
         );
 
         return $dto;
@@ -456,6 +473,8 @@ final class DtoDeserializer implements DtoDeserializerInterface
      *        built on first use — see `deserialize()`
      * @param array<string, mixed> $formData
      * @param class-string $dtoClass
+     * @param string $bodySource what a `$bodyData` value is cast as: `json` for a body, `form` for
+     *        the fields of a nested object that came from a string source — see `deserializeFromArray()`
      */
     private function deserializeInternal(
         string $dtoClass,
@@ -464,6 +483,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         Closure $rawQueryProvider,
         array $formData,
         ?Request $request,
+        string $bodySource,
     ): object {
         // Use cached ReflectionClass – avoids repeated object instantiation.
         $reflection = self::$reflectionCache[$dtoClass] ??= new ReflectionClass($dtoClass);
@@ -478,7 +498,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
         if (!$classMeta['hasConstructor']) {
             throw new RuntimeException(
-                "DTO {$dtoClass} has no constructor.",
+                message: "DTO {$dtoClass} has no constructor.",
             );
         }
 
@@ -542,7 +562,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                                 arrayItemType: $extraDtoClass,
                                 // A digit key arrives as an int, whatever the array is typed as.
                                 itemPath: "{$bodyKey}",
-                                source: 'json',
+                                source: $bodySource,
                             );
                             // A PHP array spells every empty object `[]`, at any depth: kept as given,
                             // the inner ones went out as JSON lists. The class writes them as it reads them.
@@ -596,7 +616,8 @@ final class DtoDeserializer implements DtoDeserializerInterface
         // travels back here through the closure, so the two routes cannot disagree. Placed AFTER the
         // closed-object check and seeded with whatever it found: an undeclared key is a property of
         // the PAYLOAD, not of any one value, so neither route should have to rediscover it.
-        if ($plainBodyOnly && $queryData === [] && $formData === []) {
+        // The generated hydrator casts as JSON, so it is for a JSON body only.
+        if ($plainBodyOnly && $bodySource === 'json' && $queryData === [] && $formData === []) {
             $fast = $this->resolveFastHydrator($reflection, $classMeta, $request, $bodyData);
             if ($fast !== null) {
                 try {
@@ -637,7 +658,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     $rawValue = $request->attributes->get($requestFieldName);
                 } elseif (array_key_exists($requestFieldName, $bodyData)) {
                     $rawWasProvided = true;
-                    $rawSource = 'json';
+                    $rawSource = $bodySource;
                     $rawValue = $bodyData[$requestFieldName];
                 } elseif ($request !== null && $request->files->has($requestFieldName)) {
                     // Files before query, for the reason spelled out in `resolveRawRequestValue()`:
@@ -671,6 +692,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     allowReserved: $paramMeta['allowReserved'],
                     wasProvided: $rawWasProvided,
                     source: $rawSource,
+                    bodySource: $bodySource,
                 );
             }
 
@@ -873,7 +895,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     // present, its value may be null).
                     if (!$rawWasProvided) {
                         throw new RuntimeException(
-                            "Required parameter \"{$requestFieldName}\" not found in request.",
+                            message: "Required parameter \"{$requestFieldName}\" not found in request.",
                         );
                     }
                     $value = $this->castValue(
@@ -1111,7 +1133,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             } else {
                 // Unsupported intersection / no-type-hint param – surface the error immediately.
                 throw new RuntimeException(
-                    "Parameter \${$paramName} in {$dtoClass} has unsupported type.",
+                    message: "Parameter \${$paramName} in {$dtoClass} has unsupported type.",
                 );
             }
 
@@ -1446,7 +1468,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         ) {
             return $this->parseDelimitedObjectValue(rawValue: $rawValue, keyValuePairs: $parameterStyle === 'simple' && $parameterExplode === true)
                 ?? throw new RuntimeException($this->finalizeParamMessage(
-                    "param \"{$paramName}\" expects an object serialized as comma-separated key/value pairs",
+                    message: "param \"{$paramName}\" expects an object serialized as comma-separated key/value pairs",
                 ));
         }
 
@@ -1760,6 +1782,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         bool $allowReserved,
         bool &$wasProvided,
         string &$source,
+        string $bodySource,
     ): mixed {
         if ($sourceConstraint !== null) {
             return $this->resolveFromBoundSource(
@@ -1785,7 +1808,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
         if (array_key_exists($paramName, $bodyData)) {
             $wasProvided = true;
-            $source = 'json';
+            $source = $bodySource;
             return $bodyData[$paramName];
         }
 
@@ -1866,6 +1889,19 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 return $sourceData[$paramName];
             }
 
+            // `$request->query` is built by `parse_str()`, which files `page.size` and `a b` under
+            // `page_size` and `a_b` — a name PHP made up, not the one the document declares, so the
+            // parameter came back "not found" or silently empty. The raw query string still has the
+            // name as sent; it is parsed only on this miss, and only for a name PHP would rename.
+            if ($request !== null && strpbrk($paramName, self::PHP_RENAMED_NAME_CHARACTERS) !== false) {
+                $unrenamed = $this->getRawQueryData(request: $request, preservePlus: $allowReserved);
+                if (array_key_exists($paramName, $unrenamed)) {
+                    $wasProvided = true;
+                    $source = 'query';
+                    return $unrenamed[$paramName];
+                }
+            }
+
             $wasProvided = false;
             $source = '';
             return null;
@@ -1888,6 +1924,17 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 $wasProvided = true;
                 $source = 'cookie';
                 return $request->cookies->get($paramName);
+            }
+
+            // `$_COOKIE` is renamed the way `$_GET` is (see the query branch above); the `Cookie`
+            // header is not.
+            if ($sourceConstraint === 'cookie' && strpbrk($paramName, self::PHP_RENAMED_NAME_CHARACTERS) !== false) {
+                $cookieValue = $this->findCookieInHeader(request: $request, name: $paramName);
+                if ($cookieValue !== null) {
+                    $wasProvided = true;
+                    $source = 'cookie';
+                    return $cookieValue;
+                }
             }
         }
 
@@ -1924,7 +1971,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         // the key must be present, its value may be null).
         if (!$rawWasProvided) {
             throw new RuntimeException(
-                "Required parameter \"{$paramName}\" not found in request.",
+                message: "Required parameter \"{$paramName}\" not found in request.",
             );
         }
 
@@ -1994,7 +2041,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
         if (!$decoded instanceof stdClass) {
             throw new RuntimeException(
-                'JSON body must be an object, got ' . gettype($decoded),
+                message: 'JSON body must be an object, got ' . gettype($decoded),
             );
         }
 
@@ -2084,14 +2131,33 @@ final class DtoDeserializer implements DtoDeserializerInterface
     }
 
     /**
-     * Parses the raw query string without converting literal plus signs to spaces.
+     * The value of one cookie, read from the `Cookie` header under the name it was sent with.
      *
-     * This preserves reserved characters for allowReserved query parameters while
-     * keeping normal Symfony query parsing as the default source.
+     * PHP keeps the FIRST of two same-named cookies — the most specific path, by the order browsers
+     * send them — and decodes the value as a form value; both are mirrored so the two readings agree.
+     */
+    private function findCookieInHeader(Request $request, string $name): ?string
+    {
+        foreach (explode(';', (string)$request->headers->get('cookie', '')) as $pair) {
+            $eqPos = strpos($pair, '=');
+            if ($eqPos !== false && urldecode(trim(substr($pair, 0, $eqPos))) === $name) {
+                return urldecode(trim(substr($pair, $eqPos + 1)));
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Parses the raw query string, keeping every parameter name exactly as sent.
+     *
+     * With `$preservePlus` a literal plus sign in a value stays a plus — the allowReserved reading.
+     * Without it a value decodes the way `$request->query` decodes it, and the only difference left
+     * is the names: `parse_str()` renames `page.size` to `page_size`, this does not.
      *
      * @return array<string, mixed>
      */
-    private function getRawQueryData(Request $request): array
+    private function getRawQueryData(Request $request, bool $preservePlus = true): array
     {
         $queryString = (string)$request->server->get('QUERY_STRING', '');
         if ($queryString === '') {
@@ -2117,7 +2183,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 result: $result,
                 // The name decodes as in a form (`+` is a space); only the value keeps a literal `+`.
                 key: urldecode(substr($pair, 0, $eqPos)),
-                value: rawurldecode(substr($pair, $eqPos + 1)),
+                value: $preservePlus ? rawurldecode(substr($pair, $eqPos + 1)) : urldecode(substr($pair, $eqPos + 1)),
             );
         }
 
@@ -2451,15 +2517,15 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     return null;
                 }
                 throw new RuntimeException(DtoValidator::finalizeMessage(
-                    "param \"{$paramPath}\" expects {$typeName}, got null",
-                    'param "',
+                    message: "param \"{$paramPath}\" expects {$typeName}, got null",
+                    subject: 'param "',
                 ));
             }
             if ($allowsNull) {
                 return null;
             }
             throw new RuntimeException(
-                "Cannot cast null to non-nullable type {$typeName}.",
+                message: "Cannot cast null to non-nullable type {$typeName}.",
             );
         }
 
@@ -2481,7 +2547,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     // actually happened instead; a float with a real fractional part keeps the
                     // type message, because there the type IS the problem.
                     throw new RuntimeException(
-                        is_float($value) && is_finite($value) && floor($value) === $value
+                        message: is_float($value) && is_finite($value) && floor($value) === $value
                             ? sprintf(
                                 'param "%s" must be within integer range (%s to %s), got %s',
                                 $paramPath,
@@ -2499,13 +2565,13 @@ final class DtoDeserializer implements DtoDeserializerInterface
             if ($typeName === 'float') {
                 if (!is_float($value) && !is_int($value)) {
                     throw new RuntimeException(
-                        $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'float', value: $value),
+                        message: $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'float', value: $value),
                     );
                 }
                 // `1e400` decodes to INF, which toJson() cannot write back: a bad request, not a 500.
                 if (is_float($value) && !is_finite($value)) {
                     throw new RuntimeException(
-                        $this->finalizeParamMessage("param \"{$paramPath}\" must be a finite number"),
+                        message: $this->finalizeParamMessage("param \"{$paramPath}\" must be a finite number"),
                     );
                 }
                 return (float)$value;
@@ -2514,7 +2580,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             if ($typeName === 'string') {
                 if (!is_string($value)) {
                     throw new RuntimeException(
-                        $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'string', value: $value),
+                        message: $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'string', value: $value),
                     );
                 }
 
@@ -2524,7 +2590,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             if ($typeName === 'bool') {
                 if (!is_bool($value)) {
                     throw new RuntimeException(
-                        $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'bool', value: $value),
+                        message: $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'bool', value: $value),
                     );
                 }
                 return $value;
@@ -2538,7 +2604,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 if ($value instanceof stdClass) {
                     if (!$allowsAssociativeArray) {
                         throw new RuntimeException(
-                            $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'array', value: 'object'),
+                            message: $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'array', value: 'object'),
                         );
                     }
                     $value = $this->stdClassToArray($value);
@@ -2546,13 +2612,13 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
                 if (!is_array($value)) {
                     throw new RuntimeException(
-                        $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'array', value: $value),
+                        message: $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'array', value: $value),
                     );
                 }
 
                 if (!array_is_list($value) && !$allowsAssociativeArray) {
                     throw new RuntimeException(
-                        $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'array', value: 'object'),
+                        message: $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'array', value: 'object'),
                     );
                 }
 
@@ -2562,7 +2628,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 // is left alone: a pre-decoded body reports `{}` exactly that way.
                 if ($allowsAssociativeArray && !$cameInAsJsonObject && $value !== [] && array_is_list($value)) {
                     throw new RuntimeException(
-                        $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'object', value: 'array'),
+                        message: $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'object', value: 'array'),
                     );
                 }
 
@@ -2587,7 +2653,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         if ($typeName === 'int') {
             if (!$this->isStrictIntValue($value)) {
                 throw new RuntimeException(
-                    $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'int', value: $value),
+                    message: $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'int', value: $value),
                 );
             }
 
@@ -2597,12 +2663,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
         if ($typeName === 'float') {
             if ((is_float($value) || is_string($value)) && is_numeric($value) && !is_finite((float)$value)) {
                 throw new RuntimeException(
-                    $this->finalizeParamMessage("param \"{$paramPath}\" must be a finite number"),
+                    message: $this->finalizeParamMessage("param \"{$paramPath}\" must be a finite number"),
                 );
             }
             if (!$this->isStrictFloatValue($value)) {
                 throw new RuntimeException(
-                    $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'float', value: $value),
+                    message: $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'float', value: $value),
                 );
             }
 
@@ -2612,7 +2678,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         if ($typeName === 'string') {
             if (is_array($value) || $value instanceof stdClass || is_object($value)) {
                 throw new RuntimeException(
-                    $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'string', value: $value),
+                    message: $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'string', value: $value),
                 );
             }
 
@@ -2632,7 +2698,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     return false;
                 }
                 throw new RuntimeException(
-                    $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'bool', value: $value),
+                    message: $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'bool', value: $value),
                 );
             }
             // Numeric scalars coerce (0/1 → bool) to match the lenient string handling above.
@@ -2642,14 +2708,14 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 return (bool)$value;
             }
             throw new RuntimeException(
-                $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'bool', value: $value),
+                message: $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'bool', value: $value),
             );
         }
 
         if ($typeName === 'array') {
             if (!is_array($value)) {
                 throw new RuntimeException(
-                    $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'array', value: $value),
+                    message: $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'array', value: $value),
                 );
             }
             $arrayValue = $value;
@@ -2686,7 +2752,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 );
             }
             throw new RuntimeException(
-                $this->finalizeParamMessage("param \"{$paramPath}\" expects a date string, got {$this->getTypeString($value)}"),
+                message: $this->finalizeParamMessage("param \"{$paramPath}\" expects a date string, got {$this->getTypeString($value)}"),
             );
         }
 
@@ -2710,7 +2776,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 // property accepted `[1,2]` as an object. `[]` is left alone: it is also how `{}` arrives
                 // from a pre-decoded body.
                 throw new RuntimeException(
-                    $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'object', value: 'array'),
+                    message: $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'object', value: 'array'),
                 );
             }
             if (is_array($value)) {
@@ -2725,23 +2791,23 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 // (already validated by the 'dto' kind resolution above).
                 /** @var class-string<object> $targetDtoClass */
                 try {
-                    return $this->deserializeFromArray(data: $value, dtoClass: $targetDtoClass);
+                    return $this->deserializeFromArray(data: $value, dtoClass: $targetDtoClass, source: $source);
                 } catch (RuntimeException $e) {
                     throw new RuntimeException(
-                        $this->prependParamPath(message: $e->getMessage(), prefix: $paramPath),
+                        message: $this->prependParamPath(message: $e->getMessage(), prefix: $paramPath),
                         previous: $e,
                     );
                 }
             }
             throw new RuntimeException(
-                $this->finalizeParamMessage(
-                    "param \"{$paramPath}\": Cannot deserialize nested DTO {$typeName} from non-array value",
+                message: $this->finalizeParamMessage(
+                    message: "param \"{$paramPath}\": Cannot deserialize nested DTO {$typeName} from non-array value",
                 ),
             );
         }
 
         throw new RuntimeException(
-            "Unsupported type: {$typeName}",
+            message: "Unsupported type: {$typeName}",
         );
     }
 
@@ -2862,7 +2928,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         if ($kind === 'file') {
             if (!$itemValue instanceof UploadedFile) {
                 throw new RuntimeException(
-                    $this->expectsTypeMessage(paramPath: $itemPath, expectedType: 'UploadedFile', value: $itemValue),
+                    message: $this->expectsTypeMessage(paramPath: $itemPath, expectedType: 'UploadedFile', value: $itemValue),
                 );
             }
             return $itemValue;
@@ -2878,7 +2944,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             }
             if (!is_string($itemValue)) {
                 throw new RuntimeException(
-                    $this->expectsTypeMessage(paramPath: $itemPath, expectedType: 'date string', value: $itemValue),
+                    message: $this->expectsTypeMessage(paramPath: $itemPath, expectedType: 'date string', value: $itemValue),
                 );
             }
             // Array items carry the temporal format resolved from the items schema
@@ -2894,12 +2960,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 // and `deserializeValue()` took `[1,2]` as an empty DTO and dropped the numbers. `[]`
                 // stays allowed — it is also how `{}` arrives from a pre-decoded body.
                 throw new RuntimeException(
-                    $this->expectsTypeMessage(paramPath: $itemPath, expectedType: 'object', value: 'array'),
+                    message: $this->expectsTypeMessage(paramPath: $itemPath, expectedType: 'object', value: 'array'),
                 );
             }
             if (!is_array($itemValue)) {
                 throw new RuntimeException(
-                    $this->expectsTypeMessage(paramPath: $itemPath, expectedType: 'object', value: $itemValue),
+                    message: $this->expectsTypeMessage(paramPath: $itemPath, expectedType: 'object', value: $itemValue),
                 );
             }
 
@@ -2907,23 +2973,23 @@ final class DtoDeserializer implements DtoDeserializerInterface
             $targetClass = $this->resolveDiscriminatorTargetClass($arrayItemType, $itemValue, $itemPath) ?? $arrayItemType;
             if (!class_exists($targetClass)) {
                 throw new RuntimeException(
-                    "Discriminator mapping for \"{$itemPath}\" points to unknown class \"{$targetClass}\".",
+                    message: "Discriminator mapping for \"{$itemPath}\" points to unknown class \"{$targetClass}\".",
                 );
             }
 
             try {
                 /** @var class-string<object> $targetClass */
-                return $this->deserializeFromArray(data: $itemValue, dtoClass: $targetClass);
+                return $this->deserializeFromArray(data: $itemValue, dtoClass: $targetClass, source: $source);
             } catch (RuntimeException $e) {
                 throw new RuntimeException(
-                    $this->prependParamPath(message: $e->getMessage(), prefix: $itemPath),
+                    message: $this->prependParamPath(message: $e->getMessage(), prefix: $itemPath),
                     previous: $e,
                 );
             }
         }
 
         throw new RuntimeException(
-            "Cannot deserialize array item at \"{$itemPath}\": unknown type \"{$arrayItemType}\".",
+            message: "Cannot deserialize array item at \"{$itemPath}\": unknown type \"{$arrayItemType}\".",
         );
     }
 
@@ -2933,9 +2999,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
         // in request.` — a nested DTO's message named the bare key, so a missing `discriminator.id`
         // read exactly like a missing root `id`.
         return preg_replace_callback(
-            '/\b(param|parameter) "([^"]+)"/i',
-            static fn(array $m): string => sprintf('%s "%s.%s"', $m[1], $prefix, $m[2]),
-            $message,
+            pattern: '/\b(param|parameter) "([^"]+)"/i',
+            callback: static fn(array $m): string => sprintf('%s "%s.%s"', $m[1], $prefix, $m[2]),
+            subject: $message,
         ) ?? $message;
     }
 
@@ -2948,7 +3014,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         if ($value === '') {
             $hint = $this->temporalFormatHint($temporalFormat);
             throw new RuntimeException(
-                $this->finalizeParamMessage("param \"{$paramPath}\" expects a valid date{$hint}, got empty string"),
+                message: $this->finalizeParamMessage("param \"{$paramPath}\" expects a valid date{$hint}, got empty string"),
             );
         }
 
@@ -2963,8 +3029,8 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
             if (preg_match('/^\d{4}-\d{2}-\d{2}$/D', $value) === 1) {
                 throw new RuntimeException(
-                    $this->finalizeParamMessage(
-                        "param \"{$paramPath}\" expects a date in Y-m-d format or a valid date-time"
+                    message: $this->finalizeParamMessage(
+                        message: "param \"{$paramPath}\" expects a date in Y-m-d format or a valid date-time"
                         . " (e.g. 2026-03-10 or 2026-03-10T12:00:00+00:00), got \"{$value}\"",
                     ),
                 );
@@ -2976,8 +3042,8 @@ final class DtoDeserializer implements DtoDeserializerInterface
             $dt = DateTimeImmutable::createFromFormat('Y-m-d|', $value);
             if ($dt === false || $dt->format('Y-m-d') !== $value) {
                 throw new RuntimeException(
-                    $this->finalizeParamMessage(
-                        "param \"{$paramPath}\" expects a date in Y-m-d format (e.g. 2026-03-10), got \"{$value}\"",
+                    message: $this->finalizeParamMessage(
+                        message: "param \"{$paramPath}\" expects a date in Y-m-d format (e.g. 2026-03-10), got \"{$value}\"",
                     ),
                 );
             }
@@ -2991,7 +3057,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         // Reject structural mismatches before createFromFormat: it silently accepts trailing characters.
         if (preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/D', $value) !== 1) {
             throw new RuntimeException(
-                $this->finalizeParamMessage("param \"{$paramPath}\" expects {$expected}, got \"{$value}\""),
+                message: $this->finalizeParamMessage("param \"{$paramPath}\" expects {$expected}, got \"{$value}\""),
             );
         }
 
@@ -3009,7 +3075,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         throw new RuntimeException(
-            $this->finalizeParamMessage("param \"{$paramPath}\" expects {$expected}, got \"{$value}\""),
+            message: $this->finalizeParamMessage("param \"{$paramPath}\" expects {$expected}, got \"{$value}\""),
         );
     }
 
@@ -3453,7 +3519,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
     {
         if (!enum_exists($enumClass)) {
             throw new RuntimeException(
-                "Unsupported type: {$enumClass}",
+                message: "Unsupported type: {$enumClass}",
             );
         }
 
@@ -3493,16 +3559,16 @@ final class DtoDeserializer implements DtoDeserializerInterface
             $allowedStr = implode(', ', $allowed);
             $actualValue = $this->formatValueForError($value);
             throw new RuntimeException(
-                DtoValidator::finalizeMessage(
-                    "param \"{$paramPath}\" expects enum {$enumClass}, got {$actualValue}. Allowed: {$allowedStr}",
-                    'param "',
+                message: DtoValidator::finalizeMessage(
+                    message: "param \"{$paramPath}\" expects enum {$enumClass}, got {$actualValue}. Allowed: {$allowedStr}",
+                    subject: 'param "',
                 ),
             );
         }
 
         $actualValue = $this->formatValueForError($value);
         throw new RuntimeException(
-            "Invalid enum value {$actualValue} for {$enumClass}.",
+            message: "Invalid enum value {$actualValue} for {$enumClass}.",
         );
     }
 
@@ -3704,9 +3770,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
             if (is_array($paramMeta['fieldConstraints']) && $paramMeta['fieldConstraints'] !== []) {
                 foreach (
                     $this->constraintValidator->validate(
-                        sprintf('param "%s"', $name),
-                        $cast,
-                        $paramMeta['fieldConstraints'],
+                        subject: sprintf('param "%s"', $name),
+                        value: $cast,
+                        constraints: $paramMeta['fieldConstraints'],
                     ) as $constraintError
                 ) {
                     $errors[] = $constraintError;
@@ -3757,13 +3823,13 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         return new RuntimeException(
-            $exception->getMessage() . "\n" . sprintf(
+            message: $exception->getMessage() . "\n" . sprintf(
                 'The request body was not read: Content-Type is %s, and only application/json is '
                 . 'decoded as a JSON body (form and multipart values are read from their own sources).',
                 $contentType === '' ? 'absent' : sprintf('"%s"', $contentType),
             ),
-            $exception->getCode(),
-            $exception,
+            code: $exception->getCode(),
+            previous: $exception,
         );
     }
 
@@ -3909,8 +3975,8 @@ final class DtoDeserializer implements DtoDeserializerInterface
         /** @var class-string $baseClass */
         if (
             !method_exists($baseClass, 'getDiscriminatorPropertyName') || !method_exists(
-                $baseClass,
-                'getDiscriminatorMapping',
+                object_or_class: $baseClass,
+                method: 'getDiscriminatorMapping',
             )
         ) {
             return null;
@@ -3937,11 +4003,11 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
         if (
             !is_string($discriminatorProperty) || $discriminatorProperty === '' || !is_array(
-                $mapping,
+                value: $mapping,
             ) || $mapping === []
         ) {
             throw new RuntimeException(
-                "DTO {$baseClass} has invalid discriminator metadata.",
+                message: "DTO {$baseClass} has invalid discriminator metadata.",
             );
         }
 
@@ -3949,15 +4015,15 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
         if (!array_key_exists($discriminatorProperty, $value)) {
             throw new RuntimeException(
-                $this->finalizeParamMessage("param \"{$fullDiscriminatorPath}\" wasn't provided"),
+                message: $this->finalizeParamMessage("param \"{$fullDiscriminatorPath}\" wasn't provided"),
             );
         }
 
         $discriminatorValue = $value[$discriminatorProperty];
         if (!is_string($discriminatorValue) && !is_int($discriminatorValue)) {
             throw new RuntimeException(
-                $this->finalizeParamMessage(
-                    "param \"{$fullDiscriminatorPath}\" expects a string or int discriminator value, "
+                message: $this->finalizeParamMessage(
+                    message: "param \"{$fullDiscriminatorPath}\" expects a string or int discriminator value, "
                     . "got {$this->getTypeString($discriminatorValue)}",
                 ),
             );
@@ -3967,9 +4033,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
         if (!array_key_exists($discriminatorKey, $mapping)) {
             $allowedKeys = implode(', ', array_keys($mapping));
             throw new RuntimeException(
-                DtoValidator::finalizeMessage(
-                    "param \"{$fullDiscriminatorPath}\" has invalid discriminator value \"{$discriminatorKey}\". Allowed: {$allowedKeys}",
-                    'param "',
+                message: DtoValidator::finalizeMessage(
+                    message: "param \"{$fullDiscriminatorPath}\" has invalid discriminator value \"{$discriminatorKey}\". Allowed: {$allowedKeys}",
+                    subject: 'param "',
                 ),
             );
         }
@@ -3977,13 +4043,13 @@ final class DtoDeserializer implements DtoDeserializerInterface
         $targetClass = $mapping[$discriminatorKey];
         if (!is_string($targetClass) || !class_exists($targetClass)) {
             throw new RuntimeException(
-                "Discriminator mapping for \"{$fullDiscriminatorPath}\" points to unknown class \"{$targetClass}\".",
+                message: "Discriminator mapping for \"{$fullDiscriminatorPath}\" points to unknown class \"{$targetClass}\".",
             );
         }
 
         if (!is_a($targetClass, $baseClass, true)) {
             throw new RuntimeException(
-                "Discriminator mapping class {$targetClass} must extend or implement {$baseClass}.",
+                message: "Discriminator mapping class {$targetClass} must extend or implement {$baseClass}.",
             );
         }
 
@@ -3993,16 +4059,16 @@ final class DtoDeserializer implements DtoDeserializerInterface
     private function expectsTypeMessage(string $paramPath, string $expectedType, mixed $value): string
     {
         $actualType = is_string($value) && in_array(
-            $value,
-            ['int', 'float', 'string', 'bool', 'array', 'object', 'null'],
-            true,
+            needle: $value,
+            haystack: ['int', 'float', 'string', 'bool', 'array', 'object', 'null'],
+            strict: true,
         )
             ? $value
             : $this->getTypeString($value);
 
         return DtoValidator::finalizeMessage(
-            "param \"{$paramPath}\" expects {$expectedType}, got {$actualType}",
-            'param "',
+            message: "param \"{$paramPath}\" expects {$expectedType}, got {$actualType}",
+            subject: 'param "',
         );
     }
 

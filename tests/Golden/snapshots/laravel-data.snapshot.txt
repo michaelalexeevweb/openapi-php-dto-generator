@@ -1,4 +1,4 @@
-# laravel-data mode — 80 files, 19449 lines
+# laravel-data mode — 80 files, 21633 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -497,10 +497,15 @@ use LogicException;
 use Spatie\LaravelData\Data;
 
 use function array_key_exists;
+use function array_keys;
+use function array_shift;
 use function is_array;
+use function is_bool;
 use function is_string;
 use function json_decode;
 use function ltrim;
+use function preg_split;
+use function str_replace;
 use function str_starts_with;
 use function trim;
 
@@ -613,7 +618,17 @@ final class ApiTest2PatchRequest extends Data
     }
 
     /**
-     * The one shape Laravel's rules cannot check: a JSON array sent for the object this body is.
+     * Paths whose schema is `integer` or `number`, with that type. A `*` segment matches every index of
+     * an array and every key of a map.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'idPatchTest2' => 'integer',
+    ];
+
+    /**
+     * The one value Laravel's rules cannot refuse: a JSON boolean where the schema asks for a number.
      *
      * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
      * own `withValidator()` run, which is why every check above is flattened to a path from the root.
@@ -621,6 +636,8 @@ final class ApiTest2PatchRequest extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            self::assertNoBooleanNumbers($validator);
+
             $rawJson = self::rawRequestBody($validator);
             // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
             // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty object, as it is
@@ -670,6 +687,63 @@ final class ApiTest2PatchRequest extends Data
 
         return $content;
     }
+
+    /**
+     * Adds an error for every integer or number path that holds a boolean. Laravel's `integer` rule reads
+     * `true` through `filter_var()` as 1, so it passed, and laravel-data then cast it to 1 or stored it
+     * as `true` in an `array<int>`. Read from the validator's data, not the raw body: a boolean is still
+     * a boolean once decoded, so `validateAndCreate($array)` is covered too. A path a rule already
+     * failed is left alone, so one mistake is reported once.
+     */
+    private static function assertNoBooleanNumbers(Validator $validator): void
+    {
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            // A nested class reports its boolean paths too; a boolean there is what the schema asks for.
+            if ($type === 'boolean') {
+                continue;
+            }
+
+            // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
+            $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
+            foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
+                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
+                }
+            }
+        }
+    }
+
+    /**
+     * Every value a (possibly wildcarded) path reaches in decoded data, keyed by the concrete path.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function dataNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+        if (!is_array($node)) {
+            return [];
+        }
+
+        $segment = array_shift($segments);
+        // `*` stands for both an array index and a map key.
+        $keys = $segment === '*' ? array_keys($node) : (array_key_exists($segment, $node) ? [$segment] : []);
+        $found = [];
+        foreach ($keys as $key) {
+            $keyPath = $path === '' ? (string)$key : $path . '.' . $key;
+            foreach (self::dataNodesAt($node[$key], $segments, $keyPath) as $deepPath => $deepNode) {
+                $found[$deepPath] = $deepNode;
+            }
+        }
+
+        return $found;
+    }
 }
 
 ===== ApiTest2PostRequest.php =====
@@ -689,10 +763,15 @@ use LogicException;
 use Spatie\LaravelData\Data;
 
 use function array_key_exists;
+use function array_keys;
+use function array_shift;
 use function is_array;
+use function is_bool;
 use function is_string;
 use function json_decode;
 use function ltrim;
+use function preg_split;
+use function str_replace;
 use function str_starts_with;
 use function trim;
 
@@ -807,7 +886,17 @@ final class ApiTest2PostRequest extends Data
     }
 
     /**
-     * The one shape Laravel's rules cannot check: a JSON array sent for the object this body is.
+     * Paths whose schema is `integer` or `number`, with that type. A `*` segment matches every index of
+     * an array and every key of a map.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'idPostTest2' => 'integer',
+    ];
+
+    /**
+     * The one value Laravel's rules cannot refuse: a JSON boolean where the schema asks for a number.
      *
      * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
      * own `withValidator()` run, which is why every check above is flattened to a path from the root.
@@ -815,6 +904,8 @@ final class ApiTest2PostRequest extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            self::assertNoBooleanNumbers($validator);
+
             $rawJson = self::rawRequestBody($validator);
             // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
             // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty object, as it is
@@ -863,6 +954,63 @@ final class ApiTest2PostRequest extends Data
         }
 
         return $content;
+    }
+
+    /**
+     * Adds an error for every integer or number path that holds a boolean. Laravel's `integer` rule reads
+     * `true` through `filter_var()` as 1, so it passed, and laravel-data then cast it to 1 or stored it
+     * as `true` in an `array<int>`. Read from the validator's data, not the raw body: a boolean is still
+     * a boolean once decoded, so `validateAndCreate($array)` is covered too. A path a rule already
+     * failed is left alone, so one mistake is reported once.
+     */
+    private static function assertNoBooleanNumbers(Validator $validator): void
+    {
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            // A nested class reports its boolean paths too; a boolean there is what the schema asks for.
+            if ($type === 'boolean') {
+                continue;
+            }
+
+            // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
+            $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
+            foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
+                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
+                }
+            }
+        }
+    }
+
+    /**
+     * Every value a (possibly wildcarded) path reaches in decoded data, keyed by the concrete path.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function dataNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+        if (!is_array($node)) {
+            return [];
+        }
+
+        $segment = array_shift($segments);
+        // `*` stands for both an array index and a map key.
+        $keys = $segment === '*' ? array_keys($node) : (array_key_exists($segment, $node) ? [$segment] : []);
+        $found = [];
+        foreach ($keys as $key) {
+            $keyPath = $path === '' ? (string)$key : $path . '.' . $key;
+            foreach (self::dataNodesAt($node[$key], $segments, $keyPath) as $deepPath => $deepNode) {
+                $found[$deepPath] = $deepNode;
+            }
+        }
+
+        return $found;
     }
 }
 
@@ -4151,6 +4299,9 @@ final class ApiTestSerializationGetQueryParams extends Data
         if (array_key_exists('flag', $properties)) {
             $properties['flag'] = self::openApiParameterValue($properties['flag'], 'bool');
         }
+        if (array_key_exists('X-Codes', $properties)) {
+            $properties['X-Codes'] = self::openApiParameterList($properties['X-Codes'], ',', 'string');
+        }
 
         return $properties;
     }
@@ -5126,6 +5277,7 @@ use Spatie\LaravelData\Optional;
 use stdClass;
 
 use function array_column;
+use function array_diff_key;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
@@ -5260,6 +5412,7 @@ final class ApplicatorRefs extends Data
                         'not' => [],
                     ],
                 ],
+                'nullable' => true,
             ],
             'conditional' => [
                 'if' => [
@@ -5279,6 +5432,7 @@ final class ApplicatorRefs extends Data
                         'label',
                     ],
                 ],
+                'nullable' => true,
             ],
             'keyed' => [
                 'dependentSchemas' => [
@@ -5295,9 +5449,60 @@ final class ApplicatorRefs extends Data
                         ],
                     ],
                 ],
+                'nullable' => true,
             ],
         ],
         'object' => [],
+    ];
+
+    /**
+     * The schemas a `x-openapi-recurse` marker re-enters, keyed by the class they came from. A
+     * self-referential schema has no finite inline form, so it is written once and followed at runtime;
+     * `OPENAPI_MAX_VALIDATION_DEPTH` is what bounds the walk.
+     *
+     * @var array<string, mixed>
+     */
+    private const array OPENAPI_RECURSIVE_SCHEMAS = [
+        'ApplicatorRefsPoisonedKey@rules' => [
+            'dependentSchemas' => [
+                'trigger' => false,
+            ],
+        ],
+        'ApplicatorRefsConditional@rules' => [
+            'if' => [
+                'type' => 'object',
+                'required' => [
+                    'label',
+                ],
+                'properties' => [
+                    'label' => [
+                        'type' => 'string',
+                        'minLength' => 2,
+                    ],
+                ],
+            ],
+            'then' => [
+                'required' => [
+                    'label',
+                ],
+            ],
+        ],
+        'ApplicatorRefsKeyed@rules' => [
+            'dependentSchemas' => [
+                'trigger' => [
+                    'type' => 'object',
+                    'required' => [
+                        'label',
+                    ],
+                    'properties' => [
+                        'label' => [
+                            'type' => 'string',
+                            'minLength' => 2,
+                        ],
+                    ],
+                ],
+            ],
+        ],
     ];
 
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
@@ -5687,11 +5892,17 @@ final class ApplicatorRefs extends Data
             throw new OverflowException($path . ' exceeds maximum validation depth.');
         }
 
+        $recursiveRef = $schema['x-openapi-recurse'] ?? null;
+        if (is_string($recursiveRef) && array_key_exists($recursiveRef, self::OPENAPI_RECURSIVE_SCHEMAS)) {
+            /** @var array<string, mixed> $resolved */
+            $resolved = self::OPENAPI_RECURSIVE_SCHEMAS[$recursiveRef];
+            $schema = [...$resolved, ...array_diff_key($schema, ['x-openapi-recurse' => true])];
+        }
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = self::normalizeOpenApiStructuralValue($value);
 
-        if (array_key_exists('type', $schema)) {
+        if (array_key_exists('type', $schema) && !($value === null && ($schema['nullable'] ?? false) === true)) {
             $typeConstraint = $schema['type'];
             if (is_string($typeConstraint)) {
                 if (!self::matchesOpenApiCallbackType($normalizedValue, $typeConstraint)) {
@@ -7343,7 +7554,14 @@ use Spatie\LaravelData\Attributes\MapName;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 
+use function array_key_exists;
+use function array_keys;
+use function array_shift;
+use function is_array;
+use function is_bool;
 use function is_string;
+use function preg_split;
+use function str_replace;
 use function trim;
 
 /**
@@ -7463,6 +7681,86 @@ final class AwkwardNames extends Data
         };
 
         return $rules;
+    }
+
+    /**
+     * Paths whose schema is `integer` or `number`, with that type. A `*` segment matches every index of
+     * an array and every key of a map.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'both\\\'s' => 'integer',
+    ];
+
+    /**
+     * The one value Laravel's rules cannot refuse: a JSON boolean where the schema asks for a number.
+     *
+     * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
+     * own `withValidator()` run, which is why every check above is flattened to a path from the root.
+     */
+    public static function withValidator(Validator $validator): void
+    {
+        $validator->after(static function (Validator $validator): void {
+            self::assertNoBooleanNumbers($validator);
+        });
+    }
+
+    /**
+     * Adds an error for every integer or number path that holds a boolean. Laravel's `integer` rule reads
+     * `true` through `filter_var()` as 1, so it passed, and laravel-data then cast it to 1 or stored it
+     * as `true` in an `array<int>`. Read from the validator's data, not the raw body: a boolean is still
+     * a boolean once decoded, so `validateAndCreate($array)` is covered too. A path a rule already
+     * failed is left alone, so one mistake is reported once.
+     */
+    private static function assertNoBooleanNumbers(Validator $validator): void
+    {
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            // A nested class reports its boolean paths too; a boolean there is what the schema asks for.
+            if ($type === 'boolean') {
+                continue;
+            }
+
+            // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
+            $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
+            foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
+                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
+                }
+            }
+        }
+    }
+
+    /**
+     * Every value a (possibly wildcarded) path reaches in decoded data, keyed by the concrete path.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function dataNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+        if (!is_array($node)) {
+            return [];
+        }
+
+        $segment = array_shift($segments);
+        // `*` stands for both an array index and a map key.
+        $keys = $segment === '*' ? array_keys($node) : (array_key_exists($segment, $node) ? [$segment] : []);
+        $found = [];
+        foreach ($keys as $key) {
+            $keyPath = $path === '' ? (string)$key : $path . '.' . $key;
+            foreach (self::dataNodesAt($node[$key], $segments, $keyPath) as $deepPath => $deepNode) {
+                $found[$deepPath] = $deepNode;
+            }
+        }
+
+        return $found;
     }
 }
 
@@ -9219,7 +9517,14 @@ use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Validation\Validator;
 use LogicException;
 
+use function array_key_exists;
+use function array_keys;
+use function array_shift;
+use function is_array;
+use function is_bool;
 use function is_string;
+use function preg_split;
+use function str_replace;
 use function trim;
 
 /**
@@ -9328,6 +9633,86 @@ final class Circle extends Shape
 
         return $rules;
     }
+
+    /**
+     * Paths whose schema is `integer` or `number`, with that type. A `*` segment matches every index of
+     * an array and every key of a map.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'radius' => 'integer',
+    ];
+
+    /**
+     * The one value Laravel's rules cannot refuse: a JSON boolean where the schema asks for a number.
+     *
+     * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
+     * own `withValidator()` run, which is why every check above is flattened to a path from the root.
+     */
+    public static function withValidator(Validator $validator): void
+    {
+        $validator->after(static function (Validator $validator): void {
+            self::assertNoBooleanNumbers($validator);
+        });
+    }
+
+    /**
+     * Adds an error for every integer or number path that holds a boolean. Laravel's `integer` rule reads
+     * `true` through `filter_var()` as 1, so it passed, and laravel-data then cast it to 1 or stored it
+     * as `true` in an `array<int>`. Read from the validator's data, not the raw body: a boolean is still
+     * a boolean once decoded, so `validateAndCreate($array)` is covered too. A path a rule already
+     * failed is left alone, so one mistake is reported once.
+     */
+    private static function assertNoBooleanNumbers(Validator $validator): void
+    {
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            // A nested class reports its boolean paths too; a boolean there is what the schema asks for.
+            if ($type === 'boolean') {
+                continue;
+            }
+
+            // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
+            $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
+            foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
+                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
+                }
+            }
+        }
+    }
+
+    /**
+     * Every value a (possibly wildcarded) path reaches in decoded data, keyed by the concrete path.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function dataNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+        if (!is_array($node)) {
+            return [];
+        }
+
+        $segment = array_shift($segments);
+        // `*` stands for both an array index and a map key.
+        $keys = $segment === '*' ? array_keys($node) : (array_key_exists($segment, $node) ? [$segment] : []);
+        $found = [];
+        foreach ($keys as $key) {
+            $keyPath = $path === '' ? (string)$key : $path . '.' . $key;
+            foreach (self::dataNodesAt($node[$key], $segments, $keyPath) as $deepPath => $deepNode) {
+                $found[$deepPath] = $deepNode;
+            }
+        }
+
+        return $found;
+    }
 }
 
 ===== ContainerAliases.php =====
@@ -9349,14 +9734,18 @@ use Spatie\LaravelData\Optional;
 use stdClass;
 
 use function array_key_exists;
+use function array_keys;
 use function array_shift;
 use function explode;
 use function get_object_vars;
 use function is_array;
+use function is_bool;
 use function is_string;
 use function json_decode;
+use function preg_split;
 use function property_exists;
 use function sprintf;
+use function str_replace;
 use function trim;
 
 /**
@@ -9499,6 +9888,16 @@ final class ContainerAliases extends Data
     ];
 
     /**
+     * Paths whose schema is `integer` or `number`, with that type. A `*` segment matches every index of
+     * an array and every key of a map.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'listOfMaps.*.*' => 'integer',
+    ];
+
+    /**
      * The one shape Laravel's rules cannot check: `type: object` given a JSON array.
      *
      * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
@@ -9512,6 +9911,8 @@ final class ContainerAliases extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            self::assertNoBooleanNumbers($validator);
+
             $rawJson = self::rawRequestBody($validator);
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
@@ -9554,6 +9955,63 @@ final class ContainerAliases extends Data
         }
 
         return $content;
+    }
+
+    /**
+     * Adds an error for every integer or number path that holds a boolean. Laravel's `integer` rule reads
+     * `true` through `filter_var()` as 1, so it passed, and laravel-data then cast it to 1 or stored it
+     * as `true` in an `array<int>`. Read from the validator's data, not the raw body: a boolean is still
+     * a boolean once decoded, so `validateAndCreate($array)` is covered too. A path a rule already
+     * failed is left alone, so one mistake is reported once.
+     */
+    private static function assertNoBooleanNumbers(Validator $validator): void
+    {
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            // A nested class reports its boolean paths too; a boolean there is what the schema asks for.
+            if ($type === 'boolean') {
+                continue;
+            }
+
+            // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
+            $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
+            foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
+                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
+                }
+            }
+        }
+    }
+
+    /**
+     * Every value a (possibly wildcarded) path reaches in decoded data, keyed by the concrete path.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function dataNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+        if (!is_array($node)) {
+            return [];
+        }
+
+        $segment = array_shift($segments);
+        // `*` stands for both an array index and a map key.
+        $keys = $segment === '*' ? array_keys($node) : (array_key_exists($segment, $node) ? [$segment] : []);
+        $found = [];
+        foreach ($keys as $key) {
+            $keyPath = $path === '' ? (string)$key : $path . '.' . $key;
+            foreach (self::dataNodesAt($node[$key], $segments, $keyPath) as $deepPath => $deepNode) {
+                $found[$deepPath] = $deepNode;
+            }
+        }
+
+        return $found;
     }
 
     /**
@@ -9629,9 +10087,11 @@ namespace GoldenCorpus;
 use Closure;
 use DateTimeImmutable;
 use Illuminate\Container\Container;
+use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Validator;
 use LogicException;
 use OverflowException;
@@ -9670,9 +10130,11 @@ use function json_decode;
 use function ltrim;
 use function preg_match;
 use function preg_match_all;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
+use function str_replace;
 use function str_starts_with;
 use function strlen;
 use function substr;
@@ -9809,6 +10271,46 @@ final class Containers extends Data
         $this->datesByDay = $datesByDay;
         $this->timestamps = $timestamps;
         $this->tagsByKey = $tagsByKey;
+    }
+
+    /**
+     * Where a discriminated union below this class holds something that is not an object, keyed by path.
+     * laravel-data reads the discriminator out of that value before any rule runs, and a string, a number
+     * or an item's null there was a `TypeError` from `array_key_exists()` — a 500 — where a plain object
+     * property answers 422. Walked along the payload, so it ends where the data does, a union inside a
+     * union member included.
+     *
+     * @internal called by `validate()` and by the classes that hold this one
+     * @param array<array-key, mixed> $node
+     * @return array<string, string>
+     */
+    public static function openApiMorphNodeErrors(array $node, string $path): array
+    {
+        $prefix = $path === '' ? '' : $path . '.';
+        $errors = [];
+        foreach (is_array($node['shapes'] ?? null) ? $node['shapes'] : [] as $key => $item) {
+            $errors += Shape::openApiMorphUnionErrors($item, $prefix . 'shapes.' . $key, true);
+        }
+
+        return $errors;
+    }
+
+    /**
+     * laravel-data's validation, with the check above first: laravel-data builds its rules by resolving
+     * every union in the payload, so the value that breaks that has to be refused before it runs. Those
+     * errors are reported on their own, as the discriminator check of a union base reports its own.
+     *
+     * @param Arrayable<array-key, mixed>|array<array-key, mixed> $payload
+     * @return Arrayable<array-key, mixed>|array<array-key, mixed>
+     */
+    public static function validate(Arrayable|array $payload): Arrayable|array
+    {
+        $errors = self::openApiMorphNodeErrors($payload instanceof Arrayable ? $payload->toArray() : $payload, '');
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
+        }
+
+        return parent::validate($payload);
     }
 
     /**
@@ -9966,6 +10468,8 @@ final class Containers extends Data
                 }
             }
 
+            self::assertNoBooleanNumbers($validator);
+
             $rawJson = self::rawRequestBody($validator);
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
@@ -10008,6 +10512,63 @@ final class Containers extends Data
         }
 
         return $content;
+    }
+
+    /**
+     * Adds an error for every integer or number path that holds a boolean. Laravel's `integer` rule reads
+     * `true` through `filter_var()` as 1, so it passed, and laravel-data then cast it to 1 or stored it
+     * as `true` in an `array<int>`. Read from the validator's data, not the raw body: a boolean is still
+     * a boolean once decoded, so `validateAndCreate($array)` is covered too. A path a rule already
+     * failed is left alone, so one mistake is reported once.
+     */
+    private static function assertNoBooleanNumbers(Validator $validator): void
+    {
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+
+        foreach (self::openApiNestedParts()['scalarPaths'] as $path => $type) {
+            // A nested class reports its boolean paths too; a boolean there is what the schema asks for.
+            if ($type === 'boolean') {
+                continue;
+            }
+
+            // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
+            $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
+            foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
+                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
+                }
+            }
+        }
+    }
+
+    /**
+     * Every value a (possibly wildcarded) path reaches in decoded data, keyed by the concrete path.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function dataNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+        if (!is_array($node)) {
+            return [];
+        }
+
+        $segment = array_shift($segments);
+        // `*` stands for both an array index and a map key.
+        $keys = $segment === '*' ? array_keys($node) : (array_key_exists($segment, $node) ? [$segment] : []);
+        $found = [];
+        foreach ($keys as $key) {
+            $keyPath = $path === '' ? (string)$key : $path . '.' . $key;
+            foreach (self::dataNodesAt($node[$key], $segments, $keyPath) as $deepPath => $deepNode) {
+                $found[$deepPath] = $deepNode;
+            }
+        }
+
+        return $found;
     }
 
     /**
@@ -10443,7 +11004,31 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Illuminate\Validation\Validator;
+use OverflowException;
 use Spatie\LaravelData\Data;
+
+use function array_is_list;
+use function array_key_exists;
+use function array_map;
+use function array_slice;
+use function floor;
+use function get_object_vars;
+use function implode;
+use function is_array;
+use function is_finite;
+use function is_float;
+use function is_int;
+use function is_object;
+use function is_string;
+use function json_encode;
+use function preg_match;
+use function preg_match_all;
+use function sprintf;
+use function str_ends_with;
+use function str_starts_with;
+use function strlen;
+use function substr;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -10459,6 +11044,19 @@ use Spatie\LaravelData\Data;
  */
 final class CountMap extends Data
 {
+    private const array OPENAPI_VALIDATION_CONSTRAINTS = [
+        'fields' => [],
+        'object' => [
+            'properties' => [],
+            'additionalProperties' => [
+                'type' => 'integer',
+                'minimum' => 0,
+            ],
+        ],
+    ];
+
+    private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
+
     public function __construct()
     {
     }
@@ -10476,6 +11074,274 @@ final class CountMap extends Data
     {
         return [
         ];
+    }
+
+    /**
+     * The half of the schema Laravel's rule vocabulary cannot express — composition, conditionals,
+     * `contains`, `unevaluated*`, `content*`, `propertyNames`, `discriminator` — checked against the
+     * raw payload the validator already holds.
+     *
+     * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
+     * own `withValidator()` run, which is why every check above is flattened to a path from the root.
+     */
+    public static function withValidator(Validator $validator): void
+    {
+        $validator->after(static function (Validator $validator): void {
+            /** @var array<string, mixed> $payload */
+            $payload = $validator->getData();
+
+            foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
+                if (!array_key_exists($property, $payload)) {
+                    continue;
+                }
+
+                foreach (self::validateOpenApiNode($payload[$property], $schema, $property, 0) as $error) {
+                    self::addOpenApiFieldError($validator, $property, $payload[$property], $error);
+                }
+            }
+
+            // What the document states about the OBJECT rather than about one property:
+            // `minProperties`, `dependentRequired`, `not`, a top-level conditional. It is asked of the
+            // whole payload, so it is keyed `payload` — or by the property it names. `properties` and
+            // `required` are not in this schema — the rule map owns them — so
+            // nothing here is reported twice.
+            foreach (self::validateOpenApiNode($payload, self::OPENAPI_VALIDATION_CONSTRAINTS['object'], 'payload', 0) as $error) {
+                $validator->errors()->add(self::openApiObjectErrorKey($error), str_ends_with($error, '.') ? $error : $error . '.');
+            }
+        });
+    }
+
+    /**
+     * The error-bag key for a message about the object itself. An undeclared key, or a key a dependency
+     * requires, is the field the client got wrong, so it is named; anything else (`minProperties`, `not`,
+     * a conditional) is about the whole payload. Before 2.15.55 every such error had the key `""` and
+     * a message opening on a space.
+     */
+    private static function openApiObjectErrorKey(string $error): string
+    {
+        if (preg_match('/^payload has (?:additional|unevaluated) property "(.*)" which is not allowed/s', $error, $match) === 1) {
+            return $match[1];
+        }
+
+        // `field "region" is required when code is present` — a dependency names the property it is about.
+        return preg_match('/^field "([^"]+)"/', $error, $match) === 1 ? $match[1] : 'payload';
+    }
+
+    /**
+     * Reports an interpreter message under the field it is about, as Laravel's own rules do: a key
+     * missing deep inside a union lands on `shape.radius`, a list item on `levels.0` — the message
+     * opens with that path. Before 2.15.91 every one of them was keyed by the top-level property.
+     *
+     * A claim a Laravel rule also makes — a missing key, a wrong type, a value outside an enum — is
+     * reported AS that rule, so it reads like the rest of the error bag and the application's
+     * translations apply. Anything else keeps the interpreter's sentence.
+     *
+     * A path the payload does not lead along — one into a JSON string's decoded `contentSchema` — is not
+     * a field of the request, so that message stays on the property with its own sentence.
+     */
+    private static function addOpenApiFieldError(Validator $validator, string $property, mixed $value, string $error): void
+    {
+        // `shape.radius is required`, `levels[0] must be one of: 1, 2`: the deeper segments, then the claim.
+        $rest = str_starts_with($error, $property) ? substr($error, strlen($property)) : '';
+        if (preg_match('/^((?:\.[^ .\[]+|\[\d+\])*) (.+)$/s', $rest, $match) !== 1) {
+            $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
+
+            return;
+        }
+
+        preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
+        $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
+        $node = $value;
+        foreach (array_slice($segments, 0, -1) as $segment) {
+            if (!is_array($node) || !array_key_exists($segment, $node)) {
+                $node = null;
+                break;
+            }
+            $node = $node[$segment];
+        }
+        if ($segments !== [] && !is_array($node)) {
+            $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
+
+            return;
+        }
+
+        $path = implode('.', [$property, ...$segments]);
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
+            return;
+        }
+
+        $rule = match ($claim) {
+            'is required' => 'present',
+            'must be of type integer' => 'integer',
+            'must be of type number' => 'numeric',
+            'must be of type string' => 'string',
+            'must be of type boolean' => 'boolean',
+            'must be of type array' => 'list',
+            'must be of type object' => 'array',
+            default => str_starts_with($claim, 'must be one of: ') ? 'enum' : null,
+        };
+
+        if ($rule !== null) {
+            $validator->addFailure($path, $rule);
+
+            return;
+        }
+
+        $validator->errors()->add($path, str_ends_with($error, '.') ? $error : $error . '.');
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private static function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
+    {
+        if ($depth > 0) {
+            return self::validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return self::validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private static function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
+        if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
+        }
+
+        $errors = [];
+        $normalizedValue = $value;
+        $structuredValue = self::normalizeOpenApiStructuralValue($value);
+
+        if (array_key_exists('type', $schema)) {
+            $typeConstraint = $schema['type'];
+            if (is_string($typeConstraint)) {
+                if (!self::matchesOpenApiCallbackType($normalizedValue, $typeConstraint)) {
+                    $errors[] = sprintf('%s must be of type %s', $path, $typeConstraint);
+                }
+            }
+        }
+
+        if ((is_int($normalizedValue) || is_float($normalizedValue)) && self::schemaHasAnyOpenApiKey($schema, ['minimum'])) {
+            $minimum = self::toNumericConstraint($schema['minimum'] ?? null);
+            if ($minimum !== null && !($normalizedValue >= $minimum)) {
+                $errors[] = sprintf('%s must be greater than or equal to %s', $path, self::stringifyOpenApiNumber($minimum));
+            }
+        }
+
+        $definedProperties = [];
+        $patternMatchedProperties = [];
+
+        if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
+            foreach ($schema['properties'] as $propertyName => $propertySchema) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
+                    continue;
+                }
+                $definedProperties[$propertyName] = true;
+                if (!array_key_exists($propertyName, $structuredValue)) {
+                    continue;
+                }
+                $errors = [
+                    ...$errors,
+                    ...self::validateOpenApiNode($structuredValue[$propertyName], $propertySchema, self::openApiChildPath($path, $propertyName), $depth + 1),
+                ];
+            }
+        }
+
+        if (is_array($structuredValue)) {
+            $extraPropertySchema = $schema['additionalProperties'] ?? null;
+            $unevaluatedProperties = $schema['unevaluatedProperties'] ?? null;
+            $evaluatedProperties = [...$definedProperties, ...$patternMatchedProperties];
+
+            if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
+                foreach ($structuredValue as $propertyName => $propertyValue) {
+                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
+                        continue;
+                    }
+                    $propertyName = (string)$propertyName;
+                    if ($extraPropertySchema === false) {
+                        $errors[] = sprintf('%s has additional property "%s" which is not allowed', $path, $propertyName);
+                        continue;
+                    }
+                    $errors = [
+                        ...$errors,
+                        ...self::validateOpenApiNode($propertyValue, $extraPropertySchema, self::openApiChildPath($path, $propertyName), $depth + 1),
+                    ];
+                    $evaluatedProperties[$propertyName] = true;
+                }
+            }
+        }
+
+        return $errors;
+    }
+
+    private static function matchesOpenApiCallbackType(mixed $value, mixed $type): bool
+    {
+        if (!is_string($type) || $type === '') {
+            return true;
+        }
+
+        return match ($type) {
+            'integer' => is_int($value) || (is_float($value) && is_finite($value) && floor($value) === $value),
+            default => true,
+        };
+    }
+
+    private static function normalizeOpenApiStructuralValue(mixed $value): mixed
+    {
+        if (is_array($value) || !is_object($value)) {
+            return $value;
+        }
+
+        // Any other object: only its public state is visible, under PHP property names.
+        return get_object_vars($value);
+    }
+
+    private static function openApiChildPath(string $path, string $propertyName): string
+    {
+        // The first level names the field the way the runtime validator's caller does, so both
+        // modes report the same subject: `field "tags" must ...`.
+        return $path === 'payload'
+            ? sprintf('field "%s"', $propertyName)
+            : $path . '.' . $propertyName;
+    }
+
+    /**
+     * @param array<int, string> $keys
+     */
+    private static function schemaHasAnyOpenApiKey(array $schema, array $keys): bool
+    {
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $schema)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static function toNumericConstraint(mixed $value): int|float|null
+    {
+        return is_int($value) || is_float($value) ? $value : null;
+    }
+
+    private static function stringifyOpenApiNumber(int|float $value): string
+    {
+        $rendered = json_encode($value);
+        return is_string($rendered) ? $rendered : (string)$value;
     }
 }
 
@@ -10495,7 +11361,9 @@ use Spatie\LaravelData\Attributes\PropertyForMorph;
 use Spatie\LaravelData\Contracts\PropertyMorphableData;
 use Spatie\LaravelData\Data;
 
+use function get_debug_type;
 use function is_array;
+use function sprintf;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -10576,6 +11444,25 @@ abstract class Discriminator extends Data implements PropertyMorphableData
             ['type' => ['required', Rule::in(['discriminator1', 'discriminator2'])]],
         )->validate();
     }
+
+    /**
+     * What is wrong with the value a holder found where this union is expected, keyed by path. laravel-data
+     * reads the discriminator out of that value before any rule runs, and a string or a number there was
+     * a `TypeError` from `array_key_exists()` — a 500 — where a plain object property answers 422. A
+     * property's null is read as an empty payload and left to the rules; a list item or map value is
+     * read as it is, null included.
+     *
+     * @internal called by the classes that hold this union
+     * @return array<string, string>
+     */
+    public static function openApiMorphUnionErrors(mixed $value, string $path, bool $isItem): array
+    {
+        if (!is_array($value)) {
+            return $value === null && !$isItem ? [] : [$path => sprintf('%s expects object, got %s.', $path, get_debug_type($value))];
+        }
+
+        return [];
+    }
 }
 
 ===== Discriminator1.php =====
@@ -10592,7 +11479,14 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 use LogicException;
 
+use function array_key_exists;
+use function array_keys;
+use function array_shift;
+use function is_array;
+use function is_bool;
 use function is_string;
+use function preg_split;
+use function str_replace;
 use function trim;
 
 /**
@@ -10702,6 +11596,86 @@ final class Discriminator1 extends Discriminator
 
         return $rules;
     }
+
+    /**
+     * Paths whose schema is `integer` or `number`, with that type. A `*` segment matches every index of
+     * an array and every key of a map.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'id' => 'integer',
+    ];
+
+    /**
+     * The one value Laravel's rules cannot refuse: a JSON boolean where the schema asks for a number.
+     *
+     * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
+     * own `withValidator()` run, which is why every check above is flattened to a path from the root.
+     */
+    public static function withValidator(Validator $validator): void
+    {
+        $validator->after(static function (Validator $validator): void {
+            self::assertNoBooleanNumbers($validator);
+        });
+    }
+
+    /**
+     * Adds an error for every integer or number path that holds a boolean. Laravel's `integer` rule reads
+     * `true` through `filter_var()` as 1, so it passed, and laravel-data then cast it to 1 or stored it
+     * as `true` in an `array<int>`. Read from the validator's data, not the raw body: a boolean is still
+     * a boolean once decoded, so `validateAndCreate($array)` is covered too. A path a rule already
+     * failed is left alone, so one mistake is reported once.
+     */
+    private static function assertNoBooleanNumbers(Validator $validator): void
+    {
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            // A nested class reports its boolean paths too; a boolean there is what the schema asks for.
+            if ($type === 'boolean') {
+                continue;
+            }
+
+            // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
+            $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
+            foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
+                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
+                }
+            }
+        }
+    }
+
+    /**
+     * Every value a (possibly wildcarded) path reaches in decoded data, keyed by the concrete path.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function dataNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+        if (!is_array($node)) {
+            return [];
+        }
+
+        $segment = array_shift($segments);
+        // `*` stands for both an array index and a map key.
+        $keys = $segment === '*' ? array_keys($node) : (array_key_exists($segment, $node) ? [$segment] : []);
+        $found = [];
+        foreach ($keys as $key) {
+            $keyPath = $path === '' ? (string)$key : $path . '.' . $key;
+            foreach (self::dataNodesAt($node[$key], $segments, $keyPath) as $deepPath => $deepNode) {
+                $found[$deepPath] = $deepNode;
+            }
+        }
+
+        return $found;
+    }
 }
 
 ===== Discriminator2.php =====
@@ -10719,7 +11693,14 @@ use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Attributes\MapName;
 
+use function array_key_exists;
+use function array_keys;
+use function array_shift;
+use function is_array;
+use function is_bool;
 use function is_string;
+use function preg_split;
+use function str_replace;
 use function trim;
 
 /**
@@ -10831,6 +11812,86 @@ final class Discriminator2 extends Discriminator
         };
 
         return $rules;
+    }
+
+    /**
+     * Paths whose schema is `integer` or `number`, with that type. A `*` segment matches every index of
+     * an array and every key of a map.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'id' => 'integer',
+    ];
+
+    /**
+     * The one value Laravel's rules cannot refuse: a JSON boolean where the schema asks for a number.
+     *
+     * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
+     * own `withValidator()` run, which is why every check above is flattened to a path from the root.
+     */
+    public static function withValidator(Validator $validator): void
+    {
+        $validator->after(static function (Validator $validator): void {
+            self::assertNoBooleanNumbers($validator);
+        });
+    }
+
+    /**
+     * Adds an error for every integer or number path that holds a boolean. Laravel's `integer` rule reads
+     * `true` through `filter_var()` as 1, so it passed, and laravel-data then cast it to 1 or stored it
+     * as `true` in an `array<int>`. Read from the validator's data, not the raw body: a boolean is still
+     * a boolean once decoded, so `validateAndCreate($array)` is covered too. A path a rule already
+     * failed is left alone, so one mistake is reported once.
+     */
+    private static function assertNoBooleanNumbers(Validator $validator): void
+    {
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            // A nested class reports its boolean paths too; a boolean there is what the schema asks for.
+            if ($type === 'boolean') {
+                continue;
+            }
+
+            // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
+            $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
+            foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
+                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
+                }
+            }
+        }
+    }
+
+    /**
+     * Every value a (possibly wildcarded) path reaches in decoded data, keyed by the concrete path.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function dataNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+        if (!is_array($node)) {
+            return [];
+        }
+
+        $segment = array_shift($segments);
+        // `*` stands for both an array index and a map key.
+        $keys = $segment === '*' ? array_keys($node) : (array_key_exists($segment, $node) ? [$segment] : []);
+        $found = [];
+        foreach ($keys as $key) {
+            $keyPath = $path === '' ? (string)$key : $path . '.' . $key;
+            foreach (self::dataNodesAt($node[$key], $segments, $keyPath) as $deepPath => $deepNode) {
+                $found[$deepPath] = $deepNode;
+            }
+        }
+
+        return $found;
     }
 }
 
@@ -11313,14 +12374,18 @@ use Spatie\LaravelData\Optional;
 use stdClass;
 
 use function array_key_exists;
+use function array_keys;
 use function array_shift;
 use function explode;
 use function get_object_vars;
 use function is_array;
+use function is_bool;
 use function is_string;
 use function json_decode;
+use function preg_split;
 use function property_exists;
 use function sprintf;
+use function str_replace;
 use function trim;
 
 /**
@@ -11455,6 +12520,17 @@ final class ItemBounds extends Data
     ];
 
     /**
+     * Paths whose schema is `integer` or `number`, with that type. A `*` segment matches every index of
+     * an array and every key of a map.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'scores.*' => 'integer',
+        'scoresByKey.*' => 'integer',
+    ];
+
+    /**
      * The one shape Laravel's rules cannot check: `type: object` given a JSON array.
      *
      * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
@@ -11468,6 +12544,8 @@ final class ItemBounds extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            self::assertNoBooleanNumbers($validator);
+
             $rawJson = self::rawRequestBody($validator);
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
@@ -11510,6 +12588,63 @@ final class ItemBounds extends Data
         }
 
         return $content;
+    }
+
+    /**
+     * Adds an error for every integer or number path that holds a boolean. Laravel's `integer` rule reads
+     * `true` through `filter_var()` as 1, so it passed, and laravel-data then cast it to 1 or stored it
+     * as `true` in an `array<int>`. Read from the validator's data, not the raw body: a boolean is still
+     * a boolean once decoded, so `validateAndCreate($array)` is covered too. A path a rule already
+     * failed is left alone, so one mistake is reported once.
+     */
+    private static function assertNoBooleanNumbers(Validator $validator): void
+    {
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            // A nested class reports its boolean paths too; a boolean there is what the schema asks for.
+            if ($type === 'boolean') {
+                continue;
+            }
+
+            // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
+            $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
+            foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
+                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
+                }
+            }
+        }
+    }
+
+    /**
+     * Every value a (possibly wildcarded) path reaches in decoded data, keyed by the concrete path.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function dataNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+        if (!is_array($node)) {
+            return [];
+        }
+
+        $segment = array_shift($segments);
+        // `*` stands for both an array index and a map key.
+        $keys = $segment === '*' ? array_keys($node) : (array_key_exists($segment, $node) ? [$segment] : []);
+        $found = [];
+        foreach ($keys as $key) {
+            $keyPath = $path === '' ? (string)$key : $path . '.' . $key;
+            foreach (self::dataNodesAt($node[$key], $segments, $keyPath) as $deepPath => $deepNode) {
+                $found[$deepPath] = $deepNode;
+            }
+        }
+
+        return $found;
     }
 
     /**
@@ -11606,6 +12741,7 @@ use function floor;
 use function get_object_vars;
 use function implode;
 use function is_array;
+use function is_bool;
 use function is_finite;
 use function is_float;
 use function is_object;
@@ -11616,10 +12752,12 @@ use function ksort;
 use function pack;
 use function preg_match;
 use function preg_match_all;
+use function preg_split;
 use function property_exists;
 use function serialize;
 use function sprintf;
 use function str_ends_with;
+use function str_replace;
 use function str_starts_with;
 use function strlen;
 use function substr;
@@ -11819,6 +12957,18 @@ final class NestedContainers extends Data
     ];
 
     /**
+     * Paths whose schema is `integer` or `number`, with that type. A `*` segment matches every index of
+     * an array and every key of a map.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'matrix.*.*' => 'integer',
+        'mapsByKey.*.*' => 'integer',
+        'numRows.*.*' => 'number',
+    ];
+
+    /**
      * The half of the schema Laravel's rule vocabulary cannot express — composition, conditionals,
      * `contains`, `unevaluated*`, `content*`, `propertyNames`, `discriminator` — checked against the
      * raw payload the validator already holds.
@@ -11846,6 +12996,8 @@ final class NestedContainers extends Data
                     self::addOpenApiFieldError($validator, $property, $payload[$property], $error);
                 }
             }
+
+            self::assertNoBooleanNumbers($validator);
 
             $rawJson = self::rawRequestBody($validator);
             if ($rawJson !== null && $rawJson !== '') {
@@ -11889,6 +13041,63 @@ final class NestedContainers extends Data
         }
 
         return $content;
+    }
+
+    /**
+     * Adds an error for every integer or number path that holds a boolean. Laravel's `integer` rule reads
+     * `true` through `filter_var()` as 1, so it passed, and laravel-data then cast it to 1 or stored it
+     * as `true` in an `array<int>`. Read from the validator's data, not the raw body: a boolean is still
+     * a boolean once decoded, so `validateAndCreate($array)` is covered too. A path a rule already
+     * failed is left alone, so one mistake is reported once.
+     */
+    private static function assertNoBooleanNumbers(Validator $validator): void
+    {
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            // A nested class reports its boolean paths too; a boolean there is what the schema asks for.
+            if ($type === 'boolean') {
+                continue;
+            }
+
+            // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
+            $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
+            foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
+                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
+                }
+            }
+        }
+    }
+
+    /**
+     * Every value a (possibly wildcarded) path reaches in decoded data, keyed by the concrete path.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function dataNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+        if (!is_array($node)) {
+            return [];
+        }
+
+        $segment = array_shift($segments);
+        // `*` stands for both an array index and a map key.
+        $keys = $segment === '*' ? array_keys($node) : (array_key_exists($segment, $node) ? [$segment] : []);
+        $found = [];
+        foreach ($keys as $key) {
+            $keyPath = $path === '' ? (string)$key : $path . '.' . $key;
+            foreach (self::dataNodesAt($node[$key], $segments, $keyPath) as $deepPath => $deepNode) {
+                $found[$deepPath] = $deepNode;
+            }
+        }
+
+        return $found;
     }
 
     /**
@@ -12186,14 +13395,18 @@ use Spatie\LaravelData\Optional;
 use stdClass;
 
 use function array_key_exists;
+use function array_keys;
 use function array_shift;
 use function explode;
 use function get_object_vars;
 use function is_array;
+use function is_bool;
 use function is_string;
 use function json_decode;
+use function preg_split;
 use function property_exists;
 use function sprintf;
+use function str_replace;
 use function trim;
 
 /**
@@ -12333,6 +13546,17 @@ final class NullableContainerValues extends Data
     ];
 
     /**
+     * Paths whose schema is `integer` or `number`, with that type. A `*` segment matches every index of
+     * an array and every key of a map.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'mapOfNullable.*' => 'integer',
+        'mapOfNullable31.*' => 'integer',
+    ];
+
+    /**
      * The one shape Laravel's rules cannot check: `type: object` given a JSON array.
      *
      * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
@@ -12346,6 +13570,8 @@ final class NullableContainerValues extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            self::assertNoBooleanNumbers($validator);
+
             $rawJson = self::rawRequestBody($validator);
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
@@ -12388,6 +13614,63 @@ final class NullableContainerValues extends Data
         }
 
         return $content;
+    }
+
+    /**
+     * Adds an error for every integer or number path that holds a boolean. Laravel's `integer` rule reads
+     * `true` through `filter_var()` as 1, so it passed, and laravel-data then cast it to 1 or stored it
+     * as `true` in an `array<int>`. Read from the validator's data, not the raw body: a boolean is still
+     * a boolean once decoded, so `validateAndCreate($array)` is covered too. A path a rule already
+     * failed is left alone, so one mistake is reported once.
+     */
+    private static function assertNoBooleanNumbers(Validator $validator): void
+    {
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            // A nested class reports its boolean paths too; a boolean there is what the schema asks for.
+            if ($type === 'boolean') {
+                continue;
+            }
+
+            // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
+            $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
+            foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
+                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
+                }
+            }
+        }
+    }
+
+    /**
+     * Every value a (possibly wildcarded) path reaches in decoded data, keyed by the concrete path.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function dataNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+        if (!is_array($node)) {
+            return [];
+        }
+
+        $segment = array_shift($segments);
+        // `*` stands for both an array index and a map key.
+        $keys = $segment === '*' ? array_keys($node) : (array_key_exists($segment, $node) ? [$segment] : []);
+        $found = [];
+        foreach ($keys as $key) {
+            $keyPath = $path === '' ? (string)$key : $path . '.' . $key;
+            foreach (self::dataNodesAt($node[$key], $segments, $keyPath) as $deepPath => $deepNode) {
+                $found[$deepPath] = $deepNode;
+            }
+        }
+
+        return $found;
     }
 
     /**
@@ -13109,14 +14392,19 @@ use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 
 use function array_key_exists;
+use function array_keys;
 use function array_map;
+use function array_shift;
 use function array_slice;
 use function implode;
 use function is_array;
+use function is_bool;
 use function is_string;
 use function preg_match;
 use function preg_match_all;
+use function preg_split;
 use function str_ends_with;
+use function str_replace;
 use function str_starts_with;
 use function strlen;
 use function substr;
@@ -13267,6 +14555,16 @@ final class ReadOnlyFields extends Data
     }
 
     /**
+     * Paths whose schema is `integer` or `number`, with that type. A `*` segment matches every index of
+     * an array and every key of a map.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'serverId' => 'integer',
+    ];
+
+    /**
      * The half of the schema Laravel's rule vocabulary cannot express — composition, conditionals,
      * `contains`, `unevaluated*`, `content*`, `propertyNames`, `discriminator` — checked against the
      * raw payload the validator already holds.
@@ -13289,7 +14587,66 @@ final class ReadOnlyFields extends Data
                     self::addOpenApiFieldError($validator, $property, $payload[$property], $error);
                 }
             }
+
+            self::assertNoBooleanNumbers($validator);
         });
+    }
+
+    /**
+     * Adds an error for every integer or number path that holds a boolean. Laravel's `integer` rule reads
+     * `true` through `filter_var()` as 1, so it passed, and laravel-data then cast it to 1 or stored it
+     * as `true` in an `array<int>`. Read from the validator's data, not the raw body: a boolean is still
+     * a boolean once decoded, so `validateAndCreate($array)` is covered too. A path a rule already
+     * failed is left alone, so one mistake is reported once.
+     */
+    private static function assertNoBooleanNumbers(Validator $validator): void
+    {
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            // A nested class reports its boolean paths too; a boolean there is what the schema asks for.
+            if ($type === 'boolean') {
+                continue;
+            }
+
+            // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
+            $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
+            foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
+                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
+                }
+            }
+        }
+    }
+
+    /**
+     * Every value a (possibly wildcarded) path reaches in decoded data, keyed by the concrete path.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function dataNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+        if (!is_array($node)) {
+            return [];
+        }
+
+        $segment = array_shift($segments);
+        // `*` stands for both an array index and a map key.
+        $keys = $segment === '*' ? array_keys($node) : (array_key_exists($segment, $node) ? [$segment] : []);
+        $found = [];
+        foreach ($keys as $key) {
+            $keyPath = $path === '' ? (string)$key : $path . '.' . $key;
+            foreach (self::dataNodesAt($node[$key], $segments, $keyPath) as $deepPath => $deepNode) {
+                $found[$deepPath] = $deepNode;
+            }
+        }
+
+        return $found;
     }
 
     /**
@@ -13405,7 +14762,14 @@ use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 
+use function array_key_exists;
+use function array_keys;
+use function array_shift;
+use function is_array;
+use function is_bool;
 use function is_string;
+use function preg_split;
+use function str_replace;
 use function trim;
 
 /**
@@ -13513,6 +14877,86 @@ final class RetiredShape extends Data
 
         return $rules;
     }
+
+    /**
+     * Paths whose schema is `integer` or `number`, with that type. A `*` segment matches every index of
+     * an array and every key of a map.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'legacyId' => 'integer',
+    ];
+
+    /**
+     * The one value Laravel's rules cannot refuse: a JSON boolean where the schema asks for a number.
+     *
+     * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
+     * own `withValidator()` run, which is why every check above is flattened to a path from the root.
+     */
+    public static function withValidator(Validator $validator): void
+    {
+        $validator->after(static function (Validator $validator): void {
+            self::assertNoBooleanNumbers($validator);
+        });
+    }
+
+    /**
+     * Adds an error for every integer or number path that holds a boolean. Laravel's `integer` rule reads
+     * `true` through `filter_var()` as 1, so it passed, and laravel-data then cast it to 1 or stored it
+     * as `true` in an `array<int>`. Read from the validator's data, not the raw body: a boolean is still
+     * a boolean once decoded, so `validateAndCreate($array)` is covered too. A path a rule already
+     * failed is left alone, so one mistake is reported once.
+     */
+    private static function assertNoBooleanNumbers(Validator $validator): void
+    {
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            // A nested class reports its boolean paths too; a boolean there is what the schema asks for.
+            if ($type === 'boolean') {
+                continue;
+            }
+
+            // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
+            $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
+            foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
+                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
+                }
+            }
+        }
+    }
+
+    /**
+     * Every value a (possibly wildcarded) path reaches in decoded data, keyed by the concrete path.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function dataNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+        if (!is_array($node)) {
+            return [];
+        }
+
+        $segment = array_shift($segments);
+        // `*` stands for both an array index and a map key.
+        $keys = $segment === '*' ? array_keys($node) : (array_key_exists($segment, $node) ? [$segment] : []);
+        $found = [];
+        foreach ($keys as $key) {
+            $keyPath = $path === '' ? (string)$key : $path . '.' . $key;
+            foreach (self::dataNodesAt($node[$key], $segments, $keyPath) as $deepPath => $deepNode) {
+                $found[$deepPath] = $deepNode;
+            }
+        }
+
+        return $found;
+    }
 }
 
 ===== Shape.php =====
@@ -13530,7 +14974,9 @@ use Spatie\LaravelData\Attributes\PropertyForMorph;
 use Spatie\LaravelData\Contracts\PropertyMorphableData;
 use Spatie\LaravelData\Data;
 
+use function get_debug_type;
 use function is_array;
+use function sprintf;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -13609,6 +15055,25 @@ abstract class Shape extends Data implements PropertyMorphableData
             ['kind' => ['required', Rule::in(['circle', 'square'])]],
         )->validate();
     }
+
+    /**
+     * What is wrong with the value a holder found where this union is expected, keyed by path. laravel-data
+     * reads the discriminator out of that value before any rule runs, and a string or a number there was
+     * a `TypeError` from `array_key_exists()` — a 500 — where a plain object property answers 422. A
+     * property's null is read as an empty payload and left to the rules; a list item or map value is
+     * read as it is, null included.
+     *
+     * @internal called by the classes that hold this union
+     * @return array<string, string>
+     */
+    public static function openApiMorphUnionErrors(mixed $value, string $path, bool $isItem): array
+    {
+        if (!is_array($value)) {
+            return $value === null && !$isItem ? [] : [$path => sprintf('%s expects object, got %s.', $path, get_debug_type($value))];
+        }
+
+        return [];
+    }
 }
 
 ===== Square.php =====
@@ -13624,7 +15089,14 @@ use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Validation\Validator;
 use LogicException;
 
+use function array_key_exists;
+use function array_keys;
+use function array_shift;
+use function is_array;
+use function is_bool;
 use function is_string;
+use function preg_split;
+use function str_replace;
 use function trim;
 
 /**
@@ -13733,6 +15205,86 @@ final class Square extends Shape
 
         return $rules;
     }
+
+    /**
+     * Paths whose schema is `integer` or `number`, with that type. A `*` segment matches every index of
+     * an array and every key of a map.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'side' => 'integer',
+    ];
+
+    /**
+     * The one value Laravel's rules cannot refuse: a JSON boolean where the schema asks for a number.
+     *
+     * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
+     * own `withValidator()` run, which is why every check above is flattened to a path from the root.
+     */
+    public static function withValidator(Validator $validator): void
+    {
+        $validator->after(static function (Validator $validator): void {
+            self::assertNoBooleanNumbers($validator);
+        });
+    }
+
+    /**
+     * Adds an error for every integer or number path that holds a boolean. Laravel's `integer` rule reads
+     * `true` through `filter_var()` as 1, so it passed, and laravel-data then cast it to 1 or stored it
+     * as `true` in an `array<int>`. Read from the validator's data, not the raw body: a boolean is still
+     * a boolean once decoded, so `validateAndCreate($array)` is covered too. A path a rule already
+     * failed is left alone, so one mistake is reported once.
+     */
+    private static function assertNoBooleanNumbers(Validator $validator): void
+    {
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            // A nested class reports its boolean paths too; a boolean there is what the schema asks for.
+            if ($type === 'boolean') {
+                continue;
+            }
+
+            // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
+            $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
+            foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
+                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
+                }
+            }
+        }
+    }
+
+    /**
+     * Every value a (possibly wildcarded) path reaches in decoded data, keyed by the concrete path.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function dataNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+        if (!is_array($node)) {
+            return [];
+        }
+
+        $segment = array_shift($segments);
+        // `*` stands for both an array index and a map key.
+        $keys = $segment === '*' ? array_keys($node) : (array_key_exists($segment, $node) ? [$segment] : []);
+        $found = [];
+        foreach ($keys as $key) {
+            $keyPath = $path === '' ? (string)$key : $path . '.' . $key;
+            foreach (self::dataNodesAt($node[$key], $segments, $keyPath) as $deepPath => $deepNode) {
+                $found[$deepPath] = $deepNode;
+            }
+        }
+
+        return $found;
+    }
 }
 
 ===== Tag.php =====
@@ -13750,9 +15302,16 @@ use LogicException;
 use Spatie\LaravelData\Data;
 
 use function array_column;
+use function array_key_exists;
+use function array_keys;
 use function array_merge;
+use function array_shift;
 use function in_array;
+use function is_array;
+use function is_bool;
 use function is_string;
+use function preg_split;
+use function str_replace;
 use function trim;
 
 /**
@@ -13898,6 +15457,86 @@ final class Tag extends Data
             'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
         ];
     }
+
+    /**
+     * Paths whose schema is `integer` or `number`, with that type. A `*` segment matches every index of
+     * an array and every key of a map.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'id' => 'integer',
+    ];
+
+    /**
+     * The one value Laravel's rules cannot refuse: a JSON boolean where the schema asks for a number.
+     *
+     * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
+     * own `withValidator()` run, which is why every check above is flattened to a path from the root.
+     */
+    public static function withValidator(Validator $validator): void
+    {
+        $validator->after(static function (Validator $validator): void {
+            self::assertNoBooleanNumbers($validator);
+        });
+    }
+
+    /**
+     * Adds an error for every integer or number path that holds a boolean. Laravel's `integer` rule reads
+     * `true` through `filter_var()` as 1, so it passed, and laravel-data then cast it to 1 or stored it
+     * as `true` in an `array<int>`. Read from the validator's data, not the raw body: a boolean is still
+     * a boolean once decoded, so `validateAndCreate($array)` is covered too. A path a rule already
+     * failed is left alone, so one mistake is reported once.
+     */
+    private static function assertNoBooleanNumbers(Validator $validator): void
+    {
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            // A nested class reports its boolean paths too; a boolean there is what the schema asks for.
+            if ($type === 'boolean') {
+                continue;
+            }
+
+            // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
+            $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
+            foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
+                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
+                }
+            }
+        }
+    }
+
+    /**
+     * Every value a (possibly wildcarded) path reaches in decoded data, keyed by the concrete path.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function dataNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+        if (!is_array($node)) {
+            return [];
+        }
+
+        $segment = array_shift($segments);
+        // `*` stands for both an array index and a map key.
+        $keys = $segment === '*' ? array_keys($node) : (array_key_exists($segment, $node) ? [$segment] : []);
+        $found = [];
+        foreach ($keys as $key) {
+            $keyPath = $path === '' ? (string)$key : $path . '.' . $key;
+            foreach (self::dataNodesAt($node[$key], $segments, $keyPath) as $deepPath => $deepNode) {
+                $found[$deepPath] = $deepNode;
+            }
+        }
+
+        return $found;
+    }
 }
 
 ===== Test.php =====
@@ -13914,7 +15553,14 @@ use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 
+use function array_key_exists;
+use function array_keys;
+use function array_shift;
+use function is_array;
+use function is_bool;
 use function is_string;
+use function preg_split;
+use function str_replace;
 use function trim;
 
 /**
@@ -14020,6 +15666,86 @@ final class Test extends Data
 
         return $rules;
     }
+
+    /**
+     * Paths whose schema is `integer` or `number`, with that type. A `*` segment matches every index of
+     * an array and every key of a map.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'id' => 'integer',
+    ];
+
+    /**
+     * The one value Laravel's rules cannot refuse: a JSON boolean where the schema asks for a number.
+     *
+     * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
+     * own `withValidator()` run, which is why every check above is flattened to a path from the root.
+     */
+    public static function withValidator(Validator $validator): void
+    {
+        $validator->after(static function (Validator $validator): void {
+            self::assertNoBooleanNumbers($validator);
+        });
+    }
+
+    /**
+     * Adds an error for every integer or number path that holds a boolean. Laravel's `integer` rule reads
+     * `true` through `filter_var()` as 1, so it passed, and laravel-data then cast it to 1 or stored it
+     * as `true` in an `array<int>`. Read from the validator's data, not the raw body: a boolean is still
+     * a boolean once decoded, so `validateAndCreate($array)` is covered too. A path a rule already
+     * failed is left alone, so one mistake is reported once.
+     */
+    private static function assertNoBooleanNumbers(Validator $validator): void
+    {
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            // A nested class reports its boolean paths too; a boolean there is what the schema asks for.
+            if ($type === 'boolean') {
+                continue;
+            }
+
+            // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
+            $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
+            foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
+                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
+                }
+            }
+        }
+    }
+
+    /**
+     * Every value a (possibly wildcarded) path reaches in decoded data, keyed by the concrete path.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function dataNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+        if (!is_array($node)) {
+            return [];
+        }
+
+        $segment = array_shift($segments);
+        // `*` stands for both an array index and a map key.
+        $keys = $segment === '*' ? array_keys($node) : (array_key_exists($segment, $node) ? [$segment] : []);
+        $found = [];
+        foreach ($keys as $key) {
+            $keyPath = $path === '' ? (string)$key : $path . '.' . $key;
+            foreach (self::dataNodesAt($node[$key], $segments, $keyPath) as $deepPath => $deepNode) {
+                $found[$deepPath] = $deepNode;
+            }
+        }
+
+        return $found;
+    }
 }
 
 ===== Test2.php =====
@@ -14069,9 +15795,11 @@ use function is_string;
 use function json_decode;
 use function preg_match;
 use function preg_match_all;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
+use function str_replace;
 use function str_starts_with;
 use function strlen;
 use function substr;
@@ -14129,8 +15857,14 @@ final class Test2 extends Data
         'User@rules' => [
             'properties' => [
                 'pet' => [
-                    'x-openapi-recurse' => 'Animal2@rules',
-                    'nullable' => true,
+                    'anyOf' => [
+                        [
+                            'type' => 'null',
+                        ],
+                        [
+                            'x-openapi-recurse' => 'Animal2@rules',
+                        ],
+                    ],
                 ],
             ],
             'required' => [
@@ -14143,48 +15877,81 @@ final class Test2 extends Data
         'Animal2@rules' => [
             'anyOf' => [
                 [
-                    'type' => 'object',
-                    'properties' => [
-                        'name' => [
-                            'type' => 'string',
+                    'allOf' => [
+                        [
+                            'type' => 'object',
+                            'required' => [
+                                'name',
+                            ],
+                            'properties' => [
+                                'name' => [
+                                    'type' => 'string',
+                                ],
+                            ],
                         ],
-                        'meow' => [
-                            'type' => 'string',
+                        [
+                            'type' => 'object',
+                            'required' => [
+                                'meow',
+                            ],
+                            'properties' => [
+                                'meow' => [
+                                    'type' => 'string',
+                                ],
+                            ],
                         ],
-                    ],
-                    'required' => [
-                        'name',
-                        'meow',
                     ],
                 ],
                 [
-                    'type' => 'object',
-                    'properties' => [
-                        'name' => [
-                            'type' => 'string',
+                    'allOf' => [
+                        [
+                            'type' => 'object',
+                            'required' => [
+                                'name',
+                            ],
+                            'properties' => [
+                                'name' => [
+                                    'type' => 'string',
+                                ],
+                            ],
                         ],
-                        'bark' => [
-                            'type' => 'string',
+                        [
+                            'type' => 'object',
+                            'required' => [
+                                'bark',
+                            ],
+                            'properties' => [
+                                'bark' => [
+                                    'type' => 'string',
+                                ],
+                            ],
                         ],
-                    ],
-                    'required' => [
-                        'name',
-                        'bark',
                     ],
                 ],
                 [
-                    'type' => 'object',
-                    'properties' => [
-                        'name' => [
-                            'type' => 'string',
+                    'allOf' => [
+                        [
+                            'type' => 'object',
+                            'required' => [
+                                'name',
+                            ],
+                            'properties' => [
+                                'name' => [
+                                    'type' => 'string',
+                                ],
+                            ],
                         ],
-                        'bark' => [
-                            'type' => 'string',
+                        [
+                            'type' => 'object',
+                            'required' => [
+                                'bark',
+                            ],
+                            'properties' => [
+                                'bark' => [
+                                    'type' => 'string',
+                                ],
+                            ],
                         ],
-                    ],
-                    'required' => [
-                        'name',
-                        'bark',
                     ],
                 ],
                 [
@@ -14367,6 +16134,16 @@ final class Test2 extends Data
     ];
 
     /**
+     * Paths whose schema is `integer` or `number`, with that type. A `*` segment matches every index of
+     * an array and every key of a map.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'id' => 'integer',
+    ];
+
+    /**
      * The half of the schema Laravel's rule vocabulary cannot express — composition, conditionals,
      * `contains`, `unevaluated*`, `content*`, `propertyNames`, `discriminator` — checked against the
      * raw payload the validator already holds.
@@ -14394,6 +16171,8 @@ final class Test2 extends Data
                     self::addOpenApiFieldError($validator, $property, $payload[$property], $error);
                 }
             }
+
+            self::assertNoBooleanNumbers($validator);
 
             $rawJson = self::rawRequestBody($validator);
             if ($rawJson !== null && $rawJson !== '') {
@@ -14437,6 +16216,63 @@ final class Test2 extends Data
         }
 
         return $content;
+    }
+
+    /**
+     * Adds an error for every integer or number path that holds a boolean. Laravel's `integer` rule reads
+     * `true` through `filter_var()` as 1, so it passed, and laravel-data then cast it to 1 or stored it
+     * as `true` in an `array<int>`. Read from the validator's data, not the raw body: a boolean is still
+     * a boolean once decoded, so `validateAndCreate($array)` is covered too. A path a rule already
+     * failed is left alone, so one mistake is reported once.
+     */
+    private static function assertNoBooleanNumbers(Validator $validator): void
+    {
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+
+        foreach ([...self::OPENAPI_SCALAR_PATHS, ...self::openApiNestedParts()['scalarPaths']] as $path => $type) {
+            // A nested class reports its boolean paths too; a boolean there is what the schema asks for.
+            if ($type === 'boolean') {
+                continue;
+            }
+
+            // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
+            $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
+            foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
+                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
+                }
+            }
+        }
+    }
+
+    /**
+     * Every value a (possibly wildcarded) path reaches in decoded data, keyed by the concrete path.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function dataNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+        if (!is_array($node)) {
+            return [];
+        }
+
+        $segment = array_shift($segments);
+        // `*` stands for both an array index and a map key.
+        $keys = $segment === '*' ? array_keys($node) : (array_key_exists($segment, $node) ? [$segment] : []);
+        $found = [];
+        foreach ($keys as $key) {
+            $keyPath = $path === '' ? (string)$key : $path . '.' . $key;
+            foreach (self::dataNodesAt($node[$key], $segments, $keyPath) as $deepPath => $deepNode) {
+                $found[$deepPath] = $deepNode;
+            }
+        }
+
+        return $found;
     }
 
     /**
@@ -14655,6 +16491,16 @@ final class Test2 extends Data
             }
         }
 
+        if (is_array($schema['allOf'] ?? null)) {
+            foreach ($schema['allOf'] as $branch) {
+                if (!is_array($branch)) {
+                    continue;
+                }
+
+                $errors = [...$errors, ...self::validateOpenApiNode($value, $branch, $path, $depth + 1)];
+            }
+        }
+
         if (is_array($schema['anyOf'] ?? null)) {
             $anyOfMatched = false;
             $anyOfErrors = [];
@@ -14753,6 +16599,7 @@ final class Test2 extends Data
         return match ($type) {
             'string' => is_string($value),
             'object' => is_array($value) || is_object($value),
+            'null' => $value === null,
             default => true,
         };
     }
@@ -14982,10 +16829,15 @@ use LogicException;
 use Spatie\LaravelData\Data;
 
 use function array_key_exists;
+use function array_keys;
+use function array_shift;
 use function is_array;
+use function is_bool;
 use function is_string;
 use function json_decode;
 use function ltrim;
+use function preg_split;
+use function str_replace;
 use function str_starts_with;
 use function trim;
 
@@ -15098,7 +16950,17 @@ final class TestPatchRequest extends Data
     }
 
     /**
-     * The one shape Laravel's rules cannot check: a JSON array sent for the object this body is.
+     * Paths whose schema is `integer` or `number`, with that type. A `*` segment matches every index of
+     * an array and every key of a map.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'id' => 'integer',
+    ];
+
+    /**
+     * The one value Laravel's rules cannot refuse: a JSON boolean where the schema asks for a number.
      *
      * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
      * own `withValidator()` run, which is why every check above is flattened to a path from the root.
@@ -15106,6 +16968,8 @@ final class TestPatchRequest extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            self::assertNoBooleanNumbers($validator);
+
             $rawJson = self::rawRequestBody($validator);
             // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
             // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty object, as it is
@@ -15155,6 +17019,63 @@ final class TestPatchRequest extends Data
 
         return $content;
     }
+
+    /**
+     * Adds an error for every integer or number path that holds a boolean. Laravel's `integer` rule reads
+     * `true` through `filter_var()` as 1, so it passed, and laravel-data then cast it to 1 or stored it
+     * as `true` in an `array<int>`. Read from the validator's data, not the raw body: a boolean is still
+     * a boolean once decoded, so `validateAndCreate($array)` is covered too. A path a rule already
+     * failed is left alone, so one mistake is reported once.
+     */
+    private static function assertNoBooleanNumbers(Validator $validator): void
+    {
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            // A nested class reports its boolean paths too; a boolean there is what the schema asks for.
+            if ($type === 'boolean') {
+                continue;
+            }
+
+            // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
+            $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
+            foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
+                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
+                }
+            }
+        }
+    }
+
+    /**
+     * Every value a (possibly wildcarded) path reaches in decoded data, keyed by the concrete path.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function dataNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+        if (!is_array($node)) {
+            return [];
+        }
+
+        $segment = array_shift($segments);
+        // `*` stands for both an array index and a map key.
+        $keys = $segment === '*' ? array_keys($node) : (array_key_exists($segment, $node) ? [$segment] : []);
+        $found = [];
+        foreach ($keys as $key) {
+            $keyPath = $path === '' ? (string)$key : $path . '.' . $key;
+            foreach (self::dataNodesAt($node[$key], $segments, $keyPath) as $deepPath => $deepNode) {
+                $found[$deepPath] = $deepNode;
+            }
+        }
+
+        return $found;
+    }
 }
 
 ===== TestPostRequest.php =====
@@ -15180,6 +17101,7 @@ use function array_key_exists;
 use function array_keys;
 use function array_map;
 use function array_pop;
+use function array_shift;
 use function array_slice;
 use function array_unique;
 use function array_values;
@@ -15202,10 +17124,12 @@ use function ltrim;
 use function preg_match;
 use function preg_match_all;
 use function preg_replace;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_contains;
 use function str_ends_with;
+use function str_replace;
 use function str_starts_with;
 use function strlen;
 use function substr;
@@ -15357,6 +17281,16 @@ final class TestPostRequest extends Data
     }
 
     /**
+     * Paths whose schema is `integer` or `number`, with that type. A `*` segment matches every index of
+     * an array and every key of a map.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'id' => 'integer',
+    ];
+
+    /**
      * The half of the schema Laravel's rule vocabulary cannot express — composition, conditionals,
      * `contains`, `unevaluated*`, `content*`, `propertyNames`, `discriminator` — checked against the
      * raw payload the validator already holds.
@@ -15379,6 +17313,8 @@ final class TestPostRequest extends Data
                     self::addOpenApiFieldError($validator, $property, $payload[$property], $error);
                 }
             }
+
+            self::assertNoBooleanNumbers($validator);
 
             $rawJson = self::rawRequestBody($validator);
             // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
@@ -15428,6 +17364,63 @@ final class TestPostRequest extends Data
         }
 
         return $content;
+    }
+
+    /**
+     * Adds an error for every integer or number path that holds a boolean. Laravel's `integer` rule reads
+     * `true` through `filter_var()` as 1, so it passed, and laravel-data then cast it to 1 or stored it
+     * as `true` in an `array<int>`. Read from the validator's data, not the raw body: a boolean is still
+     * a boolean once decoded, so `validateAndCreate($array)` is covered too. A path a rule already
+     * failed is left alone, so one mistake is reported once.
+     */
+    private static function assertNoBooleanNumbers(Validator $validator): void
+    {
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            // A nested class reports its boolean paths too; a boolean there is what the schema asks for.
+            if ($type === 'boolean') {
+                continue;
+            }
+
+            // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
+            $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
+            foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
+                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
+                }
+            }
+        }
+    }
+
+    /**
+     * Every value a (possibly wildcarded) path reaches in decoded data, keyed by the concrete path.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function dataNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+        if (!is_array($node)) {
+            return [];
+        }
+
+        $segment = array_shift($segments);
+        // `*` stands for both an array index and a map key.
+        $keys = $segment === '*' ? array_keys($node) : (array_key_exists($segment, $node) ? [$segment] : []);
+        $found = [];
+        foreach ($keys as $key) {
+            $keyPath = $path === '' ? (string)$key : $path . '.' . $key;
+            foreach (self::dataNodesAt($node[$key], $segments, $keyPath) as $deepPath => $deepNode) {
+                $found[$deepPath] = $deepNode;
+            }
+        }
+
+        return $found;
     }
 
     /**
@@ -18150,6 +20143,7 @@ use function array_column;
 use function array_diff_key;
 use function array_is_list;
 use function array_key_exists;
+use function array_keys;
 use function array_map;
 use function array_merge;
 use function array_pop;
@@ -18170,9 +20164,11 @@ use function is_string;
 use function json_decode;
 use function preg_match;
 use function preg_match_all;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
+use function str_replace;
 use function str_starts_with;
 use function strlen;
 use function substr;
@@ -18195,8 +20191,14 @@ final class User extends Data
     private const array OPENAPI_VALIDATION_CONSTRAINTS = [
         'fields' => [
             'pet' => [
-                'x-openapi-recurse' => 'Animal2@rules',
-                'nullable' => true,
+                'anyOf' => [
+                    [
+                        'type' => 'null',
+                    ],
+                    [
+                        'x-openapi-recurse' => 'Animal2@rules',
+                    ],
+                ],
             ],
         ],
         'object' => [],
@@ -18213,48 +20215,81 @@ final class User extends Data
         'Animal2@rules' => [
             'anyOf' => [
                 [
-                    'type' => 'object',
-                    'properties' => [
-                        'name' => [
-                            'type' => 'string',
+                    'allOf' => [
+                        [
+                            'type' => 'object',
+                            'required' => [
+                                'name',
+                            ],
+                            'properties' => [
+                                'name' => [
+                                    'type' => 'string',
+                                ],
+                            ],
                         ],
-                        'meow' => [
-                            'type' => 'string',
+                        [
+                            'type' => 'object',
+                            'required' => [
+                                'meow',
+                            ],
+                            'properties' => [
+                                'meow' => [
+                                    'type' => 'string',
+                                ],
+                            ],
                         ],
-                    ],
-                    'required' => [
-                        'name',
-                        'meow',
                     ],
                 ],
                 [
-                    'type' => 'object',
-                    'properties' => [
-                        'name' => [
-                            'type' => 'string',
+                    'allOf' => [
+                        [
+                            'type' => 'object',
+                            'required' => [
+                                'name',
+                            ],
+                            'properties' => [
+                                'name' => [
+                                    'type' => 'string',
+                                ],
+                            ],
                         ],
-                        'bark' => [
-                            'type' => 'string',
+                        [
+                            'type' => 'object',
+                            'required' => [
+                                'bark',
+                            ],
+                            'properties' => [
+                                'bark' => [
+                                    'type' => 'string',
+                                ],
+                            ],
                         ],
-                    ],
-                    'required' => [
-                        'name',
-                        'bark',
                     ],
                 ],
                 [
-                    'type' => 'object',
-                    'properties' => [
-                        'name' => [
-                            'type' => 'string',
+                    'allOf' => [
+                        [
+                            'type' => 'object',
+                            'required' => [
+                                'name',
+                            ],
+                            'properties' => [
+                                'name' => [
+                                    'type' => 'string',
+                                ],
+                            ],
                         ],
-                        'bark' => [
-                            'type' => 'string',
+                        [
+                            'type' => 'object',
+                            'required' => [
+                                'bark',
+                            ],
+                            'properties' => [
+                                'bark' => [
+                                    'type' => 'string',
+                                ],
+                            ],
                         ],
-                    ],
-                    'required' => [
-                        'name',
-                        'bark',
                     ],
                 ],
                 [
@@ -18423,6 +20458,16 @@ final class User extends Data
     ];
 
     /**
+     * Paths whose schema is `integer` or `number`, with that type. A `*` segment matches every index of
+     * an array and every key of a map.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'id' => 'integer',
+    ];
+
+    /**
      * The half of the schema Laravel's rule vocabulary cannot express — composition, conditionals,
      * `contains`, `unevaluated*`, `content*`, `propertyNames`, `discriminator` — checked against the
      * raw payload the validator already holds.
@@ -18450,6 +20495,8 @@ final class User extends Data
                     self::addOpenApiFieldError($validator, $property, $payload[$property], $error);
                 }
             }
+
+            self::assertNoBooleanNumbers($validator);
 
             $rawJson = self::rawRequestBody($validator);
             if ($rawJson !== null && $rawJson !== '') {
@@ -18493,6 +20540,63 @@ final class User extends Data
         }
 
         return $content;
+    }
+
+    /**
+     * Adds an error for every integer or number path that holds a boolean. Laravel's `integer` rule reads
+     * `true` through `filter_var()` as 1, so it passed, and laravel-data then cast it to 1 or stored it
+     * as `true` in an `array<int>`. Read from the validator's data, not the raw body: a boolean is still
+     * a boolean once decoded, so `validateAndCreate($array)` is covered too. A path a rule already
+     * failed is left alone, so one mistake is reported once.
+     */
+    private static function assertNoBooleanNumbers(Validator $validator): void
+    {
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            // A nested class reports its boolean paths too; a boolean there is what the schema asks for.
+            if ($type === 'boolean') {
+                continue;
+            }
+
+            // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
+            $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
+            foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
+                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
+                }
+            }
+        }
+    }
+
+    /**
+     * Every value a (possibly wildcarded) path reaches in decoded data, keyed by the concrete path.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function dataNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+        if (!is_array($node)) {
+            return [];
+        }
+
+        $segment = array_shift($segments);
+        // `*` stands for both an array index and a map key.
+        $keys = $segment === '*' ? array_keys($node) : (array_key_exists($segment, $node) ? [$segment] : []);
+        $found = [];
+        foreach ($keys as $key) {
+            $keyPath = $path === '' ? (string)$key : $path . '.' . $key;
+            foreach (self::dataNodesAt($node[$key], $segments, $keyPath) as $deepPath => $deepNode) {
+                $found[$deepPath] = $deepNode;
+            }
+        }
+
+        return $found;
     }
 
     /**
@@ -18660,7 +20764,7 @@ final class User extends Data
         $normalizedValue = $value;
         $structuredValue = self::normalizeOpenApiStructuralValue($value);
 
-        if (array_key_exists('type', $schema) && !($value === null && ($schema['nullable'] ?? false) === true)) {
+        if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
             if (is_string($typeConstraint)) {
                 if (!self::matchesOpenApiCallbackType($normalizedValue, $typeConstraint)) {
@@ -18691,6 +20795,16 @@ final class User extends Data
                     ...$errors,
                     ...self::validateOpenApiNode($structuredValue[$propertyName], $propertySchema, self::openApiChildPath($path, $propertyName), $depth + 1),
                 ];
+            }
+        }
+
+        if (is_array($schema['allOf'] ?? null)) {
+            foreach ($schema['allOf'] as $branch) {
+                if (!is_array($branch)) {
+                    continue;
+                }
+
+                $errors = [...$errors, ...self::validateOpenApiNode($value, $branch, $path, $depth + 1)];
             }
         }
 
@@ -18792,6 +20906,7 @@ final class User extends Data
         return match ($type) {
             'string' => is_string($value),
             'object' => is_array($value) || is_object($value),
+            'null' => $value === null,
             default => true,
         };
     }
@@ -18843,6 +20958,7 @@ use stdClass;
 use function array_column;
 use function array_diff_key;
 use function array_key_exists;
+use function array_keys;
 use function array_map;
 use function array_merge;
 use function array_shift;
@@ -18851,14 +20967,17 @@ use function explode;
 use function get_object_vars;
 use function implode;
 use function is_array;
+use function is_bool;
 use function is_object;
 use function is_string;
 use function json_decode;
 use function preg_match;
 use function preg_match_all;
+use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_ends_with;
+use function str_replace;
 use function str_starts_with;
 use function strlen;
 use function substr;
@@ -18912,9 +21031,7 @@ final class User2 extends Data
             'required' => [
                 'name',
                 'meow',
-                'name',
                 'bark',
-                'test',
                 'test',
             ],
         ],
@@ -19051,6 +21168,16 @@ final class User2 extends Data
     ];
 
     /**
+     * Paths whose schema is `integer` or `number`, with that type. A `*` segment matches every index of
+     * an array and every key of a map.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+        'id' => 'integer',
+    ];
+
+    /**
      * The half of the schema Laravel's rule vocabulary cannot express — composition, conditionals,
      * `contains`, `unevaluated*`, `content*`, `propertyNames`, `discriminator` — checked against the
      * raw payload the validator already holds.
@@ -19078,6 +21205,8 @@ final class User2 extends Data
                     self::addOpenApiFieldError($validator, $property, $payload[$property], $error);
                 }
             }
+
+            self::assertNoBooleanNumbers($validator);
 
             $rawJson = self::rawRequestBody($validator);
             if ($rawJson !== null && $rawJson !== '') {
@@ -19121,6 +21250,63 @@ final class User2 extends Data
         }
 
         return $content;
+    }
+
+    /**
+     * Adds an error for every integer or number path that holds a boolean. Laravel's `integer` rule reads
+     * `true` through `filter_var()` as 1, so it passed, and laravel-data then cast it to 1 or stored it
+     * as `true` in an `array<int>`. Read from the validator's data, not the raw body: a boolean is still
+     * a boolean once decoded, so `validateAndCreate($array)` is covered too. A path a rule already
+     * failed is left alone, so one mistake is reported once.
+     */
+    private static function assertNoBooleanNumbers(Validator $validator): void
+    {
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+
+        foreach (self::OPENAPI_SCALAR_PATHS as $path => $type) {
+            // A nested class reports its boolean paths too; a boolean there is what the schema asks for.
+            if ($type === 'boolean') {
+                continue;
+            }
+
+            // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
+            $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
+            foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
+                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
+                }
+            }
+        }
+    }
+
+    /**
+     * Every value a (possibly wildcarded) path reaches in decoded data, keyed by the concrete path.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function dataNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+        if (!is_array($node)) {
+            return [];
+        }
+
+        $segment = array_shift($segments);
+        // `*` stands for both an array index and a map key.
+        $keys = $segment === '*' ? array_keys($node) : (array_key_exists($segment, $node) ? [$segment] : []);
+        $found = [];
+        foreach ($keys as $key) {
+            $keyPath = $path === '' ? (string)$key : $path . '.' . $key;
+            foreach (self::dataNodesAt($node[$key], $segments, $keyPath) as $deepPath => $deepNode) {
+                $found[$deepPath] = $deepNode;
+            }
+        }
+
+        return $found;
     }
 
     /**
@@ -19481,9 +21667,7 @@ final class User2Pet extends Data
                 'rules' => [
                     $prefix . '.name' => self::withBlankStringValidation(['string']),
                     $prefix . '.meow' => self::withBlankStringValidation(['string']),
-                    $prefix . '.name' => self::withBlankStringValidation(['string']),
                     $prefix . '.bark' => self::withBlankStringValidation(['string']),
-                    $prefix . '.test' => self::withBlankStringValidation(['string']),
                     $prefix . '.test' => self::withBlankStringValidation(['string']),
                 ],
                 'objectPaths' => [

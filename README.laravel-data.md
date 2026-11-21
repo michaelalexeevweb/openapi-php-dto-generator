@@ -324,6 +324,11 @@ property in the document instead if you rely on partials there.
 All measured and pinned; the full table with reasons is in
 [README.support-matrix.md](README.support-matrix.md#divergences). In short, laravel-data:
 
+- ignores an inline `discriminator` written on a property (`oneOf` + `discriminator` with no component
+  base): the first member is validated and built. laravel-data dispatches through an abstract morph base,
+  and only a component union gets one — write the union as a component and reference it;
+- checks the extra keys `additionalProperties: {schema}` admits but does not keep them: the `Data` class
+  holds declared properties only, so a valid extra key is not in `toArray()`;
 - keeps the PHP array where runtime casts a map to `stdClass`, so an empty map encodes as `[]` rather
   than `{}` — the same difference Symfony mode has, for the same reason;
 - drops sub-second precision from a `format: date-time` **response** (its transformer takes one format

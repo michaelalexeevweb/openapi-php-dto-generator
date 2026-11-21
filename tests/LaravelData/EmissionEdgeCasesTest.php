@@ -58,9 +58,9 @@ final class EmissionEdgeCasesTest extends TestCase
         $parameters = (new ReflectionClass($namespace . '\Probe'))->getConstructor()?->getParameters() ?? [];
         $this->assertSame('any', $parameters[1]->getName());
         $this->assertSame(
-            'mixed',
-            (string)$parameters[1]->getType(),
-            'a union with mixed in it is a compile-time error, so this must stay standalone',
+            expected: 'mixed',
+            actual: (string)$parameters[1]->getType(),
+            message: 'a union with mixed in it is a compile-time error, so this must stay standalone',
         );
     }
 
@@ -96,15 +96,15 @@ final class EmissionEdgeCasesTest extends TestCase
         $fqcn = $namespace . '\Probe';
 
         $absent = LaravelDataContainer::withRequest(
-            '{"keep":"x"}',
-            static fn(Request $request): object => $fqcn::from($request),
+            json: '{"keep":"x"}',
+            work: static fn(Request $request): object => $fqcn::from($request),
         );
         $this->assertNull($absent->any);
         $this->assertNotInstanceOf(Optional::class, $absent->any, 'mixed cannot carry Optional');
 
         $provided = LaravelDataContainer::withRequest(
-            '{"keep":"x","any":{"k":[1,2]}}',
-            static fn(Request $request): object => $fqcn::from($request),
+            json: '{"keep":"x","any":{"k":[1,2]}}',
+            work: static fn(Request $request): object => $fqcn::from($request),
         );
         $this->assertSame(['k' => [1, 2]], $provided->any);
     }
@@ -144,8 +144,8 @@ final class EmissionEdgeCasesTest extends TestCase
         $this->assertStringContainsString('@param array<string, string>|Optional $byDay', $docblock);
 
         $dto = LaravelDataContainer::withRequest(
-            '{"dates":["2026-01-15"],"byDay":{"mon":"2026-01-19"},"at":"2026-02-20"}',
-            static fn(Request $request): object => $fqcn::from($request),
+            json: '{"dates":["2026-01-15"],"byDay":{"mon":"2026-01-19"},"at":"2026-02-20"}',
+            work: static fn(Request $request): object => $fqcn::from($request),
         );
 
         // What the declaration now says, driven rather than read: strings in the containers…
@@ -222,8 +222,8 @@ final class EmissionEdgeCasesTest extends TestCase
         $holder = $namespace . '\Holder';
 
         $dto = LaravelDataContainer::withRequest(
-            '{"it":{"n":1},"maps":{"a":2}}',
-            static fn(Request $request): object => $holder::from($request),
+            json: '{"it":{"n":1},"maps":{"a":2}}',
+            work: static fn(Request $request): object => $holder::from($request),
         );
 
         $this->assertInstanceOf($namespace . '\\' . $schemaName, $dto->it);
@@ -296,9 +296,9 @@ final class EmissionEdgeCasesTest extends TestCase
                 $import = (string)preg_replace('/^function /', '', $import);
                 $shortName = substr((string)strrchr('\\' . $import, '\\'), 1);
                 $this->assertStringContainsString(
-                    $shortName,
-                    $body,
-                    sprintf('%s imports %s and never uses it', basename($file), $import),
+                    needle: $shortName,
+                    haystack: $body,
+                    message: sprintf('%s imports %s and never uses it', basename($file), $import),
                 );
             }
         }
@@ -340,9 +340,9 @@ final class EmissionEdgeCasesTest extends TestCase
         $this->assertContains('ThingsPostRequestFormRequest.php', $laravel, 'laravel mode must still emit one');
         $this->assertContains('ThingsPostRequest.php', $laravelData);
         $this->assertSame(
-            [],
-            array_values(array_filter($laravelData, static fn(string $file): bool => str_contains($file, 'FormRequest'))),
-            'laravel-data mode must emit no FormRequest',
+            expected: [],
+            actual: array_values(array_filter($laravelData, static fn(string $file): bool => str_contains($file, 'FormRequest'))),
+            message: 'laravel-data mode must emit no FormRequest',
         );
     }
 
@@ -375,10 +375,10 @@ final class EmissionEdgeCasesTest extends TestCase
         }
 
         (new GenerateDtoCommand())->generateFromArray(
-            ['openapi' => '3.1.0', 'info' => ['title' => 'T', 'version' => '1.0.0'], 'components' => ['schemas' => $schemas]],
-            $this->outputDirectory,
-            $namespace,
-            GenerateDtoCommand::ATTRIBUTE_MODE_LARAVEL_DATA,
+            openApi: ['openapi' => '3.1.0', 'info' => ['title' => 'T', 'version' => '1.0.0'], 'components' => ['schemas' => $schemas]],
+            outputDirectory: $this->outputDirectory,
+            namespace: $namespace,
+            mode: GenerateDtoCommand::ATTRIBUTE_MODE_LARAVEL_DATA,
         );
 
         $target = $this->outputDirectory;

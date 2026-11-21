@@ -308,7 +308,10 @@ trait RendersLaravelValidation
             // Fully qualified: a nested or inlined rule names an enum of ANOTHER namespace (a shared
             // file's), which a short name resolved into the wrong one — "class not found", a 500 on
             // the first `rules()` call. The emitted file turns it into an import.
-            $rules[] = sprintf('Rule::enum(\%s::class)', $this->laravelEnumFqcn($enumClass));
+            // The facade is spelled out too, for the same reason one level up: a document may own a
+            // `Rule` class in this namespace. The emitted file imports it as `Rule`, or under an alias
+            // when that short name is taken.
+            $rules[] = sprintf('\Illuminate\Validation\Rule::enum(\%s::class)', $this->laravelEnumFqcn($enumClass));
 
             return ['rules' => $rules, 'consumed' => [...$consumed, 'type', 'enum']];
         }
@@ -395,8 +398,8 @@ trait RendersLaravelValidation
             // The remaining rules are safe to keep: Laravel skips a non-implicit rule (`integer`,
             // `string`, `regex`, …) for an attribute that is not present.
             $nestedRules = array_values(array_filter(
-                $nestedRules,
-                static fn(string $rule): bool => $rule !== "'present'" && $rule !== "'sometimes'",
+                array: $nestedRules,
+                callback: static fn(string $rule): bool => $rule !== "'present'" && $rule !== "'sometimes'",
             ));
 
             if ($nestedRules !== []) {
@@ -574,7 +577,7 @@ trait RendersLaravelValidation
                 // The same rule a scalar enum property gets. Left to the interpreter, the members were
                 // compared strictly, so `?levels[]=2` — a query value is always a string — was refused
                 // by an int-backed enum that lists 2.
-                $enumRule = sprintf('Rule::enum(\%s::class)', $this->laravelEnumFqcn($itemClass));
+                $enumRule = sprintf('\Illuminate\Validation\Rule::enum(\%s::class)', $this->laravelEnumFqcn($itemClass));
 
                 return [
                     $this->laravelPathSegment($property['openApiName']) . '.*' => $this->laravelItemsNullable($property)
@@ -664,8 +667,8 @@ trait RendersLaravelValidation
 
             $propertyPath = $path . '.' . $propertyName;
             $propertyRules = array_values(array_filter(
-                $this->laravelRulesForSchema($propertySchema),
-                static fn(string $rule): bool => $rule !== "'present'" && $rule !== "'sometimes'",
+                array: $this->laravelRulesForSchema($propertySchema),
+                callback: static fn(string $rule): bool => $rule !== "'present'" && $rule !== "'sometimes'",
             ));
             if ($propertyRules !== []) {
                 $paths[$propertyPath] = $propertyRules;
@@ -802,18 +805,27 @@ trait RendersLaravelValidation
     {
         $imports = [];
 
-        if ($this->temporalGetterBody($property) !== null || $this->temporalArrayGetterBody($property) !== null) {
+        // By the type, not by the getter: the hydrator writes `new DateTimeImmutable(…)` for a
+        // `date | date-time` union too, which has no temporal getter of its own, and the import used
+        // to arrive with the interpreter's whatever the class needed.
+        if (
+            $this->temporalGetterBody($property) !== null
+            || $this->temporalArrayGetterBody($property) !== null
+            || str_contains($property['type'], 'DateTimeImmutable')
+        ) {
             $imports[] = 'DateTimeImmutable';
         }
         if ($this->laravelIsUploadedFileProperty($property)) {
             // Laravel's own UploadedFile extends this one, so the Symfony class is the right hint.
             $imports[] = 'Symfony\Component\HttpFoundation\File\UploadedFile';
         }
-        if ($this->laravelRulesNeedRuleFacade($property)) {
+        // Not imported when the document owns a `Rule` here: the rule names the facade in full, and the
+        // emitted file's import pass gives it an alias instead of the short name the class declares.
+        if ($this->laravelRulesNeedRuleFacade($property) && !$this->namespaceDeclaresClass('Rule', $namespace)) {
             $imports[] = 'Illuminate\Validation\Rule';
         }
         if ($this->attributeMode === self::ATTRIBUTE_MODE_LARAVEL && $this->laravelInlineDiscriminator($property) !== null) {
-            $imports[] = 'InvalidArgumentException';
+            $this->importLibraryClass(fqcn: 'InvalidArgumentException', namespace: $namespace, useStatements: $imports);
         }
 
         foreach ($this->generatedClassesNamedByType($property['type']) as $nested) {
@@ -834,7 +846,7 @@ trait RendersLaravelValidation
                 && $this->attributeMode === self::ATTRIBUTE_MODE_LARAVEL
                 && $this->isUnhydratableUnionClass($referenced)
             ) {
-                $imports[] = 'RuntimeException';
+                $this->importLibraryClass(fqcn: 'RuntimeException', namespace: $namespace, useStatements: $imports);
             }
 
             // A discriminated union resolves to one of its members, so those are referenced too.
@@ -842,7 +854,7 @@ trait RendersLaravelValidation
                 continue;
             }
 
-            $imports[] = 'InvalidArgumentException';
+            $this->importLibraryClass(fqcn: 'InvalidArgumentException', namespace: $namespace, useStatements: $imports);
             foreach ($this->discriminatorSchemas[$referenced]['mapping'] as $targetClass) {
                 $this->appendImportForClass($imports, $targetClass, $namespace, $className);
             }
@@ -869,7 +881,7 @@ trait RendersLaravelValidation
 
         foreach ($ruleSets as $ruleSet) {
             foreach ($ruleSet as $rule) {
-                if (str_starts_with($rule, 'Rule::')) {
+                if (str_starts_with($rule, '\Illuminate\Validation\Rule::')) {
                     return true;
                 }
             }
@@ -943,15 +955,16 @@ trait RendersLaravelValidation
     }
 
     /**
-     * The query and path parameters to read as the document serializes them before the rules run, one
-     * entry per property: its wire name, whether it is a list, the delimiter its `style` joins the items
+     * The query, path, header and cookie parameters to read as the document serializes them before the
+     * rules run, one entry per property: its wire name, whether it is a list, the delimiter its `style` joins the items
      * with (null for `form` exploded, where a lone value is a list of one), and what a string item or
      * value stands for.
      *
      * Everything there arrives as a string. Laravel's `boolean` rule refuses `"true"`, which is how
      * OpenAPI writes a boolean in a query; its `list` rule refuses `?ids=1,2`, which is how
      * `explode: false` writes a list; and nothing turned `?levels[]=2` into the int an `array<int>` or an
-     * int-backed enum promises. Symfony mode reads them this way since 2.15.76.
+     * int-backed enum promises. Symfony mode reads them this way since 2.15.76. A header or a cookie is a
+     * string just the same: `X-Flag: true` was refused by the `boolean` rule and `X-Ids: 1,2` by `list`.
      *
      * @param array<int, SchemaProperty> $properties
      * @return array<int, array{wireName: string, list: bool, delimiter: ?string, kind: string}>
@@ -960,7 +973,14 @@ trait RendersLaravelValidation
     {
         $reads = [];
         foreach ($properties as $property) {
-            if (($property['inQuery'] ?? false) !== true && ($property['inPath'] ?? false) !== true) {
+            $location = match (true) {
+                ($property['inQuery'] ?? false) === true => 'query',
+                ($property['inPath'] ?? false) === true => 'path',
+                ($property['inHeader'] ?? false) === true => 'header',
+                ($property['inCookie'] ?? false) === true => 'cookie',
+                default => null,
+            };
+            if ($location === null) {
                 continue;
             }
 
@@ -972,7 +992,8 @@ trait RendersLaravelValidation
                 continue;
             }
 
-            $style = $property['parameterStyle'] ?? (($property['inPath'] ?? false) === true ? 'simple' : 'form');
+            // OpenAPI's defaults: `simple` for a path or a header, `form` for a query or a cookie.
+            $style = $property['parameterStyle'] ?? (in_array($location, ['path', 'header'], true) ? 'simple' : 'form');
             $explode = $property['parameterExplode'] ?? $style === 'form';
             $delimiter = match ($style) {
                 'form' => $explode ? null : ',',
@@ -1112,12 +1133,12 @@ trait RendersLaravelValidation
      *
      * @param array{fields: array<string, mixed>, object: array<string, mixed>} $constraints
      * @param array<string, mixed> $recursiveSchemas self-referential schemas a marker re-enters
-     * @return array{consts: string, methods: string, imports: array<int, string>}
+     * @return array{consts: string, methods: string}
      */
     private function renderLaravelInterpreterBlock(array $constraints, array $recursiveSchemas = []): array
     {
         if ($constraints['fields'] === [] && $constraints['object'] === []) {
-            return ['consts' => '', 'methods' => '', 'imports' => []];
+            return ['consts' => '', 'methods' => ''];
         }
 
         // The envelope separates payload names from root assertions. Its slots are storage, not
@@ -1147,7 +1168,6 @@ trait RendersLaravelValidation
         return [
             'consts' => $this->laravelStaticizeEmittedInterpreter($block['consts']),
             'methods' => $this->laravelStaticizeEmittedInterpreter($block['methods']),
-            'imports' => $block['imports'],
         ];
     }
 
@@ -1162,9 +1182,9 @@ trait RendersLaravelValidation
     private function laravelStaticizeEmittedInterpreter(string $code): string
     {
         return str_replace(
-            ['    private function ', '$this->'],
-            ['    private static function ', 'self::'],
-            $code,
+            search: ['    private function ', '$this->'],
+            replace: ['    private static function ', 'self::'],
+            subject: $code,
         );
     }
 
@@ -1232,7 +1252,11 @@ trait RendersLaravelValidation
             }
         }
 
-        return $this->laravelWithClosedObjectFlag($schema, $objectLevel);
+        return $this->laravelWithClosedObjectFlag(
+            schema: $schema,
+            objectLevel: $objectLevel,
+            extractedAdditional: $extracted['additionalProperties'] ?? null,
+        );
     }
 
     /**
@@ -1251,16 +1275,23 @@ trait RendersLaravelValidation
      * `unevaluatedProperties: false` closes the object the same way, and is spelled as the keyword the
      * document used so the message says what the reader wrote.
      *
+     * An `additionalProperties` SCHEMA travels the same way and for the same reason: `{"name":"x",
+     * "red":"s"}` against `additionalProperties: {type: integer}` passed at the root and behind a
+     * `$ref`, where runtime refuses the undeclared key's value.
+     *
      * @param array<string, mixed> $schema the class schema as the document declared it
      * @param array<string, mixed> $objectLevel the slot built from the object-level keywords
+     * @param mixed $extractedAdditional the class's `additionalProperties` as the constraint extractor wrote it
      * @return array<string, mixed>
      */
-    private function laravelWithClosedObjectFlag(array $schema, array $objectLevel): array
+    private function laravelWithClosedObjectFlag(array $schema, array $objectLevel, mixed $extractedAdditional): array
     {
         $closesWithAdditional = ($schema['additionalProperties'] ?? null) === false;
         $closesWithUnevaluated = ($schema['unevaluatedProperties'] ?? null) === false;
+        // `{}` admits every value, so it asserts nothing and needs no slot.
+        $additionalSchema = is_array($extractedAdditional) && $extractedAdditional !== [] ? $extractedAdditional : null;
 
-        if (!$closesWithAdditional && !$closesWithUnevaluated) {
+        if (!$closesWithAdditional && !$closesWithUnevaluated && $additionalSchema === null) {
             return $objectLevel;
         }
 
@@ -1276,6 +1307,8 @@ trait RendersLaravelValidation
 
         if ($closesWithAdditional) {
             $objectLevel['additionalProperties'] = false;
+        } elseif ($additionalSchema !== null) {
+            $objectLevel['additionalProperties'] = $additionalSchema;
         }
 
         if ($closesWithUnevaluated) {
@@ -1408,8 +1441,8 @@ trait RendersLaravelValidation
         // reach the interpreter.
         if (is_array($schema['required'] ?? null) && !is_array($schema['properties'] ?? null)) {
             $consumed = array_values(array_filter(
-                $consumed,
-                static fn(string $keyword): bool => $keyword !== 'required',
+                array: $consumed,
+                callback: static fn(string $keyword): bool => $keyword !== 'required',
             ));
         }
 
@@ -1418,8 +1451,8 @@ trait RendersLaravelValidation
         // or the interpreter's type check refuses the null the `nullable` rule just let through.
         if (array_key_exists('type', $schema) && !in_array('type', $consumed, true)) {
             $consumed = array_values(array_filter(
-                $consumed,
-                static fn(string $keyword): bool => $keyword !== 'nullable',
+                array: $consumed,
+                callback: static fn(string $keyword): bool => $keyword !== 'nullable',
             ));
         }
 
@@ -1852,6 +1885,9 @@ trait RendersLaravelValidation
 
         if ($nestedClass !== null) {
             $merged = [...$schema, ...$nested];
+            if ($property['nullable'] === true && $this->laravelFoldIsUnion($nested)) {
+                return $this->laravelUnionOrNull($merged);
+            }
 
             // A nullable nested value must survive: `{"child": null}` is legal, and the interpreter
             // skips a null only when the schema says it may be one.
@@ -1974,11 +2010,39 @@ trait RendersLaravelValidation
     private function laravelWithNullableNestedMarker(array $schema, array $property, string $target): array
     {
         $marked = [...$schema, 'x-openapi-recurse' => $target];
+        if ($property['nullable'] === true && $this->laravelFoldIsUnion($this->laravelRecursiveFolds[$target] ?? [])) {
+            return $this->laravelUnionOrNull($marked);
+        }
         if ($property['nullable'] === true || !$this->propertyIsRequiredOnInput($property)) {
             $marked['nullable'] = true;
         }
 
         return $marked;
+    }
+
+    /**
+     * Whether a folded class is a bare `oneOf` / `anyOf`. The interpreter reads `nullable` beside a
+     * `type` only; a union check counts its own branches and ignores the flag beside it.
+     *
+     * @param array<string, mixed> $fold
+     */
+    private function laravelFoldIsUnion(array $fold): bool
+    {
+        return is_array($fold['oneOf'] ?? null) || is_array($fold['anyOf'] ?? null);
+    }
+
+    /**
+     * A NULLABLE property whose class folds to a union, as one more branch beside it. With `nullable`
+     * beside the union, `{"pet": null}` was refused with "does not match any oneOf branch" in a
+     * property that every other mode lets be null. An optional property that is not nullable keeps
+     * the union alone, so its null is still refused — no rule beside a union of objects does that.
+     *
+     * @param array<string, mixed> $union
+     * @return array<string, mixed>
+     */
+    private function laravelUnionOrNull(array $union): array
+    {
+        return ['anyOf' => [['type' => 'null'], $union]];
     }
 
     /**
@@ -2002,6 +2066,50 @@ trait RendersLaravelValidation
     }
 
     /**
+     * A discriminated union component, folded for the interpreter the way its hydrator reads it: by
+     * the variant the discriminator value names. The bare `oneOf` the fold used to carry knew nothing of
+     * the discriminator — the branches are inlined by then, so the `$ref`s the property-level dispatch
+     * keys on are gone — and a value the mapping does not name, or a cat's fields under `"kind": "Dog"`,
+     * passed validation and broke the `match` in `fromValidated()`: a 500.
+     *
+     * The mapping is the class's own, the implicit one included, so a document that writes none is
+     * dispatched by schema name exactly as the hydrator does. laravel mode only: laravel-data builds
+     * its members its own way, and its validation must keep agreeing with that.
+     *
+     * @param array<string, mixed> $definition the union component as the document declared it
+     * @param array<string, mixed> $extracted the fold built branch by branch
+     * @return array<string, mixed>|null null when the fold stays branch by branch
+     */
+    private function laravelDispatchedUnionFold(string $className, array $definition, array $extracted): ?array
+    {
+        $mapping = $this->discriminatorSchemas[$className]['mapping'] ?? [];
+        $variants = $definition['oneOf'] ?? null;
+        $branches = $extracted['oneOf'] ?? null;
+        if ($this->attributeMode !== self::ATTRIBUTE_MODE_LARAVEL || $mapping === [] || !is_array($variants) || !is_array($branches)) {
+            return null;
+        }
+
+        $dispatched = $this->laravelDiscriminatorDispatch(
+            variants: $variants,
+            branchConstraints: array_values($branches),
+            propertyName: $this->discriminatorSchemas[$className]['propertyName'],
+            classMap: $mapping,
+        );
+        if ($dispatched === null) {
+            return null;
+        }
+
+        $rest = [];
+        foreach ($extracted as $keyword => $value) {
+            if (!in_array($keyword, ['oneOf', 'x-discriminator-property', 'x-discriminator-php-property', 'x-discriminator-map'], true)) {
+                $rest[$keyword] = $value;
+            }
+        }
+
+        return [...$rest, ...$dispatched];
+    }
+
+    /**
      * The object schema the interpreter needs for a generated class: only the properties that still have
      * something unenforced, plus the required list.
      *
@@ -2021,13 +2129,15 @@ trait RendersLaravelValidation
         if (array_key_exists('oneOf', $definition) || array_key_exists('anyOf', $definition)) {
             // Dotted rules cannot select a union member. Keep each branch's complete schema,
             // including its enum, required keys and closed-object constraints, in the interpreter.
-            return $this->withConstraintSourceOf(
+            $extracted = $this->withConstraintSourceOf(
                 className: $className,
                 extraction: fn(): array => $this->extractValidationConstraints($this->inlineNestedContainerValidation(
                     schema: $definition,
                     belowMaterialization: true,
                 )),
             );
+
+            return $this->laravelDispatchedUnionFold($className, $definition, $extracted) ?? $extracted;
         }
 
         $properties = [];
@@ -2052,13 +2162,29 @@ trait RendersLaravelValidation
             }
         }
 
-        if ($properties === [] && $required === []) {
+        // The class's object-wide keywords travel with it, exactly as the root class carries them in its
+        // object slot. Without them a `$ref` one level down kept only its properties: the class validated
+        // on its own refused an undeclared key, a fifth property past `maxProperties` or a missing
+        // `dependentRequired` partner, and the same class reached through a property accepted all three
+        // — the undeclared key then vanished on hydration.
+        $objectLevel = $this->laravelObjectLevelConstraints($className);
+
+        if ($properties === [] && $required === [] && $objectLevel === []) {
             return [];
         }
 
         // No `type` here: the rules already assert `array` for the property, and repeating it would
         // report one mistake twice — and would reject a NULLABLE nested value outright.
         $schema = [];
+        foreach ($objectLevel as $keyword => $value) {
+            if ($keyword !== 'properties') {
+                $schema[$keyword] = $value;
+            }
+        }
+        // A closed class lists every declared name with an empty schema, so the interpreter knows what
+        // is not additional; a name that also carries constraints of its own keeps them.
+        $declaredNames = is_array($objectLevel['properties'] ?? null) ? $objectLevel['properties'] : [];
+        $properties += $declaredNames;
         if ($properties !== []) {
             $schema['properties'] = $properties;
         }
@@ -2067,6 +2193,68 @@ trait RendersLaravelValidation
         }
 
         return $schema;
+    }
+
+    /**
+     * A discriminated `oneOf` property checked the way it is hydrated: by the variant its discriminator
+     * names. Matched branch by branch instead, a payload that fit none was reported against EVERY
+     * branch — `{"kind": "circle"}` was told it lacks `side` as well as `radius` — and once each error
+     * is keyed by its own field, a client highlights fields of a variant it never sent.
+     *
+     * Null when a branch is not a `$ref` the mapping names: then there is no variant to dispatch to,
+     * and the branch-by-branch match stays.
+     *
+     * @param array<int|string, mixed> $variants
+     * @param array<int, mixed> $branchConstraints
+     * @param array<string, string> $classMap
+     * @return array<string, mixed>|null
+     */
+    private function laravelDiscriminatorDispatch(
+        array $variants,
+        array $branchConstraints,
+        string $propertyName,
+        array $classMap,
+    ): ?array {
+        $branchByClass = [];
+        $acceptsNull = false;
+        foreach (array_values($variants) as $index => $variant) {
+            $branch = $branchConstraints[$index] ?? null;
+            if ($branch === ['type' => 'null']) {
+                $acceptsNull = true;
+
+                continue;
+            }
+            $ref = is_array($variant) ? ($variant['$ref'] ?? null) : null;
+            $class = is_string($ref) ? $this->schemaRefToClassName($ref) : 'mixed';
+            if (!is_array($branch) || !in_array($class, $classMap, true)) {
+                return null;
+            }
+            $branchByClass[$class] = $branch;
+        }
+        // `nullable: true` beside the union is appended as one more branch, past the variants.
+        $acceptsNull = $acceptsNull || in_array(['type' => 'null'], $branchConstraints, true);
+
+        $allOf = [[
+            'required' => [$propertyName],
+            'properties' => [$propertyName => ['enum' => array_map('strval', array_keys($classMap))]],
+        ]];
+        foreach ($classMap as $value => $class) {
+            $allOf[] = [
+                'if' => ['type' => 'object', 'properties' => [$propertyName => ['const' => $value]], 'required' => [$propertyName]],
+                'then' => $branchByClass[$class] ?? [],
+            ];
+        }
+
+        // `type` at the top, where the rule map turns it into `array` — and `nullable` into `nullable`.
+        // The discriminator stays for the hydrator, which builds the variant it names.
+        $dispatched = [
+            'type' => 'object',
+            'allOf' => $allOf,
+            'x-discriminator-property' => $propertyName,
+            'x-discriminator-map' => $classMap,
+        ];
+
+        return $acceptsNull ? [...$dispatched, 'nullable' => true] : $dispatched;
     }
 
     /**
@@ -2184,8 +2372,8 @@ trait RendersLaravelValidation
         $type = $schema['type'] ?? null;
         if (is_array($type)) {
             return array_values(array_filter(
-                $type,
-                static fn(mixed $member): bool => $member !== 'null',
+                array: $type,
+                callback: static fn(mixed $member): bool => $member !== 'null',
             )) === ['object'];
         }
 
@@ -2348,8 +2536,8 @@ trait RendersLaravelValidation
         foreach ($this->getSchemaProperties($className) as $property) {
             $segment = $this->laravelPathSegment($property['openApiName']);
             $ownRules = array_values(array_filter(
-                $this->laravelRulesForProperty($property),
-                static fn(string $rule): bool => $rule !== "'present'" && $rule !== "'sometimes'",
+                array: $this->laravelRulesForProperty($property),
+                callback: static fn(string $rule): bool => $rule !== "'present'" && $rule !== "'sometimes'",
             ));
             if ($ownRules !== []) {
                 $rules[] = ['suffix' => $segment, 'rules' => $this->laravelRulesLiteral($ownRules)];
@@ -2457,6 +2645,8 @@ trait RendersLaravelValidation
      * @param list<array{class: string, suffix: string}> $nestedChildren
      * @param list<string> $objectPaths this class's own object paths
      * @param array<string, string> $scalarPaths this class's own scalar paths
+     * @param bool $checksScalarPaths whether the class checks scalar paths at all; a parameter class
+     *   does not — a query string has no JSON types
      * @return array{
      *   nestedChildren: list<array{ref: string, suffix: string}>,
      *   nestedValidation: array<string, mixed>|null,
@@ -2472,14 +2662,14 @@ trait RendersLaravelValidation
         array $nestedChildren,
         array $objectPaths,
         array $scalarPaths,
-        bool $readsRawBody,
+        bool $checksScalarPaths,
     ): array {
         $childObjectPaths = false;
         $childScalarPaths = false;
         $childEscapedDots = false;
         foreach ($nestedChildren as $child) {
             $childObjectPaths = $childObjectPaths || $this->laravelNestedHasPaths($child['class'], 'objectPaths', [$className]);
-            $childScalarPaths = $childScalarPaths || ($readsRawBody && $this->laravelNestedHasPaths($child['class'], 'scalarPaths', [$className]));
+            $childScalarPaths = $childScalarPaths || ($checksScalarPaths && $this->laravelNestedHasPaths($child['class'], 'scalarPaths', [$className]));
             $childEscapedDots = $childEscapedDots || $this->laravelNestedHasPaths($child['class'], 'escapedDots', [$className]);
         }
 
@@ -2491,8 +2681,8 @@ trait RendersLaravelValidation
                 'objectPaths' => $plan['objectPaths'],
                 'scalarPaths' => $plan['scalarPaths'],
                 'children' => array_map(
-                    fn(array $child): array => ['ref' => $this->laravelDtoClassRef($child['class']), 'suffix' => $child['suffix']],
-                    $plan['children'],
+                    callback: fn(array $child): array => ['ref' => $this->laravelDtoClassRef($child['class']), 'suffix' => $child['suffix']],
+                    array: $plan['children'],
                 ),
             ];
         }
@@ -2505,8 +2695,8 @@ trait RendersLaravelValidation
 
         return [
             'nestedChildren' => array_map(
-                fn(array $child): array => ['ref' => $this->laravelDtoClassRef($child['class']), 'suffix' => $child['suffix']],
-                $nestedChildren,
+                callback: fn(array $child): array => ['ref' => $this->laravelDtoClassRef($child['class']), 'suffix' => $child['suffix']],
+                array: $nestedChildren,
             ),
             'nestedValidation' => $nestedValidation,
             'checksObjectPaths' => $objectPaths !== [] || $childObjectPaths,

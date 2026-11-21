@@ -39,7 +39,7 @@ final class QualifiedNameImportsTest extends TestCase
             PHP;
 
         $this->assertSame(
-            <<<'PHP'
+            expected: <<<'PHP'
                 <?php
 
                 namespace App;
@@ -65,7 +65,7 @@ final class QualifiedNameImportsTest extends TestCase
                 }
 
                 PHP,
-            QualifiedNameImports::apply($source),
+            actual: QualifiedNameImports::apply($source),
         );
     }
 
@@ -134,7 +134,7 @@ final class QualifiedNameImportsTest extends TestCase
             PHP;
 
         $this->assertSame(
-            <<<'PHP'
+            expected: <<<'PHP'
                 <?php
 
                 namespace App\Paint;
@@ -154,7 +154,94 @@ final class QualifiedNameImportsTest extends TestCase
                 }
 
                 PHP,
-            QualifiedNameImports::apply($source),
+            actual: QualifiedNameImports::apply($source),
+        );
+    }
+
+    /**
+     * A class generated into the namespace owns its short name in every file there, even one that does
+     * not mention it: the library class goes under an alias instead, and an attribute written in full
+     * is a class, not a call.
+     */
+    public function testAReservedShortNameIsNeverImported(): void
+    {
+        $source = <<<'PHP'
+            <?php
+
+            namespace App;
+
+            final class Probe
+            {
+                #[\Symfony\Component\Serializer\Attribute\Context(normalizationContext: [])]
+                private ?\DateTimeInterface $at = null;
+            }
+
+            PHP;
+
+        $this->assertSame(
+            expected: <<<'PHP'
+                <?php
+
+                namespace App;
+
+                use DateTimeInterface;
+                use Symfony\Component\Serializer\Attribute\Context as AttributeContext;
+
+                final class Probe
+                {
+                    #[AttributeContext(normalizationContext: [])]
+                    private ?DateTimeInterface $at = null;
+                }
+
+                PHP,
+            actual: QualifiedNameImports::apply(php: $source, reservedShortNames: ['Context', 'Widget']),
+        );
+    }
+
+    /**
+     * A namespace alias the document owns the name of is dropped, and every name written through it is
+     * spelled out and imported on its own. A bare mention of the name stays the document's class.
+     */
+    public function testAReservedNamespaceAliasIsSpelledOut(): void
+    {
+        $source = <<<'PHP'
+            <?php
+
+            namespace App;
+
+            use Symfony\Component\Validator\Constraints as Assert;
+
+            final class Probe
+            {
+                #[Assert\Length(max: 3)]
+                private string $name = '';
+
+                #[Assert\Valid]
+                private ?Assert $assert = null;
+            }
+
+            PHP;
+
+        $this->assertSame(
+            expected: <<<'PHP'
+                <?php
+
+                namespace App;
+
+                use Symfony\Component\Validator\Constraints\Length;
+                use Symfony\Component\Validator\Constraints\Valid;
+
+                final class Probe
+                {
+                    #[Length(max: 3)]
+                    private string $name = '';
+
+                    #[Valid]
+                    private ?Assert $assert = null;
+                }
+
+                PHP,
+            actual: QualifiedNameImports::apply(php: $source, reservedShortNames: ['Assert']),
         );
     }
 }

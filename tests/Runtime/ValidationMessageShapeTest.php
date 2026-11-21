@@ -66,13 +66,13 @@ final class ValidationMessageShapeTest extends TestCase
     public function testASubjectIsNeverCapitalised(): void
     {
         self::assertSame(
-            'children.leaves.title is required.',
-            DtoValidator::finalizeMessage('children.leaves.title is required', 'children.leaves.title'),
+            expected: 'children.leaves.title is required.',
+            actual: DtoValidator::finalizeMessage('children.leaves.title is required', 'children.leaves.title'),
         );
         // And without the subject the helper cannot know, which is why every exit point passes it.
         self::assertSame(
-            'Children.leaves.title is required.',
-            DtoValidator::finalizeMessage('children.leaves.title is required'),
+            expected: 'Children.leaves.title is required.',
+            actual: DtoValidator::finalizeMessage('children.leaves.title is required'),
         );
     }
 }

@@ -118,10 +118,10 @@ final class DtoDeserializerPsr7Test extends TestCase
     public function testBodyDtoDeserializesFromPsr7Request(): void
     {
         $psr = new ServerRequest(
-            'POST',
-            '/items/42',
-            ['Content-Type' => 'application/json'],
-            (string)json_encode(['name' => 'Widget', 'tags' => ['a', 'b']]),
+            method: 'POST',
+            uri: '/items/42',
+            headers: ['Content-Type' => 'application/json'],
+            body: (string)json_encode(['name' => 'Widget', 'tags' => ['a', 'b']]),
         );
 
         $dto = $this->psr7Deserializer->deserializePsr7($psr, 'Psr7Ns\ItemsPostRequest');
@@ -158,8 +158,8 @@ final class DtoDeserializerPsr7Test extends TestCase
         // Parity: same wire input through the Symfony entrypoint yields an equal list.
         $symfony = SymfonyRequest::create('/items', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $json);
         $this->assertEquals(
-            $this->deserializer->deserializeCollection($symfony, 'Psr7Ns\ItemsPostRequest'),
-            $fromPsr,
+            expected: $this->deserializer->deserializeCollection($symfony, 'Psr7Ns\ItemsPostRequest'),
+            actual: $fromPsr,
         );
     }
 
@@ -173,8 +173,8 @@ final class DtoDeserializerPsr7Test extends TestCase
         // Same wire input through the BC Symfony entrypoint yields an equal DTO.
         $symfony = SymfonyRequest::create('/items/7', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $json);
         $this->assertEquals(
-            $this->deserializer->deserialize($symfony, 'Psr7Ns\ItemsPostRequest'),
-            $fromPsr,
+            expected: $this->deserializer->deserialize($symfony, 'Psr7Ns\ItemsPostRequest'),
+            actual: $fromPsr,
         );
     }
 
@@ -262,10 +262,10 @@ final class DtoDeserializerPsr7Test extends TestCase
         $deserializer = new DtoDeserializerPsr7();
 
         $psr = new ServerRequest(
-            'POST',
-            '/items/1',
-            ['Content-Type' => 'application/json'],
-            (string)json_encode(['name' => 'Solo', 'tags' => []]),
+            method: 'POST',
+            uri: '/items/1',
+            headers: ['Content-Type' => 'application/json'],
+            body: (string)json_encode(['name' => 'Solo', 'tags' => []]),
         );
 
         $dto = $deserializer->deserializePsr7($psr, 'Psr7Ns\ItemsPostRequest');

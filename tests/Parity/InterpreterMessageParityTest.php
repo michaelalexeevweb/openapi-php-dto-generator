@@ -115,13 +115,13 @@ final class InterpreterMessageParityTest extends TestCase
             $this->assertNotSame([], $reported, sprintf('%s mode reported nothing for %s', $mode->value, $key));
 
             $sentences = array_map(
-                fn(string $message): string => $this->withoutSubject($message, $mode),
-                $reported,
+                callback: fn(string $message): string => $this->withoutSubject($message, $mode),
+                array: $reported,
             );
             $this->assertContains(
-                $expectedSentence,
-                $sentences,
-                sprintf(
+                needle: $expectedSentence,
+                haystack: $sentences,
+                message: sprintf(
                     "%s mode words %s differently\n expected: %s\n reported: %s",
                     $mode->value,
                     $key,
@@ -242,14 +242,14 @@ final class InterpreterMessageParityTest extends TestCase
             $messages = $this->messages($mode, $spec, $key, $json);
 
             $matching = array_filter(
-                $messages,
-                static fn(string $message): bool => str_ends_with($message, 'b is required when a is present.')
+                array: $messages,
+                callback: static fn(string $message): bool => str_ends_with($message, 'b is required when a is present.')
                     || str_ends_with($message, '"b" is required when a is present.'),
             );
             $this->assertNotSame(
-                [],
-                $matching,
-                sprintf('%s mode worded it differently: %s', $mode->value, implode(' | ', $messages)),
+                expected: [],
+                actual: $matching,
+                message: sprintf('%s mode worded it differently: %s', $mode->value, implode(' | ', $messages)),
             );
         }
     }
@@ -286,8 +286,8 @@ final class InterpreterMessageParityTest extends TestCase
         // first, and a bool is refused by the property type before any constraint runs.
         $laravel = $this->messages(GenerationMode::Laravel, $spec, 'union mismatch', '{"f":true}');
         $this->assertContains(
-            'f does not match any oneOf branch (expected object or integer, got boolean).',
-            $laravel,
+            needle: 'f does not match any oneOf branch (expected object or integer, got boolean).',
+            haystack: $laravel,
         );
 
         // The runtime validator writes the same sentence when it is handed the value directly — asserted
@@ -339,9 +339,9 @@ final class InterpreterMessageParityTest extends TestCase
             $messages = $this->messages($mode, $spec, 'one violation one message', '{"tags":[{}]}');
 
             $this->assertCount(
-                1,
-                $messages,
-                sprintf(
+                expectedCount: 1,
+                haystack: $messages,
+                message: sprintf(
                     "%s mode reports one missing nested key %d times:\n %s",
                     $mode->value,
                     count($messages),
@@ -408,9 +408,9 @@ final class InterpreterMessageParityTest extends TestCase
                 $expected = ($case === 'wrong type' && $mode === GenerationMode::Yii3) ? 0 : 1;
 
                 $this->assertCount(
-                    $expected,
-                    $messages,
-                    sprintf(
+                    expectedCount: $expected,
+                    haystack: $messages,
+                    message: sprintf(
                         "%s mode reports a %s violation %d times, expected %d:\n %s",
                         $mode->value,
                         $case,
@@ -470,7 +470,7 @@ final class InterpreterMessageParityTest extends TestCase
 
         try {
             (new DtoNormalizer())->validateAndNormalizeToArray(
-                (new DtoDeserializer())->deserialize($request, $fqcn),
+                dto: (new DtoDeserializer())->deserialize($request, $fqcn),
             );
         } catch (Throwable $exception) {
             // The runtime validator joins its errors into one exception message, one per line.
@@ -527,16 +527,16 @@ final class InterpreterMessageParityTest extends TestCase
         $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
         $typeExtractor = new PropertyInfoExtractor([], [new PhpDocExtractor(), new ReflectionExtractor()]);
         $serializer = new Serializer(
-            [
+            normalizers: [
                 new ObjectNormalizer(
-                    $classMetadataFactory,
-                    new MetadataAwareNameConverter($classMetadataFactory),
-                    null,
-                    $typeExtractor,
+                    classMetadataFactory: $classMetadataFactory,
+                    nameConverter: new MetadataAwareNameConverter($classMetadataFactory),
+                    propertyAccessor: null,
+                    propertyTypeExtractor: $typeExtractor,
                 ),
                 new ArrayDenormalizer(),
             ],
-            [new JsonEncoder()],
+            encoders: [new JsonEncoder()],
         );
 
         $dto = $serializer->deserialize('{"tags":["miss"]}', $fqcn, 'json');
@@ -547,9 +547,9 @@ final class InterpreterMessageParityTest extends TestCase
         $violation = $violations->get(0);
         $this->assertSame('tags', $violation->getPropertyPath(), 'the violation names the field');
         $this->assertStringContainsString(
-            'field "tags"',
-            (string)$violation->getMessage(),
-            'and the sentence is unchanged — the path is carried BESIDE it, not instead of it',
+            needle: 'field "tags"',
+            haystack: (string)$violation->getMessage(),
+            message: 'and the sentence is unchanged — the path is carried BESIDE it, not instead of it',
         );
     }
 
@@ -564,16 +564,16 @@ final class InterpreterMessageParityTest extends TestCase
         $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
         $typeExtractor = new PropertyInfoExtractor([], [new PhpDocExtractor(), new ReflectionExtractor()]);
         $serializer = new Serializer(
-            [
+            normalizers: [
                 new ObjectNormalizer(
-                    $classMetadataFactory,
-                    new MetadataAwareNameConverter($classMetadataFactory),
-                    null,
-                    $typeExtractor,
+                    classMetadataFactory: $classMetadataFactory,
+                    nameConverter: new MetadataAwareNameConverter($classMetadataFactory),
+                    propertyAccessor: null,
+                    propertyTypeExtractor: $typeExtractor,
                 ),
                 new ArrayDenormalizer(),
             ],
-            [new JsonEncoder()],
+            encoders: [new JsonEncoder()],
         );
         $validator = Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator();
 

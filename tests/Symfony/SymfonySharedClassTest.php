@@ -56,14 +56,14 @@ final class SymfonySharedClassTest extends TestCase
             $commonDirectory = $this->baseDirectory . '/out-' . $document . '/Common';
             $generator = new GenerateDtoCommand();
             $generator->setExternalRefMappings(
-                [$this->baseDirectory . '/common=' . $commonDirectory],
-                [$this->baseDirectory . '/common=Shared\Common'],
+                refDirectoryPairs: [$this->baseDirectory . '/common=' . $commonDirectory],
+                refNamespacePairs: [$this->baseDirectory . '/common=Shared\Common'],
             );
             $generator->generateFromFile(
-                $this->baseDirectory . '/' . $document . '.json',
-                $this->baseDirectory . '/out-' . $document . '/Dto',
-                'Shared\Dto',
-                'symfony',
+                filePath: $this->baseDirectory . '/' . $document . '.json',
+                outputDirectory: $this->baseDirectory . '/out-' . $document . '/Dto',
+                namespace: 'Shared\Dto',
+                mode: 'symfony',
             );
             $written[$document] = (string)file_get_contents($commonDirectory . '/Pebble.php');
         }

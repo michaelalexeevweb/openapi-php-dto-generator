@@ -186,7 +186,7 @@ final class GenerateLaravelDtoTest extends TestCase
         }
 
         $this->generator->generateFromArray(
-            [
+            openApi: [
                 'openapi' => '3.0.3',
                 'info' => ['title' => 'T', 'version' => '1.0.0'],
                 'components' => [
@@ -212,9 +212,9 @@ final class GenerateLaravelDtoTest extends TestCase
                     ],
                 ],
             ],
-            $target,
-            'LvDateItems',
-            'laravel',
+            outputDirectory: $target,
+            namespace: 'LvDateItems',
+            mode: 'laravel',
         );
         require_once $target . '/Report.php';
 
@@ -241,9 +241,9 @@ final class GenerateLaravelDtoTest extends TestCase
         // map still encodes as a JSON object rather than a list.
         $this->assertSame(['2026-01-15', '2026-02-20'], $dto->toArray()['dates']);
         $this->assertSame(
-            '{"dates":["2026-01-15","2026-02-20"],"byDay":{"mon":"2026-01-19"},'
+            expected: '{"dates":["2026-01-15","2026-02-20"],"byDay":{"mon":"2026-01-19"},'
             . '"stamps":["2026-03-10T12:00:00+03:00"]}',
-            (string)json_encode($dto->toArray()),
+            actual: (string)json_encode($dto->toArray()),
         );
 
         $this->assertNull($this->lintError($target . '/Report.php'));
@@ -266,7 +266,7 @@ final class GenerateLaravelDtoTest extends TestCase
         }
 
         $this->generator->generateFromArray(
-            [
+            openApi: [
                 'openapi' => '3.1.0',
                 'info' => ['title' => 'T', 'version' => '1.0.0'],
                 'components' => [
@@ -285,9 +285,9 @@ final class GenerateLaravelDtoTest extends TestCase
                     ],
                 ],
             ],
-            $target,
-            'LvReindex',
-            'laravel',
+            outputDirectory: $target,
+            namespace: 'LvReindex',
+            mode: 'laravel',
         );
         require_once $target . '/Bag.php';
 
@@ -299,8 +299,8 @@ final class GenerateLaravelDtoTest extends TestCase
         $dto = new ('LvReindex\Bag')(tags: $filtered, byKey: ['second' => 'b', 'first' => 'a']);
 
         $this->assertSame(
-            '{"tags":["a","c"],"byKey":{"second":"b","first":"a"}}',
-            (string)json_encode($dto->toArray()),
+            expected: '{"tags":["a","c"],"byKey":{"second":"b","first":"a"}}',
+            actual: (string)json_encode($dto->toArray()),
         );
 
         $this->assertNull($this->lintError($target . '/Bag.php'));
@@ -337,10 +337,10 @@ final class GenerateLaravelDtoTest extends TestCase
         $this->expectExceptionMessage('expected one of: "runtime", "symfony", "laravel"');
 
         $this->generator->generateFromArray(
-            ['openapi' => '3.0.3', 'info' => ['title' => 'T', 'version' => '1.0.0']],
-            $this->outputDirectory,
-            'LvBad',
-            'banana',
+            openApi: ['openapi' => '3.0.3', 'info' => ['title' => 'T', 'version' => '1.0.0']],
+            outputDirectory: $this->outputDirectory,
+            namespace: 'LvBad',
+            mode: 'banana',
         );
     }
 
@@ -539,8 +539,8 @@ final class GenerateLaravelDtoTest extends TestCase
         $formRequestFile = $target . '/SettingsPostRequestFormRequest.php';
         $this->assertNull($this->lintError($formRequestFile));
         $this->assertStringContainsString(
-            'SettingsPostRequest::withValidator($validator, $this->getContent());',
-            (string)file_get_contents($formRequestFile),
+            needle: 'SettingsPostRequest::withValidator($validator, $this->getContent());',
+            haystack: (string)file_get_contents($formRequestFile),
         );
 
         if (!class_exists(FormRequest::class)) {

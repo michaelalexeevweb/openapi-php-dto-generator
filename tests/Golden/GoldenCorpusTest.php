@@ -123,14 +123,14 @@ final class GoldenCorpusTest extends TestCase
         }
 
         self::assertFileExists(
-            $snapshotFile,
-            sprintf('Missing snapshot. Run: %s=1 vendor/bin/phpunit --filter GoldenCorpus', self::UPDATE_ENV),
+            filename: $snapshotFile,
+            message: sprintf('Missing snapshot. Run: %s=1 vendor/bin/phpunit --filter GoldenCorpus', self::UPDATE_ENV),
         );
 
         self::assertSame(
-            (string)file_get_contents($snapshotFile),
-            $snapshot,
-            sprintf(
+            expected: (string)file_get_contents($snapshotFile),
+            actual: $snapshot,
+            message: sprintf(
                 "Generated %s-mode output differs from %s.\nIf the change is intended: %s=1 vendor/bin/phpunit --filter GoldenCorpus",
                 $mode,
                 basename($snapshotFile),
@@ -351,16 +351,16 @@ final class GoldenCorpusTest extends TestCase
         $first = array_key_first($standalone);
         foreach ($standalone as $mode => $enums) {
             self::assertSame(
-                $standalone[$first],
-                $enums,
-                sprintf('%s mode emits a different enum from %s mode — the one axis has grown a second one', $mode, $first),
+                expected: $standalone[$first],
+                actual: $enums,
+                message: sprintf('%s mode emits a different enum from %s mode — the one axis has grown a second one', $mode, $first),
             );
         }
 
         self::assertNotSame(
-            $standalone[$first],
-            $enumsByMode[GenerationMode::reference()->value],
-            'runtime mode must differ: it is the only one that carries the runtime interface',
+            expected: $standalone[$first],
+            actual: $enumsByMode[GenerationMode::reference()->value],
+            message: 'runtime mode must differ: it is the only one that carries the runtime interface',
         );
     }
 
@@ -415,10 +415,10 @@ final class GoldenCorpusTest extends TestCase
 
         // The return value is the number of generated classes, not an exit code.
         $generatedCount = (new GenerateDtoCommand())->generateFromArray(
-            $openApi,
-            $this->outputDirectory,
-            self::NAMESPACE,
-            $mode,
+            openApi: $openApi,
+            outputDirectory: $this->outputDirectory,
+            namespace: self::NAMESPACE,
+            mode: $mode,
         );
 
         self::assertGreaterThan(0, $generatedCount, sprintf('Generation produced nothing in %s mode.', $mode));

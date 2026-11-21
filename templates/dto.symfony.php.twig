@@ -88,7 +88,7 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
     {{ attribute }}
 {% endfor %}
 {% if param.serializedName is not null %}
-    #[SerializedName('{{ param.serializedName|php_string }}')]
+    #[\Symfony\Component\Serializer\Attribute\SerializedName('{{ param.serializedName|php_string }}')]
 {% endif %}
 {% if param.contextAttribute is not null %}
     {{ param.contextAttribute|raw }}
@@ -98,7 +98,7 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
 {% else %}
     private {{ param.declaredType }} ${{ param.name }}{{ param.default }};
 
-    #[Ignore]
+    #[\Symfony\Component\Serializer\Attribute\Ignore]
     private bool ${{ param.providedFlag }} = false;
 {% endif %}
 
@@ -174,7 +174,7 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
      * Whether the payload carried this key — true even when its value was null. Set by the setter,
      * so it answers for a request the serializer built and for a DTO assembled by hand alike.
      */
-    #[Ignore]
+    #[\Symfony\Component\Serializer\Attribute\Ignore]
     public function {{ param.providedGetter }}(): bool
     {
         return $this->{{ param.providedFlag }};
@@ -323,7 +323,7 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
             return array_map(self::formatOpenApiDate(...), $value);
         }
 
-        return $value instanceof DateTimeInterface ? $value->format('Y-m-d') : $value;
+        return $value instanceof \DateTimeInterface ? $value->format('Y-m-d') : $value;
     }
 {% endif %}
 {% if 'formatOpenApiDateTime' in temporalFormatters %}
@@ -338,7 +338,7 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
         if (is_array($value)) {
             return array_map(self::formatOpenApiDateTime(...), $value);
         }
-        if (!$value instanceof DateTimeInterface) {
+        if (!$value instanceof \DateTimeInterface) {
             return $value;
         }
 

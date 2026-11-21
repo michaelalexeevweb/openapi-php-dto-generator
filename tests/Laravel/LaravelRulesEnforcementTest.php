@@ -94,9 +94,9 @@ final class LaravelRulesEnforcementTest extends TestCase
         }
         $schemas['Contacts'] = ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Contact']];
         $fqcn = $this->generateProbe(
-            'referenced-contact-union-' . $key,
-            $propertySchema,
-            $schemas,
+            key: 'referenced-contact-union-' . $key,
+            propertySchema: $propertySchema,
+            extraSchemas: $schemas,
         );
         $rules = call_user_func([$fqcn, 'rules']);
         $email = ['type' => 'email', 'value' => 'a@example.com'];
@@ -265,25 +265,25 @@ final class LaravelRulesEnforcementTest extends TestCase
         $factory = $this->validatorFactory();
 
         $this->assertTrue(
-            $factory->make($valid, $rules)->passes(),
-            sprintf(
+            condition: $factory->make($valid, $rules)->passes(),
+            message: sprintf(
                 "%s: the valid payload must pass\n rules: %s\n errors: %s",
                 $key,
                 // A rule OBJECT is Stringable only on newer Laravel (Rules\Enum is not on 11.1): its class names it.
                 json_encode(array_map(
-                    static fn(array $set): array => array_map(
-                        static fn(mixed $rule): string => $rule instanceof Stringable || !is_object($rule) ? (string)$rule : $rule::class,
-                        $set,
+                    callback: static fn(array $set): array => array_map(
+                        callback: static fn(mixed $rule): string => $rule instanceof Stringable || !is_object($rule) ? (string)$rule : $rule::class,
+                        array: $set,
                     ),
-                    $rules,
+                    array: $rules,
                 )),
                 json_encode($factory->make($valid, $rules)->errors()->all()),
             ),
         );
 
         $this->assertTrue(
-            $factory->make($invalid, $rules)->fails(),
-            sprintf('%s: the invalid payload must fail (rules that accept everything are useless)', $key),
+            condition: $factory->make($invalid, $rules)->fails(),
+            message: sprintf('%s: the invalid payload must fail (rules that accept everything are useless)', $key),
         );
     }
 
@@ -424,9 +424,9 @@ final class LaravelRulesEnforcementTest extends TestCase
         $this->assertSame(['id' => 1, 'url' => 'https://example.test', 'note' => null, 'tag' => 'x', 'rank' => 1], $dto->toArray());
         $this->assertSame(['id' => 1, 'url' => null, 'note' => null, 'rank' => 1], (new $fqcn(id: 1, url: null))->toArray());
         $this->assertSame(
-            ['id' => 1, 'url' => null, 'note' => null, 'rank' => 1],
-            (new $fqcn(id: 1, rank: 1))->toArray(),
-            'an argument equal to its default is written: the value is known either way',
+            expected: ['id' => 1, 'url' => null, 'note' => null, 'rank' => 1],
+            actual: (new $fqcn(id: 1, rank: 1))->toArray(),
+            message: 'an argument equal to its default is written: the value is known either way',
         );
         // A request keeps its exact presence: the default was not sent.
         $this->assertSame(['id' => 1, 'url' => null, 'note' => null], call_user_func([$fqcn, 'fromValidated'], ['id' => 1])->toArray());
@@ -644,8 +644,8 @@ final class LaravelRulesEnforcementTest extends TestCase
         /** @var array<string, mixed> $rules */
         $rules = call_user_func([$dtoClass, 'rules']);
         $validate = static fn(string $uri): \Illuminate\Validation\Validator => $factory->make(
-            $formRequestClass::create(uri: $uri, method: 'GET')->validationData(),
-            $rules,
+            data: $formRequestClass::create(uri: $uri, method: 'GET')->validationData(),
+            rules: $rules,
         );
 
         $valid = $validate('/api/widgets?ids=1,2&tags=3&names=a|b&active=true');
@@ -745,9 +745,9 @@ final class LaravelRulesEnforcementTest extends TestCase
     public function testANestedDtoReferenceRefusesAScalarAndNull(): void
     {
         $fqcn = $this->generateProbe(
-            'nested dto reference refuses a scalar',
-            ['$ref' => '#/components/schemas/Hen'],
-            ['Hen' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string']]]],
+            key: 'nested dto reference refuses a scalar',
+            propertySchema: ['$ref' => '#/components/schemas/Hen'],
+            extraSchemas: ['Hen' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string']]]],
         );
 
         foreach (['x', 5, null] as $invalid) {
@@ -967,9 +967,9 @@ final class LaravelRulesEnforcementTest extends TestCase
         call_user_func([$fqcn, 'withValidator'], $rejected);
         $this->assertTrue($rejected->fails(), $key . ': invalid payload must fail');
         $this->assertStringContainsString(
-            $expectedMessageFragment,
-            implode("\n", $rejected->errors()->all()),
-            $key . ': the message must say what actually failed',
+            needle: $expectedMessageFragment,
+            haystack: implode("\n", $rejected->errors()->all()),
+            message: $key . ': the message must say what actually failed',
         );
     }
 
@@ -1142,9 +1142,9 @@ final class LaravelRulesEnforcementTest extends TestCase
             call_user_func([$fqcn, 'withValidator'], $refused);
         }
         $this->assertCount(
-            1,
-            $refused->errors()->all(),
-            sprintf('one mistake %d deep, one message: %s', $depth, (string)json_encode($refused->errors()->all())),
+            expectedCount: 1,
+            haystack: $refused->errors()->all(),
+            message: sprintf('one mistake %d deep, one message: %s', $depth, (string)json_encode($refused->errors()->all())),
         );
     }
 
@@ -1374,14 +1374,14 @@ final class LaravelRulesEnforcementTest extends TestCase
 
         // A cross-field keyword one level down.
         $this->assertNotSame(
-            [],
-            $verdict(['child' => ['id' => 1, 'bag' => ['kind' => 'k']]]),
-            'dependentRequired inside the referenced schema',
+            expected: [],
+            actual: $verdict(['child' => ['id' => 1, 'bag' => ['kind' => 'k']]]),
+            message: 'dependentRequired inside the referenced schema',
         );
         $this->assertSame(
-            [],
-            $verdict(['child' => ['id' => 1, 'bag' => ['kind' => 'k', 'extra' => 'v']]]),
-            'the same payload with the dependency satisfied',
+            expected: [],
+            actual: $verdict(['child' => ['id' => 1, 'bag' => ['kind' => 'k', 'extra' => 'v']]]),
+            message: 'the same payload with the dependency satisfied',
         );
     }
 
@@ -1446,27 +1446,27 @@ final class LaravelRulesEnforcementTest extends TestCase
         $validator = $this->validatorFactory()->make(json_decode($valid, true), $rules);
         call_user_func([$fqcn, 'withValidator'], $validator, $valid);
         $this->assertEquals(
-            json_decode($valid, true),
-            json_decode(json_encode(call_user_func([$fqcn, 'fromValidated'], $validator->validated())->toArray()), true),
+            expected: json_decode($valid, true),
+            actual: json_decode(json_encode(call_user_func([$fqcn, 'fromValidated'], $validator->validated())->toArray()), true),
         );
 
         $this->assertSame(
-            ['invoice.note' => ['validation.present']],
-            $errors('{"invoice":{"note":"abc"},"line.items":[]}'),
-            'a nested object is not the dotted key',
+            expected: ['invoice.note' => ['validation.present']],
+            actual: $errors('{"invoice":{"note":"abc"},"line.items":[]}'),
+            message: 'a nested object is not the dotted key',
         );
         $this->assertSame(['invoice.note' => ['validation.max.string']], $errors('{"invoice.note":"abcd","currency":"EUR","line.items":[]}'));
         $this->assertSame(
-            ['currency' => ['field "currency" is required when invoice.note is present.']],
-            $errors('{"invoice.note":"abc","line.items":[]}'),
+            expected: ['currency' => ['field "currency" is required when invoice.note is present.']],
+            actual: $errors('{"invoice.note":"abc","line.items":[]}'),
         );
         $this->assertSame(
-            ['line.items' => ['line.items[0].unit.price is required.']],
-            $errors('{"invoice.note":"abc","currency":"EUR","line.items":[{}]}'),
+            expected: ['line.items' => ['line.items[0].unit.price is required.']],
+            actual: $errors('{"invoice.note":"abc","currency":"EUR","line.items":[{}]}'),
         );
         $this->assertSame(
-            ['line.items.0.unit.price' => ['validation.integer']],
-            $errors('{"invoice.note":"abc","currency":"EUR","line.items":[{"unit.price":"x"}]}'),
+            expected: ['line.items.0.unit.price' => ['validation.integer']],
+            actual: $errors('{"invoice.note":"abc","currency":"EUR","line.items":[{"unit.price":"x"}]}'),
         );
         $this->assertArrayHasKey('main.line', $errors('{"invoice.note":"abc","currency":"EUR","line.items":[],"main.line":[]}'));
     }
@@ -1565,9 +1565,9 @@ final class LaravelRulesEnforcementTest extends TestCase
         $this->assertSame('server', $absent->getOrigin());
         $this->assertFalse($absent->isKindProvided());
         $this->assertSame(
-            ['label' => 'none', 'origin' => 'server'],
-            $absent->toArray(),
-            'a default the client did not send is not echoed, unless the schema lets the property be null',
+            expected: ['label' => 'none', 'origin' => 'server'],
+            actual: $absent->toArray(),
+            message: 'a default the client did not send is not echoed, unless the schema lets the property be null',
         );
 
         $sent = $hydrate('{"kind":"some","limit":5,"label":null}');
@@ -1631,8 +1631,8 @@ final class LaravelRulesEnforcementTest extends TestCase
 
         $this->assertSame(
             // `roles.*` carries `Rule::enum()`, as a scalar enum property does.
-            ['roles.0' => ['The selected roles.0 is invalid.']],
-            $validate(['roles' => ['bad']])->errors()->toArray(),
+            expected: ['roles.0' => ['The selected roles.0 is invalid.']],
+            actual: $validate(['roles' => ['bad']])->errors()->toArray(),
         );
 
         $validator = $validate(['roles' => ['Owner'], 'ids' => ['3', 4.0], 'flags' => ['a' => '1', 'b' => 0]]);
@@ -1731,8 +1731,8 @@ final class LaravelRulesEnforcementTest extends TestCase
         // The map is public, so one variant can be validated on its own.
         $this->assertSame('kind', constant($namespace . '\Shape::DISCRIMINATOR_PROPERTY'));
         $this->assertSame(
-            ['circle' => $namespace . '\Circle', 'square' => $namespace . '\Square'],
-            constant($namespace . '\Shape::VARIANTS'),
+            expected: ['circle' => $namespace . '\Circle', 'square' => $namespace . '\Square'],
+            actual: constant($namespace . '\Shape::VARIANTS'),
         );
 
         $factory = $this->validatorFactory();
@@ -1869,8 +1869,8 @@ final class LaravelRulesEnforcementTest extends TestCase
             $this->assertStringContainsString("'crimson'", $tint);
         } finally {
             foreach (new RecursiveIteratorIterator(
-                new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS),
-                RecursiveIteratorIterator::CHILD_FIRST,
+                iterator: new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS),
+                mode: RecursiveIteratorIterator::CHILD_FIRST,
             ) as $entry) {
                 $entry->isDir() ? rmdir((string)$entry) : unlink((string)$entry);
             }
@@ -1947,8 +1947,8 @@ final class LaravelRulesEnforcementTest extends TestCase
         ], ['Leaf' => $leaf]);
         $leafClass = substr($list, 0, (int)strrpos($list, '\\')) . '\Leaf';
         $this->assertSame(
-            ['f' => [['label' => 'a'], 7]],
-            json_decode((string)json_encode((new $list(f: [new $leafClass(label: 'a'), 7]))->toArray()), true),
+            expected: ['f' => [['label' => 'a'], 7]],
+            actual: json_decode((string)json_encode((new $list(f: [new $leafClass(label: 'a'), 7]))->toArray()), true),
         );
 
         $shape = $this->generateProbe('listOrMap', ['anyOf' => [
@@ -2009,8 +2009,8 @@ final class LaravelRulesEnforcementTest extends TestCase
             $this->assertFalse($this->validatorFactory()->make(['swatches' => [['colour' => 'olive']]], $rules)->passes());
         } finally {
             foreach (new RecursiveIteratorIterator(
-                new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS),
-                RecursiveIteratorIterator::CHILD_FIRST,
+                iterator: new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS),
+                mode: RecursiveIteratorIterator::CHILD_FIRST,
             ) as $entry) {
                 $entry->isDir() ? rmdir((string)$entry) : unlink((string)$entry);
             }
@@ -2032,8 +2032,8 @@ final class LaravelRulesEnforcementTest extends TestCase
         $leafClass = substr($fqcn, 0, (int)strrpos($fqcn, '\\')) . '\Leaf';
 
         $this->assertSame(
-            '{"f":{"alpha":{"label":"a"},"beta":7}}',
-            json_encode((new $fqcn(f: ['alpha' => new $leafClass(label: 'a'), 'beta' => 7]))->toArray()),
+            expected: '{"f":{"alpha":{"label":"a"},"beta":7}}',
+            actual: json_encode((new $fqcn(f: ['alpha' => new $leafClass(label: 'a'), 'beta' => 7]))->toArray()),
         );
     }
 
@@ -2084,8 +2084,8 @@ final class LaravelRulesEnforcementTest extends TestCase
         $this->assertSame(50, call_user_func(['LvRuleRequiredDefault\Probe', 'fromValidated'], $validator->validated())->getSize());
         $this->assertFalse($this->validatorFactory()->make(['size' => 5], $rules)->passes(), 'a required key without a default is still required');
         $this->assertCount(1, array_filter(
-            $command->getGenerationWarnings(),
-            static fn(string $warning): bool => str_contains($warning, '"size" in `required` and gives it a `default`'),
+            array: $command->getGenerationWarnings(),
+            callback: static fn(string $warning): bool => str_contains($warning, '"size" in `required` and gives it a `default`'),
         ));
     }
 

@@ -191,6 +191,9 @@ final class GenerateDtoCommand extends Command
         'parent', 'resource', 'self', 'string', 'true', 'void',
     ];
 
+    /** A PHP namespace name: identifier segments joined by single backslashes. */
+    private const string NAMESPACE_NAME_PATTERN = '/^[A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*(?:\\\[A-Za-z_\x80-\xff][A-Za-z0-9_\x80-\xff]*)*$/D';
+
     /**
      * Keywords that give an object schema a shape even when it declares no `properties` — their
      * presence means the schema is not free-form. See `isFreeFormObjectSchema()`.
@@ -245,6 +248,17 @@ final class GenerateDtoCommand extends Command
         'unevaluatedProperties',
     ];
 
+    /**
+     * Numeric bounds two `allOf` restatements of one property can meet in by taking the stricter
+     * value — see `mergeRestatedConstraints()`.
+     *
+     * @var list<string>
+     */
+    private const array LOWER_BOUND_KEYWORDS = ['minLength', 'minimum', 'exclusiveMinimum', 'minItems', 'minProperties', 'minContains'];
+
+    /** @var list<string> */
+    private const array UPPER_BOUND_KEYWORDS = ['maxLength', 'maximum', 'exclusiveMaximum', 'maxItems', 'maxProperties', 'maxContains'];
+
     private bool $deferOutputPublication = false;
 
     /** @var array<string, string> */
@@ -280,6 +294,22 @@ final class GenerateDtoCommand extends Command
 
     /** @var array<string, array{propertyName: string, mapping: array<string, string>}> */
     public array $discriminatorSchemas = [];
+
+    /**
+     * The name each component schema has in its document, by class name — what an implicit
+     * discriminator value is, while the class name is normalized (`cat_v2` becomes `CatV2`).
+     *
+     * @var array<string, string>
+     */
+    private array $componentNames = [];
+
+    /**
+     * Object bases with a `discriminator` and no `mapping`, by class name, waiting for their variants:
+     * those are the schemas that `allOf` the base, and they are only all known once registration ends.
+     *
+     * @var array<string, string> class name => discriminator property name
+     */
+    private array $pendingAllOfDiscriminators = [];
 
     /** @var array<string, string|null> */
     public array $schemaSourceFiles = [];
@@ -561,6 +591,15 @@ final class GenerateDtoCommand extends Command
             $dtoGeneratorNamespace = is_string($dtoGeneratorNamespaceOption)
                 ? $dtoGeneratorNamespaceOption
                 : null;
+            if ($dtoGeneratorNamespace !== null && trim($dtoGeneratorNamespace) !== '') {
+                try {
+                    $this->assertNamespaceName(namespace: trim($dtoGeneratorNamespace, '\\'), source: '--dto-generator-namespace');
+                } catch (RuntimeException $exception) {
+                    $io->error($exception->getMessage());
+
+                    return Command::FAILURE;
+                }
+            }
 
             // Keep existing CLI behavior: when custom directory is provided without namespace,
             // derive namespace from directory path itself.
@@ -664,7 +703,7 @@ final class GenerateDtoCommand extends Command
             $io->warning('Option --with-psr7 is ignored without --dto-generator-directory: the runtime services are used from vendor/, where DtoDeserializerPsr7 already is.');
         } elseif ($withPsr7 && $mode === self::ATTRIBUTE_MODE_RUNTIME) {
             $io->note(
-                'PSR-7 deserializer copied. Install the bridge in your project: '
+                message: 'PSR-7 deserializer copied. Install the bridge in your project: '
                 . 'composer require symfony/psr-http-message-bridge',
             );
         }
@@ -737,7 +776,9 @@ final class GenerateDtoCommand extends Command
             return [[
                 'file' => $file,
                 'directory' => $directory,
-                'namespace' => $namespace !== '' ? $this->normalizeExplicitNamespace($namespace) : $this->directoryToNamespace($directory),
+                'namespace' => $namespace !== ''
+                    ? $this->assertNamespaceName(namespace: $this->normalizeExplicitNamespace($namespace), source: '--namespace')
+                    : $this->directoryToNamespace($directory),
             ]];
         }
 
@@ -766,7 +807,10 @@ final class GenerateDtoCommand extends Command
                 'file' => $match,
                 'directory' => $documentDirectory,
                 'namespace' => $namespace !== ''
-                    ? $this->normalizeExplicitNamespace($this->fillRefPlaceholders(value: $namespace, captures: $captures, separator: '\\'))
+                    ? $this->assertNamespaceName(
+                        namespace: $this->normalizeExplicitNamespace($this->fillRefPlaceholders(value: $namespace, captures: $captures, separator: '\\')),
+                        source: '--namespace',
+                    )
                     : $this->directoryToNamespace($documentDirectory),
             ];
         }
@@ -944,7 +988,7 @@ final class GenerateDtoCommand extends Command
                 return json_decode($contents, associative: true, depth: 4096, flags: JSON_THROW_ON_ERROR);
             } catch (JsonException $e) {
                 throw new RuntimeException(
-                    sprintf('Invalid JSON in %s: %s', $filePath, $e->getMessage()),
+                    message: sprintf('Invalid JSON in %s: %s', $filePath, $e->getMessage()),
                     previous: $e,
                 );
             }
@@ -1079,6 +1123,7 @@ final class GenerateDtoCommand extends Command
      */
     public function generateFromArray(array $openApi, string $outputDirectory, string $namespace, string $mode = self::ATTRIBUTE_MODE_RUNTIME): int
     {
+        $this->assertNamespaceName(namespace: $namespace, source: 'namespace');
         $this->setAttributeMode($mode);
         $this->initializeGeneration(outputDirectory: $outputDirectory, namespace: $namespace, rootSpecFile: null);
         $this->readDocumentLevelFields($openApi);
@@ -1105,7 +1150,12 @@ final class GenerateDtoCommand extends Command
             }
 
             $className = $this->schemaClassName($schemaName);
-            $this->registerSchema(className: $className, schemaDefinition: $schemaDefinition, sourceFile: null);
+            $this->registerSchema(
+                className: $className,
+                schemaDefinition: $schemaDefinition,
+                sourceFile: null,
+                componentName: $schemaName,
+            );
         }
 
         return $this->finalizeGeneration();
@@ -1186,6 +1236,14 @@ final class GenerateDtoCommand extends Command
             foreach ($map as $key => $value) {
                 $this->assertRefPlaceholdersResolvable(key: $key, value: $value);
             }
+        }
+        foreach ($namespaceMap as $file => $namespace) {
+            // A `{n}` is filled from a path segment later, and a path segment is normalized into a
+            // namespace segment, so any one stands in for it here.
+            $this->assertNamespaceName(
+                namespace: trim((string)preg_replace('/\{\d+\}/', 'Segment', $namespace), '\\'),
+                source: array_key_exists($file, $refNamespaces) ? '--ref-namespace' : '--ref',
+            );
         }
 
         $this->refOutputDirectoryMap = $directoryMap;
@@ -1429,8 +1487,8 @@ final class GenerateDtoCommand extends Command
         $filled = (string)preg_replace_callback(
             pattern: '/\{(\d+)\}/',
             callback: fn(array $placeholder): string => implode(
-                $separator,
-                array_map($this->normalizeClassName(...), $captures[(int)$placeholder[1] - 1] ?? []),
+                separator: $separator,
+                array: array_map($this->normalizeClassName(...), $captures[(int)$placeholder[1] - 1] ?? []),
             ),
             subject: $value,
         );
@@ -1451,7 +1509,7 @@ final class GenerateDtoCommand extends Command
         // If dtoGeneratorDirectory is a relative path, calculate it from current directory
         if (
             str_starts_with($dtoGeneratorDirectory, '/') || (strlen(
-                $dtoGeneratorDirectory,
+                string: $dtoGeneratorDirectory,
             ) > 1 && $dtoGeneratorDirectory[1] === ':')
         ) {
             $commonDir = rtrim($dtoGeneratorDirectory, '/');
@@ -1541,10 +1599,13 @@ final class GenerateDtoCommand extends Command
         $this->ownedOutputDirectories = [];
         $this->interpreterPropertyTypes = [];
         $this->laravelComposedTargetCache = null;
+        $this->laravelDataMorphReachCache = null;
         $this->laravelNestedPathsCache = [];
         $this->laravelReachableCache = [];
         $this->dtoSchemas = [];
         $this->enumSchemas = [];
+        $this->foldedClassNames = [];
+        $this->foldedClassNameCount = -1;
         $this->localSchemaReferences = [];
         $this->registeredExternalSchemas = [];
         $this->rawSchemasByClass = [];
@@ -1555,6 +1616,8 @@ final class GenerateDtoCommand extends Command
         $this->parentClasses = [];
         $this->unionInterfacesByClass = [];
         $this->discriminatorSchemas = [];
+        $this->componentNames = [];
+        $this->pendingAllOfDiscriminators = [];
         $this->schemaSourceFiles = [];
         $this->schemaNamespaces = [];
         $this->schemaOutputDirectories = [];
@@ -1897,6 +1960,7 @@ final class GenerateDtoCommand extends Command
         $this->redirectPureAliasReferences();
         $this->expandNestedSchemas();
         $this->inlineNullSchemaReferences();
+        $this->resolvePendingAllOfDiscriminators();
         $this->detectParentClasses();
         $this->detectUnionInterfaces();
 
@@ -2013,6 +2077,7 @@ final class GenerateDtoCommand extends Command
         // Last, when every schema — declared, extracted and synthesised — is registered, and still
         // before a single byte has been written.
         $this->assertEveryLocalReferenceResolved();
+        $this->warnAboutImportsShadowingGeneratedClasses($pendingFiles);
 
         $this->publishGeneratedFiles($pendingFiles, [$this->baseOutputDirectory]);
 
@@ -2076,7 +2141,12 @@ final class GenerateDtoCommand extends Command
             }
 
             $className = $this->schemaClassName($schemaName);
-            $this->registerSchema(className: $className, schemaDefinition: $schemaDefinition, sourceFile: $sourceFile);
+            $this->registerSchema(
+                className: $className,
+                schemaDefinition: $schemaDefinition,
+                sourceFile: $sourceFile,
+                componentName: $schemaName,
+            );
         }
     }
 
@@ -2263,8 +2333,10 @@ final class GenerateDtoCommand extends Command
 
     /**
      * @param array<string, mixed> $schemaDefinition
+     * @param string|null $componentName the schema's name in its document, for a component; null for a
+     *                                   schema met inline, which has none
      */
-    private function registerSchema(string $className, array $schemaDefinition, ?string $sourceFile): void
+    private function registerSchema(string $className, array $schemaDefinition, ?string $sourceFile, ?string $componentName = null): void
     {
         $namespace = $this->resolveNamespaceForSourceFile($sourceFile);
         $outputDirectory = $this->resolveOutputDirectoryForSourceFile($sourceFile);
@@ -2345,6 +2417,9 @@ final class GenerateDtoCommand extends Command
         $this->schemaSourceFiles[$className] = $sourceFile;
         $this->schemaNamespaces[$className] = $namespace;
         $this->schemaOutputDirectories[$className] = $outputDirectory;
+        if ($componentName !== null) {
+            $this->componentNames[$className] = $componentName;
+        }
         $this->collectDiscriminatorMetadata(className: $className, schemaDefinition: $schemaDefinition);
     }
 
@@ -2500,7 +2575,7 @@ final class GenerateDtoCommand extends Command
         }
 
         $baseNamespaceParts = array_values(
-            array_filter(explode('\\', $this->baseNamespace), static fn(string $part): bool => $part !== ''),
+            array: array_filter(explode('\\', $this->baseNamespace), static fn(string $part): bool => $part !== ''),
         );
         if ($baseNamespaceParts === []) {
             return null;
@@ -2512,8 +2587,8 @@ final class GenerateDtoCommand extends Command
         }
 
         $suffixParts = array_map(
-            fn(string $segment): string => $this->normalizeClassName($segment),
-            array_slice($relativeSegments, 1),
+            callback: fn(string $segment): string => $this->normalizeClassName($segment),
+            array: array_slice($relativeSegments, 1),
         );
 
         return implode('\\', [...$rebasedNamespaceParts, ...$suffixParts]);
@@ -2557,9 +2632,9 @@ final class GenerateDtoCommand extends Command
         }
 
         return array_values(
-            array_filter(
-                explode('/', $relativeDirectory),
-                static fn(string $segment): bool => $segment !== '' && $segment !== '.' && $segment !== '..',
+            array: array_filter(
+                array: explode('/', $relativeDirectory),
+                callback: static fn(string $segment): bool => $segment !== '' && $segment !== '.' && $segment !== '..',
             ),
         );
     }
@@ -2607,9 +2682,9 @@ final class GenerateDtoCommand extends Command
     private function splitPathSegments(string $path): array
     {
         return array_values(
-            array_filter(
-                explode('/', str_replace('\\', '/', $path)),
-                static fn(string $part): bool => $part !== '',
+            array: array_filter(
+                array: explode('/', str_replace('\\', '/', $path)),
+                callback: static fn(string $part): bool => $part !== '',
             ),
         );
     }
@@ -2617,13 +2692,13 @@ final class GenerateDtoCommand extends Command
     private function makeRelativePath(string $fromDirectory, string $toPath): string
     {
         $fromParts = array_values(
-            array_filter(
-                explode('/', str_replace('\\', '/', rtrim($fromDirectory, '/'))),
-                static fn(string $part): bool => $part !== '',
+            array: array_filter(
+                array: explode('/', str_replace('\\', '/', rtrim($fromDirectory, '/'))),
+                callback: static fn(string $part): bool => $part !== '',
             ),
         );
         $toParts = array_values(
-            array_filter(explode('/', str_replace('\\', '/', $toPath)), static fn(string $part): bool => $part !== ''),
+            array: array_filter(explode('/', str_replace('\\', '/', $toPath)), static fn(string $part): bool => $part !== ''),
         );
 
         $length = min(count($fromParts), count($toParts));
@@ -2904,7 +2979,12 @@ final class GenerateDtoCommand extends Command
             return;
         }
 
-        $this->registerSchema(className: $className, schemaDefinition: $definition, sourceFile: $externalFile);
+        $this->registerSchema(
+            className: $className,
+            schemaDefinition: $definition,
+            sourceFile: $externalFile,
+            componentName: $schemaName,
+        );
         $this->scanExternalSchemaRefs(node: $definition, currentSourceFile: $externalFile);
     }
 
@@ -2960,7 +3040,7 @@ final class GenerateDtoCommand extends Command
 
         if (!is_string($propertyName) || trim($propertyName) === '') {
             throw new RuntimeException(
-                sprintf('Discriminator propertyName must be a non-empty string in %s.', $className),
+                message: sprintf('Discriminator propertyName must be a non-empty string in %s.', $className),
             );
         }
 
@@ -2971,6 +3051,15 @@ final class GenerateDtoCommand extends Command
         // an EMPTY one written by hand is still an error, because it says "no member matches anything".
         if ($mapping === null) {
             $mapping = $this->implicitDiscriminatorMapping($schemaDefinition);
+
+            // An object base has no union members to name: its variants point at it, each through an
+            // `allOf`, which is the polymorphism example of the specification itself. They are not all
+            // registered yet, so the map is built once they are — `resolvePendingAllOfDiscriminators()`.
+            if ($mapping === [] && !$this->hasUnionMembers($schemaDefinition)) {
+                $this->pendingAllOfDiscriminators[$className] = $propertyName;
+
+                return;
+            }
         }
 
         if (!is_array($mapping) || $mapping === []) {
@@ -2983,13 +3072,13 @@ final class GenerateDtoCommand extends Command
         foreach ($mapping as $mappingValue => $ref) {
             if (!is_string($mappingValue) || $mappingValue === '') {
                 throw new RuntimeException(
-                    sprintf('Discriminator mapping key must be a non-empty string in %s.', $className),
+                    message: sprintf('Discriminator mapping key must be a non-empty string in %s.', $className),
                 );
             }
 
             if (!is_string($ref)) {
                 throw new RuntimeException(
-                    sprintf(
+                    message: sprintf(
                         'Discriminator mapping value for "%s" in %s must be a schema $ref string.',
                         $mappingValue,
                         $className,
@@ -3003,7 +3092,7 @@ final class GenerateDtoCommand extends Command
             );
             if ($targetClass === 'mixed') {
                 throw new RuntimeException(
-                    sprintf(
+                    message: sprintf(
                         'Discriminator mapping value for "%s" in %s must reference #/components/schemas/*.',
                         $mappingValue,
                         $className,
@@ -3013,7 +3102,7 @@ final class GenerateDtoCommand extends Command
 
             if (array_key_exists($targetClass, $targetToSource)) {
                 throw new RuntimeException(
-                    sprintf(
+                    message: sprintf(
                         'Discriminator mapping in %s has duplicate target "%s" for values "%s" and "%s".',
                         $className,
                         $targetClass,
@@ -3031,6 +3120,48 @@ final class GenerateDtoCommand extends Command
             'propertyName' => $propertyName,
             'mapping' => $normalizedMapping,
         ];
+    }
+
+    /**
+     * @param array<mixed> $schemaDefinition
+     */
+    private function hasUnionMembers(array $schemaDefinition): bool
+    {
+        return is_array($schemaDefinition['oneOf'] ?? null) || is_array($schemaDefinition['anyOf'] ?? null);
+    }
+
+    /**
+     * The implicit mapping of an object base whose discriminator names no variant: OAS makes each schema
+     * that `allOf`s the base a variant, selected by its own schema name. Runs once every schema is
+     * registered, before anything asks which class extends which.
+     */
+    private function resolvePendingAllOfDiscriminators(): void
+    {
+        foreach ($this->pendingAllOfDiscriminators as $baseClass => $propertyName) {
+            $mapping = [];
+            foreach ($this->dtoSchemas as $candidate => $definition) {
+                foreach (is_array($definition['allOf'] ?? null) ? $definition['allOf'] : [] as $branch) {
+                    if (!is_array($branch) || !is_string($branch['$ref'] ?? null)) {
+                        continue;
+                    }
+                    $parent = $this->schemaRefToClassName(
+                        ref: $branch['$ref'],
+                        currentSourceFile: $this->getSchemaSourceFile($candidate),
+                    );
+                    if ($parent === $baseClass) {
+                        $mapping[$this->componentNames[$candidate] ?? $candidate] = $candidate;
+                        break;
+                    }
+                }
+            }
+
+            if ($mapping === []) {
+                throw new RuntimeException(sprintf('Discriminator mapping must be a non-empty map in %s.', $baseClass));
+            }
+
+            $this->discriminatorSchemas[$baseClass] = ['propertyName' => $propertyName, 'mapping' => $mapping];
+        }
+        $this->pendingAllOfDiscriminators = [];
     }
 
     /**
@@ -3384,19 +3515,27 @@ final class GenerateDtoCommand extends Command
                 }
             }
 
-            $allProperties = $this->withSiblingRequired($allProperties, $schemaDefinition);
-
-            // Multiple merged branches can declare the same property with conflicting types.
-            // The inheritance path rejects such conflicts; the merge path must too, instead of
-            // silently keeping whichever branch happens to be last.
-            $this->assertMergedPropertiesCompatible($allProperties, $className);
+            // Several branches may declare the same property: each narrows it, so they are merged, and
+            // only types no value can satisfy at once are refused.
+            $allProperties = $this->mergeRestatedProperties(
+                properties: $this->withSiblingRequired($allProperties, $schemaDefinition),
+                className: $className,
+            );
+            if ($extends !== null) {
+                $allProperties = $this->withInheritedRestatements(
+                    properties: $allProperties,
+                    parentClassName: $extends,
+                    schemaDefinition: $schemaDefinition,
+                    className: $className,
+                );
+            }
 
             // Own properties must not collide — case-insensitively — with the inherited accessors.
             $inheritedNames = $extends === null
                 ? []
                 : array_map(
-                    static fn(array $property): string => $property['name'],
-                    $this->getSchemaProperties($extends),
+                    callback: static fn(array $property): string => $property['name'],
+                    array: $this->getSchemaProperties($extends),
                 );
             $allProperties = $this->dedupeCaseInsensitivePropertyNames($allProperties, $inheritedNames);
 
@@ -4279,16 +4418,26 @@ final class GenerateDtoCommand extends Command
                         $this->laravelSpelledOutRefs = $spelledOutBefore;
                     }
                 }
+                // Symfony and runtime hydrate the branch a `$ref` names, so the branch is "is that
+                // class"; the class checks itself — through the cascade, or while it is hydrated.
+                // `anyOf` needs it as much as `oneOf`: without it the branch extracted to nothing and
+                // took the scalar branches beside it along. Symfony's interpreter resolves the short
+                // name against its own namespace; `DtoValidator` has no namespace to resolve against,
+                // so runtime gets the qualified name.
                 if (
-                    $this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY
-                    && $unionKey === 'oneOf'
+                    in_array($this->attributeMode, [self::ATTRIBUTE_MODE_SYMFONY, self::ATTRIBUTE_MODE_RUNTIME], true)
                     && $extracted === []
                     && array_key_exists('$ref', $variant)
                     && is_string($variant['$ref'])
                 ) {
                     $branchClass = $this->schemaRefToClassName($variant['$ref']);
-                    if ($branchClass !== 'mixed') {
-                        $extracted = ['x-php-instanceof' => $branchClass];
+                    // Runtime names the class in the emitted constraints, so it has to be one that is
+                    // emitted: a reference to anything else stays as unjudgeable as before.
+                    $isEmittedClass = array_key_exists($branchClass, $this->dtoSchemas) || array_key_exists($branchClass, $this->enumSchemas);
+                    if ($branchClass !== 'mixed' && ($isEmittedClass || $this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY)) {
+                        $extracted = ['x-php-instanceof' => $this->attributeMode === self::ATTRIBUTE_MODE_RUNTIME
+                            ? ltrim(($this->schemaNamespaces[$branchClass] ?? $this->enumNamespaces[$branchClass] ?? $this->baseNamespace) . '\\' . $branchClass, '\\')
+                            : $branchClass];
                     }
                 }
                 if ($extracted === []) {
@@ -4314,6 +4463,13 @@ final class GenerateDtoCommand extends Command
                     $discriminator = $propertySchema['discriminator'];
                     $propertyName = $discriminator['propertyName'] ?? null;
                     $mapping = $discriminator['mapping'] ?? null;
+                    // No mapping means the implicit one, each member named by its schema — as the
+                    // component spelling already reads it. laravel mode hydrates an inline union only
+                    // through the dispatch below, so without it every payload, valid ones included,
+                    // reached the constructor as a bare array: a TypeError.
+                    if ($mapping === null && $this->attributeMode === self::ATTRIBUTE_MODE_LARAVEL) {
+                        $mapping = $this->implicitDiscriminatorMapping(['oneOf' => $variants]);
+                    }
                     if (is_string($propertyName) && is_array($mapping) && $mapping !== []) {
                         $classMap = [];
                         foreach ($mapping as $discriminatorValue => $ref) {
@@ -4411,7 +4567,7 @@ final class GenerateDtoCommand extends Command
         // OpenAPI 3.1: type: [string, null] → normalize to type: string, nullable: true
         if (array_key_exists('type', $constraints) && is_array($constraints['type'])) {
             $nonNullTypes = array_values(
-                array_filter($constraints['type'], static fn(mixed $t): bool => is_string($t) && $t !== 'null'),
+                array: array_filter($constraints['type'], static fn(mixed $t): bool => is_string($t) && $t !== 'null'),
             );
             if (count($nonNullTypes) < count($constraints['type'])) {
                 $constraints['nullable'] = true;
@@ -4868,7 +5024,8 @@ final class GenerateDtoCommand extends Command
      * even a bare string where the object belonged — every one of them silently, because `$ref` is not
      * a constraint keyword and `scrubUnvalidatableSubschemas()` dropped the whole subschema.
      *
-     * Inlining the component's own `properties`/`required` puts those checks back. The VALUE is still
+     * Inlining the component's own `properties`/`required` — or the `allOf`/`oneOf`/`anyOf` that carry
+     * them — puts those checks back. The VALUE is still
      * not hydrated — it stays the `stdClass` `json_decode()` produced, which is why the declared type
      * remains `array<array<mixed>>`.
      *
@@ -4891,8 +5048,20 @@ final class GenerateDtoCommand extends Command
 
         $hasProperties = is_array($definition['properties'] ?? null) && $definition['properties'] !== [];
         $hasRequired = is_array($definition['required'] ?? null) && $definition['required'] !== [];
+        // A composed component declares its fields in its branches: an `allOf` child, a `oneOf` of
+        // variants. It has neither keyword at the top, so it was skipped as free-form and a list of lists
+        // of them checked nothing below the inner list. Its branches are walked once it is inlined.
+        //
+        // Not a union in Symfony mode: its serializer DOES build the variant objects at this depth,
+        // through the discriminator map, and an inlined branch matched against such an object reads its
+        // private state as missing, so a valid payload was refused. That mode keeps its old answer.
+        $compositionKeys = $this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY ? ['allOf'] : ['allOf', 'oneOf', 'anyOf'];
+        $isComposed = false;
+        foreach ($compositionKeys as $compositionKey) {
+            $isComposed = $isComposed || (is_array($definition[$compositionKey] ?? null) && $definition[$compositionKey] !== []);
+        }
 
-        return $hasProperties || $hasRequired ? $definition : null;
+        return $hasProperties || $hasRequired || $isComposed ? $definition : null;
     }
 
     /**
@@ -5197,8 +5366,8 @@ final class GenerateDtoCommand extends Command
             // `DtoValidator` reads `allOf: [false]` in that spelling already and refuses every value
             // against it. Nothing to expand, nothing to translate.
             $schemaMembers = array_values(array_filter(
-                $propertySchema['allOf'],
-                static fn(mixed $member): bool => is_array($member),
+                array: $propertySchema['allOf'],
+                callback: static fn(mixed $member): bool => is_array($member),
             ));
 
             // Only booleans were there. `false` admits nothing and `true` constrains nothing, so
@@ -5319,7 +5488,7 @@ final class GenerateDtoCommand extends Command
 
         if (
             array_key_exists('enum', $propertySchema) && is_array(
-                $propertySchema['enum'],
+                value: $propertySchema['enum'],
             ) && $propertySchema['enum'] !== []
             && $this->canGenerateBackedEnumFromSchema($propertySchema)
         ) {
@@ -5348,16 +5517,16 @@ final class GenerateDtoCommand extends Command
 
         if (is_array($type)) {
             $nonNullTypes = array_values(
-                array_filter($type, static fn(mixed $item): bool => is_string($item) && $item !== 'null'),
+                array: array_filter($type, static fn(mixed $item): bool => is_string($item) && $item !== 'null'),
             );
             $nullable = count($nonNullTypes) !== count($type);
 
             if (count($nonNullTypes) > 1) {
                 // OAS 3.1 multi-type: type: [string, integer]  →  string|int
                 $phpUnionParts = array_values(
-                    array_unique(
-                        array_map(
-                            static fn(string $t): string => match ($t) {
+                    array: array_unique(
+                        array: array_map(
+                            callback: static fn(string $t): string => match ($t) {
                                 'integer' => 'int',
                                 'number' => 'float',
                                 'string' => 'string',
@@ -5365,7 +5534,7 @@ final class GenerateDtoCommand extends Command
                                 'array' => 'array',
                                 default => 'mixed',
                             },
-                            $nonNullTypes,
+                            array: $nonNullTypes,
                         ),
                     ),
                 );
@@ -5434,7 +5603,7 @@ final class GenerateDtoCommand extends Command
 
             // An item that names a nullable array alias admits null like the alias does.
             $itemNullable = $this->schemaAllowsNull($items) || $this->arrayAliasAllowsNull(
-                is_string($items['$ref'] ?? null) ? $items['$ref'] : null,
+                ref: is_string($items['$ref'] ?? null) ? $items['$ref'] : null,
             );
             $itemPrefix = $itemNullable ? '?' : '';
 
@@ -5629,7 +5798,7 @@ final class GenerateDtoCommand extends Command
         }
 
         $parentProperties = $this->indexPropertiesByName(
-            $this->deduplicatePropertiesByLastDefinition($this->getParentProperties($parentClassName)),
+            properties: $this->deduplicatePropertiesByLastDefinition($this->getParentProperties($parentClassName)),
         );
         $parentProperty = $parentProperties[$this->normalizePropertyName($propertyName)] ?? null;
         if (!is_array($parentProperty)) {
@@ -6195,8 +6364,8 @@ final class GenerateDtoCommand extends Command
     ): string {
         // The null is this value's own `?`: stripped from the type below and given back here.
         return $this->composePhpTypeHint(
-            $this->nestedContainerValueBaseDocType($schema, $remainingDepth, $currentSourceFile),
-            $this->schemaAllowsNull($schema),
+            type: $this->nestedContainerValueBaseDocType($schema, $remainingDepth, $currentSourceFile),
+            nullable: $this->schemaAllowsNull($schema),
         );
     }
 
@@ -6314,11 +6483,11 @@ final class GenerateDtoCommand extends Command
             || $this->isMapLikeObjectSchema($additionalProperties)
         ) {
             return $this->composePhpTypeHint(
-                $this->resolveNestedContainerDocType(
+                type: $this->resolveNestedContainerDocType(
                     schema: $additionalProperties,
                     currentSourceFile: $this->getSchemaSourceFile($ownerClassName),
                 ),
-                $valueNullable,
+                nullable: $valueNullable,
             );
         }
 
@@ -7005,9 +7174,15 @@ final class GenerateDtoCommand extends Command
     private function renderPhpTemplate(string $templateName, array $context): string
     {
         $content = $this->renderTwig($templateName, $context);
+        // Every class generated into the file's namespace owns its short name there, whether this file
+        // mentions it or not: no import may take it, or a sibling's class is shadowed by a library one.
+        $namespace = preg_match('/^namespace ([\w\\\]+);$/m', $content, $declared) === 1 ? $declared[1] : '';
 
         return GlobalFunctionImports::apply(
-            QualifiedNameImports::apply(self::normalizeEmittedBlankLines(rtrim($content) . "\n")),
+            php: QualifiedNameImports::apply(
+                php: self::normalizeEmittedBlankLines(rtrim($content) . "\n"),
+                reservedShortNames: $this->generatedClassNamesIn($namespace),
+            ),
         );
     }
 
@@ -7075,8 +7250,8 @@ final class GenerateDtoCommand extends Command
         // so a property named `it's` produced a file that did not parse in runtime and yii3 modes.
         // One filter is the only way the answer cannot differ between two templates.
         $this->twig->addFilter(new TwigFilter(
-            'php_string',
-            fn(string $value): string => $this->escapeSingleQuoted($value),
+            name: 'php_string',
+            callable: fn(string $value): string => $this->escapeSingleQuoted($value),
         ));
 
         $this->twig->addFilter(new TwigFilter(
@@ -7230,9 +7405,9 @@ final class GenerateDtoCommand extends Command
             $part = trim($part);
             if (
                 $part === '' || in_array(
-                    $part,
-                    ['int', 'float', 'string', 'bool', 'array', 'mixed', 'null', 'DateTimeImmutable', 'UploadedFile'],
-                    true,
+                    needle: $part,
+                    haystack: ['int', 'float', 'string', 'bool', 'array', 'mixed', 'null', 'DateTimeImmutable', 'UploadedFile'],
+                    strict: true,
                 )
             ) {
                 $formatted[] = $part;
@@ -7327,26 +7502,132 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
-     * Rejects merged allOf branches that declare the same property with conflicting PHP types.
+     * One property per name for a class built from several `allOf` branches. A branch that restates a
+     * property another branch (or the parent) declares NARROWS it — under `allOf` both schemas hold —
+     * so the two are merged rather than the later one replacing the earlier: the parent's `required`,
+     * `maxLength` and enum stayed behind while only the branch's `minLength` was checked. Only a real
+     * conflict, two types no value can satisfy at once, is refused.
+     *
+     * The merged property keeps the position of the first declaration, which is where the class lists it.
      *
      * @param array<int, SchemaProperty> $properties
+     * @return array<int, SchemaProperty>
      */
-    private function assertMergedPropertiesCompatible(array $properties, string $className): void
+    private function mergeRestatedProperties(array $properties, string $className): array
     {
-        $byName = [];
+        /** @var array<string, int> $positionByName */
+        $positionByName = [];
+        $merged = [];
         foreach ($properties as $property) {
-            $name = $property['name'];
-            if (array_key_exists($name, $byName) && $byName[$name]['type'] !== $property['type']) {
-                throw new RuntimeException(sprintf(
-                    'Property merge conflict in %s for $%s: type %s vs %s.',
-                    $className,
-                    $name,
-                    $this->describePropertyType($byName[$name]),
-                    $this->describePropertyType($property),
-                ));
+            $position = $positionByName[$property['name']] ?? null;
+            if ($position === null) {
+                $positionByName[$property['name']] = count($merged);
+                $merged[] = $property;
+                continue;
             }
-            $byName[$name] = $property;
+
+            $merged[$position] = $this->mergePropertyRestatement($merged[$position], $property, $className);
         }
+
+        return $merged;
+    }
+
+    /**
+     * The property both declarations describe at once.
+     *
+     * @param SchemaProperty $earlier
+     * @param SchemaProperty $later
+     * @return SchemaProperty
+     */
+    private function mergePropertyRestatement(array $earlier, array $later, string $className): array
+    {
+        $type = $this->narrowerRestatedType($earlier['type'], $later['type']);
+        if ($type === null) {
+            throw new RuntimeException(sprintf(
+                'Property merge conflict in %s for $%s: type %s vs %s.',
+                $className,
+                $earlier['name'],
+                $this->describePropertyType($earlier),
+                $this->describePropertyType($later),
+            ));
+        }
+
+        // The declaration that carries the narrower type also carries what belongs to it — a temporal
+        // format, an item type; with equal types the later one does, as a restatement always did.
+        $property = $type === $later['type'] ? $later : $earlier;
+        $required = $earlier['required'] || $later['required'];
+        $schemaNullable = ($earlier['schemaNullable'] ?? $earlier['nullable']) && ($later['schemaNullable'] ?? $later['nullable']);
+        $property['required'] = $required;
+        $property['schemaNullable'] = $schemaNullable;
+        $property['nullable'] = $schemaNullable || !$required;
+        $property['default'] = $later['default'] ?? $earlier['default'];
+        $property['description'] = $later['description'] ?? $earlier['description'];
+        $property['example'] = $later['example'] ?? $earlier['example'];
+        $property['constraints'] = $this->mergeRestatedConstraints($earlier['constraints'] ?? [], $later['constraints'] ?? []);
+        foreach (['readOnly', 'writeOnly', 'deprecated'] as $flag) {
+            $property[$flag] = ($earlier[$flag] ?? false) || ($later[$flag] ?? false);
+        }
+
+        return $property;
+    }
+
+    /**
+     * The PHP type a value of both declarations has, or null when no value has both. An untyped
+     * restatement (`{minLength: 2}`) is `mixed` and adds no type of its own; an enum narrows the
+     * scalar it is backed by.
+     */
+    private function narrowerRestatedType(string $earlier, string $later): ?string
+    {
+        if ($earlier === $later || $later === 'mixed') {
+            return $earlier;
+        }
+        if ($earlier === 'mixed') {
+            return $later;
+        }
+        if (($this->enumSchemas[$earlier]['type'] ?? null) === $later) {
+            return $earlier;
+        }
+        if (($this->enumSchemas[$later]['type'] ?? null) === $earlier) {
+            return $later;
+        }
+
+        return null;
+    }
+
+    /**
+     * Both declarations' rules. Keywords only one side sets are simply joined, which keeps the result
+     * the flat map every mode reads; a bound both set keeps the stricter value, which is what both
+     * together allow. Any other keyword both set to different values cannot be joined that way, so the
+     * two maps are kept whole under an `allOf`, which every mode's interpreter enforces.
+     *
+     * @param array<string, mixed> $earlier
+     * @param array<string, mixed> $later
+     * @return array<string, mixed>
+     */
+    private function mergeRestatedConstraints(array $earlier, array $later): array
+    {
+        $merged = $earlier;
+        foreach ($later as $keyword => $value) {
+            $current = $merged[$keyword] ?? null;
+            if ($current === null || $current === $value) {
+                $merged[$keyword] = $value;
+                continue;
+            }
+
+            $bothNumeric = (is_int($current) || is_float($current)) && (is_int($value) || is_float($value));
+            if ($bothNumeric && in_array($keyword, self::LOWER_BOUND_KEYWORDS, true)) {
+                $merged[$keyword] = max($current, $value);
+                continue;
+            }
+            if ($bothNumeric && in_array($keyword, self::UPPER_BOUND_KEYWORDS, true)) {
+                $merged[$keyword] = min($current, $value);
+                continue;
+            }
+
+            return ['allOf' => [$earlier, $later]];
+        }
+
+        return $merged;
     }
 
     /**
@@ -7444,7 +7725,10 @@ final class GenerateDtoCommand extends Command
                 }
             }
 
-            return $this->dedupeCaseInsensitivePropertyNames($this->withSiblingRequired($allProperties, $schemaDefinition));
+            return $this->dedupeCaseInsensitivePropertyNames(properties: $this->mergeRestatedProperties(
+                properties: $this->withSiblingRequired($allProperties, $schemaDefinition),
+                className: $className,
+            ));
         }
 
         return $this->extractProperties($schemaDefinition, $className);
@@ -7456,13 +7740,17 @@ final class GenerateDtoCommand extends Command
      * typed nullable and tracked for presence, while the validation, built from the whole schema, did
      * require it. The flag is set here, where the branches meet.
      *
+     * A `required` inside one inline branch binds the whole object just the same: `allOf: [$ref Base,
+     * {required: [name]}]` requires the `name` Base declares. Reading only the outer list left it
+     * optional, and `{}` went through.
+     *
      * @param array<int, SchemaProperty> $properties
      * @param array<string, mixed> $schemaDefinition
      * @return array<int, SchemaProperty>
      */
     private function withSiblingRequired(array $properties, array $schemaDefinition): array
     {
-        $required = is_array($schemaDefinition['required'] ?? null) ? $schemaDefinition['required'] : [];
+        $required = $this->allOfRequiredNames($schemaDefinition);
         if ($required === []) {
             return $properties;
         }
@@ -7477,6 +7765,83 @@ final class GenerateDtoCommand extends Command
         }
 
         return $marked;
+    }
+
+    /**
+     * Every name a `required` of an `allOf` class lists: the one beside the `allOf` and the one in each
+     * inline branch. A `$ref` branch's list is its own class's business and arrives with its properties.
+     *
+     * @param array<string, mixed> $schemaDefinition
+     * @return list<string>
+     */
+    private function allOfRequiredNames(array $schemaDefinition): array
+    {
+        $lists = [$schemaDefinition['required'] ?? null];
+        foreach (is_array($schemaDefinition['allOf'] ?? null) ? $schemaDefinition['allOf'] : [] as $branch) {
+            if (is_array($branch) && !array_key_exists('$ref', $branch)) {
+                $lists[] = $branch['required'] ?? null;
+            }
+        }
+
+        $names = [];
+        foreach ($lists as $list) {
+            foreach (is_array($list) ? $list : [] as $name) {
+                if (is_string($name) || is_int($name)) {
+                    $names[(string)$name] = true;
+                }
+            }
+        }
+
+        // A digit name comes back from the keys as an int; `openApiName` is always a string.
+        return array_map('strval', array_keys($names));
+    }
+
+    /**
+     * The properties a child inherits but narrows: restated in a branch, or named by one of its
+     * `required` lists. The parent keeps the storage and the accessors; the child's entry is the
+     * merged view of the property, which is what its constructor and its own rules have to follow —
+     * without it the inherited property stayed as optional and as loosely checked as the parent left it.
+     *
+     * @param array<int, SchemaProperty> $properties the child's own, already merged
+     * @param array<string, mixed> $schemaDefinition
+     * @return array<int, SchemaProperty>
+     */
+    private function withInheritedRestatements(array $properties, string $parentClassName, array $schemaDefinition, string $className): array
+    {
+        $inherited = $this->indexPropertiesByName(
+            properties: $this->deduplicatePropertiesByLastDefinition($this->getSchemaProperties($parentClassName)),
+        );
+
+        $result = [];
+        $restated = [];
+        foreach ($properties as $property) {
+            $parentProperty = $inherited[$property['name']] ?? null;
+            // Types no value satisfies at once are left as the child wrote them: the mode that cannot
+            // emit such an override says so in its own words ("Property override conflict").
+            if ($parentProperty !== null) {
+                $restated[$property['name']] = true;
+                if ($this->narrowerRestatedType($parentProperty['type'], $property['type']) !== null) {
+                    $property = $this->mergePropertyRestatement($parentProperty, $property, $className);
+                }
+            }
+            $result[] = $property;
+        }
+
+        $required = $this->allOfRequiredNames($schemaDefinition);
+        foreach ($inherited as $name => $parentProperty) {
+            if (
+                array_key_exists($name, $restated)
+                || $parentProperty['required']
+                || !in_array($parentProperty['openApiName'], $required, true)
+            ) {
+                continue;
+            }
+            $parentProperty['required'] = true;
+            $parentProperty['nullable'] = $parentProperty['schemaNullable'] ?? $parentProperty['nullable'];
+            $result[] = $parentProperty;
+        }
+
+        return $result;
     }
 
     /**
@@ -7870,7 +8235,8 @@ final class GenerateDtoCommand extends Command
             str_contains($source, 'use Spatie\LaravelData\\') => self::ATTRIBUTE_MODE_LARAVEL_DATA,
             str_contains($source, 'use Illuminate\\') => self::ATTRIBUTE_MODE_LARAVEL,
             str_contains($source, 'use Yiisoft\\') => self::ATTRIBUTE_MODE_YII3,
-            str_contains($source, 'use Symfony\Component\Validator\Constraints as Assert;') => self::ATTRIBUTE_MODE_SYMFONY,
+            // A prefix, not the alias: beside a schema named `Assert` the constraints are imported one by one.
+            str_contains($source, 'use Symfony\Component\Validator\Constraints') => self::ATTRIBUTE_MODE_SYMFONY,
             default => null,
         };
     }
@@ -8082,6 +8448,41 @@ final class GenerateDtoCommand extends Command
      */
     private function warnAboutClassNamesTheEmittedCodeAlsoUses(): void
     {
+        // Looked up case-insensitively, as PHP resolves class names: the schema `stdClass` is generated
+        // as class `StdClass`, which a case-sensitive lookup never matched against `use stdClass;`.
+        $reserved = array_change_key_case($this->classNamesTheEmittedCodeAlsoUses());
+
+        foreach ([...array_keys($this->dtoSchemas), ...array_keys($this->enumSchemas)] as $generatedClass) {
+            $usedFor = $reserved[strtolower($generatedClass)] ?? null;
+            if ($usedFor === null) {
+                continue;
+            }
+
+            $warning = sprintf(
+                'Schema "%s" is generated as class %s, which is also %s in %s mode. The emitted code '
+                    . 'cannot tell the two apart — rename the schema, or move it to a namespace of its '
+                    . 'own with --ref-namespace.',
+                $generatedClass,
+                $generatedClass,
+                $usedFor,
+                $this->attributeMode,
+            );
+
+            if (!in_array($warning, $this->generationWarnings, true)) {
+                $this->generationWarnings[] = $warning;
+            }
+        }
+    }
+
+    /**
+     * The short names {@see warnAboutClassNamesTheEmittedCodeAlsoUses()} knows in advance, with what the
+     * emitted code uses each for. What a mode's file imports beyond these is found in the rendered files
+     * themselves, by {@see warnAboutImportsShadowingGeneratedClasses()}.
+     *
+     * @return array<string, string>
+     */
+    private function classNamesTheEmittedCodeAlsoUses(): array
+    {
         // Keyed by the short name a document must not take, valued by what the emitted code uses it for.
         // Two are shared by every mode because they are what a schema KEYWORD resolves to; the rest are
         // the classes a mode's own emitted file imports.
@@ -8104,18 +8505,14 @@ final class GenerateDtoCommand extends Command
                 'UnsetValue' => 'the sentinel every optional property defaults to, which the '
                     . 'deserializer recognises by short name',
             ],
-            self::ATTRIBUTE_MODE_SYMFONY => [
-                'Assert' => 'the alias of Symfony\Component\Validator\Constraints in every emitted attribute',
-                'Ignore' => 'the serializer attribute a writeOnly property carries',
-                'SerializedName' => 'the serializer attribute a renamed property carries',
-                'ExecutionContextInterface' => 'the parameter type of the emitted #[Assert\Callback]',
-            ],
-            self::ATTRIBUTE_MODE_LARAVEL => [
-                'Validator' => 'the parameter type of the emitted withValidator()',
-                'Rule' => 'the facade an enum or a discriminator rule is built with',
-                'FormRequest' => 'the base class of the emitted FormRequest',
-                'stdClass' => 'the type the emitted code casts a JSON map to',
-            ],
+            // Symfony writes every library class out in full, and the rendered file imports it only under a
+            // name no class of the document owns — the `Assert` alias included, whose constraints are then
+            // imported one by one. So a schema named `Context` or `Assert` loads, as in runtime mode.
+            self::ATTRIBUTE_MODE_SYMFONY => [],
+            // Laravel names every library class in full as well — `Rule`, `stdClass`, the `Validator`
+            // withValidator() takes, the `FormRequest` base — and imports each only when the document
+            // owns no class of that name, so such a schema loads.
+            self::ATTRIBUTE_MODE_LARAVEL => [],
             // laravel-data resolves its own imports against the document (`libraryClassRef()`),
             // so only the two shared type names are left to warn about there.
             self::ATTRIBUTE_MODE_LARAVEL_DATA => [],
@@ -8131,26 +8528,63 @@ final class GenerateDtoCommand extends Command
             self::ATTRIBUTE_MODE_YII3 => [],
         ];
 
-        $reserved = [...$reserved, ...$byMode[$this->attributeMode] ?? []];
+        return [...$reserved, ...$byMode[$this->attributeMode] ?? []];
+    }
 
-        foreach ([...array_keys($this->dtoSchemas), ...array_keys($this->enumSchemas)] as $generatedClass) {
-            $usedFor = $reserved[$generatedClass] ?? null;
-            if ($usedFor === null) {
+    /**
+     * Reports a generated class whose short name a generated file imports from somewhere else.
+     *
+     * The list in {@see classNamesTheEmittedCodeAlsoUses()} is kept by hand, and it fell behind what
+     * the modes actually import — `Context` for a date-time in Symfony, `JsonSerializable` in Laravel,
+     * `stdClass` and `Rule` in laravel-data and yii3. Each of those was a file that fatals on load
+     * behind a run that reported success. Read from the rendered files, the check cannot fall behind:
+     * an import whose short name is a class generated into the same namespace is either the class's own
+     * file, a fatal, or a sibling whose type silently becomes the library's class.
+     *
+     * @param array<string, string> $files absolute path => contents, as about to be published
+     */
+    private function warnAboutImportsShadowingGeneratedClasses(array $files): void
+    {
+        $generated = [];
+        foreach (array_keys($this->dtoSchemas) as $className) {
+            $generated[strtolower(trim(($this->schemaNamespaces[$className] ?? $this->baseNamespace) . '\\' . $className, '\\'))] = $className;
+        }
+        foreach (array_keys($this->enumSchemas) as $enumName) {
+            $generated[strtolower(trim(($this->enumNamespaces[$enumName] ?? $this->baseNamespace) . '\\' . $enumName, '\\'))] = $enumName;
+        }
+        $alreadyListed = array_change_key_case($this->classNamesTheEmittedCodeAlsoUses());
+
+        $reported = [];
+        foreach ($files as $path => $contents) {
+            if (preg_match('/^namespace ([^;\s]+);$/m', $contents, $namespaceMatch) !== 1) {
                 continue;
             }
+            preg_match_all('/^use ([A-Za-z0-9_\\\]+)(?: as ([A-Za-z0-9_]+))?;$/m', $contents, $imports, PREG_SET_ORDER);
+            foreach ($imports as $import) {
+                $imported = ltrim($import[1], '\\');
+                $alias = ($import[2] ?? '') !== '' ? $import[2] : substr((string)strrchr('\\' . $imported, '\\'), 1);
+                $shadowed = strtolower($namespaceMatch[1] . '\\' . $alias);
+                $className = $generated[$shadowed] ?? null;
+                if (
+                    $className === null
+                    || strtolower($imported) === $shadowed
+                    || array_key_exists(strtolower($className), $alreadyListed)
+                    || array_key_exists($shadowed, $reported)
+                ) {
+                    continue;
+                }
+                $reported[$shadowed] = true;
 
-            $warning = sprintf(
-                'Schema "%s" is generated as class %s, which is also %s in %s mode. The emitted code '
-                    . 'cannot tell the two apart — rename the schema, or move it to a namespace of its '
-                    . 'own with --ref-namespace.',
-                $generatedClass,
-                $generatedClass,
-                $usedFor,
-                $this->attributeMode,
-            );
-
-            if (!in_array($warning, $this->generationWarnings, true)) {
-                $this->generationWarnings[] = $warning;
+                $this->generationWarnings[] = sprintf(
+                    'Schema "%s" is generated as class %s, which %s also imports as %s in %s mode. The '
+                        . 'emitted code cannot tell the two apart — rename the schema, or move it to a '
+                        . 'namespace of its own with --ref-namespace.',
+                    $this->componentNames[$className] ?? $className,
+                    $className,
+                    basename($path),
+                    $imported,
+                    $this->attributeMode,
+                );
             }
         }
     }
@@ -9318,7 +9752,7 @@ final class GenerateDtoCommand extends Command
                 throw new RuntimeException('Integer enum contains non-integer value.');
             }
 
-            return (string)$value;
+            return $this->numericLiteral($value);
         }
 
         $escaped = $this->escapeSingleQuoted((string)$value);
@@ -9537,9 +9971,9 @@ final class GenerateDtoCommand extends Command
         // Handle enum types - need to use the enum case
         if (
             !str_contains($phpType, '|') && !in_array(
-                $phpType,
-                ['int', 'float', 'string', 'bool', 'array', 'mixed'],
-                true,
+                needle: $phpType,
+                haystack: ['int', 'float', 'string', 'bool', 'array', 'mixed'],
+                strict: true,
             )
         ) {
             // It's an enum or custom type. Resolve the case name against the registered enum so the
@@ -9557,7 +9991,7 @@ final class GenerateDtoCommand extends Command
 
         // Handle scalar types
         if ($phpType === 'int') {
-            return ' = ' . (int)$defaultValue;
+            return ' = ' . $this->numericLiteral((int)$defaultValue);
         }
 
         if ($phpType === 'float') {
@@ -9696,8 +10130,8 @@ final class GenerateDtoCommand extends Command
 
                 $pathParameters = $symfonyPathParams
                     ? array_values(array_filter(
-                        $resolvedParameters,
-                        static fn(array $parameter): bool => ($parameter['in'] ?? null) === 'path',
+                        array: $resolvedParameters,
+                        callback: static fn(array $parameter): bool => ($parameter['in'] ?? null) === 'path',
                     ))
                     : [];
                 if ($pathParameters !== []) {
@@ -10414,8 +10848,8 @@ final class GenerateDtoCommand extends Command
         $splitResult = preg_split('/[^A-Za-z0-9]+/', $segment);
         $parts = $splitResult !== false ? $splitResult : [];
         $normalized = implode(
-            '',
-            array_map(static fn(string $part): string => ucfirst(strtolower($part)), array_filter($parts)),
+            separator: '',
+            array: array_map(static fn(string $part): string => ucfirst(strtolower($part)), array_filter($parts)),
         );
 
         if ($normalized === '') {
@@ -10427,6 +10861,24 @@ final class GenerateDtoCommand extends Command
         }
 
         return $normalized;
+    }
+
+    /**
+     * The namespace is written verbatim into `namespace …;` and every `use …;` of the generated files,
+     * so anything that is not a namespace name — `Zoo;echo "x";//` — became code that ran on autoload.
+     * The empty name is the global namespace.
+     */
+    private function assertNamespaceName(string $namespace, string $source): string
+    {
+        if ($namespace !== '' && preg_match(self::NAMESPACE_NAME_PATTERN, $namespace) !== 1) {
+            throw new RuntimeException(sprintf(
+                '%s "%s" is not a PHP namespace name: segments of letters, digits and underscores, not starting with a digit, separated by single backslashes.',
+                $source,
+                $namespace,
+            ));
+        }
+
+        return $namespace;
     }
 
     private function normalizeExplicitNamespace(string $namespace): string

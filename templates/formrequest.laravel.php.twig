@@ -30,7 +30,7 @@ use {{ import }};
  * **Authorization is not generated.** An OpenAPI document describes payload shape, not policy, so this
  * class defines no `authorize()` — add one if the route needs it.
  */
-final class {{ className }} extends FormRequest
+final class {{ className }} extends \Illuminate\Foundation\Http\FormRequest
 {
     /**
      * @return array<{{ rulesKeyType|default('string') }}, array<int, mixed>>
@@ -49,7 +49,7 @@ final class {{ className }} extends FormRequest
      * Keeps every container `validated()` returns whole, in the order it was sent.
 {% endif %}
      */
-    public function withValidator(Validator $validator): void
+    public function withValidator(\Illuminate\Validation\Validator $validator): void
     {
         // The raw body goes along: `type: object` versus `type: array` is decided by the wire shape,
         // and the decoded payload Laravel hands the validator no longer carries it.

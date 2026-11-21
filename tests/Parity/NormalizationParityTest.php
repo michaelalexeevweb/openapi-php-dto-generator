@@ -105,8 +105,8 @@ final class NormalizationParityTest extends TestCase
                 // A declared gap, pinned rather than skipped: the mode must still FAIL, so the day it
                 // starts working this assertion breaks and the declaration has to go.
                 $this->assertNotNull(
-                    $this->normalizationFailure($mode, $spec, $key, $json),
-                    sprintf(
+                    actual: $this->normalizationFailure($mode, $spec, $key, $json),
+                    message: sprintf(
                         '"%s" is declared unsupported in %s mode but it worked — drop the declaration: %s',
                         $key,
                         $mode->value,
@@ -123,9 +123,9 @@ final class NormalizationParityTest extends TestCase
 
             if ($declared !== null) {
                 $this->assertSame(
-                    $declared,
-                    $observed,
-                    sprintf('%s normalization changed for "%s"', $mode->value, $key),
+                    expected: $declared,
+                    actual: $observed,
+                    message: sprintf('%s normalization changed for "%s"', $mode->value, $key),
                 );
 
                 continue;
@@ -135,18 +135,18 @@ final class NormalizationParityTest extends TestCase
             // reason — in which case the difference must actually be there, or the reason is stale.
             if ($reason === null) {
                 $this->assertSame(
-                    $common,
-                    $observed,
-                    sprintf('%s must normalize like %s on "%s" (or declare a reason)', $mode->value, GenerationMode::reference()->value, $key),
+                    expected: $common,
+                    actual: $observed,
+                    message: sprintf('%s must normalize like %s on "%s" (or declare a reason)', $mode->value, GenerationMode::reference()->value, $key),
                 );
 
                 continue;
             }
 
             $this->assertNotSame(
-                $common,
-                $observed,
-                sprintf('"%s" declares a %s divergence but there is none — drop the reason', $key, $mode->value),
+                expected: $common,
+                actual: $observed,
+                message: sprintf('"%s" declares a %s divergence but there is none — drop the reason', $key, $mode->value),
             );
         }
     }
@@ -173,9 +173,9 @@ final class NormalizationParityTest extends TestCase
         $reference = GenerationMode::reference();
         $common = $expectedByMode[$reference->value];
         $this->assertArrayNotHasKey(
-            $reference->value,
-            $reasonByMode,
-            sprintf('"%s" gives the reference mode a divergence reason — it IS the expectation', $key),
+            key: $reference->value,
+            array: $reasonByMode,
+            message: sprintf('"%s" gives the reference mode a divergence reason — it IS the expectation', $key),
         );
 
         foreach (GenerationMode::others() as $mode) {
@@ -190,18 +190,18 @@ final class NormalizationParityTest extends TestCase
 
             if ($declared === $common) {
                 $this->assertArrayNotHasKey(
-                    $mode->value,
-                    $reasonByMode,
-                    sprintf('"%s" declares a %s divergence but the expectations agree — drop the reason', $key, $mode->value),
+                    key: $mode->value,
+                    array: $reasonByMode,
+                    message: sprintf('"%s" declares a %s divergence but the expectations agree — drop the reason', $key, $mode->value),
                 );
 
                 continue;
             }
 
             $this->assertArrayHasKey(
-                $mode->value,
-                $reasonByMode,
-                sprintf(
+                key: $mode->value,
+                array: $reasonByMode,
+                message: sprintf(
                     "\"%s\" normalizes differently in %s mode and says nothing about it\n %s: %s\n %s: %s",
                     $key,
                     $mode->value,
@@ -256,9 +256,9 @@ final class NormalizationParityTest extends TestCase
         $dto = (new DtoDeserializer())->deserialize($request, $fqcn);
 
         $this->assertSame(
-            [],
-            (new DtoNormalizer())->validate($dto),
-            sprintf('"%s" is a valid payload, but the DTO reports a problem with itself', $key),
+            expected: [],
+            actual: (new DtoNormalizer())->validate($dto),
+            message: sprintf('"%s" is a valid payload, but the DTO reports a problem with itself', $key),
         );
     }
 
@@ -270,8 +270,8 @@ final class NormalizationParityTest extends TestCase
         $cases = [
             'scalars' => [
                 'schema' => self::object(
-                    ['s' => ['type' => 'string'], 'i' => ['type' => 'integer'], 'n' => ['type' => 'number'], 'b' => ['type' => 'boolean']],
-                    ['s', 'i', 'n', 'b'],
+                    properties: ['s' => ['type' => 'string'], 'i' => ['type' => 'integer'], 'n' => ['type' => 'number'], 'b' => ['type' => 'boolean']],
+                    required: ['s', 'i', 'n', 'b'],
                 ),
                 'json' => '{"s":"a","i":1,"n":1.5,"b":true}',
                 'runtime' => ['s' => 'a', 'i' => 1, 'n' => 1.5, 'b' => true],
@@ -279,8 +279,8 @@ final class NormalizationParityTest extends TestCase
             ],
             'falsy values survive' => [
                 'schema' => self::object(
-                    ['b' => ['type' => 'boolean'], 'i' => ['type' => 'integer'], 's' => ['type' => 'string']],
-                    ['b', 'i', 's'],
+                    properties: ['b' => ['type' => 'boolean'], 'i' => ['type' => 'integer'], 's' => ['type' => 'string']],
+                    required: ['b', 'i', 's'],
                 ),
                 'json' => '{"b":false,"i":0,"s":""}',
                 'runtime' => ['b' => false, 'i' => 0, 's' => ''],
@@ -333,8 +333,8 @@ final class NormalizationParityTest extends TestCase
             ],
             'array of dates stays dates' => [
                 'schema' => self::object(
-                    ['on' => ['type' => 'array', 'items' => ['type' => 'string', 'format' => 'date']]],
-                    ['on'],
+                    properties: ['on' => ['type' => 'array', 'items' => ['type' => 'string', 'format' => 'date']]],
+                    required: ['on'],
                 ),
                 'json' => '{"on":["2026-03-10","2026-03-11"]}',
                 'runtime' => ['on' => ['2026-03-10', '2026-03-11']],
@@ -342,8 +342,8 @@ final class NormalizationParityTest extends TestCase
             ],
             'array of date-times keeps the item format' => [
                 'schema' => self::object(
-                    ['at' => ['type' => 'array', 'items' => ['type' => 'string', 'format' => 'date-time']]],
-                    ['at'],
+                    properties: ['at' => ['type' => 'array', 'items' => ['type' => 'string', 'format' => 'date-time']]],
+                    required: ['at'],
                 ),
                 'json' => '{"at":["2026-03-10T12:00:00+03:00"]}',
                 'runtime' => ['at' => ['2026-03-10T12:00:00+03:00']],
@@ -405,14 +405,51 @@ final class NormalizationParityTest extends TestCase
                     ],
                 ],
             ],
+            // The same untyped shape when its schema refuses null: there a null CAN only mean "never set",
+            // and writing it produced `"pin": null` — a response its own `const` refuses on the way back
+            // in. A `const` that is null, or an `enum` listing null, keeps the null as `{}` does.
+            'untyped optional const missing' => [
+                'schema' => self::object(['s' => ['type' => 'string'], 'pin' => ['const' => 'zed']], ['s']),
+                'json' => '{"s":"a"}',
+                'runtime' => ['s' => 'a'],
+                'symfony' => ['s' => 'a'],
+                'diverges' => [
+                    'laravel-data' => [
+                        'expected' => ['s' => 'a', 'pin' => null],
+                        'reason' => 'untyped is plain `mixed`, which has no `|Optional` to mark absence with — '
+                            . 'see "untyped optional property missing"',
+                    ],
+                ],
+            ],
+            'untyped optional const present' => [
+                'schema' => self::object(['s' => ['type' => 'string'], 'pin' => ['const' => 'zed']], ['s']),
+                'json' => '{"s":"a","pin":"zed"}',
+                'runtime' => ['s' => 'a', 'pin' => 'zed'],
+                'symfony' => ['s' => 'a', 'pin' => 'zed'],
+            ],
+            'untyped optional null const missing' => [
+                'schema' => self::object(['s' => ['type' => 'string'], 'pin' => ['const' => null]], ['s']),
+                'json' => '{"s":"a"}',
+                'runtime' => ['s' => 'a'],
+                'symfony' => ['s' => 'a', 'pin' => null],
+                'reason' => 'a null const admits null, so Symfony mode cannot drop it as "never set" — '
+                    . 'the untyped case above',
+                'diverges' => [
+                    'laravel-data' => [
+                        'expected' => ['s' => 'a', 'pin' => null],
+                        'reason' => 'untyped is plain `mixed`, which has no `|Optional` to mark absence with — '
+                            . 'see "untyped optional property missing"',
+                    ],
+                ],
+            ],
             // A `default` is what the SERVER may assume, not something the wire said. Runtime, Laravel
             // and yii3 report the key as absent while the getter answers the default; Symfony and
             // laravel-data fill the property from the constructor default and write it — Symfony for want
             // of presence tracking, laravel-data because the default replaces its `Optional`.
             'optional property with a default, absent' => [
                 'schema' => self::object(
-                    ['id' => ['type' => 'integer'], 'limit' => ['type' => 'integer', 'default' => 25]],
-                    ['id'],
+                    properties: ['id' => ['type' => 'integer'], 'limit' => ['type' => 'integer', 'default' => 25]],
+                    required: ['id'],
                 ),
                 'json' => '{"id":1}',
                 'runtime' => ['id' => 1],
@@ -437,8 +474,8 @@ final class NormalizationParityTest extends TestCase
             // temporal property before, which is why three modes shipped unloadable classes.
             'optional temporal property with a default, absent' => [
                 'schema' => self::object(
-                    ['id' => ['type' => 'integer'], 'on' => ['type' => 'string', 'format' => 'date', 'default' => '2020-01-01']],
-                    ['id'],
+                    properties: ['id' => ['type' => 'integer'], 'on' => ['type' => 'string', 'format' => 'date', 'default' => '2020-01-01']],
+                    required: ['id'],
                 ),
                 'json' => '{"id":1}',
                 'runtime' => ['id' => 1],
@@ -503,8 +540,8 @@ final class NormalizationParityTest extends TestCase
             // matrix does not name is a container nothing checks.
             'map of dates' => [
                 'schema' => self::object(
-                    ['on' => ['type' => 'object', 'additionalProperties' => ['type' => 'string', 'format' => 'date']]],
-                    ['on'],
+                    properties: ['on' => ['type' => 'object', 'additionalProperties' => ['type' => 'string', 'format' => 'date']]],
+                    required: ['on'],
                 ),
                 'json' => '{"on":{"a":"2026-03-10","b":"2026-03-11"}}',
                 'runtime' => ['on' => ['#object' => ['a' => '2026-03-10', 'b' => '2026-03-11']]],
@@ -527,8 +564,8 @@ final class NormalizationParityTest extends TestCase
             ],
             'map of enums' => [
                 'schema' => self::object(
-                    ['es' => ['type' => 'object', 'additionalProperties' => ['type' => 'string', 'enum' => ['a', 'b']]]],
-                    ['es'],
+                    properties: ['es' => ['type' => 'object', 'additionalProperties' => ['type' => 'string', 'enum' => ['a', 'b']]]],
+                    required: ['es'],
                 ),
                 'json' => '{"es":{"x":"a","y":"b"}}',
                 'runtime' => ['es' => ['#object' => ['x' => 'a', 'y' => 'b']]],
@@ -553,8 +590,8 @@ final class NormalizationParityTest extends TestCase
             ],
             'map of nested objects' => [
                 'schema' => self::object(
-                    ['kids' => ['type' => 'object', 'additionalProperties' => ['$ref' => '#/components/schemas/Child']]],
-                    ['kids'],
+                    properties: ['kids' => ['type' => 'object', 'additionalProperties' => ['$ref' => '#/components/schemas/Child']]],
+                    required: ['kids'],
                 ),
                 'extra' => ['Child' => self::object(['id' => ['type' => 'integer']], ['id'])],
                 'json' => '{"kids":{"a":{"id":1},"b":{"id":2}}}',
@@ -642,8 +679,8 @@ final class NormalizationParityTest extends TestCase
             // encoded as `[]` while the same map at property level encoded as `{}`.
             'list of maps' => [
                 'schema' => self::object(
-                    ['maps' => ['type' => 'array', 'items' => ['type' => 'object', 'additionalProperties' => ['type' => 'integer']]]],
-                    ['maps'],
+                    properties: ['maps' => ['type' => 'array', 'items' => ['type' => 'object', 'additionalProperties' => ['type' => 'integer']]]],
+                    required: ['maps'],
                 ),
                 'json' => '{"maps":[{},{"b":2}]}',
                 'runtime' => ['maps' => [['#object' => []], ['#object' => ['b' => 2]]]],
@@ -670,8 +707,8 @@ final class NormalizationParityTest extends TestCase
             // form of a nested container were the same `array` to it.
             'list of lists' => [
                 'schema' => self::object(
-                    ['matrix' => ['type' => 'array', 'items' => ['type' => 'array', 'items' => ['type' => 'integer']]]],
-                    ['matrix'],
+                    properties: ['matrix' => ['type' => 'array', 'items' => ['type' => 'array', 'items' => ['type' => 'integer']]]],
+                    required: ['matrix'],
                 ),
                 'json' => '{"matrix":[[1,2],[3]]}',
                 'runtime' => ['matrix' => [[1, 2], [3]]],
@@ -681,8 +718,8 @@ final class NormalizationParityTest extends TestCase
             // its rules reached, so the empty one came back FIRST — `[[], [1], [2]]` — until 2.15.64.
             'list of lists with an empty one between' => [
                 'schema' => self::object(
-                    ['matrix' => ['type' => 'array', 'items' => ['type' => 'array', 'items' => ['type' => 'integer']]]],
-                    ['matrix'],
+                    properties: ['matrix' => ['type' => 'array', 'items' => ['type' => 'array', 'items' => ['type' => 'integer']]]],
+                    required: ['matrix'],
                 ),
                 'json' => '{"matrix":[[1],[],[2]]}',
                 'runtime' => ['matrix' => [[1], [], [2]]],
@@ -690,8 +727,8 @@ final class NormalizationParityTest extends TestCase
             ],
             'list of objects whose middle one holds an empty list' => [
                 'schema' => self::object(
-                    ['rows' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Row']]],
-                    ['rows'],
+                    properties: ['rows' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Row']]],
+                    required: ['rows'],
                 ),
                 'extra' => ['Row' => self::object(['tags' => ['type' => 'array', 'items' => ['type' => 'string']]], ['tags'])],
                 'json' => '{"rows":[{"tags":["a"]},{"tags":[]},{"tags":["b"]}]}',
@@ -700,11 +737,11 @@ final class NormalizationParityTest extends TestCase
             ],
             'map of lists' => [
                 'schema' => self::object(
-                    ['byKey' => [
+                    properties: ['byKey' => [
                         'type' => 'object',
                         'additionalProperties' => ['type' => 'array', 'items' => ['type' => 'string']],
                     ]],
-                    ['byKey'],
+                    required: ['byKey'],
                 ),
                 'json' => '{"byKey":{"a":["x","y"]}}',
                 'runtime' => ['byKey' => ['#object' => ['a' => ['x', 'y']]]],
@@ -725,8 +762,8 @@ final class NormalizationParityTest extends TestCase
             ],
             'aliased property names' => [
                 'schema' => self::object(
-                    ['first_name' => ['type' => 'string'], 'x-trace-id' => ['type' => 'string']],
-                    ['first_name', 'x-trace-id'],
+                    properties: ['first_name' => ['type' => 'string'], 'x-trace-id' => ['type' => 'string']],
+                    required: ['first_name', 'x-trace-id'],
                 ),
                 'json' => '{"first_name":"John","x-trace-id":"abc"}',
                 'runtime' => ['first_name' => 'John', 'x-trace-id' => 'abc'],
@@ -738,8 +775,8 @@ final class NormalizationParityTest extends TestCase
             // answers the parse question for all five modes; this answers the round-trip one.
             'property names carrying a quote and a backslash' => [
                 'schema' => self::object(
-                    ["it's" => ['type' => 'string'], 'back\slash' => ['type' => 'string'], "both\\'s" => ['type' => 'string']],
-                    ["it's", 'back\slash', "both\\'s"],
+                    properties: ["it's" => ['type' => 'string'], 'back\slash' => ['type' => 'string'], "both\\'s" => ['type' => 'string']],
+                    required: ["it's", 'back\slash', "both\\'s"],
                 ),
                 'json' => '{"it\'s":"a","back\\\slash":"b","both\\\\\'s":"c"}',
                 'runtime' => ["it's" => 'a', 'back\slash' => 'b', "both\\'s" => 'c'],
@@ -750,8 +787,8 @@ final class NormalizationParityTest extends TestCase
             // exactly as the schema spells them — in both modes.
             'keys differing only in case' => [
                 'schema' => self::object(
-                    ['name' => ['type' => 'string'], 'NAme' => ['type' => 'string']],
-                    ['name', 'NAme'],
+                    properties: ['name' => ['type' => 'string'], 'NAme' => ['type' => 'string']],
+                    required: ['name', 'NAme'],
                 ),
                 'json' => '{"name":"a","NAme":"b"}',
                 'runtime' => ['name' => 'a', 'NAme' => 'b'],
@@ -811,8 +848,8 @@ final class NormalizationParityTest extends TestCase
             ],
             'nullable nested object set to null' => [
                 'schema' => self::object(
-                    ['child' => ['oneOf' => [['$ref' => '#/components/schemas/Child'], ['type' => 'null']]]],
-                    ['child'],
+                    properties: ['child' => ['oneOf' => [['$ref' => '#/components/schemas/Child'], ['type' => 'null']]]],
+                    required: ['child'],
                 ),
                 'extra' => ['Child' => self::object(['id' => ['type' => 'integer']], ['id'])],
                 'json' => '{"child":null}',
@@ -849,8 +886,8 @@ final class NormalizationParityTest extends TestCase
             ],
             'array of a discriminated union' => [
                 'schema' => self::object(
-                    ['shapes' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Shape']]],
-                    ['shapes'],
+                    properties: ['shapes' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Shape']]],
+                    required: ['shapes'],
                 ),
                 'extra' => [
                     'Shape' => [
@@ -919,8 +956,8 @@ final class NormalizationParityTest extends TestCase
             ],
             'writeOnly property' => [
                 'schema' => self::object(
-                    ['login' => ['type' => 'string'], 'password' => ['type' => 'string', 'writeOnly' => true]],
-                    ['login', 'password'],
+                    properties: ['login' => ['type' => 'string'], 'password' => ['type' => 'string', 'writeOnly' => true]],
+                    required: ['login', 'password'],
                 ),
                 'json' => '{"login":"u","password":"secret"}',
                 'runtime' => ['login' => 'u'],
@@ -932,8 +969,8 @@ final class NormalizationParityTest extends TestCase
             ],
             'readOnly property sent by the client' => [
                 'schema' => self::object(
-                    ['id' => ['type' => ['integer', 'null'], 'readOnly' => true], 'name' => ['type' => 'string']],
-                    ['name'],
+                    properties: ['id' => ['type' => ['integer', 'null'], 'readOnly' => true], 'name' => ['type' => 'string']],
+                    required: ['name'],
                 ),
                 'json' => '{"id":1,"name":"n"}',
                 'runtime' => ['name' => 'n'],
@@ -951,7 +988,59 @@ final class NormalizationParityTest extends TestCase
                     ],
                 ],
             ],
+            // The `allOf` shapes ValidationParityTest pins on the way in, here on the way out: a branch
+            // restating and requiring what the parent declares, and an object base whose discriminator
+            // leaves `mapping` to the variants' names.
+            'allOf branch restating a parent property' => [
+                'schema' => ['allOf' => [
+                    ['$ref' => '#/components/schemas/Base'],
+                    ['type' => 'object', 'required' => ['size'], 'properties' => ['name' => ['minLength' => 2], 'flag' => ['type' => 'boolean']]],
+                ]],
+                'extra' => ['Base' => self::object(['name' => ['type' => 'string', 'maxLength' => 3], 'size' => ['type' => 'integer']], ['name'])],
+                'json' => '{"name":"ab","size":2,"flag":true}',
+                'runtime' => ['name' => 'ab', 'size' => 2, 'flag' => true],
+                'symfony' => ['name' => 'ab', 'size' => 2, 'flag' => true],
+            ],
+            'allOf base without a mapping' => [
+                'schema' => self::object(['pet' => ['$ref' => '#/components/schemas/Animal']], ['pet']),
+                'extra' => [
+                    'Animal' => [...self::object(['kind' => ['type' => 'string'], 'name' => ['type' => 'string']], ['kind']), 'discriminator' => ['propertyName' => 'kind']],
+                    'Cat' => ['allOf' => [['$ref' => '#/components/schemas/Animal'], self::object(['purr' => ['type' => 'boolean']])]],
+                    'Dog' => ['allOf' => [['$ref' => '#/components/schemas/Animal'], self::object(['bark' => ['type' => 'boolean']])]],
+                ],
+                'json' => '{"pet":{"kind":"Cat","name":"Tom","purr":true}}',
+                'runtime' => ['pet' => ['kind' => 'Cat', 'name' => 'Tom', 'purr' => true]],
+                'symfony' => ['pet' => ['kind' => 'Cat', 'name' => 'Tom', 'purr' => true]],
+            ],
         ];
+
+        // A component named after a class some mode's file names — a serializer attribute, the validator
+        // withValidator() takes, the interface every DTO implements, what the interpreter checks against.
+        // Probe imports that class AND refers to the component, so the two must stay apart in one file:
+        // the import used to win silently there, and the component's own file did not load at all.
+        $named = self::object(
+            properties: ['at' => ['type' => 'string', 'format' => 'date-time'], 'first_name' => ['type' => 'string'], 'tone' => ['type' => 'string', 'enum' => ['red', 'teal']]],
+            required: ['at'],
+        );
+        foreach (['Context', 'Ignore', 'SerializedName', 'Assert', 'BackedEnum', 'DateTimeInterface', 'Validator', 'JsonSerializable', 'FormRequest'] as $component) {
+            $cases['a component named ' . $component] = [
+                'schema' => [
+                    ...self::object(
+                        properties: [
+                            'at' => ['type' => 'string', 'format' => 'date-time'],
+                            'size' => ['type' => 'integer', 'minimum' => 1],
+                            'w' => ['$ref' => '#/components/schemas/' . $component],
+                        ],
+                        required: ['w'],
+                    ),
+                    'minProperties' => 1,
+                ],
+                'extra' => [$component => $named],
+                'json' => '{"at":"2026-03-10T12:00:00+00:00","w":{"at":"2026-03-10T12:00:00+03:00","first_name":"Ann","tone":"teal"}}',
+                'runtime' => ['at' => '2026-03-10T12:00:00+00:00', 'w' => ['at' => '2026-03-10T12:00:00+03:00', 'first_name' => 'Ann', 'tone' => 'teal']],
+                'symfony' => ['at' => '2026-03-10T12:00:00+00:00', 'w' => ['at' => '2026-03-10T12:00:00+03:00', 'first_name' => 'Ann', 'tone' => 'teal']],
+            ];
+        }
 
         $provided = [];
         foreach ($cases as $key => $case) {
@@ -1115,7 +1204,7 @@ final class NormalizationParityTest extends TestCase
 
         /** @var array<string, mixed> $normalized */
         $normalized = $this->canonicalize(
-            (new Yii3Container())->hydrate($fqcn, is_array($payload) ? $payload : [])->getData() ?? [],
+            value: (new Yii3Container())->hydrate($fqcn, is_array($payload) ? $payload : [])->getData() ?? [],
         );
 
         return $normalized;
@@ -1147,8 +1236,8 @@ final class NormalizationParityTest extends TestCase
             }
 
             self::assertTrue(
-                GenerationMode::Yii3->isLast(),
-                'yii3 may be skipped for a missing ext-intl, and a skip aborts the whole test — so it '
+                condition: GenerationMode::Yii3->isLast(),
+                message: 'yii3 may be skipped for a missing ext-intl, and a skip aborts the whole test — so it '
                 . 'must be the LAST case in GenerationMode, or the modes after it stop being measured.',
             );
             self::markTestSkipped(sprintf('yii3 mode needs ext-intl for a temporal property ("%s").', $key));
@@ -1171,8 +1260,8 @@ final class NormalizationParityTest extends TestCase
 
         /** @var array<string, mixed> $normalized */
         $normalized = LaravelDataContainer::withRequest(
-            $json,
-            fn(LaravelRequest $request): mixed => $this->canonicalize($fqcn::from($request)->toArray()),
+            json: $json,
+            work: fn(LaravelRequest $request): mixed => $this->canonicalize($fqcn::from($request)->toArray()),
         );
 
         return $normalized;
@@ -1230,18 +1319,18 @@ final class NormalizationParityTest extends TestCase
         $typeExtractor = new PropertyInfoExtractor([], [new PhpDocExtractor(), new ReflectionExtractor()]);
 
         return new Serializer(
-            [
+            normalizers: [
                 new BackedEnumNormalizer(),
                 new DateTimeNormalizer(),
                 new ObjectNormalizer(
-                    $classMetadataFactory,
-                    new MetadataAwareNameConverter($classMetadataFactory),
-                    null,
-                    $typeExtractor,
+                    classMetadataFactory: $classMetadataFactory,
+                    nameConverter: new MetadataAwareNameConverter($classMetadataFactory),
+                    propertyAccessor: null,
+                    propertyTypeExtractor: $typeExtractor,
                 ),
                 new ArrayDenormalizer(),
             ],
-            [new JsonEncoder()],
+            encoders: [new JsonEncoder()],
         );
     }
 

@@ -66,10 +66,10 @@ trait GeneratesYii3Input
         $directory = $this->outputDirectory . '/' . $namespace;
 
         (new GenerateDtoCommand())->generateFromArray(
-            $spec,
-            $directory,
-            $namespace,
-            GenerateDtoCommand::ATTRIBUTE_MODE_YII3,
+            openApi: $spec,
+            outputDirectory: $directory,
+            namespace: $namespace,
+            mode: GenerateDtoCommand::ATTRIBUTE_MODE_YII3,
         );
 
         // An AUTOLOADER, not a require loop: a member class references its union interface, and glob

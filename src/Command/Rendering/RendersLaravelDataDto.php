@@ -44,6 +44,14 @@ trait RendersLaravelDataDto
     private const string LARAVEL_DATA_UNTYPED = 'mixed';
 
     /**
+     * The classes a discriminated union can be reached from, see `laravelDataMorphReach()`; null until
+     * asked, reset with every generation.
+     *
+     * @var array<string, true>|null
+     */
+    private ?array $laravelDataMorphReachCache = null;
+
+    /**
      * @param array<int, SchemaProperty> $properties
      * @param array<int, string> $unionTypes
      * @param array<string, mixed>|null $discriminator
@@ -88,9 +96,12 @@ trait RendersLaravelDataDto
         $params = [];
         $rules = [];
         $objectShapePaths = [];
+        $scalarTypePaths = [];
         $nestedChildren = [];
         $parentArguments = [];
         $inputAliases = [];
+        // A parameter class is read from a query string or a route, where nothing is a JSON boolean.
+        $checksScalarPaths = !array_key_exists($className, $this->parameterPayloadClasses);
 
         foreach ($properties as $property) {
             $param = $this->resolveLaravelDataParam($property, $namespace);
@@ -121,6 +132,13 @@ trait RendersLaravelDataDto
             foreach ($this->laravelObjectShapePaths($property, '', [$className], recurse: $child === null) as $objectPath) {
                 $objectShapePaths[] = $objectPath;
             }
+            // Only the numeric paths: a boolean path holding a boolean is what the schema asks for.
+            $scalarCandidates = $checksScalarPaths ? $this->laravelScalarTypePaths($property, '', [$className], recurse: $child === null) : [];
+            foreach ($scalarCandidates as $scalarPath => $scalarType) {
+                if ($scalarType !== 'boolean') {
+                    $scalarTypePaths[$scalarPath] = $scalarType;
+                }
+            }
 
             foreach ($this->laravelImportsForProperty($property, $namespace, $className) as $import) {
                 // Laravel mode imports it for the `match` in its own hydrator, which throws on an
@@ -138,13 +156,15 @@ trait RendersLaravelDataDto
         }
 
         $objectShapePaths = array_values(array_unique($objectShapePaths));
-        // laravel-data checks no scalar path: its casts already refuse what Laravel's rules let through.
+        // The numeric paths are checked for a JSON boolean, which Laravel's `integer` rule passes as 1 and
+        // laravel-data then casts or stores as it came. A numeric string stays accepted: that leniency is
+        // this mode's documented one, and refusing it would need the raw body Laravel mode reads.
         $nestedVars = $this->laravelNestedTemplateVars(
             className: $className,
             nestedChildren: $nestedChildren,
             objectPaths: $objectShapePaths,
-            scalarPaths: [],
-            readsRawBody: false,
+            scalarPaths: $scalarTypePaths,
+            checksScalarPaths: $checksScalarPaths,
         );
 
         // A wire name PHP reads as an integer key — `2` — loses itself on the way out: laravel-data
@@ -196,16 +216,16 @@ trait RendersLaravelDataDto
 
         $interpreterConstraints = $this->laravelInterpreterConstraints($properties, $className);
         $interpreter = $this->renderLaravelInterpreterBlock(
-            $interpreterConstraints,
-            array_filter($this->laravelRecursiveFolds, static fn(mixed $fold): bool => $fold !== []),
+            constraints: $interpreterConstraints,
+            recursiveSchemas: array_filter($this->laravelRecursiveFolds, static fn(mixed $fold): bool => $fold !== []),
         );
         // A request body is an object, and only the raw body still says whether `[]` was sent for it.
         $rootIsObject = array_key_exists($className, $this->requestPayloadClasses)
             && !array_key_exists($className, $this->parameterPayloadClasses);
-        $hasWithValidator = $interpreter['methods'] !== '' || $nestedVars['checksObjectPaths'] || $rootIsObject;
-        foreach ($interpreter['imports'] as $interpreterImport) {
-            $useStatements[] = $interpreterImport;
-        }
+        $hasWithValidator = $interpreter['methods'] !== ''
+            || $nestedVars['checksObjectPaths']
+            || $nestedVars['checksScalarPaths']
+            || $rootIsObject;
 
         $validatorRef = $hasWithValidator
             ? $this->libraryClassRef('Illuminate\Validation\Validator', $namespace, $useStatements)
@@ -236,6 +256,7 @@ trait RendersLaravelDataDto
             $this->appendImportForClass($useStatements, $morphBase, $namespace, $className);
             $extends = $this->formatClassNameForNamespace($morphBase, $namespace);
         }
+        $morphGuard = $this->laravelDataMorphGuard($className, $namespace, $useStatements);
 
         $useStatements = array_values(array_unique($useStatements));
         sort($useStatements);
@@ -268,6 +289,8 @@ trait RendersLaravelDataDto
             'params' => $params,
             'rules' => $rules,
             'objectShapePaths' => $objectShapePaths,
+            'scalarTypePaths' => $scalarTypePaths,
+            'morphGuard' => $morphGuard,
             ...$nestedVars,
             'rootIsObject' => $rootIsObject,
             'unionMembers' => null,
@@ -375,18 +398,23 @@ trait RendersLaravelDataDto
             'validatorRef' => $this->libraryClassRef('Illuminate\Support\Facades\Validator', $namespace, $useStatements),
             // `strval`: a numeric discriminator value is an INT key once PHP has the mapping.
             'values' => '[' . implode(', ', array_map(
-                $this->phpStringLiteral(...),
-                array_map('strval', array_keys($mapping)),
+                callback: $this->phpStringLiteral(...),
+                array: array_map('strval', array_keys($mapping)),
             )) . ']',
         ];
 
         $members = [];
+        $reachingMembers = [];
         foreach ($mapping as $discriminatorValue => $memberClass) {
             $this->appendImportForClass($useStatements, $memberClass, $namespace, $className);
+            $memberRef = $this->formatClassNameForNamespace($memberClass, $namespace);
             $members[] = [
                 'value' => $this->phpStringLiteral($discriminatorValue),
-                'class' => $this->formatClassNameForNamespace($memberClass, $namespace),
+                'class' => $memberRef,
             ];
+            if (array_key_exists($memberClass, $this->laravelDataMorphReach())) {
+                $reachingMembers[$memberRef] = true;
+            }
         }
 
         $useStatements = array_values(array_unique($useStatements));
@@ -412,6 +440,9 @@ trait RendersLaravelDataDto
                 'attributes' => $attributes,
                 'declaredProperties' => $declaredProperties,
                 'members' => $members,
+                // Only these carry `openApiMorphNodeErrors()` of their own; asked of any other member,
+                // the base's static method would resolve back to itself.
+                'reachingMembers' => array_keys($reachingMembers),
                 'dataBase' => $dataBase,
                 'morphable' => $morphableRef,
             ],
@@ -468,8 +499,8 @@ trait RendersLaravelDataDto
         foreach ($this->getSchemaProperties($baseClass) as $baseProperty) {
             $param = $this->resolveLaravelDataParam($baseProperty, $namespace);
             $shared = array_filter(
-                $memberTypes,
-                static fn(array $types): bool => ($types[$baseProperty['openApiName']] ?? null) !== $param['declaredType'],
+                array: $memberTypes,
+                callback: static fn(array $types): bool => ($types[$baseProperty['openApiName']] ?? null) !== $param['declaredType'],
             ) === [];
             if ($shared) {
                 $declared[] = $param;
@@ -481,6 +512,115 @@ trait RendersLaravelDataDto
         }
 
         return $declared;
+    }
+
+    /**
+     * Whether this class is emitted as an abstract morph base — the shape `renderLaravelDataMorphBase()`
+     * writes.
+     */
+    private function laravelDataIsMorphBase(string $className): bool
+    {
+        return array_key_exists($className, $this->discriminatorSchemas)
+            && $this->laravelDiscriminatorBaseIsInterface($className);
+    }
+
+    /**
+     * Every concrete class a discriminated union can be reached from through its properties — directly,
+     * as list or map items, through another such class, or through a member of a union. A fixpoint
+     * rather than a recursion with a visited list: an answer cut short by a cycle would be cached as
+     * "no" for a class whose only route runs through the class still being asked.
+     *
+     * @return array<string, true>
+     */
+    private function laravelDataMorphReach(): array
+    {
+        if ($this->laravelDataMorphReachCache !== null) {
+            return $this->laravelDataMorphReachCache;
+        }
+
+        $reach = [];
+        do {
+            $grown = false;
+            foreach (array_keys($this->dtoSchemas) as $className) {
+                if (array_key_exists($className, $reach) || $this->laravelDataIsMorphBase($className)) {
+                    continue;
+                }
+                foreach ($this->getSchemaProperties($className) as $property) {
+                    $target = $this->laravelDataMorphStepTarget($property)['class'] ?? null;
+                    if ($target !== null && ($this->laravelDataIsMorphBase($target) || array_key_exists($target, $reach))) {
+                        $reach[$className] = true;
+                        $grown = true;
+
+                        break;
+                    }
+                }
+            }
+        } while ($grown);
+
+        return $this->laravelDataMorphReachCache = $reach;
+    }
+
+    /**
+     * The generated class a property holds — itself, or as the items of a list or map — when that class
+     * is a union base or a concrete class; null for an enum or a scalar.
+     *
+     * A morph base counts as reaching a union when one of its members does, which is why the members of
+     * a base are asked here too.
+     *
+     * @param SchemaProperty $property
+     * @return array{class: string, many: bool}|null
+     */
+    private function laravelDataMorphStepTarget(array $property): ?array
+    {
+        $nestedClass = $this->laravelDtoClass($property);
+        if ($nestedClass !== null && !$this->laravelIsEnumClass($nestedClass)) {
+            return ['class' => $nestedClass, 'many' => false];
+        }
+        $itemClass = $this->laravelDtoItemClass($property);
+        if ($itemClass !== null && !$this->laravelIsEnumClass($itemClass)) {
+            return ['class' => $itemClass, 'many' => true];
+        }
+
+        return null;
+    }
+
+    /**
+     * The properties of a concrete class through which a union is reached, for its
+     * `openApiMorphNodeErrors()` walk, and the imports that walk needs. Null when no union is reached.
+     *
+     * @param array<int, string> $useStatements
+     * @return array{steps: list<array{wireName: string, class: string, many: bool, union: bool}>, arrayableRef: string, exceptionRef: string}|null
+     */
+    private function laravelDataMorphGuard(string $className, string $namespace, array &$useStatements): ?array
+    {
+        if (!array_key_exists($className, $this->laravelDataMorphReach())) {
+            return null;
+        }
+
+        $steps = [];
+        foreach ($this->getSchemaProperties($className) as $property) {
+            $target = $this->laravelDataMorphStepTarget($property);
+            if ($target === null) {
+                continue;
+            }
+            $union = $this->laravelDataIsMorphBase($target['class']);
+            if (!$union && !array_key_exists($target['class'], $this->laravelDataMorphReach())) {
+                continue;
+            }
+            $this->appendImportForClass($useStatements, $target['class'], $namespace, $className);
+            $steps[] = [
+                'wireName' => $property['openApiName'],
+                'class' => $this->formatClassNameForNamespace($target['class'], $namespace),
+                'many' => $target['many'],
+                'union' => $union,
+            ];
+        }
+
+        return [
+            'steps' => $steps,
+            'arrayableRef' => $this->libraryClassRef('Illuminate\Contracts\Support\Arrayable', $namespace, $useStatements),
+            'exceptionRef' => $this->libraryClassRef('Illuminate\Validation\ValidationException', $namespace, $useStatements),
+        ];
     }
 
     /**
@@ -705,7 +845,8 @@ trait RendersLaravelDataDto
         // of its members and the scalar otherwise, as in Laravel mode. laravel-data's own EnumCast reads
         // the PROPERTY type and takes every scalar for the enum: `"8812"` died in `Tone::from()`, a 500.
         // Spelled `UnitEnum` on the property, the type is no `BackedEnum` to that cast, and the
-        // constructor picks the case itself; `@var` and the parameter keep the real union.
+        // constructor picks the case itself; `@var` keeps the real union, and the parameter takes the
+        // backing value the payload carries as well.
         $variable = '$' . $property['name'];
         $enumCast = $this->laravelWithUnionEnumCast($property['type'], $variable, $variable);
 
@@ -722,19 +863,24 @@ trait RendersLaravelDataDto
             );
         }
         $propertyType = $declaredType;
+        $parameterType = $declaredType;
         if ($enumCast !== $variable) {
             $unitEnumRef = $this->libraryClassRef('UnitEnum', $namespace, $attributeImports);
             $propertyType = implode('|', array_unique(array_map(
-                fn(string $member): string => array_key_exists($this->shortClassName($member), $this->enumSchemas)
+                callback: fn(string $member): string => array_key_exists($this->shortClassName($member), $this->enumSchemas)
                     ? $unitEnumRef
                     : $member,
-                explode('|', $declaredType),
+                array: explode('|', $declaredType),
             )));
+        }
+        if ($enumCast !== $variable && $enumItemClass === null) {
+            $parameterType = $this->laravelDataWithEnumBackingTypes($declaredType);
         }
 
         return [
             'declaredType' => $declaredType,
             'propertyType' => $propertyType,
+            'parameterType' => $parameterType,
             'assignment' => $enumCast === $variable ? null : $enumCast,
             'docType' => $docType === null
                 ? null
@@ -765,6 +911,33 @@ trait RendersLaravelDataDto
             // readonly property would be a fatal.
             'promoted' => true,
         ];
+    }
+
+    /**
+     * The constructor's half of a scalar union with an enum member: the type it declares, widened by the
+     * enum's backing type where the union does not already carry it.
+     *
+     * laravel-data hands the constructor the payload value as it came, and the assignment picks the case
+     * from it. `Hue|int` refused `"red"` before that could happen — a TypeError on a valid payload, a 500
+     * — while `Hue|string|int` worked only because the document happened to list a string branch too.
+     */
+    private function laravelDataWithEnumBackingTypes(string $declaredType): string
+    {
+        $members = explode('|', $declaredType);
+        $widened = [];
+        foreach ($members as $member) {
+            $widened[] = $member;
+            $enumName = $this->shortClassName(ltrim($member, '?'));
+            if (!array_key_exists($enumName, $this->enumSchemas)) {
+                continue;
+            }
+            $backingType = $this->enumSchemas[$enumName]['type'] === 'int' ? 'int' : 'string';
+            if (!in_array($backingType, $members, true)) {
+                $widened[] = $backingType;
+            }
+        }
+
+        return implode('|', array_unique($widened));
     }
 
     /**

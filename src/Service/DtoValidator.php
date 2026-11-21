@@ -13,6 +13,7 @@ use OpenapiPhpDtoGenerator\Contract\DtoValidatorInterface;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use stdClass;
 use Symfony\Component\HttpFoundation\File\File;
+use TypeError;
 
 use function abs;
 use function array_filter;
@@ -50,6 +51,7 @@ use function is_nan;
 use function is_numeric;
 use function is_object;
 use function is_string;
+use function is_subclass_of;
 use function json_decode;
 use function json_encode;
 use function ksort;
@@ -223,8 +225,8 @@ final class DtoValidator implements DtoValidatorInterface
         }
 
         return array_map(
-            static fn(string $message): string => self::finalizeMessage($message, $subject),
-            $messages,
+            callback: static fn(string $message): string => self::finalizeMessage($message, $subject),
+            array: $messages,
         );
     }
 
@@ -254,8 +256,8 @@ final class DtoValidator implements DtoValidatorInterface
         // places that build one. `$subject` is passed on so a message that OPENS with it keeps the
         // name as its owner spelled it — see `finalizeMessages()`.
         return self::finalizeMessages(
-            $this->validateConstraints($subject, $value, $constraints, 0),
-            $subject,
+            messages: $this->validateConstraints($subject, $value, $constraints, 0),
+            subject: $subject,
         );
     }
 
@@ -448,11 +450,11 @@ final class DtoValidator implements DtoValidatorInterface
                     $errors[] = "{$subject}: JSON equality traversal exceeds its limits";
                 } elseif (!$matches) {
                     $allowed = implode(', ', array_map(
-                        static function (mixed $v): string {
+                        callback: static function (mixed $v): string {
                             $json = json_encode($v);
                             return $json !== false ? $json : var_export($v, true);
                         },
-                        $constraints['enum'],
+                        array: $constraints['enum'],
                     ));
                     $errors[] = "{$subject} must be one of: {$allowed}";
                 }
@@ -503,6 +505,15 @@ final class DtoValidator implements DtoValidatorInterface
                         $errors = [...$errors, ...$this->validateConstraints($subject, $value, $constraints['else'], $depth + 1, propertyRulesOwnedByDto: false)];
                     }
                 }
+            }
+        }
+
+        // The union branch a `$ref` to a generated class stands for: the value is that class, which
+        // checked itself while it was hydrated. A scalar can never be one — that is what keeps the
+        // scalar branches beside it honest.
+        if (array_key_exists('x-php-instanceof', $constraints) && is_string($constraints['x-php-instanceof'])) {
+            if (!$this->isInstanceOfBranchClass(value: $value, className: $constraints['x-php-instanceof'])) {
+                $errors[] = sprintf('%s must be %s', $subject, $this->describeBranchClass($constraints['x-php-instanceof']));
             }
         }
 
@@ -635,7 +646,7 @@ final class DtoValidator implements DtoValidatorInterface
 
         if (
             array_key_exists('format', $constraints) && $constraints['format'] === 'binary' && !is_string(
-                $value,
+                value: $value,
             ) && !$value instanceof File
         ) {
             $errors[] = "{$subject} expects binary data, got {$this->typeToOpenApi($value)}";
@@ -681,6 +692,13 @@ final class DtoValidator implements DtoValidatorInterface
      */
     private function validateUnionBranches(string $subject, mixed $value, array $branches, bool $isOneOf, int $depth): array
     {
+        // A class branch is judged on the hydrated value. A payload still raw here — an object
+        // nothing turned into the class, an array or a `stdClass` — cannot be told from it, so the
+        // union is not judged at all, which is what it was before class branches were spelled out.
+        if ((is_array($value) || $value instanceof stdClass) && $this->hasClassBranch($branches)) {
+            return [];
+        }
+
         $validBranches = 0;
         $nullableBranchAdmitsNull = false;
         $errors = [];
@@ -758,6 +776,49 @@ final class DtoValidator implements DtoValidatorInterface
                     $this->describeOpenApiTypeOfValue($value),
                 ),
         ];
+    }
+
+    /**
+     * @param array<int, mixed> $branches
+     */
+    private function hasClassBranch(array $branches): bool
+    {
+        foreach ($branches as $branch) {
+            if (is_array($branch) && array_key_exists('x-php-instanceof', $branch)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * A raw payload is not judged: see {@see validateUnionBranches()}. A backed enum is also met as its
+     * wire value where nothing hydrated it, and that value is one of its cases or not.
+     */
+    private function isInstanceOfBranchClass(mixed $value, string $className): bool
+    {
+        if (is_array($value) || $value instanceof stdClass || $value instanceof $className) {
+            return true;
+        }
+
+        if ((is_int($value) || is_string($value)) && is_subclass_of($className, BackedEnum::class)) {
+            try {
+                return $className::tryFrom($value) !== null;
+            } catch (TypeError) {
+                // An int-backed enum asked about a string, or the reverse: not one of its cases.
+                return false;
+            }
+        }
+
+        return false;
+    }
+
+    private function describeBranchClass(string $className): string
+    {
+        $separator = strrpos($className, '\\');
+
+        return $separator === false ? $className : substr($className, $separator + 1);
     }
 
     /**
@@ -1192,8 +1253,8 @@ final class DtoValidator implements DtoValidatorInterface
     private function incompleteVerdict(array $errors): array
     {
         return array_values(array_filter(
-            $errors,
-            static fn(string $error): bool => str_contains($error, 'schema nesting exceeds')
+            array: $errors,
+            callback: static fn(string $error): bool => str_contains($error, 'schema nesting exceeds')
                 || str_contains($error, 'JSON equality traversal exceeds its limits'),
         ));
     }
@@ -2096,9 +2157,9 @@ final class DtoValidator implements DtoValidatorInterface
         // for it still apply, and the domain goes to the internationalized hostname check that
         // already exists — which handles intl being absent, as it is on some CLI builds.
         return filter_var(
-            substr($value, 0, $at) . '@example.com',
-            FILTER_VALIDATE_EMAIL,
-            FILTER_FLAG_EMAIL_UNICODE,
+            value: substr($value, 0, $at) . '@example.com',
+            filter: FILTER_VALIDATE_EMAIL,
+            options: FILTER_FLAG_EMAIL_UNICODE,
         ) !== false
             && $this->isValidIdnHostname(value: substr($value, $at + 1));
     }

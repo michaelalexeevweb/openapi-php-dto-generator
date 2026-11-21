@@ -20,14 +20,27 @@ namespace OpenapiPhpDtoGenerator\Command\Rendering;
  * file does not already mention it — in code or in a docblock — under another meaning; otherwise the
  * import is aliased with the namespace segments in front of it (`ValidationValidator`), and a name no
  * alias can free is left fully qualified.
+ *
+ * What the file mentions is not all that can claim a name: a class the generator writes into the same
+ * namespace owns its short name in EVERY file there, mentioned or not. The caller passes those names
+ * as reserved, and they are treated like a mention — a library class is never imported under one, so
+ * no file of the namespace can be the one whose import a sibling's class collides with.
  */
 final class QualifiedNameImports
 {
-    public static function apply(string $php): string
+    /**
+     * @param list<string> $reservedShortNames classes generated into the file's namespace, which no
+     *                                         import may shadow
+     */
+    public static function apply(string $php, array $reservedShortNames = []): string
     {
+        $php = self::withoutReservedNamespaceAliases($php, $reservedShortNames);
         $tokens = token_get_all($php);
         $imports = self::existingClassImports($php);
         $mentioned = self::mentionedNames($tokens, $imports);
+        foreach ($reservedShortNames as $reserved) {
+            $mentioned[strtolower($reserved)] = true;
+        }
         $fileNamespace = preg_match('/^namespace ([\w\\\]+);$/m', $php, $declared) === 1 ? $declared[1] : '';
 
         /** @var array<string, string> $classAliases fully-qualified name (no leading `\`) => alias */
@@ -80,6 +93,54 @@ final class QualifiedNameImports
     }
 
     /**
+     * Drops a NAMESPACE alias whose name a generated class of the file's namespace owns, and spells out
+     * every name written through it: `use Symfony\Component\Validator\Constraints as Assert;` beside a
+     * class `Assert` is a fatal in that class's file, and in a sibling the alias wins over the class.
+     *
+     * Meant for an alias the emitted code only ever writes as a prefix, and only the prefixed names are
+     * rewritten — `Assert\Length` can mean nothing but the library, while a bare `Assert` is the
+     * document's class — so the rewrite cannot change what any name means. The expanded names are then imported one by one by the pass in {@see apply()},
+     * under an alias wherever their own short name is taken.
+     *
+     * @param list<string> $reservedShortNames
+     */
+    private static function withoutReservedNamespaceAliases(string $php, array $reservedShortNames): string
+    {
+        if ($reservedShortNames === []) {
+            return $php;
+        }
+        $reserved = array_flip(array_map(strtolower(...), $reservedShortNames));
+
+        $expanded = [];
+        foreach (self::existingClassImports($php) as $alias => $imported) {
+            if (!array_key_exists(strtolower($alias), $reserved) || strcasecmp(substr((string)strrchr('\\' . $imported, '\\'), 1), $alias) === 0) {
+                continue;
+            }
+            $expanded[strtolower($alias)] = $imported;
+            $php = (string)preg_replace('/^use ' . preg_quote($imported, '/') . ' as ' . preg_quote($alias, '/') . ';\n/m', '', $php, 1);
+        }
+        if ($expanded === []) {
+            return $php;
+        }
+
+        $rewritten = '';
+        foreach (token_get_all($php) as $token) {
+            if (is_array($token) && $token[0] === T_NAME_QUALIFIED) {
+                $segments = explode('\\', $token[1], 2);
+                $target = $expanded[strtolower($segments[0])] ?? null;
+                if ($target !== null) {
+                    $rewritten .= '\\' . $target . '\\' . $segments[1];
+
+                    continue;
+                }
+            }
+            $rewritten .= is_array($token) ? $token[1] : $token;
+        }
+
+        return $rewritten;
+    }
+
+    /**
      * Whether `$name` lives directly in the file's namespace and no import claims its short name.
      *
      * @param array<string, string> $imports alias => fully-qualified name
@@ -113,7 +174,8 @@ final class QualifiedNameImports
     {
         $next = self::significantNeighbour($tokens, $index, 1);
         $previous = self::significantNeighbour($tokens, $index, -1);
-        $instantiated = is_array($previous) && $previous[0] === T_NEW;
+        // `new \Foo(` and an attribute's `#[\Foo(` name a class, however much they look like a call.
+        $instantiated = is_array($previous) && in_array($previous[0], [T_NEW, T_ATTRIBUTE], true);
 
         if ($next === '(' && !$instantiated) {
             return null;
@@ -201,8 +263,9 @@ final class QualifiedNameImports
      *
      * A member (`$this->validator`), a function or constant being declared or called, and a named
      * argument's label are not class names and do not count; nor does a lowercase word in docblock prose
-     * ("the framework's validator"). Anything else is counted rather than proven: a false hit only costs
-     * that import a longer alias.
+     * ("the framework's validator"), nor an attribute named in prose (`#[Context]`), which is the
+     * library's attribute the file imports, never a class of the document. Anything else is counted
+     * rather than proven: a false hit only costs that import a longer alias.
      *
      * @param list<array{0: int, 1: string, 2: int}|string> $tokens
      * @param array<string, string> $imports alias => fully-qualified name
@@ -221,17 +284,17 @@ final class QualifiedNameImports
                 $previous = self::significantNeighbour($tokens, $index, -1);
                 $next = self::significantNeighbour($tokens, $index, 1);
                 $isMember = $previous === '::' || (is_array($previous) && in_array(
-                    $previous[0],
-                    [T_OBJECT_OPERATOR, T_NULLSAFE_OBJECT_OPERATOR, T_FUNCTION, T_CONST],
-                    true,
+                    needle: $previous[0],
+                    haystack: [T_OBJECT_OPERATOR, T_NULLSAFE_OBJECT_OPERATOR, T_FUNCTION, T_CONST],
+                    strict: true,
                 ));
-                $isCallOrLabel = ($next === '(' || $next === ':') && !(is_array($previous) && $previous[0] === T_NEW);
+                $isCallOrLabel = ($next === '(' || $next === ':') && !(is_array($previous) && in_array($previous[0], [T_NEW, T_ATTRIBUTE], true));
                 if (!$isMember && !$isCallOrLabel) {
                     $mentioned[strtolower($token[1])] = true;
                 }
             } elseif ($token[0] === T_NAME_QUALIFIED) {
                 $mentioned[strtolower(explode('\\', $token[1])[0])] = true;
-            } elseif ($token[0] === T_DOC_COMMENT && preg_match_all('/(?<![\w\\\$])[A-Z]\w*/', $token[1], $words) > 0) {
+            } elseif ($token[0] === T_DOC_COMMENT && preg_match_all('/(?<![\w\\\$])(?<!#\[)[A-Z]\w*/', $token[1], $words) > 0) {
                 foreach ($words[0] as $word) {
                     $mentioned[strtolower($word)] = true;
                 }
@@ -284,18 +347,18 @@ final class QualifiedNameImports
         // keeps its place between the other two; without one the constants follow the classes.
         $hasFunctions = preg_match('/^use function \w+;$/m', $php) === 1;
         $php = (string)preg_replace_callback(
-            '/^(namespace [^;]+;\n\n)((?:use (?!function |const )[^;]+;\n)*)\n*/m',
-            static fn(array $found): string => $found[1] . $classGroup . ($hasFunctions ? '' : $constGroup),
-            $php,
-            1,
+            pattern: '/^(namespace [^;]+;\n\n)((?:use (?!function |const )[^;]+;\n)*)\n*/m',
+            callback: static fn(array $found): string => $found[1] . $classGroup . ($hasFunctions ? '' : $constGroup),
+            subject: $php,
+            limit: 1,
         );
 
         return $hasFunctions
             ? (string)preg_replace_callback(
-                '/^(?:use function \w+;\n)+\n*/m',
-                static fn(array $found): string => $found[0] . $constGroup,
-                $php,
-                1,
+                pattern: '/^(?:use function \w+;\n)+\n*/m',
+                callback: static fn(array $found): string => $found[0] . $constGroup,
+                subject: $php,
+                limit: 1,
             )
             : $php;
     }

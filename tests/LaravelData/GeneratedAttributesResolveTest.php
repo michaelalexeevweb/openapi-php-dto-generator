@@ -57,8 +57,8 @@ final class GeneratedAttributesResolveTest extends TestCase
             foreach ($reflection->getProperties(ReflectionProperty::IS_PUBLIC) as $property) {
                 foreach ($property->getAttributes() as $attribute) {
                     $this->assertTrue(
-                        class_exists($attribute->getName()),
-                        sprintf(
+                        condition: class_exists($attribute->getName()),
+                        message: sprintf(
                             '%s::$%s carries #[%s], which does not resolve — the emitter wrote the '
                                 . 'attribute without importing it, and laravel-data would skip it in silence',
                             $class,
@@ -98,10 +98,10 @@ final class GeneratedAttributesResolveTest extends TestCase
         mkdir($this->outputDirectory, 0o755, true);
 
         (new GenerateDtoCommand())->generateFromFile(
-            self::SPEC,
-            $this->outputDirectory,
-            self::NAMESPACE,
-            GenerateDtoCommand::ATTRIBUTE_MODE_LARAVEL_DATA,
+            filePath: self::SPEC,
+            outputDirectory: $this->outputDirectory,
+            namespace: self::NAMESPACE,
+            mode: GenerateDtoCommand::ATTRIBUTE_MODE_LARAVEL_DATA,
         );
 
         $target = $this->outputDirectory;

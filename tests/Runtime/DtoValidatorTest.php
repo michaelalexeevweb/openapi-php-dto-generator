@@ -372,13 +372,13 @@ final class DtoValidatorTest extends TestCase
     {
         foreach ([1e-8, 1e-10] as $divisor) {
             $this->assertSame(
-                [],
-                $this->validator->validate('f', 3 * $divisor, ['type' => 'number', 'multipleOf' => $divisor]),
-                sprintf('3x%s is a multiple', var_export($divisor, true)),
+                expected: [],
+                actual: $this->validator->validate('f', 3 * $divisor, ['type' => 'number', 'multipleOf' => $divisor]),
+                message: sprintf('3x%s is a multiple', var_export($divisor, true)),
             );
             $this->assertNotEmpty(
-                $this->validator->validate('f', 2.5 * $divisor, ['type' => 'number', 'multipleOf' => $divisor]),
-                sprintf('2.5x%s is not', var_export($divisor, true)),
+                actual: $this->validator->validate('f', 2.5 * $divisor, ['type' => 'number', 'multipleOf' => $divisor]),
+                message: sprintf('2.5x%s is not', var_export($divisor, true)),
             );
         }
     }
@@ -687,8 +687,8 @@ final class DtoValidatorTest extends TestCase
         // With every branch gated out there is no branch reason to report, so the sentence names the
         // types the union accepts instead of leaving the caller to open the spec.
         $this->assertSame(
-            'v does not match any anyOf branch (expected integer or string, got boolean).',
-            $errors[0],
+            expected: 'v does not match any anyOf branch (expected integer or string, got boolean).',
+            actual: $errors[0],
         );
     }
 
@@ -746,8 +746,8 @@ final class DtoValidatorTest extends TestCase
 
         $this->assertNotEmpty($errors);
         $this->assertSame(
-            'v does not match any oneOf branch (expected integer or string, got boolean).',
-            $errors[0],
+            expected: 'v does not match any oneOf branch (expected integer or string, got boolean).',
+            actual: $errors[0],
         );
     }
 
@@ -762,8 +762,8 @@ final class DtoValidatorTest extends TestCase
 
         // The same sentence the emitted interpreter writes, subject prefix aside.
         $this->assertSame(
-            ['f does not match any oneOf branch (expected object or integer, got boolean).'],
-            $errors,
+            expected: ['f does not match any oneOf branch (expected object or integer, got boolean).'],
+            actual: $errors,
         );
     }
 
@@ -2209,12 +2209,12 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $this->validator->validate('f', 4294967295, ['type' => 'integer', 'format' => 'uint32']));
 
         $this->assertContains(
-            'f must be within uint32 range (0 to 4294967295).',
-            $this->validator->validate('f', -1, ['type' => 'integer', 'format' => 'uint32']),
+            needle: 'f must be within uint32 range (0 to 4294967295).',
+            haystack: $this->validator->validate('f', -1, ['type' => 'integer', 'format' => 'uint32']),
         );
         $this->assertContains(
-            'f must be within uint32 range (0 to 4294967295).',
-            $this->validator->validate('f', 4294967296, ['type' => 'integer', 'format' => 'uint32']),
+            needle: 'f must be within uint32 range (0 to 4294967295).',
+            haystack: $this->validator->validate('f', 4294967296, ['type' => 'integer', 'format' => 'uint32']),
         );
     }
 
@@ -2224,16 +2224,16 @@ final class DtoValidatorTest extends TestCase
 
         // 2^64-1 exceeds PHP_INT_MAX, so the upper bound is expressed (and reported) as a literal.
         $this->assertContains(
-            'f must be within uint64 range (0 to 18446744073709551615).',
-            $this->validator->validate('f', -1, ['type' => 'integer', 'format' => 'uint64']),
+            needle: 'f must be within uint64 range (0 to 18446744073709551615).',
+            haystack: $this->validator->validate('f', -1, ['type' => 'integer', 'format' => 'uint64']),
         );
         $this->assertContains(
-            'f must be within uint64 range (0 to 18446744073709551615).',
-            $this->validator->validate('f', 2.0e19, ['type' => 'number', 'format' => 'uint64']),
+            needle: 'f must be within uint64 range (0 to 18446744073709551615).',
+            haystack: $this->validator->validate('f', 2.0e19, ['type' => 'number', 'format' => 'uint64']),
         );
         $this->assertContains(
-            'f must be an integer (uint64).',
-            $this->validator->validate('f', 1.5, ['type' => 'number', 'format' => 'uint64']),
+            needle: 'f must be an integer (uint64).',
+            haystack: $this->validator->validate('f', 1.5, ['type' => 'number', 'format' => 'uint64']),
         );
     }
 
@@ -2410,8 +2410,8 @@ final class DtoValidatorTest extends TestCase
         $constraints = ['type' => 'object', 'patternProperties' => ['^x-' => ['type' => 'string']], 'additionalProperties' => false];
         $this->assertSame([], $this->validator->validate('o', ['x-a' => 'ok'], $constraints));
         $this->assertContains(
-            'o has additional property "bad" which is not allowed.',
-            $this->validator->validate('o', ['bad' => 1], $constraints),
+            needle: 'o has additional property "bad" which is not allowed.',
+            haystack: $this->validator->validate('o', ['bad' => 1], $constraints),
         );
     }
 
@@ -2493,9 +2493,9 @@ final class DtoValidatorTest extends TestCase
     public function testObjectPatternPropertiesValidated(): void
     {
         $errors = $this->validator->validate(
-            'o',
-            ['x1' => 'not-int'],
-            ['patternProperties' => ['^x' => ['type' => 'integer']]],
+            subject: 'o',
+            value: ['x1' => 'not-int'],
+            constraints: ['patternProperties' => ['^x' => ['type' => 'integer']]],
         );
         $this->assertNotEmpty($errors);
     }
@@ -2627,9 +2627,9 @@ final class DtoValidatorTest extends TestCase
     public function testFormatUuidRejectsUrnPrefix(): void
     {
         $this->assertNotEmpty($this->validator->validate(
-            'u',
-            'urn:uuid:12345678-1234-4234-8234-123456789012',
-            ['format' => 'uuid'],
+            subject: 'u',
+            value: 'urn:uuid:12345678-1234-4234-8234-123456789012',
+            constraints: ['format' => 'uuid'],
         ));
     }
 
@@ -2675,27 +2675,27 @@ final class DtoValidatorTest extends TestCase
     public function testUniqueItemsComparesObjectsByContentNotKeyOrder(): void
     {
         $this->assertNotEmpty(
-            $this->validator->validate(
-                'a',
-                [['a' => 1, 'b' => 2], ['b' => 2, 'a' => 1]],
-                ['type' => 'array', 'uniqueItems' => true],
+            actual: $this->validator->validate(
+                subject: 'a',
+                value: [['a' => 1, 'b' => 2], ['b' => 2, 'a' => 1]],
+                constraints: ['type' => 'array', 'uniqueItems' => true],
             ),
-            'the same object written in another key order is the same item',
+            message: 'the same object written in another key order is the same item',
         );
 
         $this->assertNotEmpty(
-            $this->validator->validate(
-                'a',
-                [['o' => ['a' => 1, 'b' => 2]], ['o' => ['b' => 2, 'a' => 1]]],
-                ['type' => 'array', 'uniqueItems' => true],
+            actual: $this->validator->validate(
+                subject: 'a',
+                value: [['o' => ['a' => 1, 'b' => 2]], ['o' => ['b' => 2, 'a' => 1]]],
+                constraints: ['type' => 'array', 'uniqueItems' => true],
             ),
-            'and that holds however deep the object sits',
+            message: 'and that holds however deep the object sits',
         );
 
         $this->assertSame(
-            [],
-            $this->validator->validate('a', [[1, 2], [2, 1]], ['type' => 'array', 'uniqueItems' => true]),
-            'two lists in different order are two different values',
+            expected: [],
+            actual: $this->validator->validate('a', [[1, 2], [2, 1]], ['type' => 'array', 'uniqueItems' => true]),
+            message: 'two lists in different order are two different values',
         );
     }
 
@@ -2703,9 +2703,9 @@ final class DtoValidatorTest extends TestCase
     {
         // minContains: 0 means "no minimum" — a value with zero matching items still passes.
         $this->assertSame([], $this->validator->validate(
-            'a',
-            [1, 2],
-            ['type' => 'array', 'contains' => ['type' => 'string'], 'minContains' => 0],
+            subject: 'a',
+            value: [1, 2],
+            constraints: ['type' => 'array', 'contains' => ['type' => 'string'], 'minContains' => 0],
         ));
     }
 
@@ -2713,9 +2713,9 @@ final class DtoValidatorTest extends TestCase
     {
         // Fewer items than prefixItems: only the present positions are checked.
         $this->assertSame([], $this->validator->validate(
-            'a',
-            [1],
-            ['type' => 'array', 'prefixItems' => [['type' => 'integer'], ['type' => 'integer']]],
+            subject: 'a',
+            value: [1],
+            constraints: ['type' => 'array', 'prefixItems' => [['type' => 'integer'], ['type' => 'integer']]],
         ));
     }
 
@@ -2777,8 +2777,8 @@ final class DtoValidatorTest extends TestCase
 
         $this->assertSame([], $this->validator->validate('o', ['id' => 1], $constraints));
         $this->assertContains(
-            'o has unevaluated property "nope" which is not allowed.',
-            $this->validator->validate('o', ['id' => 1, 'nope' => 2], $constraints),
+            needle: 'o has unevaluated property "nope" which is not allowed.',
+            haystack: $this->validator->validate('o', ['id' => 1, 'nope' => 2], $constraints),
         );
     }
 
@@ -2791,8 +2791,8 @@ final class DtoValidatorTest extends TestCase
 
         $this->assertSame([], $this->validator->validate('o', ['x_a' => 'v', 'x_b' => 'w'], $constraints));
         $this->assertContains(
-            'o has unevaluated property "y" which is not allowed.',
-            $this->validator->validate('o', ['x_a' => 'v', 'y' => 'z'], $constraints),
+            needle: 'o has unevaluated property "y" which is not allowed.',
+            haystack: $this->validator->validate('o', ['x_a' => 'v', 'y' => 'z'], $constraints),
         );
     }
 
@@ -2819,8 +2819,8 @@ final class DtoValidatorTest extends TestCase
 
         $this->assertSame([], $this->validator->validate('o', ['id' => 1, 'extra' => 'ok'], $constraints));
         $this->assertContains(
-            'o.extra must be of type string.',
-            $this->validator->validate('o', ['id' => 1, 'extra' => 99], $constraints),
+            needle: 'o.extra must be of type string.',
+            haystack: $this->validator->validate('o', ['id' => 1, 'extra' => 99], $constraints),
         );
     }
 
@@ -2848,8 +2848,8 @@ final class DtoValidatorTest extends TestCase
         // if matches (kind=a) → aValue is evaluated, bValue is not.
         $this->assertSame([], $this->validator->validate('o', ['kind' => 'a', 'aValue' => 1], $constraints));
         $this->assertContains(
-            'o has unevaluated property "bValue" which is not allowed.',
-            $this->validator->validate('o', ['kind' => 'a', 'bValue' => 1], $constraints),
+            needle: 'o has unevaluated property "bValue" which is not allowed.',
+            haystack: $this->validator->validate('o', ['kind' => 'a', 'bValue' => 1], $constraints),
         );
 
         // if fails (kind=b) → else branch applies, bValue is evaluated.
@@ -2922,8 +2922,8 @@ final class DtoValidatorTest extends TestCase
 
         $this->assertSame([], $this->validator->validate('a', ['x', 1, 2], $constraints));
         $this->assertContains(
-            'a.1 must be of type integer.',
-            $this->validator->validate('a', ['x', 'not-int'], $constraints),
+            needle: 'a.1 must be of type integer.',
+            haystack: $this->validator->validate('a', ['x', 'not-int'], $constraints),
         );
     }
 
@@ -2940,8 +2940,8 @@ final class DtoValidatorTest extends TestCase
 
         $this->assertSame([], $this->validator->validate('a', ['x', 1], $constraints));
         $this->assertContains(
-            'a has an unevaluated item at index 2 which is not allowed.',
-            $this->validator->validate('a', ['x', 1, true], $constraints),
+            needle: 'a has an unevaluated item at index 2 which is not allowed.',
+            haystack: $this->validator->validate('a', ['x', 1, true], $constraints),
         );
     }
 
@@ -2959,8 +2959,8 @@ final class DtoValidatorTest extends TestCase
 
         // 'str' matches neither contains nor anything else → unevaluated.
         $this->assertContains(
-            'a has an unevaluated item at index 1 which is not allowed.',
-            $this->validator->validate('a', [1, 'str'], $constraints),
+            needle: 'a has an unevaluated item at index 1 which is not allowed.',
+            haystack: $this->validator->validate('a', [1, 'str'], $constraints),
         );
     }
 
@@ -2996,8 +2996,8 @@ final class DtoValidatorTest extends TestCase
 
         $this->assertSame([], $this->validator->validate('o', ['a' => 'x', 'b' => 1], $constraints));
         $this->assertContains(
-            'o has unevaluated property "c" which is not allowed.',
-            $this->validator->validate('o', ['a' => 'x', 'b' => 1, 'c' => true], $constraints),
+            needle: 'o has unevaluated property "c" which is not allowed.',
+            haystack: $this->validator->validate('o', ['a' => 'x', 'b' => 1, 'c' => true], $constraints),
         );
     }
 
@@ -3023,8 +3023,8 @@ final class DtoValidatorTest extends TestCase
 
         // z not covered by any branch → unevaluated.
         $this->assertContains(
-            'o has unevaluated property "z" which is not allowed.',
-            $this->validator->validate('o', ['base' => 's', 'y' => 1, 'z' => 9], $constraints),
+            needle: 'o has unevaluated property "z" which is not allowed.',
+            haystack: $this->validator->validate('o', ['base' => 's', 'y' => 1, 'z' => 9], $constraints),
         );
     }
 
@@ -3041,8 +3041,8 @@ final class DtoValidatorTest extends TestCase
 
         $this->assertSame([], $this->validator->validate('o', ['dog' => 'rex'], $constraints));
         $this->assertContains(
-            'o has unevaluated property "fish" which is not allowed.',
-            $this->validator->validate('o', ['dog' => 'rex', 'fish' => 'nemo'], $constraints),
+            needle: 'o has unevaluated property "fish" which is not allowed.',
+            haystack: $this->validator->validate('o', ['dog' => 'rex', 'fish' => 'nemo'], $constraints),
         );
     }
 
@@ -3077,14 +3077,14 @@ final class DtoValidatorTest extends TestCase
 
         // creditCard present → billingAddress evaluated via dependentSchemas.
         $this->assertSame(
-            [],
-            $this->validator->validate('o', ['creditCard' => '4111', 'billingAddress' => 'Main St'], $constraints),
+            expected: [],
+            actual: $this->validator->validate('o', ['creditCard' => '4111', 'billingAddress' => 'Main St'], $constraints),
         );
 
         // Without the trigger, billingAddress is not evaluated → rejected.
         $this->assertContains(
-            'o has unevaluated property "billingAddress" which is not allowed.',
-            $this->validator->validate('o', ['billingAddress' => 'Main St'], $constraints),
+            needle: 'o has unevaluated property "billingAddress" which is not allowed.',
+            haystack: $this->validator->validate('o', ['billingAddress' => 'Main St'], $constraints),
         );
     }
 
@@ -3105,8 +3105,8 @@ final class DtoValidatorTest extends TestCase
 
         $this->assertSame([], $this->validator->validate('a', ['x', 1], $constraints));
         $this->assertContains(
-            'a has an unevaluated item at index 2 which is not allowed.',
-            $this->validator->validate('a', ['x', 1, 'extra'], $constraints),
+            needle: 'a has an unevaluated item at index 2 which is not allowed.',
+            haystack: $this->validator->validate('a', ['x', 1, 'extra'], $constraints),
         );
     }
 
@@ -3139,9 +3139,9 @@ final class DtoValidatorTest extends TestCase
     {
         foreach (['http://a.com/x', '/path?x=1', '../rel/path', '', 'foo/bar#frag'] as $ref) {
             $this->assertSame(
-                [],
-                $this->validator->validate('u', $ref, ['type' => 'string', 'format' => 'uri-reference']),
-                "expected '{$ref}' to be a valid uri-reference",
+                expected: [],
+                actual: $this->validator->validate('u', $ref, ['type' => 'string', 'format' => 'uri-reference']),
+                message: "expected '{$ref}' to be a valid uri-reference",
             );
         }
     }
@@ -3149,10 +3149,10 @@ final class DtoValidatorTest extends TestCase
     public function testFormatUriReferenceRejectsWhitespaceAndControl(): void
     {
         $this->assertNotEmpty(
-            $this->validator->validate('u', 'has space', ['type' => 'string', 'format' => 'uri-reference']),
+            actual: $this->validator->validate('u', 'has space', ['type' => 'string', 'format' => 'uri-reference']),
         );
         $this->assertNotEmpty(
-            $this->validator->validate('u', "tab\there", ['type' => 'string', 'format' => 'uri-reference']),
+            actual: $this->validator->validate('u', "tab\there", ['type' => 'string', 'format' => 'uri-reference']),
         );
     }
 
@@ -3215,16 +3215,16 @@ final class DtoValidatorTest extends TestCase
     public function testPlainEmailStaysAsciiOnly(): void
     {
         $this->assertSame(
-            [],
-            $this->validator->validate('f', 'a@b.co', ['type' => 'string', 'format' => 'email']),
+            expected: [],
+            actual: $this->validator->validate('f', 'a@b.co', ['type' => 'string', 'format' => 'email']),
         );
         $this->assertNotEmpty(
-            $this->validator->validate('f', 'a@пример.рф', ['type' => 'string', 'format' => 'email']),
-            'an internationalized domain is not a plain email',
+            actual: $this->validator->validate('f', 'a@пример.рф', ['type' => 'string', 'format' => 'email']),
+            message: 'an internationalized domain is not a plain email',
         );
         $this->assertNotEmpty(
-            $this->validator->validate('f', 'ф@example.com', ['type' => 'string', 'format' => 'email']),
-            'nor is a Unicode local part',
+            actual: $this->validator->validate('f', 'ф@example.com', ['type' => 'string', 'format' => 'email']),
+            message: 'nor is a Unicode local part',
         );
     }
 
@@ -3246,17 +3246,17 @@ final class DtoValidatorTest extends TestCase
         ];
 
         $this->assertSame(
-            [],
-            $this->validator->validate('a', ['tag', 'x'], $ifThen),
-            'if applies, so both positions its then declared are evaluated',
+            expected: [],
+            actual: $this->validator->validate('a', ['tag', 'x'], $ifThen),
+            message: 'if applies, so both positions its then declared are evaluated',
         );
         $this->assertNotEmpty(
-            $this->validator->validate('a', ['tag', 'x', 'extra'], $ifThen),
-            'the third position is nobody\'s, so unevaluatedItems refuses it',
+            actual: $this->validator->validate('a', ['tag', 'x', 'extra'], $ifThen),
+            message: 'the third position is nobody\'s, so unevaluatedItems refuses it',
         );
         $this->assertNotEmpty(
-            $this->validator->validate('a', ['other'], $ifThen),
-            'if failed, so it evaluated nothing — not even the position it looked at',
+            actual: $this->validator->validate('a', ['other'], $ifThen),
+            message: 'if failed, so it evaluated nothing — not even the position it looked at',
         );
 
         $ifElse = [
@@ -3267,13 +3267,13 @@ final class DtoValidatorTest extends TestCase
         ];
 
         $this->assertSame(
-            [],
-            $this->validator->validate('a', [7], $ifElse),
-            'if failed, so else applies and owns position 0',
+            expected: [],
+            actual: $this->validator->validate('a', [7], $ifElse),
+            message: 'if failed, so else applies and owns position 0',
         );
         $this->assertNotEmpty(
-            $this->validator->validate('a', [7, 8], $ifElse),
-            'else declared one position, so the second is unevaluated',
+            actual: $this->validator->validate('a', [7, 8], $ifElse),
+            message: 'else declared one position, so the second is unevaluated',
         );
     }
 
@@ -3290,13 +3290,13 @@ final class DtoValidatorTest extends TestCase
         ];
 
         $this->assertSame(
-            [],
-            $this->validator->validate('a', ['kind' => 'a', 'extra' => 's'], $constraints),
-            'if owns kind, then owns extra',
+            expected: [],
+            actual: $this->validator->validate('a', ['kind' => 'a', 'extra' => 's'], $constraints),
+            message: 'if owns kind, then owns extra',
         );
         $this->assertNotEmpty(
-            $this->validator->validate('a', ['kind' => 'a', 'nope' => 1], $constraints),
-            'a key neither branch declared is unevaluated',
+            actual: $this->validator->validate('a', ['kind' => 'a', 'nope' => 1], $constraints),
+            message: 'a key neither branch declared is unevaluated',
         );
     }
 
@@ -3382,17 +3382,17 @@ final class DtoValidatorTest extends TestCase
     public function testAFalseSchemaRefusesWithoutMentioningNot(): void
     {
         $errors = $this->validator->validate(
-            'field',
-            ['x' => 1],
-            ['type' => 'object', 'properties' => ['x' => false]],
+            subject: 'field',
+            value: ['x' => 1],
+            constraints: ['type' => 'object', 'properties' => ['x' => false]],
         );
 
         $this->assertSame(['field.x is not allowed by the schema.'], $errors);
 
         $this->assertSame(
-            ["field must not match the 'not' schema."],
-            $this->validator->validate('field', 1, ['not' => ['type' => 'integer']]),
-            'a real `not` keeps its own sentence',
+            expected: ["field must not match the 'not' schema."],
+            actual: $this->validator->validate('field', 1, ['not' => ['type' => 'integer']]),
+            message: 'a real `not` keeps its own sentence',
         );
     }
 
@@ -3406,22 +3406,22 @@ final class DtoValidatorTest extends TestCase
     public function testOneOfDistinguishesTwoMatchesFromNone(): void
     {
         $this->assertSame(
-            ['field matches more than one allowed oneOf branch.'],
-            $this->validator->validate('field', 1, ['oneOf' => [true, true]]),
+            expected: ['field matches more than one allowed oneOf branch.'],
+            actual: $this->validator->validate('field', 1, ['oneOf' => [true, true]]),
         );
 
         // Not the generic sentence: when a branch is applicable and fails, its OWN reason is what
         // the reader gets, and `false` refuses in its own words. The generic one is reserved for a
         // value no branch could even apply to.
         $this->assertSame(
-            ['field is not allowed by the schema.'],
-            $this->validator->validate('field', 1, ['oneOf' => [false, false]]),
+            expected: ['field is not allowed by the schema.'],
+            actual: $this->validator->validate('field', 1, ['oneOf' => [false, false]]),
         );
 
         $this->assertSame(
-            ['field does not match any oneOf branch (expected string or boolean, got integer).'],
-            $this->validator->validate('field', 1, ['oneOf' => [['type' => 'string'], ['type' => 'boolean']]]),
-            'a value outside every declared type gets the no-match sentence, with the types named',
+            expected: ['field does not match any oneOf branch (expected string or boolean, got integer).'],
+            actual: $this->validator->validate('field', 1, ['oneOf' => [['type' => 'string'], ['type' => 'boolean']]]),
+            message: 'a value outside every declared type gets the no-match sentence, with the types named',
         );
     }
 
@@ -3437,29 +3437,29 @@ final class DtoValidatorTest extends TestCase
     public function testAnEmptySchemaMatchesEveryValue(): void
     {
         $this->assertSame(
-            [],
-            $this->validator->validate('a', [1, 2], ['type' => 'array', 'items' => [], 'unevaluatedItems' => false]),
-            'items: {} evaluates every index',
+            expected: [],
+            actual: $this->validator->validate('a', [1, 2], ['type' => 'array', 'items' => [], 'unevaluatedItems' => false]),
+            message: 'items: {} evaluates every index',
         );
 
         $this->assertNotEmpty(
-            $this->validator->validate('a', [], ['type' => 'array', 'contains' => [], 'minContains' => 1]),
-            'contains: {} needs an item to match, and an empty array has none',
+            actual: $this->validator->validate('a', [], ['type' => 'array', 'contains' => [], 'minContains' => 1]),
+            message: 'contains: {} needs an item to match, and an empty array has none',
         );
         $this->assertSame(
-            [],
-            $this->validator->validate('a', [1], ['type' => 'array', 'contains' => [], 'minContains' => 1]),
-            'and one item is enough',
+            expected: [],
+            actual: $this->validator->validate('a', [1], ['type' => 'array', 'contains' => [], 'minContains' => 1]),
+            message: 'and one item is enough',
         );
 
         $this->assertSame(
-            [],
-            $this->validator->validate(
-                'o',
-                ['x' => 1],
-                ['type' => 'object', 'additionalProperties' => [], 'unevaluatedProperties' => false],
+            expected: [],
+            actual: $this->validator->validate(
+                subject: 'o',
+                value: ['x' => 1],
+                constraints: ['type' => 'object', 'additionalProperties' => [], 'unevaluatedProperties' => false],
             ),
-            'additionalProperties: {} evaluates every extra key',
+            message: 'additionalProperties: {} evaluates every extra key',
         );
     }
 
@@ -3474,20 +3474,20 @@ final class DtoValidatorTest extends TestCase
     public function testIntegerBoundsAreExactBeyondFloatPrecision(): void
     {
         $this->assertNotEmpty(
-            $this->validator->validate('f', 9007199254740993, ['type' => 'integer', 'maximum' => 9007199254740992]),
+            actual: $this->validator->validate('f', 9007199254740993, ['type' => 'integer', 'maximum' => 9007199254740992]),
         );
         $this->assertSame(
-            [],
-            $this->validator->validate('f', 9007199254740992, ['type' => 'integer', 'maximum' => 9007199254740992]),
+            expected: [],
+            actual: $this->validator->validate('f', 9007199254740992, ['type' => 'integer', 'maximum' => 9007199254740992]),
         );
         $this->assertNotEmpty(
-            $this->validator->validate('f', 9007199254740992, ['type' => 'integer', 'minimum' => 9007199254740993]),
+            actual: $this->validator->validate('f', 9007199254740992, ['type' => 'integer', 'minimum' => 9007199254740993]),
         );
         $this->assertNotEmpty(
-            $this->validator->validate(
-                'f',
-                9007199254740993,
-                ['type' => 'integer', 'exclusiveMaximum' => 9007199254740993],
+            actual: $this->validator->validate(
+                subject: 'f',
+                value: 9007199254740993,
+                constraints: ['type' => 'integer', 'exclusiveMaximum' => 9007199254740993],
             ),
         );
 
@@ -3508,16 +3508,16 @@ final class DtoValidatorTest extends TestCase
     {
         foreach (['urn:isbn:0451450523', 'urn:uuid:12345678-1234-1234-1234-123456789abc', 'mailto:a@b.test', 'tel:+1-816-555-1212'] as $uri) {
             $this->assertSame(
-                [],
-                $this->validator->validate('u', $uri, ['type' => 'string', 'format' => 'uri']),
-                $uri,
+                expected: [],
+                actual: $this->validator->validate('u', $uri, ['type' => 'string', 'format' => 'uri']),
+                message: $uri,
             );
         }
 
         foreach (['http://[', 'not a uri', '/relative/only', 'nocolon'] as $notAUri) {
             $this->assertNotEmpty(
-                $this->validator->validate('u', $notAUri, ['type' => 'string', 'format' => 'uri']),
-                $notAUri,
+                actual: $this->validator->validate('u', $notAUri, ['type' => 'string', 'format' => 'uri']),
+                message: $notAUri,
             );
         }
     }
@@ -3534,13 +3534,13 @@ final class DtoValidatorTest extends TestCase
     {
         foreach (['not_a_uri', '###', '%zz', 'http://['] as $accepted) {
             $this->assertSame(
-                [],
-                $this->validator->validate('u', $accepted, ['type' => 'string', 'format' => 'uri-reference']),
-                sprintf("'%s' is accepted as a uri-reference", $accepted),
+                expected: [],
+                actual: $this->validator->validate('u', $accepted, ['type' => 'string', 'format' => 'uri-reference']),
+                message: sprintf("'%s' is accepted as a uri-reference", $accepted),
             );
             $this->assertNotEmpty(
-                $this->validator->validate('u', $accepted, ['type' => 'string', 'format' => 'uri']),
-                sprintf("'%s' is refused as a uri", $accepted),
+                actual: $this->validator->validate('u', $accepted, ['type' => 'string', 'format' => 'uri']),
+                message: sprintf("'%s' is refused as a uri", $accepted),
             );
         }
     }
@@ -3548,8 +3548,8 @@ final class DtoValidatorTest extends TestCase
     public function testFormatIriReferenceAcceptsUnicode(): void
     {
         $this->assertSame(
-            [],
-            $this->validator->validate('u', '/café/münchen', ['type' => 'string', 'format' => 'iri-reference']),
+            expected: [],
+            actual: $this->validator->validate('u', '/café/münchen', ['type' => 'string', 'format' => 'iri-reference']),
         );
     }
 
@@ -3557,9 +3557,9 @@ final class DtoValidatorTest extends TestCase
     {
         foreach (['http://x.com/{id}', '/users/{id}/posts{?page,limit}', '/a/{var:3}', 'no/braces/here'] as $tpl) {
             $this->assertSame(
-                [],
-                $this->validator->validate('t', $tpl, ['type' => 'string', 'format' => 'uri-template']),
-                "expected '{$tpl}' to be a valid uri-template",
+                expected: [],
+                actual: $this->validator->validate('t', $tpl, ['type' => 'string', 'format' => 'uri-template']),
+                message: "expected '{$tpl}' to be a valid uri-template",
             );
         }
     }
@@ -3568,8 +3568,8 @@ final class DtoValidatorTest extends TestCase
     {
         foreach (['open{brace', 'close}brace', '{}', 'x{ bad }'] as $tpl) {
             $this->assertNotEmpty(
-                $this->validator->validate('t', $tpl, ['type' => 'string', 'format' => 'uri-template']),
-                "expected '{$tpl}' to be rejected",
+                actual: $this->validator->validate('t', $tpl, ['type' => 'string', 'format' => 'uri-template']),
+                message: "expected '{$tpl}' to be rejected",
             );
         }
     }
@@ -3578,15 +3578,15 @@ final class DtoValidatorTest extends TestCase
     {
         foreach (['0', '1/foo', '2#', '10/a/b'] as $ok) {
             $this->assertSame(
-                [],
-                $this->validator->validate('p', $ok, ['type' => 'string', 'format' => 'relative-json-pointer']),
-                "expected '{$ok}' valid",
+                expected: [],
+                actual: $this->validator->validate('p', $ok, ['type' => 'string', 'format' => 'relative-json-pointer']),
+                message: "expected '{$ok}' valid",
             );
         }
         foreach (['-1', '01', '#', '1.5', '/foo'] as $bad) {
             $this->assertNotEmpty(
-                $this->validator->validate('p', $bad, ['type' => 'string', 'format' => 'relative-json-pointer']),
-                "expected '{$bad}' invalid",
+                actual: $this->validator->validate('p', $bad, ['type' => 'string', 'format' => 'relative-json-pointer']),
+                message: "expected '{$bad}' invalid",
             );
         }
     }
@@ -3595,15 +3595,15 @@ final class DtoValidatorTest extends TestCase
     {
         foreach (['münchen.de', 'example.com', 'a.b.c'] as $ok) {
             $this->assertSame(
-                [],
-                $this->validator->validate('h', $ok, ['type' => 'string', 'format' => 'idn-hostname']),
-                "expected '{$ok}' valid",
+                expected: [],
+                actual: $this->validator->validate('h', $ok, ['type' => 'string', 'format' => 'idn-hostname']),
+                message: "expected '{$ok}' valid",
             );
         }
         foreach (['', 'has space', '-bad.com', 'bad-.com'] as $bad) {
             $this->assertNotEmpty(
-                $this->validator->validate('h', $bad, ['type' => 'string', 'format' => 'idn-hostname']),
-                "expected '{$bad}' invalid",
+                actual: $this->validator->validate('h', $bad, ['type' => 'string', 'format' => 'idn-hostname']),
+                message: "expected '{$bad}' invalid",
             );
         }
     }
@@ -3615,12 +3615,12 @@ final class DtoValidatorTest extends TestCase
     public function testContentEncodingBase64(): void
     {
         $this->assertSame(
-            [],
-            $this->validator->validate('c', base64_encode('hello'), ['contentEncoding' => 'base64']),
+            expected: [],
+            actual: $this->validator->validate('c', base64_encode('hello'), ['contentEncoding' => 'base64']),
         );
         $this->assertContains(
-            'c is not valid base64-encoded content.',
-            $this->validator->validate('c', 'not valid base64 !!!', ['contentEncoding' => 'base64']),
+            needle: 'c is not valid base64-encoded content.',
+            haystack: $this->validator->validate('c', 'not valid base64 !!!', ['contentEncoding' => 'base64']),
         );
     }
 
@@ -3641,12 +3641,12 @@ final class DtoValidatorTest extends TestCase
     public function testContentMediaTypeJson(): void
     {
         $this->assertSame(
-            [],
-            $this->validator->validate('c', '{"a":1}', ['contentMediaType' => 'application/json']),
+            expected: [],
+            actual: $this->validator->validate('c', '{"a":1}', ['contentMediaType' => 'application/json']),
         );
         $this->assertContains(
-            'c is not valid application/json content.',
-            $this->validator->validate('c', '{bad json', ['contentMediaType' => 'application/json']),
+            needle: 'c is not valid application/json content.',
+            haystack: $this->validator->validate('c', '{bad json', ['contentMediaType' => 'application/json']),
         );
     }
 
@@ -3680,13 +3680,13 @@ final class DtoValidatorTest extends TestCase
 
         $this->assertSame([], $this->validator->validate('c', base64_encode('{"n":42}'), $constraints));
         $this->assertContains(
-            'c.n must be of type integer.',
-            $this->validator->validate('c', base64_encode('{"n":"nope"}'), $constraints),
+            needle: 'c.n must be of type integer.',
+            haystack: $this->validator->validate('c', base64_encode('{"n":"nope"}'), $constraints),
         );
         // Bad base64 short-circuits before the JSON/schema checks.
         $this->assertContains(
-            'c is not valid base64-encoded content.',
-            $this->validator->validate('c', '!!!bad!!!', $constraints),
+            needle: 'c is not valid base64-encoded content.',
+            haystack: $this->validator->validate('c', '!!!bad!!!', $constraints),
         );
     }
 
@@ -3733,14 +3733,14 @@ final class DtoValidatorTest extends TestCase
         $constraints = ['type' => 'array', 'items' => $itemSchema];
 
         self::assertSame(
-            [],
-            $this->validator->validate('f', $accepted, $constraints),
-            'the accepted list must pass',
+            expected: [],
+            actual: $this->validator->validate('f', $accepted, $constraints),
+            message: 'the accepted list must pass',
         );
         self::assertNotSame(
-            [],
-            $this->validator->validate('f', $refused, $constraints),
-            'the refused list must not pass — the keyword was dropped for the elements',
+            expected: [],
+            actual: $this->validator->validate('f', $refused, $constraints),
+            message: 'the refused list must not pass — the keyword was dropped for the elements',
         );
     }
 

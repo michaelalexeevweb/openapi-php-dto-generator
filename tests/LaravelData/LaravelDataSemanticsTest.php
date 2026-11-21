@@ -47,8 +47,8 @@ final class LaravelDataSemanticsTest extends TestCase
     public function testThePipelineRunsWithoutALaravelApplication(): void
     {
         $this->assertFalse(
-            class_exists(\Illuminate\Foundation\Application::class),
-            'illuminate/foundation is installed — this suite no longer proves it is unnecessary',
+            condition: class_exists(\Illuminate\Foundation\Application::class),
+            message: 'illuminate/foundation is installed — this suite no longer proves it is unnecessary',
         );
 
         $dto = BootProbe::from(['first_name' => 'Ada']);
@@ -78,25 +78,25 @@ final class LaravelDataSemanticsTest extends TestCase
     public function testRulesOverrideTheInferrersUnlessTheClassAsksToMerge(): void
     {
         $this->assertSame(
-            [
+            expected: [
                 'required' => ['required', 'string', 'min:2'],
                 'optional' => ['sometimes', 'string'],
                 'nullableOptional' => ['sometimes', 'nullable', 'string'],
             ],
-            OverriddenRules::getValidationRules([]),
-            'without the attribute, rules() must be the sole truth',
+            actual: OverriddenRules::getValidationRules([]),
+            message: 'without the attribute, rules() must be the sole truth',
         );
 
         $merged = MergedRules::getValidationRules([]);
         $this->assertSame(
-            ['required', 'string', 'required', 'string', 'min:2'],
-            $merged['required'],
-            'with the attribute the inferred rules are merged in, which is the duplication to avoid',
+            expected: ['required', 'string', 'required', 'string', 'min:2'],
+            actual: $merged['required'],
+            message: 'with the attribute the inferred rules are merged in, which is the duplication to avoid',
         );
         $this->assertSame(
-            ['nullable', 'sometimes', 'string', 'sometimes', 'nullable', 'string'],
-            $merged['nullableOptional'],
-            'and an inferred `nullable` is prepended — permission the schema never gave',
+            expected: ['nullable', 'sometimes', 'string', 'sometimes', 'nullable', 'string'],
+            actual: $merged['nullableOptional'],
+            message: 'and an inferred `nullable` is prepended — permission the schema never gave',
         );
     }
 
@@ -164,9 +164,9 @@ final class LaravelDataSemanticsTest extends TestCase
     public function testOptionalIsNotNullableOnTheRuleSide(): void
     {
         $this->assertSame(
-            ['required' => 'xx'],
-            OverriddenRules::validate(['required' => 'xx']),
-            'an absent optional must pass',
+            expected: ['required' => 'xx'],
+            actual: OverriddenRules::validate(['required' => 'xx']),
+            message: 'an absent optional must pass',
         );
 
         $this->expectException(ValidationException::class);
@@ -183,9 +183,10 @@ final class LaravelDataSemanticsTest extends TestCase
         $this->assertSame('ab', TooShort::from(['f' => 'ab'])->f, 'from(array) is not a validating path');
 
         $this->expectException(ValidationException::class);
-        LaravelDataContainer::withRequest('{"f":"ab"}', static fn(): object => TooShort::from(
-            \Illuminate\Container\Container::getInstance()->make('request'),
-        ));
+        LaravelDataContainer::withRequest(
+            json: '{"f":"ab"}',
+            work: static fn(): object => TooShort::from(\Illuminate\Container\Container::getInstance()->make('request')),
+        );
     }
 
     /**

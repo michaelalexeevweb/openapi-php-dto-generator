@@ -45,9 +45,9 @@ final class SupportMatrixTest extends TestCase
         }
 
         $this->assertSame(
-            [],
-            $missing,
-            'the vocabulary table names these, and no parity case mentions them',
+            expected: [],
+            actual: $missing,
+            message: 'the vocabulary table names these, and no parity case mentions them',
         );
     }
 

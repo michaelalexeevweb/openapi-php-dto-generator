@@ -163,13 +163,13 @@ final class BinaryUploadParityTest extends TestCase
         };
 
         $this->assertNotNull(
-            $rejection,
-            sprintf('%s mode accepted a string for a binary property', $mode->value),
+            actual: $rejection,
+            message: sprintf('%s mode accepted a string for a binary property', $mode->value),
         );
         $this->assertStringNotContainsString(
-            'TypeError',
-            $rejection,
-            sprintf('%s mode rejected it with a TypeError, which is a 500 rather than a 422', $mode->value),
+            needle: 'TypeError',
+            haystack: $rejection,
+            message: sprintf('%s mode rejected it with a TypeError, which is a 500 rather than a 422', $mode->value),
         );
     }
 
@@ -214,16 +214,16 @@ final class BinaryUploadParityTest extends TestCase
         $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
         $typeExtractor = new PropertyInfoExtractor([], [new PhpDocExtractor(), new ReflectionExtractor()]);
         $serializer = new Serializer(
-            [
+            normalizers: [
                 new ObjectNormalizer(
-                    $classMetadataFactory,
-                    new MetadataAwareNameConverter($classMetadataFactory),
-                    null,
-                    $typeExtractor,
+                    classMetadataFactory: $classMetadataFactory,
+                    nameConverter: new MetadataAwareNameConverter($classMetadataFactory),
+                    propertyAccessor: null,
+                    propertyTypeExtractor: $typeExtractor,
                 ),
                 new ArrayDenormalizer(),
             ],
-            [new JsonEncoder()],
+            encoders: [new JsonEncoder()],
         );
 
         try {

@@ -147,6 +147,36 @@ abstract class {{ className }} extends {{ morphBase.dataBase }} implements {{ mo
             ['{{ morphBase.propertyName|php_string }}' => ['required', {{ morphBase.guard.ruleRef }}::in({{ morphBase.guard.values|raw }})]],
         )->validate();
     }
+
+    /**
+     * What is wrong with the value a holder found where this union is expected, keyed by path. laravel-data
+     * reads the discriminator out of that value before any rule runs, and a string or a number there was
+     * a `TypeError` from `array_key_exists()` — a 500 — where a plain object property answers 422. A
+     * property's null is read as an empty payload and left to the rules; a list item or map value is
+     * read as it is, null included.
+     *
+     * @internal called by the classes that hold this union
+     * @return array<string, string>
+     */
+    public static function openApiMorphUnionErrors(mixed $value, string $path, bool $isItem): array
+    {
+        if (!is_array($value)) {
+            return $value === null && !$isItem ? [] : [$path => sprintf('%s expects object, got %s.', $path, get_debug_type($value))];
+        }
+{% if morphBase.reachingMembers is empty %}
+
+        return [];
+{% else %}
+
+        // The member the discriminator names may hold a union of its own.
+        return match (self::morph(['{{ morphBase.property|php_string }}' => $value['{{ morphBase.propertyName|php_string }}'] ?? null])) {
+{% for member in morphBase.reachingMembers %}
+            {{ member }}::class => {{ member }}::openApiMorphNodeErrors($value, $path),
+{% endfor %}
+            default => [],
+        };
+{% endif %}
+    }
 }
 {% elseif unionMembers is not null %}
 {% if interfaceExtends is not empty %}
@@ -190,7 +220,7 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
 {% endif %}
     public function __construct(
 {% for param in requiredParams %}
-        {{ param.declaredType }} ${{ param.name }},
+        {{ param.parameterType }} ${{ param.name }},
 {% endfor %}
 {% for param in optionalParams %}
 {% if param.promoted and param.nullableWithDefault %}
@@ -200,7 +230,7 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
 {% endfor %}
         public readonly {{ param.declaredType }} ${{ param.name }} = {{ param.defaultExpression }},
 {% else %}
-        {{ param.declaredType }} ${{ param.name }}{{ param.defaultExpression is not null ? ' = ' ~ param.defaultExpression : '' }},
+        {{ param.parameterType }} ${{ param.name }}{{ param.defaultExpression is not null ? ' = ' ~ param.defaultExpression : '' }},
 {% endif %}
 {% endfor %}
     ) {
@@ -304,6 +334,65 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
         return $restored;
     }
 {% endif %}
+{% if morphGuard|default(null) is not null %}
+
+    /**
+     * Where a discriminated union below this class holds something that is not an object, keyed by path.
+     * laravel-data reads the discriminator out of that value before any rule runs, and a string, a number
+     * or an item's null there was a `TypeError` from `array_key_exists()` — a 500 — where a plain object
+     * property answers 422. Walked along the payload, so it ends where the data does, a union inside a
+     * union member included.
+     *
+     * @internal called by `validate()` and by the classes that hold this one
+     * @param array<array-key, mixed> $node
+     * @return array<string, string>
+     */
+    public static function openApiMorphNodeErrors(array $node, string $path): array
+    {
+        $prefix = $path === '' ? '' : $path . '.';
+        $errors = [];
+{% for step in morphGuard.steps %}
+{% set wire = step.wireName|php_string %}
+{% if step.many %}
+        foreach (is_array($node['{{ wire }}'] ?? null) ? $node['{{ wire }}'] : [] as $key => $item) {
+{% if step.union %}
+            $errors += {{ step.class }}::openApiMorphUnionErrors($item, $prefix . '{{ wire }}.' . $key, true);
+{% else %}
+            if (is_array($item)) {
+                $errors += {{ step.class }}::openApiMorphNodeErrors($item, $prefix . '{{ wire }}.' . $key);
+            }
+{% endif %}
+        }
+{% elseif step.union %}
+        $errors += {{ step.class }}::openApiMorphUnionErrors($node['{{ wire }}'] ?? null, $prefix . '{{ wire }}', false);
+{% else %}
+        if (is_array($node['{{ wire }}'] ?? null)) {
+            $errors += {{ step.class }}::openApiMorphNodeErrors($node['{{ wire }}'], $prefix . '{{ wire }}');
+        }
+{% endif %}
+{% endfor %}
+
+        return $errors;
+    }
+
+    /**
+     * laravel-data's validation, with the check above first: laravel-data builds its rules by resolving
+     * every union in the payload, so the value that breaks that has to be refused before it runs. Those
+     * errors are reported on their own, as the discriminator check of a union base reports its own.
+     *
+     * @param {{ morphGuard.arrayableRef }}<array-key, mixed>|array<array-key, mixed> $payload
+     * @return {{ morphGuard.arrayableRef }}<array-key, mixed>|array<array-key, mixed>
+     */
+    public static function validate({{ morphGuard.arrayableRef }}|array $payload): {{ morphGuard.arrayableRef }}|array
+    {
+        $errors = self::openApiMorphNodeErrors($payload instanceof {{ morphGuard.arrayableRef }} ? $payload->toArray() : $payload, '');
+        if ($errors !== []) {
+            throw {{ morphGuard.exceptionRef }}::withMessages($errors);
+        }
+
+        return parent::validate($payload);
+    }
+{% endif %}
 
     /**
      * Validation rules for the framework's validator, keyed by the OpenAPI property names — which is
@@ -344,7 +433,22 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
 {% endfor %}
     ];
 {% endif %}
-{% if interpreterMethodsBlock is not empty or checksObjectPaths or rootIsObject|default(false) %}
+{% if scalarTypePaths|default([]) is not empty %}
+
+    /**
+     * Paths whose schema is `integer` or `number`, with that type. A `*` segment matches every index of
+     * an array and every key of a map.
+     *
+     * @var array<string, string>
+     */
+    private const array OPENAPI_SCALAR_PATHS = [
+{% for scalarPath, scalarType in scalarTypePaths %}
+        '{{ scalarPath|php_string }}' => '{{ scalarType }}',
+{% endfor %}
+    ];
+{% endif %}
+{% set checksScalarPaths = checksScalarPaths|default(false) %}
+{% if interpreterMethodsBlock is not empty or checksObjectPaths or checksScalarPaths or rootIsObject|default(false) %}
 
     /**
 {% if interpreterMethodsBlock is not empty %}
@@ -353,6 +457,8 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
      * raw payload the validator already holds.
 {% elseif checksObjectPaths %}
      * The one shape Laravel's rules cannot check: `type: object` given a JSON array.
+{% elseif checksScalarPaths %}
+     * The one value Laravel's rules cannot refuse: a JSON boolean where the schema asks for a number.
 {% else %}
      * The one shape Laravel's rules cannot check: a JSON array sent for the object this body is.
 {% endif %}
@@ -407,8 +513,14 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
             }
 {% endif %}
 {% endif %}
-{% if checksObjectPaths or rootIsObject|default(false) %}
+{% if checksScalarPaths %}
 {% if interpreterMethodsBlock is not empty %}
+
+{% endif %}
+            self::assertNoBooleanNumbers($validator);
+{% endif %}
+{% if checksObjectPaths or rootIsObject|default(false) %}
+{% if interpreterMethodsBlock is not empty or checksScalarPaths %}
 
 {% endif %}
             $rawJson = self::rawRequestBody($validator);
@@ -469,6 +581,65 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
         }
 
         return $content;
+    }
+{% endif %}
+{% if checksScalarPaths %}
+
+    /**
+     * Adds an error for every integer or number path that holds a boolean. Laravel's `integer` rule reads
+     * `true` through `filter_var()` as 1, so it passed, and laravel-data then cast it to 1 or stored it
+     * as `true` in an `array<int>`. Read from the validator's data, not the raw body: a boolean is still
+     * a boolean once decoded, so `validateAndCreate($array)` is covered too. A path a rule already
+     * failed is left alone, so one mistake is reported once.
+     */
+    private static function assertNoBooleanNumbers({{ validatorRef }} $validator): void
+    {
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+
+        foreach ({{ scalarPathsExpression }} as $path => $type) {
+            // A nested class reports its boolean paths too; a boolean there is what the schema asks for.
+            if ($type === 'boolean') {
+                continue;
+            }
+
+            // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
+            $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
+            foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
+                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                    $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
+                }
+            }
+        }
+    }
+
+    /**
+     * Every value a (possibly wildcarded) path reaches in decoded data, keyed by the concrete path.
+     *
+     * @param array<int, string> $segments
+     * @return array<string, mixed>
+     */
+    private static function dataNodesAt(mixed $node, array $segments, string $path): array
+    {
+        if ($segments === []) {
+            return [$path => $node];
+        }
+        if (!is_array($node)) {
+            return [];
+        }
+
+        $segment = array_shift($segments);
+        // `*` stands for both an array index and a map key.
+        $keys = $segment === '*' ? array_keys($node) : (array_key_exists($segment, $node) ? [$segment] : []);
+        $found = [];
+        foreach ($keys as $key) {
+            $keyPath = $path === '' ? (string)$key : $path . '.' . $key;
+            foreach (self::dataNodesAt($node[$key], $segments, $keyPath) as $deepPath => $deepNode) {
+                $found[$deepPath] = $deepNode;
+            }
+        }
+
+        return $found;
     }
 {% endif %}
 {% if checksObjectPaths %}

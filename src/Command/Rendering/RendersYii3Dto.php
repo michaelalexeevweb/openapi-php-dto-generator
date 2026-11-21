@@ -255,18 +255,18 @@ trait RendersYii3Dto
         // accepted. What the emitted rules DO cover is pruned below instead, so one mistake is still
         // reported once.
         $interpreterConstraints = $this->yii3PruneNativelyCovered(
-            $this->filterInterpreterConstraints(
+            constraints: $this->filterInterpreterConstraints(
                 constraints: $this->withConstraintSourceOf(
                     className: $className,
                     extraction: fn(): array => $this->extractValidationConstraints(
-                        $this->yii3WithMapValuesInlined(
-                            $this->yii3ClassSchemaWithInlineAllOfMerged($this->dtoSchemas[$className] ?? [], $className),
+                        propertySchema: $this->yii3WithMapValuesInlined(
+                            schema: $this->yii3ClassSchemaWithInlineAllOfMerged($this->dtoSchemas[$className] ?? [], $className),
                         ),
                     ),
                 ),
                 allowScalarKeywords: true,
             ),
-            $properties,
+            properties: $properties,
         );
 
         $interpreter = $this->renderYii3InterpreterBlock(
@@ -280,12 +280,12 @@ trait RendersYii3Dto
             // without these flags the interpreter compares an enum instance against `enum: ['a','b']`
             // and rejects a perfectly valid member. Measured: `{"f":"a"}` came back invalid.
             valueKinds: $this->interpreterValueKinds($className, array_map(
-                static fn(array $parameter): array => [
+                callback: static fn(array $parameter): array => [
                     'name' => $parameter['name'],
                     'declaredType' => $parameter['propertyType'],
                     'docType' => $parameter['docType'],
                 ],
-                $parameters,
+                array: $parameters,
             )),
             parameters: $parameters,
         );
@@ -306,9 +306,6 @@ trait RendersYii3Dto
         if ($interpreter['entered']) {
             $ruleImports[] = 'Yiisoft\Validator\Result';
             $ruleImports[] = 'Yiisoft\Validator\ValidationContext';
-            foreach ($interpreter['imports'] as $import) {
-                $ruleImports[] = $import;
-            }
         }
 
         // Computed BEFORE the imports are written: without this the union interface is emitted and
@@ -478,7 +475,9 @@ trait RendersYii3Dto
             $type = 'bool|string';
         }
 
-        if ($type === 'DateTimeImmutable' && !in_array('DateTimeImmutable', $useStatements, true)) {
+        // A union names it too (`DateTimeImmutable|int`); the import used to arrive with the
+        // interpreter's whatever the class needed.
+        if (in_array('DateTimeImmutable', explode('|', ltrim($type, '?')), true) && !in_array('DateTimeImmutable', $useStatements, true)) {
             $useStatements[] = 'DateTimeImmutable';
         }
 
@@ -743,6 +742,13 @@ trait RendersYii3Dto
             $items = $constraints['items'] ?? $constraints['additionalProperties'] ?? null;
             $format = is_array($items) ? ($items['format'] ?? null) : null;
         }
+        if (!is_string($format)) {
+            // A union names it in its branches — `oneOf: [{format: date}, {type: null}]` — and a date
+            // was written back as a date-time. Only one format can say how to write the value; a
+            // `date` beside a `date-time` keeps the full timestamp, as before.
+            $branchFormats = $this->yii3TemporalFormats($constraints);
+            $format = count($branchFormats) === 1 ? $branchFormats[0] : null;
+        }
 
         return is_string($format) && array_key_exists($format, self::YII3_TEMPORAL_WIRE_FORMATS)
             ? $format
@@ -844,6 +850,12 @@ trait RendersYii3Dto
             $attributes[] = $this->yii3Rule(self::YII3_FORMAT_RULES[$format], [], $ruleImports);
         }
 
+        // Hydrator attributes that CONVERT the value, kept apart and emitted last: the hydrator runs its
+        // parameter attributes in order, each seeing what the one before resolved, so a `#[Validate]`
+        // after `#[ToDateTime]` judged the date object and not the string — an int had already become
+        // a timestamp by then, and passed.
+        $conversions = [];
+
         // A `DateTimeImmutable` property needs a HYDRATOR attribute as well as a rule: without it the
         // string never becomes a date, the parameter falls back to its default and a value the client
         // DID send reads back as "not provided". Measured on the demo spec.
@@ -859,19 +871,28 @@ trait RendersYii3Dto
             // A `php:` format keeps this off ext-intl: a bare `#[ToDateTime]` goes through
             // `IntlDateFormatter`, and measured with the extension present it parses NONE of the
             // ISO-8601 shapes a document writes, so it is not an option either way.
-            $wireFormats = self::YII3_TEMPORAL_WIRE_FORMATS[is_string($format) ? $format : '']
-                ?? self::YII3_TEMPORAL_WIRE_FORMATS['date-time'];
-            // A `oneOf` of a `format: date` and a `format: date-time` string has no `format` of its own, and
-            // the date-time patterns alone left `2026-12-01` unparsed — the property then read as not sent.
-            // The attributes are tried in order, and a date never parses as a date-time.
-            if (!is_string($format) && $this->isDateOrDateTimeUnion($constraints)) {
-                $wireFormats = [
-                    ...self::YII3_TEMPORAL_WIRE_FORMATS['date'],
-                    ...self::YII3_TEMPORAL_WIRE_FORMATS['date-time'],
-                ];
+            // A union carries the format in its branches, not beside them: `oneOf: [{format: date},
+            // {type: null}]` got the date-time patterns alone, which left every date unparsed and took a
+            // date-time in its place. A `date` and a `date-time` branch need both sets; the attributes
+            // are tried in order, and a date never parses as a date-time.
+            $wireFormats = [];
+            foreach ($this->yii3TemporalFormats($constraints) as $temporalFormat) {
+                $wireFormats = [...$wireFormats, ...self::YII3_TEMPORAL_WIRE_FORMATS[$temporalFormat]];
+            }
+            // `ToDateTime` reads an INT as a Unix timestamp, whatever its format says, so in a union with
+            // an integer member `7` came back as 1970-01-01T00:00:07. Made a string first, it parses as
+            // no date and is left to the cast, which turns it back into the int it was. Not where the
+            // schema lets the union be null: `ToString` makes null `""`, and the cast reads that as 0 —
+            // elsewhere the raw check below refuses the null before it gets that far.
+            if (
+                count($this->yii3TypeMembers($property['type'])) > 1
+                && !($property['schemaNullable'] ?? $property['nullable'])
+            ) {
+                $ruleImports[] = 'Yiisoft\Hydrator\Attribute\Parameter\ToString';
+                $conversions[] = '#[' . $this->yii3Lib('ToString', 'Yiisoft\Hydrator\Attribute\Parameter\ToString') . ']';
             }
             foreach ($wireFormats as $wireFormat) {
-                $attributes[] = sprintf(
+                $conversions[] = sprintf(
                     "#[%s(format: 'php:%s')]",
                     $this->yii3Lib('ToDateTime'),
                     $wireFormat,
@@ -919,11 +940,57 @@ trait RendersYii3Dto
         // with an empty name, every rule having skipped the null. Here only a MISSING key is skipped
         // (the interpreter reports that one), so the raw null is refused. An optional property is
         // nullable in PHP and keeps its null, which the interpreter refuses itself.
-        $refusesNull = $this->propertyIsRequiredOnInput($property)
-            && !($property['schemaNullable'] ?? $property['nullable']);
+        $schemaNullable = $property['schemaNullable'] ?? $property['nullable'];
+        $refusesNull = $this->propertyIsRequiredOnInput($property) && !$schemaNullable;
+        // An OPTIONAL object or enum the schema does not let be null is the exception: the interpreter
+        // leaves both to their class, so nothing refused `{"widget": null}` and it was written back as
+        // null. The raw rule is the one check that sees it; a missing key is still skipped.
+        // A union of scalars, or of a date and a scalar, has no single type rule, and the cast picks a
+        // member for any value: `"x"` became 0.0 for `float|bool`, `[1]` became true, and a date became
+        // the int 2024 for `DateTimeImmutable|int`. The raw value is checked against the members
+        // instead — any one of them taking it is enough. Not for a parameter, which arrives as text
+        // and is a different conversion.
+        $heldClass = ltrim($property['type'], '?');
+        $memberRules = !$isParameter && str_contains($heldClass, '|')
+            ? $this->yii3RawUnionMemberRules(
+                type: $property['type'],
+                temporalFormats: $this->yii3TemporalFormats($constraints),
+                ruleImports: $ruleImports,
+            )
+            : null;
+        // An OPTIONAL object, enum or such a union the schema does not let be null is the exception:
+        // the interpreter leaves the first two to their class and the union to these members, so
+        // nothing refused `{"widget": null}` — it was written back as null, and a union cast it to 0.
+        // The raw rule is the one check that sees it; a missing key is still skipped.
+        if (
+            !$refusesNull
+            && !$schemaNullable
+            && !$isParameter
+            && ($memberRules !== null
+                || array_key_exists($heldClass, $this->enumSchemas)
+                || (array_key_exists($heldClass, $this->dtoSchemas) && !$this->yii3IsUnionInterface($heldClass)))
+        ) {
+            $refusesNull = true;
+        }
         $skip = $refusesNull ? 'WhenMissing' : 'WhenNull';
         if ($typeRule !== null && $this->yii3TypeRuleApplies($property) && !($isParameter && $typeRule === 'BooleanValue')) {
             $attributes[] = $this->yii3RawRule(rule: $typeRule, arguments: [], skip: $skip, ruleImports: $ruleImports);
+        }
+
+        if ($memberRules !== null) {
+            $memberNames = implode(' or ', array_unique(array_values($memberRules)));
+            $message = sprintf('%s must be %s.', ucfirst($property['name']), $memberNames);
+            $attributes[] = $this->yii3RawRuleChain(
+                rules: [[
+                    'rule' => 'AnyRule',
+                    'arguments' => [
+                        '[' . implode(', ', array_keys($memberRules)) . ']',
+                        'message: ' . $this->phpStringLiteral($message),
+                    ],
+                ]],
+                skip: $skip,
+                ruleImports: $ruleImports,
+            );
         }
 
         // `EnumTypeCaster` cannot cast a value outside the list, so the hydrator skips the property and
@@ -933,8 +1000,8 @@ trait RendersYii3Dto
         $enum = $this->enumSchemas[ltrim($property['type'], '?')] ?? null;
         if ($enum !== null) {
             $values = array_map(
-                static fn(string|int $value): string => var_export($value, true),
-                $enum['values'],
+                callback: static fn(string|int $value): string => var_export($value, true),
+                array: $enum['values'],
             );
             $arguments = ['[' . implode(', ', $values) . ']'];
             if (!$isParameter) {
@@ -945,28 +1012,22 @@ trait RendersYii3Dto
 
         // The same loss for a date: `#[ToDateTime]` that parses nothing leaves the property uninitialised,
         // and `{"begin": "nonsense"}` read as "no filter". The raw string is checked against the formats
-        // the hydrator is told to parse — one rule for `date`, any of them for the others.
-        $temporalFormat = is_string($format) && array_key_exists($format, self::YII3_TEMPORAL_WIRE_FORMATS)
-            ? $format
-            : 'date-time';
-        if (ltrim($property['type'], '?') === 'DateTimeImmutable') {
-            $dateRule = self::YII3_FORMAT_RULES[$temporalFormat];
-            $ruleImports[] = 'Yiisoft\Validator\Rule\Date\\' . $dateRule;
-            $parsers = array_map(
-                fn(string $wireFormat): string => sprintf("new %s(format: 'php:%s')", $this->yii3Lib($dateRule, 'Yiisoft\Validator\Rule\Date\\' . $dateRule), $wireFormat),
-                self::YII3_TEMPORAL_WIRE_FORMATS[$temporalFormat],
+        // the hydrator is told to parse — one rule for `date`, any of them for the others. A STRING
+        // first: the date rules and `ToDateTime` both read an int as a Unix timestamp, so `{"day": 5}`
+        // was stored as 1970-01-01T00:00:05 where the schema asks for a string.
+        if ($heldClass === 'DateTimeImmutable') {
+            $attributes[] = $this->yii3RawRuleChain(
+                rules: [
+                    ['rule' => 'StringValue', 'arguments' => []],
+                    $this->yii3TemporalParserRule(
+                        temporalFormats: $this->yii3TemporalFormats($constraints),
+                        propertyName: $property['name'],
+                        ruleImports: $ruleImports,
+                    ),
+                ],
+                skip: $skip,
+                ruleImports: $ruleImports,
             );
-            $attributes[] = count($parsers) === 1
-                ? $this->yii3RawRule(rule: $dateRule, arguments: ["format: 'php:" . self::YII3_TEMPORAL_WIRE_FORMATS[$temporalFormat][0] . "'"], skip: $skip, ruleImports: $ruleImports)
-                : $this->yii3RawRule(
-                    rule: 'AnyRule',
-                    arguments: [
-                        '[' . implode(', ', $parsers) . ']',
-                        sprintf("message: '{Property} must be a %s.'", $temporalFormat === 'time' ? 'time' : 'date'),
-                    ],
-                    skip: $skip,
-                    ruleImports: $ruleImports,
-                );
         }
 
         // And for a container or an object: nothing casts `"not-an-array"` to either, so the property was
@@ -990,7 +1051,7 @@ trait RendersYii3Dto
             );
         }
 
-        return $attributes;
+        return [...$attributes, ...$conversions];
     }
 
     /**
@@ -1001,20 +1062,186 @@ trait RendersYii3Dto
      */
     private function yii3RawRule(string $rule, array $arguments, string $skip, array &$ruleImports): string
     {
-        $fqcn = in_array($rule, self::YII3_DATE_NAMESPACE_RULES, true)
+        return $this->yii3RawRuleChain(
+            rules: [['rule' => $rule, 'arguments' => $arguments]],
+            skip: $skip,
+            ruleImports: $ruleImports,
+        );
+    }
+
+    /**
+     * One `#[Validate]` holding several rules, run in order. Every rule after the first carries
+     * `skipOnError`, so one wrong value is reported once: `1.5` for a date is "not a string", not that
+     * AND "not a date".
+     *
+     * @param array<int, array{rule: string, arguments: array<int, string>}> $rules
+     * @param array<int, string> $ruleImports
+     */
+    private function yii3RawRuleChain(array $rules, string $skip, array &$ruleImports): string
+    {
+        $ruleImports[] = 'Yiisoft\Hydrator\Validator\Attribute\Validate';
+        $ruleImports[] = 'Yiisoft\Validator\EmptyCondition\\' . $skip;
+        $skipCondition = sprintf('skipOnEmpty: new %s()', $this->yii3Lib($skip, 'Yiisoft\Validator\EmptyCondition\\' . $skip));
+
+        $rendered = [];
+        foreach ($rules as $index => ['rule' => $rule, 'arguments' => $arguments]) {
+            $fqcn = $this->yii3RuleClass($rule);
+            $ruleImports[] = $fqcn;
+            $arguments[] = $skipCondition;
+            if ($index > 0) {
+                $arguments[] = 'skipOnError: true';
+            }
+            $rendered[] = sprintf('new %s(%s)', $this->yii3Lib($rule, $fqcn), implode(', ', $arguments));
+        }
+
+        return sprintf('#[%s(%s)]', $this->yii3Lib('Validate'), implode(', ', $rendered));
+    }
+
+    private function yii3RuleClass(string $rule): string
+    {
+        return in_array($rule, self::YII3_DATE_NAMESPACE_RULES, true)
             ? 'Yiisoft\Validator\Rule\Date\\' . $rule
             : 'Yiisoft\Validator\Rule\\' . $rule;
-        $ruleImports[] = 'Yiisoft\Hydrator\Validator\Attribute\Validate';
-        $ruleImports[] = $fqcn;
-        $ruleImports[] = 'Yiisoft\Validator\EmptyCondition\\' . $skip;
-        $arguments[] = sprintf('skipOnEmpty: new %s()', $this->yii3Lib($skip, 'Yiisoft\Validator\EmptyCondition\\' . $skip));
+    }
 
-        return sprintf(
-            '#[%s(new %s(%s))]',
-            $this->yii3Lib('Validate'),
-            $this->yii3Lib($rule, $fqcn),
-            implode(', ', $arguments),
-        );
+    /**
+     * The temporal formats a property is written in, in the order the hydrator should try them: its
+     * own `format`, or those of its `oneOf`/`anyOf` branches — a union carries it there. `date-time`
+     * when it names none.
+     *
+     * @param array<string, mixed> $constraints
+     * @return non-empty-array<int, string>
+     */
+    private function yii3TemporalFormats(array $constraints): array
+    {
+        $named = [];
+        $format = $constraints['format'] ?? null;
+        if (is_string($format)) {
+            $named[] = $format;
+        } else {
+            foreach (['oneOf', 'anyOf'] as $keyword) {
+                $branches = is_array($constraints[$keyword] ?? null) ? $constraints[$keyword] : [];
+                foreach ($branches as $branch) {
+                    $branchFormat = is_array($branch) ? ($branch['format'] ?? null) : null;
+                    if (is_string($branchFormat)) {
+                        $named[] = $branchFormat;
+                    }
+                }
+            }
+        }
+
+        $formats = array_values(array_filter(
+            array: array_keys(self::YII3_TEMPORAL_WIRE_FORMATS),
+            callback: static fn(string $temporalFormat): bool => in_array($temporalFormat, $named, true),
+        ));
+
+        return $formats === [] ? ['date-time'] : $formats;
+    }
+
+    /**
+     * The rule that parses a raw temporal string the way `#[ToDateTime]` will: one `Date`/`DateTime`/
+     * `Time`, or `AnyRule` over each pattern. `AnyRule` hands its message to the result with no
+     * parameters, so a `{Property}` placeholder reached the client unreplaced — the property is
+     * named here instead, as the framework capitalizes it.
+     *
+     * @param array<int, string> $temporalFormats
+     * @param array<int, string> $ruleImports
+     * @return array{rule: string, arguments: array<int, string>}
+     */
+    private function yii3TemporalParserRule(array $temporalFormats, string $propertyName, array &$ruleImports): array
+    {
+        $parsers = [];
+        foreach ($temporalFormats as $temporalFormat) {
+            $dateRule = self::YII3_FORMAT_RULES[$temporalFormat];
+            foreach (self::YII3_TEMPORAL_WIRE_FORMATS[$temporalFormat] as $wireFormat) {
+                $parsers[] = ['rule' => $dateRule, 'format' => "format: 'php:" . $wireFormat . "'"];
+            }
+        }
+        if (count($parsers) === 1) {
+            return ['rule' => $parsers[0]['rule'], 'arguments' => [$parsers[0]['format']]];
+        }
+
+        $rendered = [];
+        foreach ($parsers as ['rule' => $dateRule, 'format' => $formatArgument]) {
+            $fqcn = $this->yii3RuleClass($dateRule);
+            $ruleImports[] = $fqcn;
+            $rendered[] = sprintf('new %s(%s)', $this->yii3Lib($dateRule, $fqcn), $formatArgument);
+        }
+
+        $kind = $temporalFormats === ['time'] ? 'time' : 'date';
+
+        return [
+            'rule' => 'AnyRule',
+            'arguments' => [
+                '[' . implode(', ', $rendered) . ']',
+                'message: ' . $this->phpStringLiteral(sprintf('%s must be a %s.', ucfirst($propertyName), $kind)),
+            ],
+        ];
+    }
+
+    /**
+     * The raw rule for each member of a union type, keyed by the rule expression, valued by how the
+     * message names the member — or null when a member has none (a class, a container, `mixed`), in
+     * which case the union is left to the interpreter as before.
+     *
+     * @param array<int, string> $temporalFormats
+     * @param array<int, string> $ruleImports
+     * @return array<string, string>|null
+     */
+    private function yii3RawUnionMemberRules(string $type, array $temporalFormats, array &$ruleImports): ?array
+    {
+        $members = [];
+        foreach ($this->yii3TypeMembers($type) as $member) {
+            if ($member === 'DateTimeImmutable') {
+                $parser = $this->yii3TemporalParserRule(
+                    temporalFormats: $temporalFormats,
+                    propertyName: 'value',
+                    ruleImports: $ruleImports,
+                );
+                // Inside `AnyRule` only whether a member passes matters, so the parser's own message
+                // never reaches anyone; the date is a string AND one of the patterns.
+                $parserFqcn = $this->yii3RuleClass($parser['rule']);
+                $ruleImports[] = $parserFqcn;
+                $ruleImports[] = $this->yii3RuleClass('Composite');
+                $ruleImports[] = $this->yii3RuleClass('StringValue');
+                $composite = $this->yii3Lib('Composite', $this->yii3RuleClass('Composite'));
+                $string = $this->yii3Lib('StringValue', $this->yii3RuleClass('StringValue'));
+                $parserRule = $this->yii3Lib($parser['rule'], $parserFqcn);
+                $parserArguments = implode(', ', $parser['arguments']);
+                $members[sprintf('new %s([new %s(), new %s(%s)])', $composite, $string, $parserRule, $parserArguments)]
+                    = $temporalFormats === ['time'] ? 'a time' : 'a date';
+                continue;
+            }
+
+            $scalar = match ($member) {
+                'int' => ['Integer', 'an integer'],
+                'float' => ['Number', 'a number'],
+                'string' => ['StringValue', 'a string'],
+                'bool' => ['BooleanValue', 'a boolean'],
+                default => null,
+            };
+            if ($scalar === null) {
+                return null;
+            }
+            $fqcn = $this->yii3RuleClass($scalar[0]);
+            $ruleImports[] = $fqcn;
+            $members['new ' . $this->yii3Lib($scalar[0], $fqcn) . '()'] = $scalar[1];
+        }
+
+        return count($members) > 1 ? $members : null;
+    }
+
+    /**
+     * The members of a PHP type, `null` left out: `?DateTimeImmutable|int` is `DateTimeImmutable`, `int`.
+     *
+     * @return array<int, string>
+     */
+    private function yii3TypeMembers(string $type): array
+    {
+        return array_values(array_filter(
+            array: explode('|', ltrim($type, '?')),
+            callback: static fn(string $member): bool => $member !== 'null' && $member !== '',
+        ));
     }
 
     /**
@@ -1034,6 +1261,7 @@ trait RendersYii3Dto
             if (
                 str_starts_with($attribute, '#[' . $this->yii3Lib('Required', 'Yiisoft\Validator\Rule\Required'))
                 || str_starts_with($attribute, '#[' . $this->yii3Lib('ToDateTime'))
+                || str_starts_with($attribute, '#[' . $this->yii3Lib('ToString', 'Yiisoft\Hydrator\Attribute\Parameter\ToString'))
                 || str_starts_with($attribute, '#[' . $this->yii3Lib('Collection'))
             ) {
                 $skipped[] = $attribute;
@@ -1111,9 +1339,9 @@ trait RendersYii3Dto
         bool $entersInterpreter,
     ): array {
         $allQuery = $properties !== [] && array_reduce(
-            $properties,
-            static fn(bool $carry, array $property): bool => $carry && ($property['inQuery'] ?? false) === true,
-            true,
+            array: $properties,
+            callback: static fn(bool $carry, array $property): bool => $carry && ($property['inQuery'] ?? false) === true,
+            initial: true,
         );
 
         $attributes = [];
@@ -1206,8 +1434,8 @@ trait RendersYii3Dto
             // A non-null `unionMembers` is what selects the interface branch of the template — the
             // same switch `dto.symfony.php.twig` uses, so the two modes read alike.
             'unionMembers' => array_map(
-                fn(string $member): string => $this->shortClassName($member),
-                $members,
+                callback: fn(string $member): string => $this->shortClassName($member),
+                array: $members,
             ),
             'discriminatorProperty' => $discriminator === null ? null : $discriminator['propertyName'],
         ]);
@@ -1262,17 +1490,17 @@ trait RendersYii3Dto
                     'docType' => $docType,
                 ];
                 $sharedImports[$parameter['getter']] = array_values(array_filter(
-                    $useStatements,
-                    static fn(string $import): bool => $import !== 'stdClass',
+                    array: $useStatements,
+                    callback: static fn(string $import): bool => $import !== 'stdClass',
                 ));
             }
 
             $shared = $shared === null
                 ? $getters
                 : array_filter(
-                    $shared,
-                    static fn(array $getter, string $name): bool => ($getters[$name] ?? null) === $getter,
-                    ARRAY_FILTER_USE_BOTH,
+                    array: $shared,
+                    callback: static fn(array $getter, string $name): bool => ($getters[$name] ?? null) === $getter,
+                    mode: ARRAY_FILTER_USE_BOTH,
                 );
         }
 
@@ -1322,7 +1550,7 @@ trait RendersYii3Dto
      * @param array<string, string> $phpToOpenApiNameMap
      * @param array{enum: bool, temporal: bool} $valueKinds
      * @param array<int, array{name: string, openApiName: string, tracksPresence: bool, propertyType: string, docType: string|null, getter: string, getterType: string, payloadValue: string, getterValue: string, providedGetter: string, writeOnly: bool, temporalFormat: string|null}> $parameters
-     * @return array{consts: string, methods: string, imports: array<int, string>, entered: bool}
+     * @return array{consts: string, methods: string, entered: bool}
      */
     private function renderYii3InterpreterBlock(
         array $constraints,
@@ -1331,7 +1559,7 @@ trait RendersYii3Dto
         array $parameters,
     ): array {
         if ($constraints === []) {
-            return ['consts' => '', 'methods' => '', 'imports' => [], 'entered' => false];
+            return ['consts' => '', 'methods' => '', 'entered' => false];
         }
 
         $block = $this->renderInterpreterBlock(
@@ -1348,13 +1576,12 @@ trait RendersYii3Dto
         );
 
         if ($block['methods'] === '') {
-            return ['consts' => '', 'methods' => '', 'imports' => [], 'entered' => false];
+            return ['consts' => '', 'methods' => '', 'entered' => false];
         }
 
         return [
             'consts' => $block['consts'],
             'methods' => $this->yii3RepackageInterpreterEntry($block['methods'], $parameters),
-            'imports' => $block['imports'],
             'entered' => true,
         ];
     }
@@ -1372,7 +1599,7 @@ trait RendersYii3Dto
     {
         $symfonyEntry = <<<'PHP'
     #[Assert\Callback]
-    public function validateOpenApiConstraints(ExecutionContextInterface $context): void
+    public function validateOpenApiConstraints(\Symfony\Component\Validator\Context\ExecutionContextInterface $context): void
     {
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $violation = $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.');
@@ -1418,7 +1645,7 @@ PHP;
         // parity suite caught it two steps later. Say so at the source instead.
         if (!str_contains($methods, $symfonyEntry)) {
             throw new RuntimeException(
-                'The Symfony interpreter entry this mode swaps out has changed shape. Update the '
+                message: 'The Symfony interpreter entry this mode swaps out has changed shape. Update the '
                 . '`$symfonyEntry` heredoc in ' . __METHOD__ . ' to match '
                 . 'RendersSchemaInterpreter::renderInterpreterBlock() again.',
             );
@@ -1494,9 +1721,7 @@ PHP;
      */
     private function yii3Rule(string $rule, array $arguments, array &$ruleImports): string
     {
-        $fqcn = in_array($rule, self::YII3_DATE_NAMESPACE_RULES, true)
-            ? 'Yiisoft\Validator\Rule\Date\\' . $rule
-            : 'Yiisoft\Validator\Rule\\' . $rule;
+        $fqcn = $this->yii3RuleClass($rule);
         $ruleImports[] = $fqcn;
 
         return '#[' . $this->yii3Lib($rule, $fqcn)
@@ -1517,8 +1742,8 @@ PHP;
         // already spelled that class out in the body. Both ask `namespaceDeclaresClass()`, so the list
         // and the code cannot disagree about which names are the document's.
         $imports = array_values(array_filter(
-            $imports,
-            fn(string $import): bool => !$this->namespaceDeclaresClass(
+            array: $imports,
+            callback: fn(string $import): bool => !$this->namespaceDeclaresClass(
                 shortName: $this->shortClassName($import),
                 namespace: $this->yii3RenderNamespace,
             ),
@@ -1631,10 +1856,10 @@ PHP;
                 ...(is_array($merged['required'] ?? null) ? $merged['required'] : []),
                 ...(is_array($branch['required'] ?? null) ? $branch['required'] : []),
             ];
-            $properties = [
-                ...(is_array($merged['properties'] ?? null) ? $merged['properties'] : []),
-                ...(is_array($branch['properties'] ?? null) ? $branch['properties'] : []),
-            ];
+            $properties = $this->withRestatedPropertySchemas(
+                properties: is_array($merged['properties'] ?? null) ? $merged['properties'] : [],
+                restated: is_array($branch['properties'] ?? null) ? $branch['properties'] : [],
+            );
 
             $merged = [...$merged, ...$branch];
             if ($required !== []) {
@@ -2045,18 +2270,18 @@ PHP;
         $properties = [];
         foreach ($schema['properties'] as $name => $property) {
             if (is_array($property)) {
-                $union = $this->yii3UnionValueSchema($property);
+                $union = $this->yii3NullableUnionValueSchema($property);
                 if ($union !== null) {
-                    $property = $union + (($property['nullable'] ?? false) === true ? ['nullable' => true] : []);
+                    $property = $union;
                 }
                 $property = $this->yii3WithEnumBranchesInlined($property);
                 foreach (['items', 'additionalProperties'] as $container) {
                     if (!is_array($property[$container] ?? null)) {
                         continue;
                     }
-                    $union = $this->yii3UnionValueSchema($property[$container]);
+                    $union = $this->yii3NullableUnionValueSchema($property[$container]);
                     if ($union !== null) {
-                        $property[$container] = $union + (($property[$container]['nullable'] ?? false) === true ? ['nullable' => true] : []);
+                        $property[$container] = $union;
                         continue;
                     }
                     $ref = $this->referenceOrSingleRefAllOf($property[$container]);
@@ -2109,6 +2334,52 @@ PHP;
     }
 
     /**
+     * `yii3UnionValueSchema()` for every spelling of "this union, or null": `nullable` beside the
+     * reference, and a `oneOf`/`anyOf` of the reference and a null branch.
+     *
+     * The second spelling has no `$ref` of its own, so it was not recognised as the union at all; its
+     * branches extracted to nothing — the reference is a class check elsewhere — and the property kept
+     * no constraint, so a member missing a required field, or a discriminator value no member answers
+     * to, was hydrated as given.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<string, mixed>|null
+     */
+    private function yii3NullableUnionValueSchema(array $schema): ?array
+    {
+        $union = $this->yii3UnionValueSchema($schema);
+        if ($union !== null) {
+            return $union + (($schema['nullable'] ?? false) === true ? ['nullable' => true] : []);
+        }
+
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            $branches = $schema[$keyword] ?? null;
+            if (!is_array($branches) || count($branches) !== 2) {
+                continue;
+            }
+            $member = null;
+            $nullBranches = 0;
+            foreach ($branches as $branch) {
+                if (!is_array($branch)) {
+                    continue;
+                }
+                if ($this->isNullUnionBranch($branch)) {
+                    $nullBranches++;
+                    continue;
+                }
+                // Marked nullable, so a union without a discriminator lists null as a member of its
+                // own — `nullable` beside a `oneOf` admits nothing the members refuse.
+                $member = $this->yii3UnionValueSchema($branch + ['nullable' => true]);
+            }
+            if ($member !== null && $nullBranches === 1) {
+                return $member + ['nullable' => true];
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * The schema a value typed by a union interface is checked against, or null when it is not one.
      *
      * A discriminated union becomes an `if`/`then`/`else` chain on the discriminator — the interpreter
@@ -2134,16 +2405,33 @@ PHP;
         $discriminator = is_array($union['discriminator'] ?? null) ? $union['discriminator'] : [];
         $property = $discriminator['propertyName'] ?? null;
         $mapping = is_array($discriminator['mapping'] ?? null) ? $discriminator['mapping'] : [];
-        if (is_string($property) && $mapping !== []) {
+        // A union that leaves `mapping` out still has one: OAS names each member by the schema name
+        // behind its `$ref`. Reading only the written map left the chain empty, so the members fell
+        // through to a bare `oneOf` and neither the value nor the member it names was checked.
+        if ($mapping === [] && is_string($property) && $this->hasUnionMembers($union)) {
+            $mapping = $this->implicitDiscriminatorMapping($union);
+        }
+        $memberSchemas = [];
+        foreach ($mapping as $value => $memberRef) {
+            $memberSchemas[$value] = is_string($memberRef) ? $this->yii3MemberSchema($memberRef) : [];
+        }
+        // An object base that leaves `mapping` out has its variants named by the schemas that `allOf`
+        // it; the document spells none of them, so the map the generator built is read instead.
+        if ($mapping === [] && !$this->hasUnionMembers($union)) {
+            foreach ($this->discriminatorSchemas[$className]['mapping'] ?? [] as $value => $memberClass) {
+                $memberSchemas[$value] = $this->yii3MemberSchemaOfClass($memberClass);
+            }
+        }
+        if (is_string($property) && $memberSchemas !== []) {
             $chain = null;
-            foreach (array_reverse($mapping, true) as $value => $memberRef) {
+            foreach (array_reverse($memberSchemas, true) as $value => $memberSchema) {
                 // `type` and `required` in the condition, not only the value: `properties` asserts
                 // nothing about a value that is not an object, so a null — or an object without the
                 // property — matched the first member and was checked as it. Now neither matches any
                 // member, and the keywords around the chain report what is wrong.
                 $link = [
                     'if' => ['type' => 'object', 'required' => [$property], 'properties' => [$property => ['const' => (string)$value]]],
-                    'then' => is_string($memberRef) ? $this->yii3MemberSchema($memberRef) : [],
+                    'then' => $memberSchema,
                 ];
                 if ($chain !== null) {
                     $link['else'] = $chain;
@@ -2155,7 +2443,7 @@ PHP;
                 'type' => 'object',
                 'required' => [$property],
                 // Marked inline: an `enum` is otherwise taken for one a generated enum class enforces.
-                'properties' => [$property => ['enum' => array_map('strval', array_keys($mapping)), 'x-php-inline-enum' => true]],
+                'properties' => [$property => ['enum' => array_map('strval', array_keys($memberSchemas)), 'x-php-inline-enum' => true]],
             ] + $chain;
         }
 
@@ -2191,8 +2479,15 @@ PHP;
         if (!str_starts_with($ref, $prefix)) {
             return [];
         }
-        $className = $this->schemaClassName(substr($ref, strlen($prefix)));
 
+        return $this->yii3MemberSchemaOfClass($this->schemaClassName(substr($ref, strlen($prefix))));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function yii3MemberSchemaOfClass(string $className): array
+    {
         return $this->inlineNestedContainerValidation(
             schema: $this->yii3ClassSchemaWithInlineAllOfMerged($this->dtoSchemas[$className] ?? [], $className),
             depth: 2,

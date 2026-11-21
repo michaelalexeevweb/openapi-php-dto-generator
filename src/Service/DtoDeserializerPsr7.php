@@ -39,7 +39,7 @@ final class DtoDeserializerPsr7
         // to install. Do not chase the number by reshaping this into something injectable.
         if (!class_exists(HttpFoundationFactory::class)) {
             throw new RuntimeException(
-                'PSR-7 support requires symfony/psr-http-message-bridge. '
+                message: 'PSR-7 support requires symfony/psr-http-message-bridge. '
                 . 'Install it with: composer require symfony/psr-http-message-bridge',
             );
         }

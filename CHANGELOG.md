@@ -3,6 +3,90 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.128 — 2026-11-21
+
+- allOf required and restatements honoured
+- allOf children built in code
+- allOf base without mapping generates
+- typed object parameters converted
+- dotted query and cookie names read
+- symfony unions of classes validated
+- laravel nested object keywords kept
+- laravel discriminators checked before hydration
+- laravel-data unions answer 422
+- yii3 temporal and scalar unions fixed
+- library class names never collide
+- namespace options validated
+- named arguments throughout
+
+A review of every mode against its framework, end to end. Each fix is pinned by a test that failed before
+it, and by tests on the neighbouring shapes; the parity suites now assert the five modes agree on each.
+
+**Regenerate after upgrading**, in every mode: generated output changed in all of them.
+
+**Stricter where the document said so.** Payloads that broke a rule the document states, and that a mode
+let through, are now refused — a `required` written in another `allOf` branch, a parent's rules on a
+property an `allOf` child restates, the chosen branch of a union of classes (symfony), a nested component's
+`additionalProperties: false` / `minProperties` / `dependentRequired` (laravel, laravel-data), a JSON
+boolean for an integer (laravel, laravel-data, yii3), an integer for a date (yii3).
+
+All modes:
+
+- `required` binds a property whichever `allOf` branch declares it — beside the `allOf`, in an inline
+  branch, or on the parent; 2.15.115 covered one spelling only;
+- a branch restating a parent property keeps the parent's type, `required`, bounds, `pattern` and `enum`
+  beside its own; runtime no longer refuses to generate such a document;
+- an object base with a `discriminator` and no `mapping` maps the schemas that `allOf` it by name, as
+  OpenAPI defines; generation stopped before;
+- a component two containers deep written as `allOf` or a union is validated (runtime, laravel,
+  laravel-data, yii3);
+- a component named like a library class the mode imports (`Rule`, `stdClass`, `Context`, `Assert`,
+  `Validator`, `FormRequest`, …) generates a class that loads: the library import gets an alias;
+- `PHP_INT_MIN` in a default, an enum or a `const` no longer generates a file that fails to load;
+- `--namespace`, `--dto-generator-namespace` and the namespaces of `--ref` / `--ref-namespace` are checked
+  as PHP namespace names; nothing is written for one that is not.
+
+Runtime mode:
+
+- an `allOf` child built in code (`new Child(extra: true)`) no longer writes `null` for every inherited
+  optional property, which failed its own validation;
+- the typed fields of an object that arrives as strings — a `deepObject`, a path / header / form object, a
+  form body — are converted like top-level parameters; a JSON body stays strict;
+- query and cookie parameters with a `.` or a space in the name are read;
+- a union of scalar branches and a class branch keeps the scalar branches' rules.
+
+symfony:
+
+- a property typed as a union of classes gets `#[Assert\Valid]`, so the branch it holds is checked;
+- a union of scalar branches and a class branch keeps its rules, `anyOf` included, and an enum branch counts;
+- an absent untyped property whose schema refuses null is skipped on output instead of written as `null`;
+- `minProperties` no longer refuses a body whose extra keys the schema admits (the serializer drops them).
+
+laravel and laravel-data:
+
+- a nested component keeps its object-wide keywords, and an `additionalProperties` schema is enforced;
+- a discriminator value is checked by validation; a wrong one is a 422, not a 500 from `fromValidated()`;
+- a component in two discriminated unions generates a class that loads;
+- a nullable reference to a discriminated union admits null;
+- booleans in headers and cookies are read from `true` / `false`;
+- laravel-data: a non-object where a union is expected is a 422 at any depth, not a 500.
+
+yii3:
+
+- a `oneOf` / `anyOf` of `format: date` and `null` takes a date; unions of a date and a scalar keep the
+  value sent; scalar unions refuse what no member takes, without casting it;
+- an integer for a date is refused, not read as a Unix timestamp;
+- an optional non-nullable object or enum refuses an explicit `null`;
+- a discriminator without a written mapping, and a discriminated union beside a null branch, check their
+  members; the raw date check's message names the property.
+
+Known limitations, documented in [README.support-matrix.md](README.support-matrix.md) rather than worked
+around with framework code of our own: a `date-time` with no offset is read in the server's timezone (all
+modes); symfony builds an empty object from `null` for a class-typed property, and does not check a union
+of classes two containers deep; laravel and laravel-data check but do not keep the extra keys
+`additionalProperties` admits; laravel-data ignores an inline discriminator on a property; yii3 reads an
+integer as a timestamp in a `oneOf` of date, integer and `null`.
+
 ## 2.15.127 — 2026-11-21
 
 - nullable extras admit null

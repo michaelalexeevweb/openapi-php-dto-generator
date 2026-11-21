@@ -511,6 +511,7 @@ use a FormRequest of your own with `authorize()` that delegates to the DTO's `ru
 | `deepObject`, path `matrix` / `label`, `allowReserved` | the query delimiters and `explode` are read (see [Query parameters as the document serializes them](#query-parameters-as-the-document-serializes-them)); these styles are not. Use [runtime mode](README.runtime.md) when the request itself must follow the spec |
 | multipart `encoding` parts | same reason |
 | generating `authorize()` | policy is not in the document |
+| keeping the extra keys `additionalProperties: {schema}` admits | each is checked against the schema, but the DTO hydrates declared properties only, so a valid extra key is not in `toArray()` — [runtime](README.runtime.md) is the mode that keeps them |
 | a `spatie/laravel-data` class | that is the separate [laravel-data mode](README.laravel-data.md); this mode stays first-party |
 | a top-level array request body | `type: array` at the root of a body is a list, not a class: its ITEM gets a DTO, the list gets no FormRequest. Validate each item with that DTO's `rules()`, `withValidator()` and `fromValidated()` — the generator emits DTOs only, the framework does the rest |
 | one FormRequest per operation | the parameters and the body are separate DTOs, so an operation with both gets `<Operation>QueryParamsFormRequest` and `<Operation>RequestFormRequest`, and the action takes two arguments. The `QueryParams` class also carries the path parameters; its name is shared by every mode and stays until a major version |

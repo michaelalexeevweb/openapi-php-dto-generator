@@ -79,9 +79,9 @@ final class PerformanceTest extends TestCase
 
         // Should handle at least 500 deserializations in under 3 seconds
         $this->assertLessThan(
-            3_000,
-            $elapsedMs,
-            sprintf('Deserialization too slow: %.1f ms for %d iterations (%.3f ms/op)', $elapsedMs, self::ITERATIONS, $perOpMs),
+            expected: 3_000,
+            actual: $elapsedMs,
+            message: sprintf('Deserialization too slow: %.1f ms for %d iterations (%.3f ms/op)', $elapsedMs, self::ITERATIONS, $perOpMs),
         );
     }
 
@@ -801,11 +801,11 @@ final class PerfJsonSerializableDto implements GeneratedDtoInterface
             'name' => $this->name,
             'createdAt' => $this->createdAt->format('c'),
             'tags' => array_map(
-                static fn(PerfTagDto $tag): array => [
+                callback: static fn(PerfTagDto $tag): array => [
                     'id' => $tag->getId(),
                     'label' => $tag->getLabel(),
                 ],
-                $this->tags,
+                array: $this->tags,
             ),
         ];
     }
@@ -932,11 +932,11 @@ final class PerfTestRequestDto implements GeneratedDtoInterface
                 'country' => $this->address->getCountry(),
             ],
             'tags' => array_map(
-                static fn(PerfTagDto $tag): array => [
+                callback: static fn(PerfTagDto $tag): array => [
                     'id' => $tag->getId(),
                     'label' => $tag->getLabel(),
                 ],
-                $this->tags,
+                array: $this->tags,
             ),
         ];
     }

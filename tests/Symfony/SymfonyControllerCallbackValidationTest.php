@@ -77,8 +77,8 @@ final class SymfonyControllerCallbackValidationTest extends TestCase
         // DateTimeImmutable from the constructor and silently yields "now", discarding the payload
         // date — which would make date/date-time assertions pass or fail depending on the clock.
         return new Serializer(
-            [new BackedEnumNormalizer(), new DateTimeNormalizer(), $objectNormalizer, new ArrayDenormalizer()],
-            [new JsonEncoder()],
+            normalizers: [new BackedEnumNormalizer(), new DateTimeNormalizer(), $objectNormalizer, new ArrayDenormalizer()],
+            encoders: [new JsonEncoder()],
         );
     }
 
@@ -194,8 +194,8 @@ final class SymfonyControllerCallbackValidationTest extends TestCase
         $fqcn = $this->generatePayload('SymCtrlOk');
 
         $violations = $this->handleRequest(
-            self::jsonRequest('{"id":7,"tags":["hit","other"],"meta":{"kind":"a","flags":["primary"]}}'),
-            $fqcn,
+            request: self::jsonRequest('{"id":7,"tags":["hit","other"],"meta":{"kind":"a","flags":["primary"]}}'),
+            dtoClass: $fqcn,
         );
 
         $this->assertCount(0, $violations, (string)$violations);
@@ -206,8 +206,8 @@ final class SymfonyControllerCallbackValidationTest extends TestCase
         $fqcn = $this->generatePayload('SymCtrlContains');
 
         $violations = $this->handleRequest(
-            self::jsonRequest('{"id":7,"tags":["miss"]}'),
-            $fqcn,
+            request: self::jsonRequest('{"id":7,"tags":["miss"]}'),
+            dtoClass: $fqcn,
         );
 
         $messages = [];
@@ -217,8 +217,8 @@ final class SymfonyControllerCallbackValidationTest extends TestCase
 
         $this->assertNotSame([], $messages);
         $this->assertStringContainsString(
-            'field "tags" must contain at least 1 item(s) matching the \'contains\' schema',
-            implode("\n", $messages),
+            needle: 'field "tags" must contain at least 1 item(s) matching the \'contains\' schema',
+            haystack: implode("\n", $messages),
         );
     }
 
@@ -227,8 +227,8 @@ final class SymfonyControllerCallbackValidationTest extends TestCase
         $fqcn = $this->generatePayload('SymCtrlMixed');
 
         $violations = $this->handleRequest(
-            self::jsonRequest('{"id":0,"tags":["hit","hit","hit"]}'),
-            $fqcn,
+            request: self::jsonRequest('{"id":0,"tags":["hit","hit","hit"]}'),
+            dtoClass: $fqcn,
         );
 
         $messages = [];
@@ -315,8 +315,8 @@ final class SymfonyControllerCallbackValidationTest extends TestCase
         $fqcn = $this->generatePayload('SymCtrlNested');
 
         $violations = $this->handleRequest(
-            self::jsonRequest('{"id":7,"tags":["hit"],"meta":{"kind":"a","flags":["secondary"]}}'),
-            $fqcn,
+            request: self::jsonRequest('{"id":7,"tags":["hit"],"meta":{"kind":"a","flags":["secondary"]}}'),
+            dtoClass: $fqcn,
         );
 
         $messages = [];
@@ -325,8 +325,8 @@ final class SymfonyControllerCallbackValidationTest extends TestCase
         }
 
         $this->assertStringContainsString(
-            'field "flags" must contain at least 1 item(s) matching the \'contains\' schema',
-            implode("\n", $messages),
+            needle: 'field "flags" must contain at least 1 item(s) matching the \'contains\' schema',
+            haystack: implode("\n", $messages),
         );
     }
 
@@ -363,8 +363,8 @@ final class SymfonyControllerCallbackValidationTest extends TestCase
             $messages[] = (string)$violation->getMessage();
         }
         $matched = array_values(array_filter(
-            $messages,
-            static fn(string $message): bool => str_contains($message, 'field "f"[0] length must be at least 3 characters'),
+            array: $messages,
+            callback: static fn(string $message): bool => str_contains($message, 'field "f"[0] length must be at least 3 characters'),
         ));
         $this->assertCount(1, $matched);
     }
@@ -401,8 +401,8 @@ final class SymfonyControllerCallbackValidationTest extends TestCase
             $messages[] = (string)$violation->getMessage();
         }
         $matched = array_values(array_filter(
-            $messages,
-            static fn(string $message): bool => str_contains($message, 'field "m".k length must be at least 3 characters'),
+            array: $messages,
+            callback: static fn(string $message): bool => str_contains($message, 'field "m".k length must be at least 3 characters'),
         ));
         $this->assertCount(1, $matched);
     }
@@ -440,8 +440,8 @@ final class SymfonyControllerCallbackValidationTest extends TestCase
             $messages[] = (string)$violation->getMessage();
         }
         $matched = array_values(array_filter(
-            $messages,
-            static fn(string $message): bool => str_contains($message, 'field "f"[0] must match pattern ^2026'),
+            array: $messages,
+            callback: static fn(string $message): bool => str_contains($message, 'field "f"[0] must match pattern ^2026'),
         ));
         $this->assertCount(1, $matched);
     }
@@ -588,8 +588,8 @@ final class SymfonyControllerCallbackValidationTest extends TestCase
             $messages[] = (string)$violation->getMessage();
         }
         $matched = array_values(array_filter(
-            $messages,
-            static fn(string $message): bool => str_contains($message, 'must not match the \'not\' schema'),
+            array: $messages,
+            callback: static fn(string $message): bool => str_contains($message, 'must not match the \'not\' schema'),
         ));
         $this->assertCount(1, $matched);
     }
@@ -627,8 +627,8 @@ final class SymfonyControllerCallbackValidationTest extends TestCase
             $messages[] = (string)$violation->getMessage();
         }
         $this->assertStringContainsString(
-            'field "bag".x-key length must be at least 2 characters',
-            implode("\n", $messages),
+            needle: 'field "bag".x-key length must be at least 2 characters',
+            haystack: implode("\n", $messages),
         );
     }
 }

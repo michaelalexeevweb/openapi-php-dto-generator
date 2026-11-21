@@ -153,7 +153,7 @@ final class SymfonyPathParamsTest extends TestCase
         $command = new GenerateDtoCommand();
         $command->symfonyPathParams = $pathParams;
         $command->generateFromArray(
-            [
+            openApi: [
                 'openapi' => '3.1.0',
                 'info' => ['title' => 'T', 'version' => '1.0.0'],
                 'paths' => [
@@ -181,9 +181,9 @@ final class SymfonyPathParamsTest extends TestCase
                     ],
                 ],
             ],
-            $this->outputDirectory . '/' . $namespace,
-            $namespace,
-            'symfony',
+            outputDirectory: $this->outputDirectory . '/' . $namespace,
+            namespace: $namespace,
+            mode: 'symfony',
         );
     }
 }

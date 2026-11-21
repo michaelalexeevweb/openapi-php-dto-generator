@@ -70,8 +70,8 @@ final class LaravelDataContainer
         $container->instance(ValidationFactoryContract::class, $validationFactory);
 
         $container->singleton(
-            DataConfig::class,
-            static fn(): DataConfig => DataConfig::createFromConfig(self::dataConfig()),
+            abstract: DataConfig::class,
+            concrete: static fn(): DataConfig => DataConfig::createFromConfig(self::dataConfig()),
         );
         $container->singleton(ContextResolver::class);
 

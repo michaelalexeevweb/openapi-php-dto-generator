@@ -8,6 +8,7 @@ use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
 use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
 use PHPUnit\Framework\TestCase;
+use ReflectionMethod;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\Request;
 
@@ -553,6 +554,71 @@ final class RuntimeShapeFixesTest extends TestCase
     }
 
     /**
+     * An `allOf` child built in code sends only what it was given. Its constructor took every inherited
+     * optional property as `= null` and handed that null to the parent as if it had been passed, so
+     * `new Probe(extra: true)` wrote `{"name":null,"size":null,"extra":true}` and failed its own
+     * validation. Deserialized children looked right only because the deserializer resets the presence
+     * flags afterwards. The parent alone, the child given an inherited value, and the child of a child
+     * are pinned beside it, and so is the trip back in: what the object writes reads back as the same.
+     */
+    public function testAnAllOfChildBuiltInCodeSendsOnlyWhatItWasGiven(): void
+    {
+        $components = [
+            'Base' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string'], 'size' => ['type' => 'integer']]],
+            'Middle' => ['allOf' => [['$ref' => '#/components/schemas/Base'], ['type' => 'object', 'properties' => ['color' => ['type' => 'string']]]]],
+        ];
+        $child = $this->generate(
+            properties: [],
+            components: $components,
+            probe: ['allOf' => [['$ref' => '#/components/schemas/Base'], ['type' => 'object', 'properties' => ['extra' => ['type' => 'boolean']]]]],
+        );
+        $grandchild = $this->generate(
+            properties: [],
+            components: $components,
+            probe: ['allOf' => [['$ref' => '#/components/schemas/Middle'], ['type' => 'object', 'properties' => ['extra' => ['type' => 'boolean']]]]],
+        );
+        $namespace = substr($child, 0, (int)strrpos($child, '\\'));
+        $base = $namespace . '\Base';
+
+        $cases = [
+            'the parent alone' => [new $base(name: 'x'), '{"name":"x"}'],
+            'only its own property' => [new $child(extra: true), '{"extra":true}'],
+            'an inherited property too' => [new $child(size: 3, extra: false), '{"size":3,"extra":false}'],
+            'nothing at all' => [new $child(), '{}'],
+            'a child of a child' => [new $grandchild(color: 'red'), '{"color":"red"}'],
+        ];
+        $normalizer = new DtoNormalizer();
+        foreach ($cases as $label => [$dto, $json]) {
+            $this->assertSame($json, $dto->toJson(), $label);
+            $this->assertSame([], $normalizer->validate($dto), $label);
+            $this->assertSame($json, $normalizer->validateAndNormalizeToJson($dto), $label);
+            $this->assertSame($json, $this->deserialize(class: $dto::class, body: $json)->toJson(), $label . ' read back');
+        }
+        $this->assertFalse((new $child(extra: true))->isNameInRequest());
+        $this->assertTrue((new $child(name: 'x'))->isNameInRequest());
+    }
+
+    /**
+     * The constructor of a child that requires an inherited property — `required` in one of its
+     * branches — takes that property without a default, so the object cannot be built without it.
+     */
+    public function testAnAllOfChildRequiringAnInheritedPropertyTakesIt(): void
+    {
+        $class = $this->generate(
+            properties: [],
+            components: ['Base' => ['type' => 'object', 'properties' => ['name' => ['type' => 'string'], 'size' => ['type' => 'integer']]]],
+            probe: ['allOf' => [['$ref' => '#/components/schemas/Base'], ['required' => ['name']]]],
+        );
+
+        $this->assertSame('{"name":"a"}', (new $class(name: 'a'))->toJson());
+        $this->assertSame('{"name":"a","size":2}', $this->deserialize(class: $class, body: '{"name":"a","size":2}')->toJson());
+        $this->assertRejected(class: $class, body: '{"size":2}', message: 'name');
+        $parameter = (new ReflectionMethod($class, '__construct'))->getParameters()[0];
+        $this->assertSame('name', $parameter->getName());
+        $this->assertFalse($parameter->isOptional());
+    }
+
+    /**
      * Before the class is loaded: a "Cannot redeclare" is a fatal error that would end the whole run.
      */
     private function assertGeneratedClassCompiles(string $class): void
@@ -569,8 +635,9 @@ final class RuntimeShapeFixesTest extends TestCase
     /**
      * @param array<string, mixed> $properties
      * @param array<string, mixed> $components
+     * @param array<string, mixed>|null $probe the whole `Probe` schema, for a shape `$properties` cannot spell
      */
-    private function generate(array $properties, array $components = [], string $openapi = '3.0.3'): string
+    private function generate(array $properties, array $components = [], string $openapi = '3.0.3', ?array $probe = null): string
     {
         $namespace = 'Shapes' . bin2hex(random_bytes(8));
         $directory = $this->root . '/' . $namespace;
@@ -579,7 +646,7 @@ final class RuntimeShapeFixesTest extends TestCase
                 'openapi' => $openapi,
                 'info' => ['title' => 'Shapes', 'version' => '1.0.0'],
                 'paths' => [],
-                'components' => ['schemas' => [...$components, 'Probe' => ['type' => 'object', 'properties' => $properties]]],
+                'components' => ['schemas' => [...$components, 'Probe' => $probe ?? ['type' => 'object', 'properties' => $properties]]],
             ],
             outputDirectory: $directory,
             namespace: $namespace,

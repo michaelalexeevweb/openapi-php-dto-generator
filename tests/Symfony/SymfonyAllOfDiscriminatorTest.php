@@ -141,7 +141,7 @@ final class SymfonyAllOfDiscriminatorTest extends TestCase
         $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
 
         return new Serializer(
-            [
+            normalizers: [
                 new BackedEnumNormalizer(),
                 new ObjectNormalizer(
                     classMetadataFactory: $classMetadataFactory,
@@ -151,7 +151,7 @@ final class SymfonyAllOfDiscriminatorTest extends TestCase
                 ),
                 new ArrayDenormalizer(),
             ],
-            [new JsonEncoder()],
+            encoders: [new JsonEncoder()],
         );
     }
 

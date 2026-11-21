@@ -169,9 +169,9 @@ final class GeneratedYii3InputTest extends TestCase
             $result = $container->validate($dto);
             self::assertFalse($result->isValid(), sprintf('%s: a missing required property must be rejected.', $label));
             self::assertStringContainsString(
-                'is required',
-                implode(' ', $this->messages($result)),
-                sprintf('%s: and the message must say so.', $label),
+                needle: 'is required',
+                haystack: implode(' ', $this->messages($result)),
+                message: sprintf('%s: and the message must say so.', $label),
             );
         }
     }
@@ -289,7 +289,7 @@ final class GeneratedYii3InputTest extends TestCase
         // The default caster set, which is what `new Hydrator()` gives an application.
         $bare = (new \Yiisoft\Hydrator\Hydrator(
             attributeResolverFactory: new \Yiisoft\Hydrator\AttributeHandling\ResolverFactory\ContainerAttributeResolverFactory(
-                new Yii3Container(),
+                container: new Yii3Container(),
             ),
         ))->create($class, ['stage' => 'early']);
 
@@ -311,14 +311,14 @@ final class GeneratedYii3InputTest extends TestCase
         $namespace = 'Yii3Gen' . bin2hex(random_bytes(5));
         $directory = $this->outputDirectory . '/' . $namespace;
         (new GenerateDtoCommand())->generateFromArray(
-            [
+            openApi: [
                 'openapi' => '3.1.0',
                 'info' => ['title' => 'T', 'version' => '1.0.0'],
                 'components' => ['schemas' => $schemas],
             ],
-            $directory,
-            $namespace,
-            GenerateDtoCommand::ATTRIBUTE_MODE_YII3,
+            outputDirectory: $directory,
+            namespace: $namespace,
+            mode: GenerateDtoCommand::ATTRIBUTE_MODE_YII3,
         );
 
         foreach ((array)glob($directory . '/*.php') as $file) {

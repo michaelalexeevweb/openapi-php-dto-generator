@@ -69,8 +69,8 @@ final class GenerateDtoCommandTest extends TestCase
 
         $this->assertNotSame(0, $exitCode, 'a --ref-namespace with no --ref is a failure');
         $this->assertStringContainsString(
-            '--ref-namespace for "absent.yaml" requires a matching --ref.',
-            $commandTester->getDisplay(),
+            needle: '--ref-namespace for "absent.yaml" requires a matching --ref.',
+            haystack: $commandTester->getDisplay(),
         );
     }
 
@@ -198,8 +198,8 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString('public static function getParameterStyles(): array', $content);
         $this->assertStringContainsString("\$styles['tags'] = ['style' => 'form', 'explode' => false];", $content);
         $this->assertStringContainsString(
-            "\$styles['codes'] = ['style' => 'spaceDelimited', 'explode' => false];",
-            $content,
+            needle: "\$styles['codes'] = ['style' => 'spaceDelimited', 'explode' => false];",
+            haystack: $content,
         );
         $this->assertStringContainsString("\$styles['ids'] = ['style' => 'pipeDelimited', 'explode' => false];", $content);
         // explode defaults to true for the form style when omitted.
@@ -658,10 +658,10 @@ final class GenerateDtoCommandTest extends TestCase
         }
 
         $count = $this->generator->generateFromFile(
-            __DIR__ . '/../fixtures/external-ref-allof/root.yaml',
-            $target,
-            'ExtAllOf' . ucfirst(str_replace('-', '', $mode)),
-            $mode,
+            filePath: __DIR__ . '/../fixtures/external-ref-allof/root.yaml',
+            outputDirectory: $target,
+            namespace: 'ExtAllOf' . ucfirst(str_replace('-', '', $mode)),
+            mode: $mode,
         );
 
         $this->assertGreaterThan(0, $count, $mode . ': generation must produce classes');
@@ -701,7 +701,7 @@ final class GenerateDtoCommandTest extends TestCase
         }
 
         $this->generator->generateFromArray(
-            [
+            openApi: [
                 'openapi' => '3.1.0',
                 'info' => ['title' => 'T', 'version' => '1.0.0'],
                 'components' => ['schemas' => [
@@ -729,8 +729,8 @@ final class GenerateDtoCommandTest extends TestCase
                     ],
                 ]],
             ],
-            $target,
-            'ImplicitDisc',
+            outputDirectory: $target,
+            namespace: 'ImplicitDisc',
         );
 
         $this->assertFileExists($target . '/Cat.php');
@@ -766,7 +766,7 @@ final class GenerateDtoCommandTest extends TestCase
             }
 
             $this->generator->generateFromArray(
-                [
+                openApi: [
                     'openapi' => '3.1.0',
                     'info' => ['title' => 'T', 'version' => '1.0.0'],
                     'components' => ['schemas' => [
@@ -777,15 +777,15 @@ final class GenerateDtoCommandTest extends TestCase
                         ],
                     ]],
                 ],
-                $target,
-                'MultiType' . preg_replace('/\W/', '', $case),
+                outputDirectory: $target,
+                namespace: 'MultiType' . preg_replace('/\W/', '', $case),
             );
 
             $source = (string)file_get_contents($target . '/Probe.php');
             $this->assertMatchesRegularExpression(
-                '/readonly ' . preg_quote($expectedDeclaration, '/') . ' \$v/',
-                $source,
-                $case,
+                pattern: '/readonly ' . preg_quote($expectedDeclaration, '/') . ' \$v/',
+                string: $source,
+                message: $case,
             );
             $this->assertNull($this->lintError($target . '/Probe.php'), $case . ': the file must parse');
         }
@@ -818,9 +818,9 @@ final class GenerateDtoCommandTest extends TestCase
         ]];
 
         $this->generator->generateFromArray(
-            ['openapi' => '3.1.0', 'info' => ['title' => 'T', 'version' => '1.0.0'], 'components' => ['schemas' => $chain]],
-            $this->outputDirectory,
-            'CeilingWarned',
+            openApi: ['openapi' => '3.1.0', 'info' => ['title' => 'T', 'version' => '1.0.0'], 'components' => ['schemas' => $chain]],
+            outputDirectory: $this->outputDirectory,
+            namespace: 'CeilingWarned',
         );
 
         $warnings = $this->generator->getGenerationWarnings();
@@ -837,14 +837,14 @@ final class GenerateDtoCommandTest extends TestCase
             $this->assertStringContainsString('#/components/schemas/' . $cut, $joined, 'the level that was cut');
         }
         $this->assertStringNotContainsString(
-            '#/components/schemas/L4',
-            $joined,
-            'a level still within the ceiling is not a cut point',
+            needle: '#/components/schemas/L4',
+            haystack: $joined,
+            message: 'a level still within the ceiling is not a cut point',
         );
 
         // The same shape, self-referential: stopped by the repeat limit, and that is not news.
         $this->generator->generateFromArray(
-            [
+            openApi: [
                 'openapi' => '3.1.0',
                 'info' => ['title' => 'T', 'version' => '1.0.0'],
                 'components' => ['schemas' => [
@@ -857,8 +857,8 @@ final class GenerateDtoCommandTest extends TestCase
                     ]],
                 ]],
             ],
-            $this->outputDirectory,
-            'CycleSilent',
+            outputDirectory: $this->outputDirectory,
+            namespace: 'CycleSilent',
         );
 
         $this->assertSame([], $this->generator->getGenerationWarnings());
@@ -883,7 +883,7 @@ final class GenerateDtoCommandTest extends TestCase
         bool $expectedWarning,
     ): void {
         $this->generator->generateFromArray(
-            [
+            openApi: [
                 'openapi' => '3.1.0',
                 'info' => ['title' => 'T', 'version' => '1.0.0'],
                 'components' => ['schemas' => [
@@ -899,14 +899,14 @@ final class GenerateDtoCommandTest extends TestCase
                     ],
                 ]],
             ],
-            $this->outputDirectory,
-            'Collide' . $schemaName . str_replace('-', '', ucwords($mode, '-')),
-            $mode,
+            outputDirectory: $this->outputDirectory,
+            namespace: 'Collide' . $schemaName . str_replace('-', '', ucwords($mode, '-')),
+            mode: $mode,
         );
 
         $collisions = array_values(array_filter(
-            $this->generator->getGenerationWarnings(),
-            static fn(string $warning): bool => str_contains($warning, 'is generated as class'),
+            array: $this->generator->getGenerationWarnings(),
+            callback: static fn(string $warning): bool => str_contains($warning, 'is generated as class'),
         ));
 
         if (!$expectedWarning) {
@@ -945,9 +945,12 @@ final class GenerateDtoCommandTest extends TestCase
         $cases['Nested is resolved, not warned, in yii3 mode'] = ['Nested', 'yii3', false];
         $cases['DateTimeImmutable stays reserved in yii3 mode'] = ['DateTimeImmutable', 'yii3', true];
         $cases['Result means nothing in runtime mode'] = ['Result', 'runtime', false];
-        $cases['Assert is symfony-only'] = ['Assert', 'symfony', true];
+        // Symfony and Laravel resolve their own imports too now: the constraints behind `Assert` are
+        // imported one by one, and the validator under an alias. ImportedClassNameCollisionTest loads them.
+        $cases['Assert is resolved, not warned, in symfony mode'] = ['Assert', 'symfony', false];
         $cases['Assert means nothing in runtime mode'] = ['Assert', 'runtime', false];
-        $cases['Validator is laravel-only'] = ['Validator', 'laravel', true];
+        $cases['Validator is resolved, not warned, in laravel mode'] = ['Validator', 'laravel', false];
+        $cases['DateTimeImmutable stays reserved in symfony mode'] = ['DateTimeImmutable', 'symfony', true];
         $cases['Data is resolved, not warned, in laravel-data mode'] = ['Data', 'laravel-data', false];
         $cases['an ordinary schema name is silent'] = ['Pet', 'laravel-data', false];
 
@@ -973,17 +976,17 @@ final class GenerateDtoCommandTest extends TestCase
         $schemas = ['components' => ['schemas' => ['A' => ['type' => 'object', 'properties' => ['x' => ['type' => 'string']]]]]];
 
         $this->generator->generateFromArray(
-            ['info' => ['title' => 'T', 'version' => '1.0.0']] + $schemas,
-            $this->outputDirectory,
-            'NoVersion',
+            openApi: ['info' => ['title' => 'T', 'version' => '1.0.0']] + $schemas,
+            outputDirectory: $this->outputDirectory,
+            namespace: 'NoVersion',
         );
         $this->assertFileExists($this->outputDirectory . '/A.php');
         $this->assertStringContainsString('no "openapi" version field', $this->generator->getGenerationWarnings()[0] ?? '');
 
         $this->generator->generateFromArray(
-            ['openapi' => '4.0.0', 'info' => ['title' => 'T', 'version' => '1.0.0']] + $schemas,
-            $this->outputDirectory,
-            'FutureVersion',
+            openApi: ['openapi' => '4.0.0', 'info' => ['title' => 'T', 'version' => '1.0.0']] + $schemas,
+            outputDirectory: $this->outputDirectory,
+            namespace: 'FutureVersion',
         );
         $this->assertStringContainsString('newer than this generator knows', $this->generator->getGenerationWarnings()[0] ?? '');
     }
@@ -1201,8 +1204,8 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString('public function getTags(): ?array', $content);
         $this->assertStringContainsString('return $this->tags;', $content);
         $this->assertStringNotContainsString(
-            'return $this->tags !== UnsetValue::UNSET',
-            $content,
+            needle: 'return $this->tags !== UnsetValue::UNSET',
+            haystack: $content,
         );
     }
 
@@ -1722,8 +1725,8 @@ final class GenerateDtoCommandTest extends TestCase
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'GoodRequiredNs' . md5(serialize($required)));
 
         $this->assertStringContainsString(
-            $expectedProperty,
-            (string)file_get_contents($this->outputDirectory . '/A.php'),
+            needle: $expectedProperty,
+            haystack: (string)file_get_contents($this->outputDirectory . '/A.php'),
         );
     }
 
@@ -1870,9 +1873,9 @@ final class GenerateDtoCommandTest extends TestCase
 
         $content = (string)file_get_contents($this->outputDirectory . '/OverGetQueryParams.php');
         $this->assertStringContainsString(
-            'private readonly int $id',
-            $content,
-            "the operation's integer wins over the path's string",
+            needle: 'private readonly int $id',
+            haystack: $content,
+            message: "the operation's integer wins over the path's string",
         );
         $this->assertStringContainsString('$tail', $content, 'the path-level parameter it did not touch');
 
@@ -1882,9 +1885,9 @@ final class GenerateDtoCommandTest extends TestCase
         $matched = preg_match('/public function __construct\((.*?)\) \{/s', $content, $constructor);
         $this->assertSame(1, $matched);
         $this->assertLessThan(
-            strpos($constructor[1], '$tail'),
-            strpos($constructor[1], '$id'),
-            'the overridden parameter keeps the slot the path gave it',
+            expected: strpos($constructor[1], '$tail'),
+            actual: strpos($constructor[1], '$id'),
+            message: 'the overridden parameter keeps the slot the path gave it',
         );
     }
 
@@ -2020,7 +2023,7 @@ final class GenerateDtoCommandTest extends TestCase
         sort($names);
 
         $this->assertSame(
-            [
+            expected: [
                 // The 3.1 `$ref`-with-a-sibling-description case.
                 'RefSiblings.php',
                 // The operation's response, request, and query parameters.
@@ -2032,15 +2035,15 @@ final class GenerateDtoCommandTest extends TestCase
                 // The schema the XML Object hangs off — the XML itself contributes nothing.
                 'WithXml.php',
             ],
-            $names,
-            'an object that names no class must not start naming one',
+            actual: $names,
+            message: 'an object that names no class must not start naming one',
         );
         $this->assertSame(count($names), $count);
 
         $this->assertSame(
-            [],
-            $this->generator->getGenerationWarnings(),
-            'nothing in a document made of documentation is worth warning about',
+            expected: [],
+            actual: $this->generator->getGenerationWarnings(),
+            message: 'nothing in a document made of documentation is worth warning about',
         );
     }
 
@@ -2065,15 +2068,15 @@ final class GenerateDtoCommandTest extends TestCase
 
         // A 3.1 `$ref` may carry siblings; the reference still resolves to the class.
         $this->assertStringContainsString(
-            'WithXml $r',
-            (string)file_get_contents($this->outputDirectory . '/RefSiblings.php'),
+            needle: 'WithXml $r',
+            haystack: (string)file_get_contents($this->outputDirectory . '/RefSiblings.php'),
         );
 
         // `deprecated` on the Parameter Object, not on its schema, reaches the getter.
         $params = (string)file_get_contents($this->outputDirectory . '/TpostQueryParams.php');
         $this->assertMatchesRegularExpression(
-            '/@deprecated\s+\*\/\s+public function getLegacy/',
-            $params,
+            pattern: '/@deprecated\s+\*\/\s+public function getLegacy/',
+            string: $params,
         );
     }
 
@@ -2110,8 +2113,8 @@ final class GenerateDtoCommandTest extends TestCase
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'ParamContentNs' . ucfirst($in) . md5(serialize($content)));
 
         $warnings = array_filter(
-            $this->generator->getGenerationWarnings(),
-            static fn(string $warning): bool => str_contains($warning, 'cannot decode'),
+            array: $this->generator->getGenerationWarnings(),
+            callback: static fn(string $warning): bool => str_contains($warning, 'cannot decode'),
         );
 
         if (!$expectWarning) {
@@ -2272,8 +2275,8 @@ final class GenerateDtoCommandTest extends TestCase
 
         $content = (string)file_get_contents($this->outputDirectory . '/Stale.php');
         $this->assertStringContainsString(
-            '@deprecated',
-            substr($content, 0, (int)strpos($content, 'final class')),
+            needle: '@deprecated',
+            haystack: substr($content, 0, (int)strpos($content, 'final class')),
         );
     }
 
@@ -2321,8 +2324,8 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString('$q', $twin);
 
         $this->assertStringContainsString(
-            '$fromComponent',
-            (string)file_get_contents($this->outputDirectory . '/SharedGetQueryParams.php'),
+            needle: '$fromComponent',
+            haystack: (string)file_get_contents($this->outputDirectory . '/SharedGetQueryParams.php'),
         );
     }
 
@@ -2414,14 +2417,14 @@ final class GenerateDtoCommandTest extends TestCase
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'CallbackRefNs');
 
         $this->assertStringContainsString(
-            '$referencedField',
-            (string)file_get_contents($this->outputDirectory . '/CallbackViaRefPostRequest.php'),
-            'named after the callback in the operation, carrying the referenced payload',
+            needle: '$referencedField',
+            haystack: (string)file_get_contents($this->outputDirectory . '/CallbackViaRefPostRequest.php'),
+            message: 'named after the callback in the operation, carrying the referenced payload',
         );
         $this->assertStringContainsString(
-            '$inlineField',
-            (string)file_get_contents($this->outputDirectory . '/CallbackInlinePostRequest.php'),
-            'the inline spelling is unaffected',
+            needle: '$inlineField',
+            haystack: (string)file_get_contents($this->outputDirectory . '/CallbackInlinePostRequest.php'),
+            message: 'the inline spelling is unaffected',
         );
     }
 
@@ -2500,8 +2503,8 @@ final class GenerateDtoCommandTest extends TestCase
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'WildcardStatusNs');
 
         $this->assertStringContainsString(
-            'final class Jobs4Xx ',
-            (string)file_get_contents($this->outputDirectory . '/Jobs4Xx.php'),
+            needle: 'final class Jobs4Xx ',
+            haystack: (string)file_get_contents($this->outputDirectory . '/Jobs4Xx.php'),
         );
     }
 
@@ -2712,9 +2715,9 @@ final class GenerateDtoCommandTest extends TestCase
 
         foreach ($before as $entry => $contents) {
             $this->assertSame(
-                $contents,
-                (string)file_get_contents($this->outputDirectory . '/' . $entry),
-                sprintf('The failed run rewrote %s.', $entry),
+                expected: $contents,
+                actual: (string)file_get_contents($this->outputDirectory . '/' . $entry),
+                message: sprintf('The failed run rewrote %s.', $entry),
             );
         }
 
@@ -2796,8 +2799,8 @@ final class GenerateDtoCommandTest extends TestCase
 
         try {
             file_put_contents(
-                $specDir . '/common/common.yaml',
-                "components:\n  schemas:\n    Present: { type: object, properties: { p: { type: string } } }\n",
+                filename: $specDir . '/common/common.yaml',
+                data: "components:\n  schemas:\n    Present: { type: object, properties: { p: { type: string } } }\n",
             );
             file_put_contents($specDir . '/root.yaml', <<<'YAML'
                 openapi: 3.1.0
@@ -2979,8 +2982,8 @@ final class GenerateDtoCommandTest extends TestCase
         // Required params first; the optional default-valued field carries the UnsetValue sentinel
         // (so it can still be omitted) while keeping the declared default as its constructor value.
         $this->assertMatchesRegularExpression(
-            '/public function __construct\(\s*array \$userIds,\s*private readonly UserTypeEnum\|UnsetValue\|null \$user = UserTypeEnum::ALL,/s',
-            $content,
+            pattern: '/public function __construct\(\s*array \$userIds,\s*private readonly UserTypeEnum\|UnsetValue\|null \$user = UserTypeEnum::ALL,/s',
+            string: $content,
         );
     }
 
@@ -3016,8 +3019,8 @@ final class GenerateDtoCommandTest extends TestCase
         $content = (string)file_get_contents($file);
 
         $this->assertMatchesRegularExpression(
-            '/public function __construct\(\s*array \$payload,\s*private readonly string\|UnsetValue\|null \$message = UnsetValue::UNSET,/s',
-            $content,
+            pattern: '/public function __construct\(\s*array \$payload,\s*private readonly string\|UnsetValue\|null \$message = UnsetValue::UNSET,/s',
+            string: $content,
         );
     }
 
@@ -3053,8 +3056,8 @@ final class GenerateDtoCommandTest extends TestCase
         $content = (string)file_get_contents($file);
 
         $this->assertStringContainsString(
-            '$this->categoryTags = $categoryTags !== UnsetValue::UNSET ? $categoryTags : null;',
-            $content,
+            needle: '$this->categoryTags = $categoryTags !== UnsetValue::UNSET ? $categoryTags : null;',
+            haystack: $content,
         );
     }
 
@@ -3108,22 +3111,22 @@ final class GenerateDtoCommandTest extends TestCase
 
         // Optional $ref field should use promoted readonly sentinel pattern.
         $this->assertStringContainsString(
-            'private readonly CompanionPet|UnsetValue|null $companion = UnsetValue::UNSET',
-            $content,
+            needle: 'private readonly CompanionPet|UnsetValue|null $companion = UnsetValue::UNSET',
+            haystack: $content,
         );
 
         // Optional scalar fields should also use promoted readonly sentinel pattern.
         $this->assertStringContainsString(
-            'private readonly int|UnsetValue|null $age = UnsetValue::UNSET',
-            $content,
+            needle: 'private readonly int|UnsetValue|null $age = UnsetValue::UNSET',
+            haystack: $content,
         );
         $this->assertStringContainsString(
-            'private readonly float|UnsetValue|null $score = UnsetValue::UNSET',
-            $content,
+            needle: 'private readonly float|UnsetValue|null $score = UnsetValue::UNSET',
+            haystack: $content,
         );
         $this->assertStringContainsString(
-            'private readonly bool|UnsetValue|null $active = UnsetValue::UNSET',
-            $content,
+            needle: 'private readonly bool|UnsetValue|null $active = UnsetValue::UNSET',
+            haystack: $content,
         );
 
         // Guard against old broken pattern without constructor promotion.
@@ -3137,8 +3140,8 @@ final class GenerateDtoCommandTest extends TestCase
 
         // inRequest flag must be tracked via sentinel comparison.
         $this->assertStringContainsString(
-            '$this->companionInRequest = $companion !== UnsetValue::UNSET',
-            $content,
+            needle: '$this->companionInRequest = $companion !== UnsetValue::UNSET',
+            haystack: $content,
         );
         $this->assertStringContainsString('$this->ageInRequest = $age !== UnsetValue::UNSET', $content);
         $this->assertStringContainsString('$this->scoreInRequest = $score !== UnsetValue::UNSET', $content);
@@ -3146,8 +3149,8 @@ final class GenerateDtoCommandTest extends TestCase
 
         // Getter must normalize UnsetValue::UNSET to null for optional fields.
         $this->assertStringContainsString(
-            'return $this->companion !== UnsetValue::UNSET ? $this->companion : null;',
-            $content,
+            needle: 'return $this->companion !== UnsetValue::UNSET ? $this->companion : null;',
+            haystack: $content,
         );
         $this->assertStringContainsString('return $this->age !== UnsetValue::UNSET ? $this->age : null;', $content);
         $this->assertStringContainsString('return $this->score !== UnsetValue::UNSET ? $this->score : null;', $content);
@@ -3343,8 +3346,8 @@ final class GenerateDtoCommandTest extends TestCase
 
         // 4) description + example
         $this->assertStringContainsString(
-            '@param array<Tag> $fullTags Description and example tags Example: [{"label":"demo"}]',
-            $content,
+            needle: '@param array<Tag> $fullTags Description and example tags Example: [{"label":"demo"}]',
+            haystack: $content,
         );
 
         // Ensure property docblocks keep generic @var type in all scenarios
@@ -3507,19 +3510,19 @@ final class GenerateDtoCommandTest extends TestCase
 
         // Sentinel union with the declared default as the constructor value.
         $this->assertStringContainsString(
-            'private readonly SampleEnumView|UnsetValue|null $stage = SampleEnumView::ALPHA',
-            $content,
+            needle: 'private readonly SampleEnumView|UnsetValue|null $stage = SampleEnumView::ALPHA',
+            haystack: $content,
         );
         // Presence reflects whether the value was actually passed (not hardcoded true).
         $this->assertStringContainsString(
-            '$this->stageInRequest = $stage !== UnsetValue::UNSET;',
-            $content,
+            needle: '$this->stageInRequest = $stage !== UnsetValue::UNSET;',
+            haystack: $content,
         );
         $this->assertStringNotContainsString('$this->stageInRequest = true;', $content);
         // Getter unwraps the sentinel back to null.
         $this->assertStringContainsString(
-            'return $this->stage !== UnsetValue::UNSET ? $this->stage : null;',
-            $content,
+            needle: 'return $this->stage !== UnsetValue::UNSET ? $this->stage : null;',
+            haystack: $content,
         );
     }
 
@@ -3654,8 +3657,8 @@ final class GenerateDtoCommandTest extends TestCase
 
         $content = (string)file_get_contents($this->outputDirectory . '/PostStatus.php');
         $this->assertStringContainsString(
-            "    public static function getAliases(): array\n    {\n        return [];",
-            $content,
+            needle: "    public static function getAliases(): array\n    {\n        return [];",
+            haystack: $content,
         );
         $this->assertStringNotContainsString("'name' => 'name'", $content);
         $this->assertStringNotContainsString("'value' => 'value'", $content);
@@ -3667,9 +3670,9 @@ final class GenerateDtoCommandTest extends TestCase
 
         $case = $fqcn::from('draft');
         $this->assertSame(
-            ['name' => 'DRAFT', 'value' => 'draft'],
-            (new DtoNormalizer())->toArray($case),
-            'the normalized keys are unchanged — the aliases were never what produced them',
+            expected: ['name' => 'DRAFT', 'value' => 'draft'],
+            actual: (new DtoNormalizer())->toArray($case),
+            message: 'the normalized keys are unchanged — the aliases were never what produced them',
         );
     }
 
@@ -3692,8 +3695,8 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertFileExists($articleFile);
         $articleContent = file_get_contents($articleFile);
         $this->assertStringContainsString(
-            'public function addItemToTags(ArticleTagsItem $item): void',
-            $articleContent,
+            needle: 'public function addItemToTags(ArticleTagsItem $item): void',
+            haystack: $articleContent,
         );
     }
 
@@ -3791,8 +3794,8 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringNotContainsString('final class', $animalContent);
         $this->assertStringContainsString('private readonly AnimalAnimalType $animalType', $animalContent);
         $this->assertStringContainsString(
-            'public static function getDiscriminatorPropertyName(): string',
-            $animalContent,
+            needle: 'public static function getDiscriminatorPropertyName(): string',
+            haystack: $animalContent,
         );
         $this->assertStringContainsString("return 'animalType';", $animalContent);
         $this->assertStringContainsString("'dog' => Dog::class", $animalContent);
@@ -3918,8 +3921,8 @@ final class GenerateDtoCommandTest extends TestCase
 
         $this->assertStringContainsString('private readonly string|int $id', $content);
         $this->assertStringContainsString(
-            'Constraints: oneOf=(type=string, format=uuid) | (type=integer, minimum=10, maximum=100)',
-            $content,
+            needle: 'Constraints: oneOf=(type=string, format=uuid) | (type=integer, minimum=10, maximum=100)',
+            haystack: $content,
         );
         $this->assertStringContainsString('public function __construct(', $content);
         $this->assertStringContainsString('string|int $id,', $content);
@@ -3942,9 +3945,9 @@ final class GenerateDtoCommandTest extends TestCase
 
         try {
             $this->generator->generateFromFile(
-                __DIR__ . '/../fixtures/scalar-alias-ref/root.yaml',
-                $outputDir,
-                'AliasRefNamespace',
+                filePath: __DIR__ . '/../fixtures/scalar-alias-ref/root.yaml',
+                outputDirectory: $outputDir,
+                namespace: 'AliasRefNamespace',
             );
 
             $holderFile = $outputDir . '/Holder.php';
@@ -3982,9 +3985,9 @@ final class GenerateDtoCommandTest extends TestCase
 
         try {
             $count = $this->generator->generateFromFile(
-                __DIR__ . '/../fixtures/external-ref/root.yaml',
-                $outputDir,
-                'TestNamespace',
+                filePath: __DIR__ . '/../fixtures/external-ref/root.yaml',
+                outputDirectory: $outputDir,
+                namespace: 'TestNamespace',
             );
 
             $this->assertGreaterThanOrEqual(2, $count);
@@ -4020,9 +4023,9 @@ final class GenerateDtoCommandTest extends TestCase
 
         try {
             $count = $this->generator->generateFromFile(
-                __DIR__ . '/../fixtures/external-ref/root-nested.yaml',
-                $outputDir,
-                'TestNamespace',
+                filePath: __DIR__ . '/../fixtures/external-ref/root-nested.yaml',
+                outputDirectory: $outputDir,
+                namespace: 'TestNamespace',
             );
 
             $this->assertGreaterThanOrEqual(2, $count);
@@ -4060,9 +4063,9 @@ final class GenerateDtoCommandTest extends TestCase
 
         try {
             $this->generator->generateFromFile(
-                __DIR__ . '/../fixtures/external-ref-samefile/root.yaml',
-                $outputDir,
-                'TestNamespace',
+                filePath: __DIR__ . '/../fixtures/external-ref-samefile/root.yaml',
+                outputDirectory: $outputDir,
+                namespace: 'TestNamespace',
             );
 
             // Cross-file target itself.
@@ -4100,9 +4103,9 @@ final class GenerateDtoCommandTest extends TestCase
 
         try {
             $this->generator->generateFromFile(
-                __DIR__ . '/../fixtures/external-ref-discriminator/root.yaml',
-                $outputDir,
-                'TestNamespace',
+                filePath: __DIR__ . '/../fixtures/external-ref-discriminator/root.yaml',
+                outputDirectory: $outputDir,
+                namespace: 'TestNamespace',
             );
 
             // Discriminator base (referenced by direct $ref) — already worked before the fix.
@@ -4138,9 +4141,9 @@ final class GenerateDtoCommandTest extends TestCase
 
         try {
             $this->generator->generateFromFile(
-                __DIR__ . '/../fixtures/external-ref-selective/root.yaml',
-                $outputDir,
-                'TestNamespace',
+                filePath: __DIR__ . '/../fixtures/external-ref-selective/root.yaml',
+                outputDirectory: $outputDir,
+                namespace: 'TestNamespace',
             );
 
             $generatedFiles = [];
@@ -4172,9 +4175,9 @@ final class GenerateDtoCommandTest extends TestCase
 
         try {
             $this->generator->generateFromFile(
-                __DIR__ . '/../fixtures/external-ref-selective/root.yaml',
-                $outputDir,
-                'TestNamespace',
+                filePath: __DIR__ . '/../fixtures/external-ref-selective/root.yaml',
+                outputDirectory: $outputDir,
+                namespace: 'TestNamespace',
             );
 
             $holder = $outputDir . '/InlineScalarHolder.php';
@@ -4209,20 +4212,20 @@ final class GenerateDtoCommandTest extends TestCase
             // Output folder (WidgetApi) is named independently of the spec; explicit --ref places
             // the external common schema exactly where we say, regardless of name matching.
             $this->generator->setExternalRefMappings(
-                [$commonRefFile . '=' . $commonOutputDir],
-                [$commonRefFile . '=Acme\Layer\Common\Dto'],
+                refDirectoryPairs: [$commonRefFile . '=' . $commonOutputDir],
+                refNamespacePairs: [$commonRefFile . '=Acme\Layer\Common\Dto'],
             );
             $this->generator->generateFromFile(
-                __DIR__ . '/../fixtures/external-ref/root.yaml',
-                $outputDir,
-                'Acme\Layer\WidgetApi\Dto',
+                filePath: __DIR__ . '/../fixtures/external-ref/root.yaml',
+                outputDirectory: $outputDir,
+                namespace: 'Acme\Layer\WidgetApi\Dto',
             );
 
             $commonFile = $commonOutputDir . '/Test.php';
             $this->assertFileExists($commonFile);
             $this->assertStringContainsString(
-                'namespace Acme\Layer\Common\Dto;',
-                (string)file_get_contents($commonFile),
+                needle: 'namespace Acme\Layer\Common\Dto;',
+                haystack: (string)file_get_contents($commonFile),
             );
 
             $localContent = (string)file_get_contents($outputDir . '/LocalResponse.php');
@@ -4249,21 +4252,21 @@ final class GenerateDtoCommandTest extends TestCase
 
         try {
             $this->generator->setExternalRefMappings(
-                [$commonRefDir . '=' . $commonOutputDir],
-                [$commonRefDir . '=Acme\Layer\Common\Dto'],
+                refDirectoryPairs: [$commonRefDir . '=' . $commonOutputDir],
+                refNamespacePairs: [$commonRefDir . '=Acme\Layer\Common\Dto'],
             );
             $this->generator->generateFromFile(
-                __DIR__ . '/../fixtures/external-ref/root.yaml',
-                $outputDir,
-                'Acme\Layer\WidgetApi\Dto',
+                filePath: __DIR__ . '/../fixtures/external-ref/root.yaml',
+                outputDirectory: $outputDir,
+                namespace: 'Acme\Layer\WidgetApi\Dto',
             );
 
             // common/common.yaml's Test matched via the directory key.
             $commonFile = $commonOutputDir . '/Test.php';
             $this->assertFileExists($commonFile);
             $this->assertStringContainsString(
-                'namespace Acme\Layer\Common\Dto;',
-                (string)file_get_contents($commonFile),
+                needle: 'namespace Acme\Layer\Common\Dto;',
+                haystack: (string)file_get_contents($commonFile),
             );
         } finally {
             if (is_dir($baseDir)) {
@@ -4284,9 +4287,9 @@ final class GenerateDtoCommandTest extends TestCase
 
         try {
             $this->generator->generateFromFile(
-                __DIR__ . '/../fixtures/external-ref-temporal/root.yml',
-                $outputDir,
-                'TemporalNs',
+                filePath: __DIR__ . '/../fixtures/external-ref-temporal/root.yml',
+                outputDirectory: $outputDir,
+                namespace: 'TemporalNs',
             );
 
             // Event is an external schema (sub/event.yml); its `at` property $refs './types.yml'
@@ -4692,8 +4695,8 @@ final class GenerateDtoCommandTest extends TestCase
         $this->expectExceptionMessage('requires a matching --ref-namespace');
 
         $this->generator->setExternalRefMappings(
-            ['/some/common.yaml=/out/Common'],
-            [],
+            refDirectoryPairs: ['/some/common.yaml=/out/Common'],
+            refNamespacePairs: [],
         );
     }
 
@@ -4709,8 +4712,8 @@ final class GenerateDtoCommandTest extends TestCase
         mkdir($commonDir, 0o755, true);
 
         file_put_contents(
-            $specDir . '/module.yml',
-            <<<'YAML'
+            filename: $specDir . '/module.yml',
+            data: <<<'YAML'
                 openapi: 3.0.0
                 info:
                   title: Module
@@ -4729,8 +4732,8 @@ final class GenerateDtoCommandTest extends TestCase
         );
 
         file_put_contents(
-            $commonDir . '/common_response.yml',
-            <<<'YAML'
+            filename: $commonDir . '/common_response.yml',
+            data: <<<'YAML'
                 openapi: 3.0.0
                 info:
                   title: TestResponse
@@ -4750,9 +4753,9 @@ final class GenerateDtoCommandTest extends TestCase
 
         try {
             $count = $this->generator->generateFromFile(
-                $specDir . '/module.yml',
-                $outputDir,
-                'TestNamespace\Module\Schemas',
+                filePath: $specDir . '/module.yml',
+                outputDirectory: $outputDir,
+                namespace: 'TestNamespace\Module\Schemas',
             );
 
             $this->assertGreaterThanOrEqual(2, $count);
@@ -4787,8 +4790,8 @@ final class GenerateDtoCommandTest extends TestCase
         mkdir($commonDir, 0o755, true);
 
         file_put_contents(
-            $specDir . '/module.yml',
-            <<<'YAML'
+            filename: $specDir . '/module.yml',
+            data: <<<'YAML'
                 openapi: 3.0.0
                 info:
                   title: Module
@@ -4809,8 +4812,8 @@ final class GenerateDtoCommandTest extends TestCase
         );
 
         file_put_contents(
-            $commonDir . '/common_response.yml',
-            <<<'YAML'
+            filename: $commonDir . '/common_response.yml',
+            data: <<<'YAML'
                 openapi: 3.0.0
                 info:
                   title: TestResponse
@@ -4830,9 +4833,9 @@ final class GenerateDtoCommandTest extends TestCase
 
         try {
             $count = $this->generator->generateFromFile(
-                $specDir . '/module.yml',
-                $outputDir,
-                'TestNamespace\Module\Schemas',
+                filePath: $specDir . '/module.yml',
+                outputDirectory: $outputDir,
+                namespace: 'TestNamespace\Module\Schemas',
             );
 
             $this->assertGreaterThanOrEqual(2, $count);
@@ -5390,8 +5393,8 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertFileExists($inlineFile);
         $inlineContent = file_get_contents($inlineFile);
         $this->assertStringContainsString(
-            'use Symfony\Component\HttpFoundation\File\UploadedFile;',
-            $inlineContent,
+            needle: 'use Symfony\Component\HttpFoundation\File\UploadedFile;',
+            haystack: $inlineContent,
         );
         $this->assertStringContainsString('private readonly UploadedFile $file', $inlineContent);
         $this->assertStringContainsString('public function getFile(): UploadedFile', $inlineContent);
@@ -5621,8 +5624,8 @@ final class GenerateDtoCommandTest extends TestCase
         $content = (string)file_get_contents($file);
 
         $this->assertStringContainsString(
-            '$constraints[\'tokens\'] = [\'type\' => \'array\', \'items\' => [\'type\' => \'string\', \'format\' => \'uuid\']];',
-            $content,
+            needle: '$constraints[\'tokens\'] = [\'type\' => \'array\', \'items\' => [\'type\' => \'string\', \'format\' => \'uuid\']];',
+            haystack: $content,
         );
     }
 
@@ -5732,8 +5735,8 @@ final class GenerateDtoCommandTest extends TestCase
         mkdir($commonDir, 0o755, true);
 
         file_put_contents(
-            $specFile,
-            <<<'YAML'
+            filename: $specFile,
+            data: <<<'YAML'
                 openapi: 3.0.0
                 info:
                   title: CLI import test
@@ -5768,8 +5771,8 @@ final class GenerateDtoCommandTest extends TestCase
             $dtoContent = (string)file_get_contents($dtoFile);
             $this->assertStringContainsString('use MyApp\Shared\DtoTools\GeneratedDtoInterface;', $dtoContent);
             $this->assertStringNotContainsString(
-                'use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;',
-                $dtoContent,
+                needle: 'use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;',
+                haystack: $dtoContent,
             );
 
             $this->assertFileExists($commonDir . '/GeneratedDtoInterface.php');
@@ -6036,13 +6039,13 @@ final class GenerateDtoCommandTest extends TestCase
         // The wire form, delegating and then casting what PHP would write as a JSON list: the empty
         // case, and the keys `additionalProperties` admitted spelled as digits.
         $this->assertStringContainsString(
-            "    public function jsonSerialize(): array|object\n"
+            needle: "    public function jsonSerialize(): array|object\n"
             . "    {\n"
             . "        \$result = \$this->toArray();\n"
             . "\n"
             . "        return array_is_list(\$result) ? (object)\$result : \$result;\n"
             . '    }',
-            $content,
+            haystack: $content,
         );
 
         // The four parameter maps went further than "return directly": on a body-only class they are not
@@ -6057,9 +6060,9 @@ final class GenerateDtoCommandTest extends TestCase
             'function getParameterAllowEmptyValue',
         ] as $absent) {
             $this->assertStringNotContainsString(
-                $absent,
-                $content,
-                sprintf('a body-only class carries no %s', $absent),
+                needle: $absent,
+                haystack: $content,
+                message: sprintf('a body-only class carries no %s', $absent),
             );
         }
     }
@@ -6479,16 +6482,16 @@ final class GenerateDtoCommandTest extends TestCase
         $this->assertStringContainsString('@param array<string, mixed> $reqOnly', $probe);
         foreach (['depReq', 'propNames', 'noKeys'] as $property) {
             $this->assertStringContainsString(
-                sprintf('@param ?array<string, mixed> $%s', $property),
-                $probe,
-                $property . ' must stay a map',
+                needle: sprintf('@param ?array<string, mixed> $%s', $property),
+                haystack: $probe,
+                message: $property . ' must stay a map',
             );
         }
 
         foreach (['ProbeReqOnly', 'ProbeDepReq', 'ProbePropNames', 'ProbeNoKeys'] as $class) {
             $this->assertFileDoesNotExist(
-                $this->outputDirectory . '/' . $class . '.php',
-                $class . ' would be a class with no properties',
+                filename: $this->outputDirectory . '/' . $class . '.php',
+                message: $class . ' would be a class with no properties',
             );
         }
 
@@ -6543,10 +6546,10 @@ final class GenerateDtoCommandTest extends TestCase
             content: '{"inline":{},"viaRef":{},"list":[{}]}',
         );
         $this->assertSame(
-            '{"inline":{},"viaRef":{},"list":[{}]}',
-            json_encode(
-                (new DtoNormalizer())->toArray(
-                    (new DtoDeserializer())->deserialize($withEmpty, 'FreeFormRoundTrip\Probe'),
+            expected: '{"inline":{},"viaRef":{},"list":[{}]}',
+            actual: json_encode(
+                value: (new DtoNormalizer())->toArray(
+                    dto: (new DtoDeserializer())->deserialize($withEmpty, 'FreeFormRoundTrip\Probe'),
                 ),
             ),
         );
@@ -6691,8 +6694,8 @@ final class GenerateDtoCommandTest extends TestCase
             $uuid,
         );
         $dto = (new DtoDeserializer())->deserialize(
-            Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $valid),
-            'ScalarAlias\Holder',
+            request: Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $valid),
+            dtoClass: 'ScalarAlias\Holder',
         );
         $this->assertSame($valid, json_encode((new DtoNormalizer())->validateAndNormalizeToArray($dto)));
 
@@ -6711,8 +6714,8 @@ final class GenerateDtoCommandTest extends TestCase
 
             try {
                 (new DtoDeserializer())->deserialize(
-                    Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], (string)json_encode($payload)),
-                    'ScalarAlias\Holder',
+                    request: Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], (string)json_encode($payload)),
+                    dtoClass: 'ScalarAlias\Holder',
                 );
                 $this->fail(sprintf('%s must be rejected', $label));
             } catch (RuntimeException $e) {

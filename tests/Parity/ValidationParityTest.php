@@ -98,9 +98,9 @@ final class ValidationParityTest extends TestCase
         // every mode accepts everything would compare equal for the wrong reason, and a rule that
         // enforces nothing is invisible otherwise.
         $this->assertEveryModeYields(
-            ['valid' => true, 'invalid' => false],
-            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, $validJson, $invalidJson),
-            self::declaredDivergences()[$key] ?? [],
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, $validJson, $invalidJson),
+            diverges: self::declaredDivergences()[$key] ?? [],
             context: $key,
         );
     }
@@ -490,9 +490,9 @@ final class ValidationParityTest extends TestCase
             $spec['openapi'] = '3.0.3';
 
             $this->assertEveryModeYields(
-                ['valid' => true, 'invalid' => false],
-                fn(GenerationMode $mode): array => $this->verdict($mode, $spec, 'nullable ' . $keyword, '{"f":null}', '{"f":[1]}'),
-                [],
+                expected: ['valid' => true, 'invalid' => false],
+                observe: fn(GenerationMode $mode): array => $this->verdict($mode, $spec, 'nullable ' . $keyword, '{"f":null}', '{"f":[1]}'),
+                diverges: [],
                 context: 'nullable ' . $keyword,
             );
         }
@@ -1084,8 +1084,8 @@ final class ValidationParityTest extends TestCase
         LaravelDataContainer::boot();
 
         $outcome = static fn(string $json): string => (string)LaravelDataContainer::withRequest(
-            $json,
-            static function (LaravelRequest $request) use ($fqcn): string {
+            json: $json,
+            work: static function (LaravelRequest $request) use ($fqcn): string {
                 try {
                     $fqcn::from($request);
                 } catch (Throwable $exception) {
@@ -1168,10 +1168,10 @@ final class ValidationParityTest extends TestCase
     public function testNullIsJudgedByTheSchemaNotTheMode(): void
     {
         foreach (GenerationMode::cases() as $mode) {
-            // yii3: the hydrator casts `null` to the declared `string` before any rule runs — the
-            // documented cast divergence (support matrix, "`null` for a required non-nullable").
+            // yii3: the hydrator casts `null` to the declared `string`, and the raw `#[Validate]` is
+            // what still sees the null and refuses it.
             $this->assertSame(
-                expected: ['valid' => true, 'invalid' => $mode === GenerationMode::Yii3],
+                expected: ['valid' => true, 'invalid' => false],
                 actual: $this->verdict($mode, self::probeSpec(['type' => 'string']), 'required-string-null', '{"f":"a"}', '{"f":null}'),
                 message: $mode->value . ' required string',
             );
@@ -1192,11 +1192,10 @@ final class ValidationParityTest extends TestCase
     #[DataProvider('modeDivergenceCases')]
     public function testModeDivergencesFoundByTheAudit(GenerationMode $mode, string $key, array $spec, string $validJson, string $invalidJson): void
     {
-        // yii3 casts `null` to a declared `string` member before any rule runs — documented in the
-        // support matrix, pinned here so the day it changes the row can go.
-        $castByHydrator = $mode === GenerationMode::Yii3 && str_contains($key, 'union refuses null');
+        // yii3 used to cast `null` to a declared `string` member before any rule ran; the raw check over
+        // the union's members now sees the null first.
         $this->assertSame(
-            expected: ['valid' => true, 'invalid' => $castByHydrator],
+            expected: ['valid' => true, 'invalid' => false],
             actual: $this->verdict($mode, $spec, 'divergence-' . $key, $validJson, $invalidJson),
         );
     }
@@ -1339,8 +1338,8 @@ final class ValidationParityTest extends TestCase
         $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::LaravelData, 'object-error-keys'), 'laravel-data');
         LaravelDataContainer::boot();
         $errors = static fn(string $json): mixed => LaravelDataContainer::withRequest(
-            $json,
-            static function (LaravelRequest $request) use ($fqcn): array {
+            json: $json,
+            work: static function (LaravelRequest $request) use ($fqcn): array {
                 try {
                     $fqcn::from($request);
                 } catch (ValidationException $exception) {
@@ -1415,31 +1414,31 @@ final class ValidationParityTest extends TestCase
         // nothing downstream can tell the two apart again.
         $symfonyIsBlind = array_merge(
             self::diverges(
-                GenerationMode::Symfony,
-                ['valid' => true, 'invalid' => true],
-                'the serializer denormalizes before any constraint runs, so the array IS the map by then',
+                mode: GenerationMode::Symfony,
+                expected: ['valid' => true, 'invalid' => true],
+                reason: 'the serializer denormalizes before any constraint runs, so the array IS the map by then',
             ),
             self::diverges(
-                GenerationMode::Yii3,
-                ['valid' => true, 'invalid' => true],
-                'the hydrator fills the object before the validator runs, and it reads the object, not the body',
+                mode: GenerationMode::Yii3,
+                expected: ['valid' => true, 'invalid' => true],
+                reason: 'the hydrator fills the object before the validator runs, and it reads the object, not the body',
             ),
         );
 
         // A plain map is accepted, the array is not.
         $this->assertEveryModeYields(
-            ['valid' => true, 'invalid' => false],
-            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, '{"f":{"a":1}}', $asArray),
-            $symfonyIsBlind,
-            $key,
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, '{"f":{"a":1}}', $asArray),
+            diverges: $symfonyIsBlind,
+            context: $key,
         );
 
         // And a JSON object whose keys are 0..n-1 stays an object — the check must not overreach.
         $this->assertEveryModeYields(
-            ['valid' => true, 'invalid' => false],
-            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key . ' dense', '{"f":{"0":1,"1":2}}', $asArray),
-            $symfonyIsBlind,
-            $key . ' dense',
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key . ' dense', '{"f":{"0":1,"1":2}}', $asArray),
+            diverges: $symfonyIsBlind,
+            context: $key . ' dense',
         );
 
         // The same question for a SCHEMA-shaped object, which becomes a nested DTO: with no required
@@ -1463,10 +1462,10 @@ final class ValidationParityTest extends TestCase
         ];
 
         $this->assertEveryModeYields(
-            ['valid' => true, 'invalid' => false],
-            fn(GenerationMode $mode): array => $this->verdict($mode, $nested, 'nested object', '{"f":{"a":1}}', $asArray),
-            $symfonyIsBlind,
-            'nested object',
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict($mode, $nested, 'nested object', '{"f":{"a":1}}', $asArray),
+            diverges: $symfonyIsBlind,
+            context: 'nested object',
         );
     }
 
@@ -1490,24 +1489,17 @@ final class ValidationParityTest extends TestCase
         $key = 'integral float';
 
         $this->assertEveryModeYields(
-            ['valid' => true, 'invalid' => false],
-            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, '{"f":42.0}', '{"f":42.5}'),
-            array_merge(
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, '{"f":42.0}', '{"f":42.5}'),
+            diverges: array_merge(
                 // Both rejected — the serializer never hands the value to a constraint.
                 self::diverges(
-                    GenerationMode::Symfony,
-                    ['valid' => false, 'invalid' => false],
-                    'the serializer type-checks `int $f` first, so 42.0 is refused before generated code runs',
-                ),
-                // Both accepted — the mirror image. The hydrator CASTS to the declared `int` before the
-                // validator sees the object, so 42.5 arrives as 42 and clears `minimum: 10`.
-                self::diverges(
-                    GenerationMode::Yii3,
-                    ['valid' => true, 'invalid' => true],
-                    'the hydrator casts to the declared type first, so 42.5 is an int by the time a rule runs',
+                    mode: GenerationMode::Symfony,
+                    expected: ['valid' => false, 'invalid' => false],
+                    reason: 'the serializer type-checks `int $f` first, so 42.0 is refused before generated code runs',
                 ),
             ),
-            $key,
+            context: $key,
         );
     }
 
@@ -1566,23 +1558,23 @@ final class ValidationParityTest extends TestCase
         // still see the raw body gives it — runtime holds the body, and the two rule-based modes
         // run their interpreter over it. The two that cannot are named below.
         $this->assertEveryModeYields(
-            ['valid' => true, 'invalid' => false],
-            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, '{"f":{"known":"a"}}', $withExtra),
-            [
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, '{"f":{"known":"a"}}', $withExtra),
+            diverges: [
                 ...self::diverges(
-                    GenerationMode::Symfony,
-                    ['valid' => true, 'invalid' => true],
-                    'the serializer denormalizes before any constraint runs, so the undeclared key is '
+                    mode: GenerationMode::Symfony,
+                    expected: ['valid' => true, 'invalid' => true],
+                    reason: 'the serializer denormalizes before any constraint runs, so the undeclared key is '
                         . 'already gone by the time generated code is reached',
                 ),
                 ...self::diverges(
-                    GenerationMode::Yii3,
-                    ['valid' => true, 'invalid' => true],
-                    'the hydrator fills the object first and the validator reads the OBJECT, so a key '
+                    mode: GenerationMode::Yii3,
+                    expected: ['valid' => true, 'invalid' => true],
+                    reason: 'the hydrator fills the object first and the validator reads the OBJECT, so a key '
                         . 'the schema never declared has nowhere to survive',
                 ),
             ],
-            $key,
+            context: $key,
         );
 
         // The same keyword at the TOP of the component, which is the shape the support matrix's row
@@ -1609,27 +1601,27 @@ final class ValidationParityTest extends TestCase
         $rootKey = 'unknown keys are dropped at the root';
 
         $this->assertEveryModeYields(
-            ['valid' => true, 'invalid' => false],
-            fn(GenerationMode $mode): array => $this->verdict(
-                $mode,
-                $rootSpec,
-                $rootKey,
-                '{"known":"a"}',
-                '{"known":"a","extra":"b"}',
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict(
+                mode: $mode,
+                spec: $rootSpec,
+                key: $rootKey,
+                validJson: '{"known":"a"}',
+                invalidJson: '{"known":"a","extra":"b"}',
             ),
-            [
+            diverges: [
                 ...self::diverges(
-                    GenerationMode::Symfony,
-                    ['valid' => true, 'invalid' => true],
-                    'the same reason as the nested shape above: the serializer denormalizes first',
+                    mode: GenerationMode::Symfony,
+                    expected: ['valid' => true, 'invalid' => true],
+                    reason: 'the same reason as the nested shape above: the serializer denormalizes first',
                 ),
                 ...self::diverges(
-                    GenerationMode::Yii3,
-                    ['valid' => true, 'invalid' => true],
-                    'the same reason as the nested shape above: the hydrator fills the object first',
+                    mode: GenerationMode::Yii3,
+                    expected: ['valid' => true, 'invalid' => true],
+                    reason: 'the same reason as the nested shape above: the hydrator fills the object first',
                 ),
             ],
-            $rootKey,
+            context: $rootKey,
         );
 
         // Closed AND patterned. A key the patterns claim is not additional — JSON Schema evaluates
@@ -1658,27 +1650,27 @@ final class ValidationParityTest extends TestCase
         $patternedKey = 'a patterned key is not an undeclared one';
 
         $this->assertEveryModeYields(
-            ['valid' => true, 'invalid' => false],
-            fn(GenerationMode $mode): array => $this->verdict(
-                $mode,
-                $patternedSpec,
-                $patternedKey,
-                '{"known":"a","x_extra":"b"}',
-                '{"known":"a","nope":"b"}',
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict(
+                mode: $mode,
+                spec: $patternedSpec,
+                key: $patternedKey,
+                validJson: '{"known":"a","x_extra":"b"}',
+                invalidJson: '{"known":"a","nope":"b"}',
             ),
-            [
+            diverges: [
                 ...self::diverges(
-                    GenerationMode::Symfony,
-                    ['valid' => true, 'invalid' => true],
-                    'the same reason as the two shapes above: the serializer denormalizes first',
+                    mode: GenerationMode::Symfony,
+                    expected: ['valid' => true, 'invalid' => true],
+                    reason: 'the same reason as the two shapes above: the serializer denormalizes first',
                 ),
                 ...self::diverges(
-                    GenerationMode::Yii3,
-                    ['valid' => true, 'invalid' => true],
-                    'the same reason as the two shapes above: the hydrator fills the object first',
+                    mode: GenerationMode::Yii3,
+                    expected: ['valid' => true, 'invalid' => true],
+                    reason: 'the same reason as the two shapes above: the hydrator fills the object first',
                 ),
             ],
-            $patternedKey,
+            context: $patternedKey,
         );
     }
 
@@ -1723,11 +1715,11 @@ final class ValidationParityTest extends TestCase
         $asNull = '{"keep":"x","f":null}';
 
         $this->assertEveryModeYields(
-            ['valid' => true, 'invalid' => false],
-            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, $valid, $asNull),
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, $valid, $asNull),
             // Symfony agrees since its setter admits null only where the schema does.
-            [],
-            $key,
+            diverges: [],
+            context: $key,
         );
 
         // The same property WITH `nullable` must accept the null in every mode, or the assertion above
@@ -1735,8 +1727,8 @@ final class ValidationParityTest extends TestCase
         $nullableSpec = $spec;
         $nullableSpec['components']['schemas']['Probe']['properties']['f']['nullable'] = true;
         $this->assertEveryModeYields(
-            ['valid' => true, 'invalid' => true],
-            fn(GenerationMode $mode): array => $this->verdict($mode, $nullableSpec, $key . ' nullable', $valid, $asNull),
+            expected: ['valid' => true, 'invalid' => true],
+            observe: fn(GenerationMode $mode): array => $this->verdict($mode, $nullableSpec, $key . ' nullable', $valid, $asNull),
             context: $key . ' nullable',
         );
     }
@@ -1778,8 +1770,8 @@ final class ValidationParityTest extends TestCase
 
             // `null` is allowed; an integer below the branch's own minimum is not.
             $this->assertEveryModeYields(
-                ['valid' => true, 'invalid' => false],
-                fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, '{"f":null}', '{"f":5}'),
+                expected: ['valid' => true, 'invalid' => false],
+                observe: fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, '{"f":null}', '{"f":5}'),
                 context: $key,
             );
         }
@@ -1793,8 +1785,8 @@ final class ValidationParityTest extends TestCase
             'properties' => ['id' => ['type' => 'integer', 'minimum' => 10]],
         ];
         $this->assertEveryModeYields(
-            ['valid' => true, 'invalid' => false],
-            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, '{"f":null}', '{"f":{"id":5}}'),
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, '{"f":null}', '{"f":{"id":5}}'),
             context: $key,
         );
     }
@@ -1918,8 +1910,8 @@ final class ValidationParityTest extends TestCase
         $key = 'array-alias-position-' . md5(json_encode([$propertySchema, $components], JSON_THROW_ON_ERROR));
 
         $this->assertEveryModeYields(
-            ['valid' => true, 'invalid' => false],
-            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, $validJson, $invalidJson),
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, $validJson, $invalidJson),
             context: $key,
         );
     }
@@ -2019,8 +2011,8 @@ final class ValidationParityTest extends TestCase
         $key = 'itemless-list-' . md5(json_encode([$propertySchema, $validJson], JSON_THROW_ON_ERROR));
 
         $this->assertEveryModeYields(
-            ['valid' => true, 'invalid' => false],
-            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, $validJson, $invalidJson),
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, $validJson, $invalidJson),
             context: $key,
         );
     }
@@ -2067,9 +2059,9 @@ final class ValidationParityTest extends TestCase
         $key = 'pure-alias-' . md5(json_encode([$propertySchema, $components, $validJson], JSON_THROW_ON_ERROR));
 
         $this->assertEveryModeYields(
-            ['valid' => true, 'invalid' => false],
-            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, $validJson, $invalidJson),
-            $diverges,
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, $validJson, $invalidJson),
+            diverges: $diverges,
             context: $key,
         );
     }
@@ -2118,9 +2110,9 @@ final class ValidationParityTest extends TestCase
                 // OPEN DEFECT, the same as the null date item: the serializer hands the null item to
                 // BackedEnumNormalizer, which throws.
                 self::diverges(
-                    GenerationMode::Symfony,
-                    ['valid' => false, 'invalid' => false],
-                    'open defect: Symfony serializer cannot denormalize a null enum item',
+                    mode: GenerationMode::Symfony,
+                    expected: ['valid' => false, 'invalid' => false],
+                    reason: 'open defect: Symfony serializer cannot denormalize a null enum item',
                 ),
             ],
         ];
@@ -2154,9 +2146,9 @@ final class ValidationParityTest extends TestCase
         $key = 'crash-shape-' . md5(json_encode([$propertySchema, $components, $validJson], JSON_THROW_ON_ERROR));
 
         $this->assertEveryModeYields(
-            ['valid' => true, 'invalid' => false],
-            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, $validJson, $invalidJson),
-            $diverges,
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, $validJson, $invalidJson),
+            diverges: $diverges,
             context: $key,
         );
     }
@@ -2166,23 +2158,18 @@ final class ValidationParityTest extends TestCase
      */
     public static function crashShapeProvider(): array
     {
-        $coerced = self::diverges(
-            GenerationMode::Yii3,
-            ['valid' => true, 'invalid' => true],
-            'the hydrator casts before any rule runs, as for "type integer"',
-        );
         // OPEN DEFECT: yiisoft's CollectionResolver skips an element it cannot build before any rule
         // runs, and the raw payload is gone by then.
         $droppedByYii3 = self::diverges(
-            GenerationMode::Yii3,
-            ['valid' => true, 'invalid' => true],
-            'open defect: yii3 Collection hydration drops a non-object item before validation',
+            mode: GenerationMode::Yii3,
+            expected: ['valid' => true, 'invalid' => true],
+            reason: 'open defect: yii3 Collection hydration drops a non-object item before validation',
         );
         $tag = ['Tag' => ['type' => 'object', 'required' => ['id'], 'properties' => ['id' => ['type' => 'integer']]]];
         $tagRef = ['$ref' => '#/components/schemas/Tag'];
 
         return [
-            'type list of two named types' => [['type' => ['string', 'integer']], [], '{"f":5}', '{"f":true}', $coerced],
+            'type list of two named types' => [['type' => ['string', 'integer']], [], '{"f":5}', '{"f":true}'],
             'anyOf ref or null, null' => [['anyOf' => [$tagRef, ['type' => 'null']]], $tag, '{"f":null}', '{"f":{}}'],
             'oneOf ref or null, null' => [['oneOf' => [$tagRef, ['type' => 'null']]], $tag, '{"f":null}', '{"f":{}}'],
             'nullable date items' => [
@@ -2193,9 +2180,9 @@ final class ValidationParityTest extends TestCase
                 // OPEN DEFECT, not a design choice: the serializer's DateTimeNormalizer is handed the
                 // null item and throws, and it parses "x" leniently as every Symfony date does.
                 self::diverges(
-                    GenerationMode::Symfony,
-                    ['valid' => false, 'invalid' => true],
-                    'open defect: Symfony serializer cannot denormalize a null date item',
+                    mode: GenerationMode::Symfony,
+                    expected: ['valid' => false, 'invalid' => true],
+                    reason: 'open defect: Symfony serializer cannot denormalize a null date item',
                 ),
             ],
             'nullable dto items' => [
@@ -2205,13 +2192,13 @@ final class ValidationParityTest extends TestCase
                 '{"f":[{}]}',
                 // OPEN DEFECT: `#[DataCollectionOf(Tag::class)]` builds a Tag out of the null item.
                 self::diverges(
-                    GenerationMode::LaravelData,
-                    ['valid' => false, 'invalid' => false],
-                    'open defect: DataCollectionOf cannot hold a null item',
+                    mode: GenerationMode::LaravelData,
+                    expected: ['valid' => false, 'invalid' => false],
+                    reason: 'open defect: DataCollectionOf cannot hold a null item',
                 ) + self::diverges(
-                    GenerationMode::Yii3,
-                    ['valid' => true, 'invalid' => true],
-                    'open defect: yii3 does not check a nullable DTO item, as it drops a non-object one',
+                    mode: GenerationMode::Yii3,
+                    expected: ['valid' => true, 'invalid' => true],
+                    reason: 'open defect: yii3 does not check a nullable DTO item, as it drops a non-object one',
                 ),
             ],
             // A non-object ITEM of a DTO list or map. Laravel had no rule on `f.*` and yii3's collection
@@ -2243,7 +2230,6 @@ final class ValidationParityTest extends TestCase
                 [],
                 '{"f":{"j":null,"k":1}}',
                 '{"f":"x"}',
-                $coerced,
             ],
         ];
     }
@@ -2269,8 +2255,8 @@ final class ValidationParityTest extends TestCase
         $key = 'nested-null-' . md5(json_encode([$propertySchema, $validJson], JSON_THROW_ON_ERROR));
 
         $this->assertEveryModeYields(
-            ['valid' => true, 'invalid' => false],
-            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, $validJson, $invalidJson),
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, $validJson, $invalidJson),
             context: $key,
         );
     }
@@ -2364,8 +2350,8 @@ final class ValidationParityTest extends TestCase
 
         // `null` is what the schema allows; an object missing the child's own required key is not.
         $this->assertEveryModeYields(
-            ['valid' => true, 'invalid' => false],
-            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, 'nullable ref', '{"child":null}', '{"child":{}}'),
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict($mode, $spec, 'nullable ref', '{"child":null}', '{"child":{}}'),
             context: 'required property nullable through a $ref',
         );
     }
@@ -2419,8 +2405,8 @@ final class ValidationParityTest extends TestCase
         $valid = '{"f":{"id":1,"label":"ok","children":[{"id":2}]}}';
 
         $this->assertEveryModeYields(
-            ['valid' => true, 'invalid' => false],
-            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, 'rec ' . $key, $valid, $invalidJson),
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict($mode, $spec, 'rec ' . $key, $valid, $invalidJson),
             context: 'recursive ' . $key,
         );
     }
@@ -2524,18 +2510,18 @@ final class ValidationParityTest extends TestCase
         $valid = '{"f":[{"links":[{"code":"abc","tags":[{"label":"ok"}]}]}]}';
 
         $this->assertEveryModeYields(
-            ['valid' => true, 'invalid' => false],
+            expected: ['valid' => true, 'invalid' => false],
             // The branch keyword belongs in the namespace key: without it both spellings generate into
             // one namespace, PHP keeps the classes it loaded first, and the second spelling silently
             // re-tests the first one's classes — green and proving nothing.
-            fn(GenerationMode $mode): array => $this->verdict(
-                $mode,
-                $spec,
-                'chain ' . $branchKeyword . ' ' . $key,
-                $valid,
-                $invalidJson,
+            observe: fn(GenerationMode $mode): array => $this->verdict(
+                mode: $mode,
+                spec: $spec,
+                key: 'chain ' . $branchKeyword . ' ' . $key,
+                validJson: $valid,
+                invalidJson: $invalidJson,
             ),
-            self::declaredUnionChainDivergences()[$key] ?? [],
+            diverges: self::declaredUnionChainDivergences()[$key] ?? [],
             context: $branchKeyword . ' chain ' . $key,
         );
     }
@@ -2597,8 +2583,8 @@ final class ValidationParityTest extends TestCase
         ];
 
         $this->assertEveryModeYields(
-            ['valid' => true, 'invalid' => false],
-            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, 'allofunder ' . $key, $validJson, $invalidJson),
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict($mode, $spec, 'allofunder ' . $key, $validJson, $invalidJson),
             context: 'allOf under ' . $key,
         );
     }
@@ -2670,8 +2656,8 @@ final class ValidationParityTest extends TestCase
         ];
 
         $this->assertEveryModeYields(
-            ['valid' => true, 'invalid' => false],
-            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, 'objectwide ' . $key, $validJson, $invalidJson),
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict($mode, $spec, 'objectwide ' . $key, $validJson, $invalidJson),
             context: 'object-wide ' . $key,
         );
     }
@@ -2759,8 +2745,8 @@ final class ValidationParityTest extends TestCase
         };
 
         $this->assertEveryModeYields(
-            ['valid' => true, 'invalid' => false],
-            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, 'applicator ' . $key, $valid, $invalidJson),
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict($mode, $spec, 'applicator ' . $key, $valid, $invalidJson),
             context: 'applicator ' . $key,
         );
     }
@@ -2869,8 +2855,8 @@ final class ValidationParityTest extends TestCase
         $valid = '{"id":1,"label":"ok","children":[{"id":2,"children":[{"id":3}]}]}';
 
         $this->assertEveryModeYields(
-            ['valid' => true, 'invalid' => false],
-            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, 'rootrec ' . $key, $valid, $invalidJson),
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict($mode, $spec, 'rootrec ' . $key, $valid, $invalidJson),
             context: 'root-recursive ' . $key,
         );
     }
@@ -2936,15 +2922,15 @@ final class ValidationParityTest extends TestCase
         // laravel-data and yii3 were asserted by nobody — measured since, and both refuse, but an
         // unmeasured cell is a claim either way.
         $this->assertEveryModeYields(
-            ['valid' => true, 'invalid' => false],
-            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, $valid, $loose),
-            self::diverges(
-                GenerationMode::Symfony,
-                ['valid' => true, 'invalid' => true],
-                'the property is a DateTimeImmutable, so the serializer parses the string before any '
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, $valid, $loose),
+            diverges: self::diverges(
+                mode: GenerationMode::Symfony,
+                expected: ['valid' => true, 'invalid' => true],
+                reason: 'the property is a DateTimeImmutable, so the serializer parses the string before any '
                     . "generated constraint runs, and PHP's parser accepts \"yesterday\"",
             ),
-            $key,
+            context: $key,
         );
     }
 
@@ -2983,23 +2969,23 @@ final class ValidationParityTest extends TestCase
 
         $key = "date|date-time {$firstFormat} first, {$validValue} / {$invalidValue}";
         $this->assertEveryModeYields(
-            ['valid' => true, 'invalid' => false],
-            fn(GenerationMode $mode): array => $this->verdict(
-                $mode,
-                $spec,
-                $key,
-                '{"f":' . $validValue . '}',
-                '{"f":' . $invalidValue . '}',
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict(
+                mode: $mode,
+                spec: $spec,
+                key: $key,
+                validJson: '{"f":' . $validValue . '}',
+                invalidJson: '{"f":' . $invalidValue . '}',
             ),
-            $invalidValue === '"2026-02-30"'
+            diverges: $invalidValue === '"2026-02-30"'
                 ? self::diverges(
-                    GenerationMode::Symfony,
-                    ['valid' => true, 'invalid' => true],
-                    'the serializer parses the date before any generated constraint runs, and PHP rolls '
+                    mode: GenerationMode::Symfony,
+                    expected: ['valid' => true, 'invalid' => true],
+                    reason: 'the serializer parses the date before any generated constraint runs, and PHP rolls '
                         . '2026-02-30 over to 2 March — as for a plain `format: date`',
                 )
                 : [],
-            $key,
+            context: $key,
         );
     }
 
@@ -3062,15 +3048,15 @@ final class ValidationParityTest extends TestCase
 
         $key = 'impossible calendar date';
         $this->assertEveryModeYields(
-            ['valid' => true, 'invalid' => false],
-            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, '{"f":"2026-12-01"}', '{"f":"2026-02-30"}'),
-            self::diverges(
-                GenerationMode::Symfony,
-                ['valid' => true, 'invalid' => true],
-                'the serializer parses the date before any generated constraint runs, and PHP rolls '
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, '{"f":"2026-12-01"}', '{"f":"2026-02-30"}'),
+            diverges: self::diverges(
+                mode: GenerationMode::Symfony,
+                expected: ['valid' => true, 'invalid' => true],
+                reason: 'the serializer parses the date before any generated constraint runs, and PHP rolls '
                     . '2026-02-30 over to 2 March',
             ),
-            $key,
+            context: $key,
         );
     }
 
@@ -3121,10 +3107,1271 @@ final class ValidationParityTest extends TestCase
         $invalid = '{"f":{"aid":1,"b":{"bid":10,"a":{"aid":2,"b":{"bid":9}}}}}';
 
         $this->assertEveryModeYields(
-            ['valid' => true, 'invalid' => false],
-            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, 'mutual', $valid, $invalid),
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict($mode, $spec, 'mutual', $valid, $invalid),
             context: 'mutual recursion',
         );
+    }
+
+    /**
+     * `required` binds a property of the whole object, wherever the `allOf` declares it: a `required`
+     * in one branch, or beside the `allOf`, names a property another branch — often the `$ref` parent —
+     * declares. Only the outer list was read, and only for the branches merged into the class, so an
+     * inherited property stayed optional and `{}` went through. Every spelling of the same object must
+     * refuse it; the last two pin the requirements that already held, so the fix cannot trade one for
+     * the other.
+     *
+     * @param array<string, array<string, mixed>> $schemas
+     */
+    #[DataProvider('crossBranchRequiredProvider')]
+    public function testARequiredNameBindsAPropertyAnotherAllOfBranchDeclares(array $schemas, string $validJson, string $invalidJson): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => $schemas],
+        ];
+        $key = 'cross-branch required ' . md5((string)json_encode($schemas));
+
+        $this->assertEveryModeYields(
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict(
+                mode: $mode,
+                spec: $spec,
+                key: $key,
+                validJson: $validJson,
+                invalidJson: $invalidJson,
+            ),
+            context: $key,
+        );
+    }
+
+    /**
+     * @return iterable<string, array{array<string, array<string, mixed>>, string, string}>
+     */
+    public static function crossBranchRequiredProvider(): iterable
+    {
+        $base = ['type' => 'object', 'properties' => ['name' => ['type' => 'string'], 'size' => ['type' => 'integer']]];
+        $ref = ['$ref' => '#/components/schemas/Base'];
+        $extra = ['extra' => ['type' => 'boolean']];
+
+        yield 'a branch of required alone' => [['Base' => $base, 'Probe' => ['allOf' => [$ref, ['required' => ['name']]]]], '{"name":"a"}', '{}'];
+        yield 'a typed branch of required alone' => [['Base' => $base, 'Probe' => ['allOf' => [$ref, ['type' => 'object', 'required' => ['name']]]]], '{"name":"a"}', '{"size":1}'];
+        yield 'a branch with properties of its own' => [['Base' => $base, 'Probe' => ['allOf' => [$ref, ['type' => 'object', 'required' => ['name'], 'properties' => $extra]]]], '{"name":"a","extra":true}', '{"extra":true}'];
+        yield 'beside the allOf' => [['Base' => $base, 'Probe' => ['required' => ['name'], 'allOf' => [$ref]]], '{"name":"a"}', '{}'];
+        yield 'beside an allOf with a branch' => [['Base' => $base, 'Probe' => ['required' => ['name'], 'allOf' => [$ref, ['type' => 'object', 'properties' => $extra]]]], '{"name":"a"}', '{"extra":true}'];
+        yield 'two inline branches' => [['Probe' => ['allOf' => [$base, ['required' => ['name']]]]], '{"name":"a"}', '{}'];
+        // Two `$ref`s are merged rather than inherited, which is the other path a class is built by.
+        yield 'two merged parents' => [
+            [
+                'Base' => $base,
+                'Tagged' => ['type' => 'object', 'properties' => ['tag' => ['type' => 'string']]],
+                'Probe' => ['allOf' => [$ref, ['$ref' => '#/components/schemas/Tagged'], ['required' => ['name', 'tag']]]],
+            ],
+            '{"name":"a","tag":"b"}',
+            '{"name":"a"}',
+        ];
+        yield 'a grandparent property' => [
+            [
+                'Base' => $base,
+                'Middle' => ['allOf' => [$ref, ['type' => 'object', 'properties' => $extra]]],
+                'Probe' => ['allOf' => [['$ref' => '#/components/schemas/Middle'], ['required' => ['name']]]],
+            ],
+            '{"name":"a"}',
+            '{"extra":true}',
+        ];
+        yield 'control: required in the parent' => [
+            ['Base' => [...$base, 'required' => ['name']], 'Probe' => ['allOf' => [$ref, ['type' => 'object', 'properties' => $extra]]]],
+            '{"name":"a"}',
+            '{"extra":true}',
+        ];
+        yield 'control: required on the branch\'s own property' => [
+            ['Base' => $base, 'Probe' => ['allOf' => [$ref, ['type' => 'object', 'required' => ['extra'], 'properties' => $extra]]]],
+            '{"extra":true}',
+            '{"name":"a"}',
+        ];
+    }
+
+    /**
+     * A branch that restates a property the parent declares narrows it: under `allOf` both schemas hold,
+     * so the parent's `required`, `maxLength`, `enum` and type stay in force beside the branch's own
+     * `minLength`. Symfony and both Laravel modes let the branch REPLACE the parent's rules, and runtime
+     * refused to generate the document at all ("Property override conflict … parent type string, child
+     * type ?string") although nothing in it conflicts.
+     *
+     * @param array<string, mixed> $restated the branch's schema for `name`
+     */
+    #[DataProvider('restatedPropertyProvider')]
+    public function testABranchRestatingAParentPropertyKeepsTheParentsRules(string $shape, array $restated, string $invalidJson): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        // `tag` is required so that an unknown value fails in yii3 too: there an OPTIONAL enum the
+        // hydrator cannot fill is left unset and passes as absent — a gap of its own, outside `allOf`.
+        $base = [
+            'type' => 'object',
+            'required' => ['name', 'tag'],
+            'properties' => [
+                'name' => ['type' => 'string', 'maxLength' => 3, 'pattern' => '^[a-z]+$'],
+                'tag' => ['type' => 'string', 'enum' => ['a', 'b']],
+            ],
+        ];
+        $branch = ['type' => 'object', 'properties' => ['name' => $restated, 'tag' => ['type' => 'string'], 'flag' => ['type' => 'boolean']]];
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => match ($shape) {
+                'inherited' => ['Base' => $base, 'Probe' => ['allOf' => [['$ref' => '#/components/schemas/Base'], $branch]]],
+                // Two `$ref`s are merged into one class instead of inherited; the restatement is the same.
+                'merged' => [
+                    'Base' => $base,
+                    'Other' => ['type' => 'object', 'properties' => ['flag' => ['type' => 'boolean']]],
+                    'Probe' => ['allOf' => [['$ref' => '#/components/schemas/Base'], ['$ref' => '#/components/schemas/Other'], $branch]],
+                ],
+                'inline' => ['Probe' => ['allOf' => [$base, $branch]]],
+            }],
+        ];
+        $key = 'restated ' . $shape . ' ' . json_encode($restated) . ' ' . $invalidJson;
+
+        $this->assertEveryModeYields(
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict(
+                mode: $mode,
+                spec: $spec,
+                key: $key,
+                validJson: '{"name":"ab","tag":"a","flag":true}',
+                invalidJson: $invalidJson,
+            ),
+            context: $key,
+        );
+    }
+
+    /**
+     * @return iterable<string, array{string, array<string, mixed>, string}>
+     */
+    public static function restatedPropertyProvider(): iterable
+    {
+        $invalid = [
+            'the parent\'s required' => '{"tag":"a","flag":true}',
+            'the parent\'s maxLength' => '{"name":"abcd","tag":"a"}',
+            'the branch\'s minLength' => '{"name":"a","tag":"a"}',
+            'the parent\'s enum' => '{"name":"ab","tag":"zzz"}',
+            'the parent\'s pattern' => '{"name":"AB","tag":"a"}',
+        ];
+        foreach (['inherited', 'merged', 'inline'] as $shape) {
+            foreach (['typed' => ['type' => 'string', 'minLength' => 2], 'untyped' => ['minLength' => 2]] as $spelling => $restated) {
+                foreach ($invalid as $rule => $json) {
+                    yield $shape . ' ' . $spelling . ': ' . $rule => [$shape, $restated, $json];
+                }
+            }
+            yield $shape . ' untyped: the parent\'s type' => [$shape, ['minLength' => 2], '{"name":12345,"tag":"a"}'];
+            // The same keyword on both sides: neither value replaces the other, the stricter one decides.
+            yield $shape . ' looser maxLength: the parent\'s' => [$shape, ['type' => 'string', 'maxLength' => 5], '{"name":"abcd","tag":"a"}'];
+            yield $shape . ' tighter maxLength: the branch\'s' => [$shape, ['type' => 'string', 'maxLength' => 2], '{"name":"abc","tag":"a"}'];
+            // Two patterns have no stricter one; both are kept and both must match.
+            yield $shape . ' second pattern: the branch\'s' => [$shape, ['type' => 'string', 'pattern' => '^a'], '{"name":"bc","tag":"a"}'];
+            yield $shape . ' second pattern: the parent\'s' => [$shape, ['type' => 'string', 'pattern' => '^a'], '{"name":"aB","tag":"a"}'];
+        }
+    }
+
+    /**
+     * The OAS polymorphism pattern: a base with a `discriminator` and no `mapping`, its variants each
+     * `allOf` it. The implicit value is each variant's schema name, as for a `oneOf` of `$ref`s — but
+     * the implicit map was built only from the base's own union members, which an `allOf` base does not
+     * have, and generation stopped with "Discriminator mapping must be a non-empty map". The explicit
+     * mapping is the control: the same document, spelled out, must give the same verdicts.
+     *
+     * @param string $invalidJson a payload the variant the discriminator names refuses
+     */
+    #[DataProvider('implicitAllOfDiscriminatorProvider')]
+    public function testAnAllOfBaseWithoutMappingSelectsItsVariantsByName(bool $explicit, string $validJson, string $invalidJson): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => self::animalSchemas($explicit) + [
+                'Probe' => ['type' => 'object', 'required' => ['pet'], 'properties' => ['pet' => ['$ref' => '#/components/schemas/Animal']]],
+            ]],
+        ];
+        $key = 'allOf discriminator ' . ($explicit ? 'explicit' : 'implicit') . ' ' . $invalidJson;
+
+        $this->assertEveryModeYields(
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict(
+                mode: $mode,
+                spec: $spec,
+                key: $key,
+                validJson: $validJson,
+                invalidJson: $invalidJson,
+            ),
+            context: $key,
+        );
+    }
+
+    /**
+     * @return iterable<string, array{bool, string, string}>
+     */
+    public static function implicitAllOfDiscriminatorProvider(): iterable
+    {
+        foreach (['explicit mapping' => true, 'no mapping' => false] as $spelling => $explicit) {
+            yield $spelling . ': a cat' => [$explicit, '{"pet":{"kind":"Cat","name":"Tom","purr":true}}', '{"pet":{"kind":"Cat","purr":"loud"}}'];
+            yield $spelling . ': a dog' => [$explicit, '{"pet":{"kind":"Dog","bark":true}}', '{"pet":{"kind":"Dog","bark":"loud"}}'];
+            yield $spelling . ': the base\'s own rule' => [$explicit, '{"pet":{"kind":"Cat","name":"Tom"}}', '{"pet":{"kind":"Cat","name":5}}'];
+        }
+    }
+
+    /**
+     * The OAS `Pet`/`Cat`/`Dog` shape, with or without the mapping it implies.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private static function animalSchemas(bool $explicitMapping): array
+    {
+        $discriminator = ['propertyName' => 'kind'];
+        if ($explicitMapping) {
+            $discriminator['mapping'] = ['Cat' => '#/components/schemas/Cat', 'Dog' => '#/components/schemas/Dog'];
+        }
+
+        return [
+            'Animal' => [
+                'type' => 'object',
+                'required' => ['kind'],
+                'properties' => ['kind' => ['type' => 'string'], 'name' => ['type' => 'string']],
+                'discriminator' => $discriminator,
+            ],
+            'Cat' => ['allOf' => [['$ref' => '#/components/schemas/Animal'], ['type' => 'object', 'properties' => ['purr' => ['type' => 'boolean']]]]],
+            'Dog' => ['allOf' => [['$ref' => '#/components/schemas/Animal'], ['type' => 'object', 'properties' => ['bark' => ['type' => 'boolean']]]]],
+        ];
+    }
+
+    /**
+     * A property whose union names generated classes holds one of them once it is read, and that
+     * object's own rules are checked by the object, not by the property. Symfony looked for a single
+     * class name in `Alpha|Beta`, found none, and left the `#[Assert\Valid]` cascade off, so `{"a":"x"}`
+     * went through against `minLength: 2` while runtime refused it. The list and the map of the same
+     * union already held — they are pinned beside it so the fix cannot trade one for the other.
+     *
+     * @param array<string, mixed> $property the schema of `f`
+     * @param array<int, string> $invalidJsons
+     */
+    #[DataProvider('unionOfClassesProvider')]
+    public function testAUnionOfClassesChecksTheBranchItHolds(array $property, string $validJson, array $invalidJsons): void
+    {
+        $spec = self::probeSpec($property);
+        $spec['components']['schemas'] += self::unionMemberSchemas();
+
+        $this->assertHydratingModesRefuse(spec: $spec, key: 'union of classes ' . md5((string)json_encode($property)), validJsons: [$validJson], invalidJsons: $invalidJsons);
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>, string, array<int, string>}>
+     */
+    public static function unionOfClassesProvider(): iterable
+    {
+        $alpha = ['$ref' => '#/components/schemas/Alpha'];
+        $beta = ['$ref' => '#/components/schemas/Beta'];
+
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            yield $keyword . ' of two classes' => [[$keyword => [$alpha, $beta]], '{"f":{"a":"xy"}}', ['{"f":{"a":"x"}}', '{"f":{"b":5}}']];
+            yield $keyword . ' of two classes or null' => [[$keyword => [$alpha, $beta, ['type' => 'null']]], '{"f":null}', ['{"f":{"a":"x"}}', '{"f":{"b":5}}']];
+            yield $keyword . ' of classes in a list' => [['type' => 'array', 'items' => [$keyword => [$alpha, $beta]]], '{"f":[{"b":11}]}', ['{"f":[{"a":"x"}]}', '{"f":[{"b":5}]}']];
+        }
+        yield 'a discriminated oneOf' => [
+            ['oneOf' => [$alpha, $beta], 'discriminator' => ['propertyName' => 'kind', 'mapping' => ['alpha' => '#/components/schemas/Alpha', 'beta' => '#/components/schemas/Beta']]],
+            '{"f":{"kind":"beta","b":11}}',
+            ['{"f":{"kind":"alpha","a":"x"}}', '{"f":{"kind":"beta","b":5}}'],
+        ];
+        yield 'control: a single class' => [$alpha, '{"f":{"a":"xy"}}', ['{"f":{"a":"x"}}']];
+    }
+
+    /**
+     * A union of scalar branches beside a class branch. The class branch extracted to nothing, and an
+     * `anyOf` holding a branch the validator cannot read is dropped whole — so the scalar bounds went
+     * with it, and `"abcd"` passed `maxLength: 3` in Symfony and in runtime, for `oneOf` as well there.
+     * Every branch keeps its rules now: the scalar ones are checked as values, the class one as "is that
+     * class", which checked itself — by its cascade in Symfony, while it was hydrated in runtime.
+     *
+     * @param array<int, string> $invalidJsons
+     * @param array<int, GenerationMode> $modes
+     */
+    #[DataProvider('scalarBesideClassProvider')]
+    public function testScalarBranchesBesideAClassBranchKeepTheirRules(string $keyword, array $invalidJsons, array $modes): void
+    {
+        $spec = self::probeSpec([$keyword => [
+            ['type' => 'string', 'maxLength' => 3],
+            ['type' => 'integer', 'minimum' => 5],
+            ['$ref' => '#/components/schemas/Alpha'],
+        ]]);
+        $spec['components']['schemas'] += self::unionMemberSchemas();
+
+        $this->assertHydratingModesRefuse(
+            spec: $spec,
+            key: 'scalar beside class ' . $keyword,
+            validJsons: ['{"f":"ab"}', '{"f":7}', '{"f":{"a":"xy"}}'],
+            invalidJsons: $invalidJsons,
+            modes: $modes,
+        );
+    }
+
+    /**
+     * @return iterable<string, array{string, array<int, string>, array<int, GenerationMode>}>
+     */
+    public static function scalarBesideClassProvider(): iterable
+    {
+        foreach (['anyOf', 'oneOf'] as $keyword) {
+            yield $keyword . ': the class branch' => [$keyword, ['{"f":{"a":"x"}}'], [GenerationMode::Runtime, GenerationMode::Symfony]];
+            yield $keyword . ': the scalar branches' => [$keyword, ['{"f":"abcd"}', '{"f":1}'], [GenerationMode::Runtime, GenerationMode::Symfony]];
+        }
+    }
+
+    /**
+     * The same union one level down, where the class branch meets a value the runtime validator sees
+     * in two states. As a list item it is hydrated, so the class is judged like the property above. As
+     * a key the schema does not declare it stays the raw payload, which cannot be told from the class:
+     * the union is then not judged for an object, and a scalar is still held to the scalar branches.
+     *
+     * @param array<string, mixed> $propertySchema
+     * @param array<int, string> $validJsons
+     * @param array<int, string> $invalidJsons
+     */
+    #[DataProvider('classBranchBelowThePropertyProvider')]
+    public function testClassBranchBelowThePropertyKeepsTheScalarRules(array $propertySchema, array $validJsons, array $invalidJsons): void
+    {
+        $spec = self::probeSpec($propertySchema);
+        $spec['components']['schemas'] += self::unionMemberSchemas();
+
+        $this->assertHydratingModesRefuse(
+            spec: $spec,
+            key: 'class branch below ' . md5((string)json_encode($propertySchema)),
+            validJsons: $validJsons,
+            invalidJsons: $invalidJsons,
+            modes: [GenerationMode::Runtime],
+        );
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>, array<int, string>, array<int, string>}>
+     */
+    public static function classBranchBelowThePropertyProvider(): iterable
+    {
+        $union = static fn(string $keyword): array => [$keyword => [
+            ['type' => 'string', 'maxLength' => 3],
+            ['$ref' => '#/components/schemas/Alpha'],
+        ]];
+        foreach (['anyOf', 'oneOf'] as $keyword) {
+            yield $keyword . ': list items' => [
+                ['type' => 'array', 'items' => $union($keyword)],
+                ['{"f":["ab",{"a":"xy"}]}'],
+                ['{"f":["abcd"]}', '{"f":[{"a":"x"}]}'],
+            ];
+            yield $keyword . ': map values' => [
+                ['type' => 'object', 'additionalProperties' => $union($keyword)],
+                ['{"f":{"x":"ab","y":{"a":"xy"}}}'],
+                ['{"f":{"x":"abcd"}}'],
+            ];
+        }
+    }
+
+    /**
+     * A `$ref` to an enum beside a scalar branch. Runtime hydrates the enum, so the class branch holds
+     * the case and the scalar branch the integer; a wire value that is neither is refused.
+     */
+    #[DataProvider('enumBranchBesideScalarProvider')]
+    public function testEnumBranchBesideAScalarBranchKeepsBoth(string $keyword): void
+    {
+        $spec = self::probeSpec([$keyword => [
+            ['$ref' => '#/components/schemas/Hue'],
+            ['type' => 'integer', 'minimum' => 5],
+        ]]);
+        $spec['components']['schemas']['Hue'] = ['type' => 'string', 'enum' => ['red', 'teal']];
+
+        $this->assertHydratingModesRefuse(
+            spec: $spec,
+            key: 'enum beside scalar ' . $keyword,
+            validJsons: ['{"f":"red"}', '{"f":7}'],
+            invalidJsons: ['{"f":"blue"}', '{"f":1}'],
+            // Symfony dropped the whole `anyOf` once and accepted `1`: its branch builder knew a DTO
+            // branch but not an enum one. laravel-data accepted `"blue"` in both spellings: its enum
+            // branch was checked as a string and nothing more.
+            modes: GenerationMode::cases(),
+        );
+    }
+
+    /**
+     * The mirror image of the case above, and its optional spelling: an integer-backed enum beside a
+     * string branch, and a string-backed one on a property that may be absent. laravel-data's constructor
+     * declared the union as the document spelled it, without the enum's backing type, so a member value
+     * was a TypeError before the constructor could turn it into the case.
+     */
+    #[DataProvider('enumBranchBesideScalarProvider')]
+    public function testEnumBranchOfEitherBackingKeepsBoth(string $keyword): void
+    {
+        $spec = self::probeSpec([$keyword => [
+            ['$ref' => '#/components/schemas/Level'],
+            ['type' => 'string', 'maxLength' => 3],
+        ]]);
+        $spec['components']['schemas']['Level'] = ['type' => 'integer', 'enum' => [10, 20]];
+        $spec['components']['schemas']['Probe']['properties']['g'] = [$keyword => [
+            ['$ref' => '#/components/schemas/Hue'],
+            ['type' => 'integer', 'minimum' => 5],
+        ]];
+        $spec['components']['schemas']['Hue'] = ['type' => 'string', 'enum' => ['red', 'teal']];
+
+        $this->assertHydratingModesRefuse(
+            spec: $spec,
+            key: 'enum of either backing ' . $keyword,
+            validJsons: ['{"f":20}', '{"f":"ab"}', '{"f":10,"g":"teal"}', '{"f":"ab","g":9}'],
+            invalidJsons: ['{"f":30}', '{"f":"abcd"}', '{"f":10,"g":"blue"}', '{"f":10,"g":2}'],
+            modes: GenerationMode::cases(),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function enumBranchBesideScalarProvider(): iterable
+    {
+        yield 'anyOf' => ['anyOf'];
+        yield 'oneOf' => ['oneOf'];
+    }
+
+    /**
+     * A component named after a class the referring file names for something else — Symfony's
+     * `Context`, Laravel's `Validator`, PHP's `BackedEnum`. Both meanings sit in Probe's file, and the
+     * component's own file declares the name: either the import won and the component's type was the
+     * library's, or the component's file did not load. Validated and hydrated in every mode, it must
+     * behave as the same component under a neutral name does.
+     */
+    #[DataProvider('libraryClassNameProvider')]
+    public function testAComponentNamedAfterALibraryClassValidates(string $component): void
+    {
+        $spec = self::probeSpec(['$ref' => '#/components/schemas/' . $component]);
+        $spec['components']['schemas']['Probe']['properties']['at'] = ['type' => 'string', 'format' => 'date-time'];
+        $spec['components']['schemas']['Probe']['minProperties'] = 1;
+        $spec['components']['schemas'][$component] = [
+            'type' => 'object',
+            'required' => ['at'],
+            'properties' => [
+                'at' => ['type' => 'string', 'format' => 'date-time'],
+                'first_name' => ['type' => 'string', 'minLength' => 2],
+                'tone' => ['type' => 'string', 'enum' => ['red', 'teal']],
+            ],
+        ];
+
+        $this->assertHydratingModesRefuse(
+            spec: $spec,
+            key: 'library class name ' . $component,
+            validJsons: ['{"f":{"at":"2026-03-10T12:00:00+00:00","first_name":"Ann","tone":"teal"},"at":"2026-03-10T12:00:00+03:00"}'],
+            invalidJsons: [
+                '{"f":{"at":"later"}}',
+                '{"f":{"at":"2026-03-10T12:00:00+00:00","first_name":"A"}}',
+                '{"f":{"at":"2026-03-10T12:00:00+00:00","tone":"blue"}}',
+                '{"f":{"at":"2026-03-10T12:00:00+00:00"},"at":"later"}',
+            ],
+            modes: GenerationMode::cases(),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function libraryClassNameProvider(): iterable
+    {
+        foreach (['Widget', 'Context', 'Ignore', 'SerializedName', 'Assert', 'BackedEnum', 'DateTimeInterface', 'Validator', 'JsonSerializable', 'FormRequest', 'Rule'] as $component) {
+            yield $component => [$component];
+        }
+    }
+
+    /**
+     * The smallest integer has no literal of its own in PHP: `-9223372036854775808` is unary minus on
+     * `9223372036854775808`, which is already a float. Emitted bare, a default of that value was a
+     * float default on an `int` parameter — a fatal on load — and an enum case backed by it made the
+     * int-backed enum refuse to resolve at all. Its neighbours, which do have a literal, are pinned
+     * beside it.
+     *
+     * @param array<string, mixed> $propertySchema
+     */
+    #[DataProvider('integerExtremeLiteralProvider')]
+    public function testTheSmallestIntegerIsEmittedAsAnInteger(array $propertySchema, string $validJson, string $invalidJson): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => ['Probe' => [
+                'type' => 'object',
+                'properties' => ['f' => $propertySchema],
+            ]]],
+        ];
+        $key = 'integer extreme ' . md5((string)json_encode([$propertySchema, $validJson, $invalidJson]));
+
+        // Linted before anything loads it: the bug was a compile fatal, and a fatal in `require` takes
+        // the whole test run down instead of failing this case.
+        foreach (GenerationMode::cases() as $mode) {
+            $target = $this->outputDirectory . '/' . $this->namespaceFor($mode, $key);
+            (new GenerateDtoCommand())->generateFromArray(
+                openApi: $spec,
+                outputDirectory: $target,
+                namespace: $this->namespaceFor($mode, $key),
+                mode: $mode->value,
+            );
+            foreach (glob($target . '/*.php') ?: [] as $file) {
+                $lintOutput = [];
+                exec(sprintf('%s -l %s 2>&1', escapeshellarg(PHP_BINARY), escapeshellarg($file)), $lintOutput, $lintStatus);
+                $this->assertSame(
+                    expected: 0,
+                    actual: $lintStatus,
+                    message: sprintf('%s: %s', $mode->value, implode("\n", $lintOutput)),
+                );
+            }
+        }
+
+        $this->assertEveryModeYields(
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict(
+                mode: $mode,
+                spec: $spec,
+                key: $key,
+                validJson: $validJson,
+                invalidJson: $invalidJson,
+            ),
+            context: $key,
+        );
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>, string, string}>
+     */
+    public static function integerExtremeLiteralProvider(): iterable
+    {
+        foreach (['smallest' => PHP_INT_MIN, 'largest' => PHP_INT_MAX, 'ordinary' => -5] as $label => $value) {
+            yield $label . ': default' => [['type' => 'integer', 'default' => $value], '{}', '{"f":"x"}'];
+            yield $label . ': enum case' => [
+                ['type' => 'integer', 'enum' => [$value, 3]],
+                sprintf('{"f":%d}', $value),
+                '{"f":5}',
+            ];
+            yield $label . ': const' => [['type' => 'integer', 'const' => $value], sprintf('{"f":%d}', $value), '{"f":5}'];
+        }
+    }
+
+    /**
+     * `minProperties` counts the keys of the PAYLOAD, and a schema that lets in keys it does not declare
+     * lets them count. Symfony's serializer drops an undeclared key before anything validates, so the
+     * object-wide callback counted only the declared ones and refused a valid body with a 422 — `{"alpha":
+     * "a","x":1}` against `minProperties: 2` and `additionalProperties: {type: integer}`. Where the
+     * schema is open, the count is unknowable there; where it is closed, it is exact and still enforced.
+     *
+     * @param array<string, mixed> $extraKeywords
+     */
+    #[DataProvider('minPropertiesBesideExtraKeysProvider')]
+    public function testMinPropertiesCountsTheKeysTheSchemaLetsIn(array $extraKeywords, string $validJson, string $invalidJson, array $diverges): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => ['Probe' => [
+                'type' => 'object',
+                'required' => ['alpha'],
+                'properties' => ['alpha' => ['type' => 'string'], 'beta' => ['type' => 'string'], 'count' => ['type' => 'integer']],
+                'minProperties' => 2,
+                ...$extraKeywords,
+            ]]],
+        ];
+        $key = 'min properties ' . md5((string)json_encode([$extraKeywords, $validJson, $invalidJson]));
+
+        $this->assertEveryModeYields(
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict(
+                mode: $mode,
+                spec: $spec,
+                key: $key,
+                validJson: $validJson,
+                invalidJson: $invalidJson,
+            ),
+            diverges: $diverges,
+            context: $key,
+        );
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>, string, string, array<string, array{expected: mixed, reason: string}>}>
+     */
+    public static function minPropertiesBesideExtraKeysProvider(): iterable
+    {
+        $uncountable = self::diverges(
+            mode: GenerationMode::Symfony,
+            expected: ['valid' => true, 'invalid' => true],
+            reason: 'the serializer drops an undeclared key before validation, so on a schema that admits '
+                . 'such keys the count is unknowable and the lower bound is not checked — a refusal there '
+                . 'would refuse valid bodies (README.symfony: unknown JSON key)',
+        );
+        $schemaValue = ['additionalProperties' => ['type' => 'integer']];
+
+        yield 'an extra key a value schema admits' => [$schemaValue, '{"alpha":"a","x":1}', '{"x":1}', self::diverges(
+            mode: GenerationMode::Yii3,
+            expected: ['valid' => false, 'invalid' => false],
+            reason: 'OPEN, not a boundary: yii3 counts the declared properties of the hydrated object and '
+                . 'refuses the valid body the way Symfony did — pinned so that fixing it fails here',
+        )];
+        yield 'too few keys where extras are admitted' => [$schemaValue, '{"alpha":"a","beta":"b"}', '{"alpha":"a"}', $uncountable];
+        yield 'control: too few keys on a closed schema' => [['additionalProperties' => false], '{"alpha":"a","beta":"b"}', '{"alpha":"a"}', []];
+        yield 'control: too few keys, unevaluated closed' => [['unevaluatedProperties' => false], '{"alpha":"a","count":1}', '{"alpha":"a"}', []];
+    }
+
+    /**
+     * The other ways a schema gives an undeclared key a place, measured in Symfony alone: runtime
+     * accepts these bodies on the way in but its own output check then counts the extra key as gone and
+     * refuses the DTO it built — a runtime question, open, and not this mode's. A schema that merely
+     * does not forbid other keys keeps the bound; `testObjectWideKeywordsAreEnforcedInEveryMode` pins
+     * that.
+     *
+     * @param array<string, mixed> $extraKeywords
+     */
+    #[DataProvider('symfonyOpenSchemaProvider')]
+    public function testSymfonyDoesNotCountAwayAKeyTheSchemaAdmits(array $extraKeywords, string $validJson): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => ['Probe' => [
+                'type' => 'object',
+                'required' => ['alpha'],
+                'properties' => ['alpha' => ['type' => 'string'], 'beta' => ['type' => 'string']],
+                'minProperties' => 2,
+                ...$extraKeywords,
+            ]]],
+        ];
+
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => false],
+            actual: $this->verdict(
+                mode: GenerationMode::Symfony,
+                spec: $spec,
+                key: 'symfony open schema ' . md5((string)json_encode($extraKeywords)),
+                validJson: $validJson,
+                invalidJson: '{"beta":"b","x1":1}',
+            ),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>, string}>
+     */
+    public static function symfonyOpenSchemaProvider(): iterable
+    {
+        yield 'an extra key any schema admits' => [['additionalProperties' => true], '{"alpha":"a","x1":"y"}'];
+        yield 'an extra key a pattern admits' => [['patternProperties' => ['^x' => ['type' => 'integer']]], '{"alpha":"a","x1":1}'];
+        yield 'a pattern beside a closed schema' => [['additionalProperties' => false, 'patternProperties' => ['^x' => ['type' => 'integer']]], '{"alpha":"a","x1":1}'];
+    }
+
+    /**
+     * A closed component reached through a `$ref` keeps its object-wide keywords wherever it sits:
+     * alone, as a list item, as a map value, beside `null` in an `anyOf`. Laravel folded such a class
+     * into its `properties` and `required` only, so `maxProperties`, `dependentRequired` and
+     * `additionalProperties: false` held for the class validated on its own and for nobody one level
+     * up — the undeclared key was then dropped on hydration, and the output no longer matched the input.
+     *
+     * @param array<string, mixed> $property the schema of `f`
+     * @param string $wrap how a value of the component is placed into `f`, `%s` standing for it
+     */
+    #[DataProvider('closedComponentPositionProvider')]
+    public function testAComponentKeepsItsObjectWideKeywordsWhereverItIsReferenced(
+        string $position,
+        array $property,
+        string $wrap,
+        string $keyword,
+        string $invalidValue,
+    ): void {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = self::probeSpec($property);
+        $spec['components']['schemas']['Inner'] = [
+            'type' => 'object',
+            'required' => ['alpha'],
+            'additionalProperties' => false,
+            'maxProperties' => 3,
+            'dependentRequired' => ['gamma' => ['delta']],
+            'properties' => [
+                'alpha' => ['type' => 'string'],
+                'beta' => ['type' => 'string'],
+                'gamma' => ['type' => 'string'],
+                'delta' => ['type' => 'string'],
+            ],
+        ];
+        $key = 'closed component ' . $position . ' ' . $keyword;
+        $validJson = sprintf('{"f":%s}', sprintf($wrap, '{"alpha":"ab","gamma":"c","delta":"d"}'));
+        $invalidJson = sprintf('{"f":%s}', sprintf($wrap, $invalidValue));
+
+        // An undeclared key is invisible to the two modes that build the object before any rule runs;
+        // the same boundary `testAClosedObjectRefusesAnUndeclaredKeyWhereverTheRawBodyIsReachable` names.
+        // yii3 does refuse it inside a map value (measured), so only its other positions diverge.
+        $diverges = [];
+        if ($keyword === 'additionalProperties') {
+            $diverges = self::diverges(
+                mode: GenerationMode::Symfony,
+                expected: ['valid' => true, 'invalid' => true],
+                reason: 'the serializer denormalizes before any constraint runs, so the undeclared key is gone',
+            );
+            if ($position !== 'map value') {
+                $diverges += self::diverges(
+                    mode: GenerationMode::Yii3,
+                    expected: ['valid' => true, 'invalid' => true],
+                    reason: 'the hydrator fills the object first, so the undeclared key has nowhere to survive',
+                );
+            }
+        }
+
+        $this->assertEveryModeYields(
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict(
+                mode: $mode,
+                spec: $spec,
+                key: $key,
+                validJson: $validJson,
+                invalidJson: $invalidJson,
+            ),
+            diverges: $diverges,
+            context: $key,
+        );
+    }
+
+    /**
+     * @return iterable<string, array{string, array<string, mixed>, string, string, string}>
+     */
+    public static function closedComponentPositionProvider(): iterable
+    {
+        $ref = ['$ref' => '#/components/schemas/Inner'];
+        $positions = [
+            'alone' => [$ref, '%s'],
+            'list item' => [['type' => 'array', 'items' => $ref], '[%s]'],
+            'map value' => [['type' => 'object', 'additionalProperties' => $ref], '{"k":%s}'],
+            'beside null' => [['anyOf' => [$ref, ['type' => 'null']]], '%s'],
+        ];
+        $invalid = [
+            'additionalProperties' => '{"alpha":"ab","x":1}',
+            'maxProperties' => '{"alpha":"a","beta":"b","gamma":"c","delta":"d"}',
+            'dependentRequired' => '{"alpha":"a","gamma":"c"}',
+        ];
+        foreach ($positions as $position => [$property, $wrap]) {
+            foreach ($invalid as $keyword => $value) {
+                yield $position . ': ' . $keyword => [$position, $property, $wrap, $keyword, $value];
+            }
+        }
+    }
+
+    /**
+     * A discriminated `oneOf` whose discriminator property is a plain string: the discriminator value
+     * picks the variant, so a value no variant answers to is refused, and so is a payload that matches
+     * one variant while naming the other. Laravel validated it as a bare `oneOf` — the discriminator
+     * went nowhere — and hydration, which does dispatch on the value, then threw: a 500 for `"Cow"`,
+     * and a `TypeError` for a `"Dog"` carrying a cat's fields.
+     */
+    #[DataProvider('plainStringDiscriminatorProvider')]
+    public function testAPlainStringDiscriminatorChoosesTheVariantInEveryMode(
+        bool $mapped,
+        string $validJson,
+        string $invalidJson,
+        string $keyword = 'oneOf',
+    ): void {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $discriminator = ['propertyName' => 'kind'];
+        if ($mapped) {
+            $discriminator['mapping'] = ['c' => '#/components/schemas/Cat', 'd' => '#/components/schemas/Dog'];
+        }
+        $spec = self::probeSpec(['$ref' => '#/components/schemas/Animal']);
+        $spec['components']['schemas'] += [
+            'Cat' => [
+                'type' => 'object',
+                'required' => ['kind', 'lives'],
+                'properties' => ['kind' => ['type' => 'string'], 'lives' => ['type' => 'integer']],
+            ],
+            'Dog' => [
+                'type' => 'object',
+                'required' => ['kind', 'bark'],
+                'properties' => ['kind' => ['type' => 'string'], 'bark' => ['type' => 'boolean']],
+            ],
+            'Animal' => [
+                $keyword => [['$ref' => '#/components/schemas/Cat'], ['$ref' => '#/components/schemas/Dog']],
+                'discriminator' => $discriminator,
+            ],
+        ];
+        $key = 'plain string discriminator ' . $keyword . ' ' . ($mapped ? 'mapped ' : '') . $invalidJson;
+
+        $this->assertEveryModeYields(
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict(
+                mode: $mode,
+                spec: $spec,
+                key: $key,
+                validJson: $validJson,
+                invalidJson: $invalidJson,
+            ),
+            context: $key,
+        );
+    }
+
+    /**
+     * @return iterable<string, array{bool, string, string}>
+     */
+    public static function plainStringDiscriminatorProvider(): iterable
+    {
+        yield 'unknown value' => [false, '{"f":{"kind":"Cat","lives":1}}', '{"f":{"kind":"Cow","lives":1}}'];
+        yield 'the other variant\'s fields' => [false, '{"f":{"kind":"Dog","bark":true}}', '{"f":{"kind":"Dog","lives":1}}'];
+        // The implicit map is the schema names behind the `$ref`s whichever keyword lists them.
+        yield 'anyOf: unknown value' => [false, '{"f":{"kind":"Cat","lives":1}}', '{"f":{"kind":"Cow","lives":1}}', 'anyOf'];
+        yield 'anyOf mapped: unknown value' => [true, '{"f":{"kind":"c","lives":1}}', '{"f":{"kind":"zz","lives":1}}', 'anyOf'];
+        yield 'mapped: unknown value' => [true, '{"f":{"kind":"c","lives":1}}', '{"f":{"kind":"zz","lives":1}}'];
+        yield 'mapped: a class name is not a mapped value' => [true, '{"f":{"kind":"d","bark":false}}', '{"f":{"kind":"Cat","lives":1}}'];
+        yield 'mapped: the other variant\'s fields' => [true, '{"f":{"kind":"c","lives":1}}', '{"f":{"kind":"d","lives":1}}'];
+    }
+
+    /**
+     * JSON `true` is not an integer. Laravel's `integer` rule reads it through `FILTER_VALIDATE_INT`,
+     * which turns it into `1`, so it passed — and then either died in the typed constructor or landed
+     * in an `array<int>` as `true`. Every spelling of an integer is pinned: the plain one, a nullable
+     * one, a `format`, an int-backed enum, a list, a map, a list of lists and one inside a referenced
+     * class — alone, as a list item, as a map value and two classes down.
+     *
+     * laravel-data refuses it from `withValidator()`, reading the validator's data rather than the raw
+     * body: a decoded `true` is still a boolean, so no request is needed to see it.
+     *
+     * yii3 refuses it through the raw `#[Validate]` each integer carries, which sees the boolean before
+     * the hydrator casts it to `1`.
+     *
+     * @param array<string, mixed> $property the schema of `f`
+     */
+    #[DataProvider('booleanForIntegerProvider')]
+    public function testABooleanIsNotAnIntegerInEveryMode(array $property, string $validJson, string $invalidJson): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = self::probeSpec($property);
+        $spec['components']['schemas'] += [
+            'Level' => ['type' => 'integer', 'enum' => [1, 2]],
+            'Inner' => ['type' => 'object', 'required' => ['n'], 'properties' => ['n' => ['type' => 'integer']]],
+            'Outer' => ['type' => 'object', 'required' => ['inner'], 'properties' => ['inner' => ['$ref' => '#/components/schemas/Inner']]],
+        ];
+        $key = 'boolean for integer ' . $invalidJson . ' ' . md5((string)json_encode($property));
+
+        $this->assertEveryModeYields(
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict(
+                mode: $mode,
+                spec: $spec,
+                key: $key,
+                validJson: $validJson,
+                invalidJson: $invalidJson,
+            ),
+            context: $key,
+        );
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>, string, string}>
+     */
+    public static function booleanForIntegerProvider(): iterable
+    {
+        yield 'integer true' => [['type' => 'integer'], '{"f":1}', '{"f":true}'];
+        yield 'integer false' => [['type' => 'integer'], '{"f":0}', '{"f":false}'];
+        yield 'nullable integer' => [['type' => ['integer', 'null']], '{"f":null}', '{"f":true}'];
+        yield 'int64' => [['type' => 'integer', 'format' => 'int64'], '{"f":5}', '{"f":true}'];
+        yield 'number' => [['type' => 'number'], '{"f":1.5}', '{"f":true}'];
+        yield 'int-backed enum' => [['$ref' => '#/components/schemas/Level'], '{"f":1}', '{"f":true}'];
+        yield 'list of integers' => [['type' => 'array', 'items' => ['type' => 'integer']], '{"f":[1]}', '{"f":[true]}'];
+        yield 'map of integers' => [['type' => 'object', 'additionalProperties' => ['type' => 'integer']], '{"f":{"a":1}}', '{"f":{"a":true}}'];
+        yield 'integer of a referenced class' => [['$ref' => '#/components/schemas/Inner'], '{"f":{"n":1}}', '{"f":{"n":true}}'];
+        yield 'integer of a list item class' => [['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Inner']], '{"f":[{"n":1}]}', '{"f":[{"n":true}]}'];
+        yield 'integer of a map value class' => [['type' => 'object', 'additionalProperties' => ['$ref' => '#/components/schemas/Inner']], '{"f":{"a":{"n":1}}}', '{"f":{"a":{"n":true}}}'];
+        yield 'integer two classes deep' => [['$ref' => '#/components/schemas/Outer'], '{"f":{"inner":{"n":1}}}', '{"f":{"inner":{"n":true}}}'];
+        yield 'list of lists of integers' => [['type' => 'array', 'items' => ['type' => 'array', 'items' => ['type' => 'integer']]], '{"f":[[1]]}', '{"f":[[true]]}'];
+    }
+
+    /**
+     * An `additionalProperties` SCHEMA beside declared properties: the undeclared keys must match it. The
+     * rule-based modes carried `additionalProperties: false` into the object slot and dropped the schema
+     * form, so `{"a":"x","n":"s"}` passed where `n` must be an integer — at the root, behind a `$ref`
+     * and in a list of them alike. A plain map (no declared properties) was already checked and is
+     * pinned beside them.
+     *
+     * @param array<string, mixed>|null $property the schema of `f`, or null to put `Colors` at the root
+     */
+    #[DataProvider('additionalPropertiesSchemaProvider')]
+    public function testAnAdditionalPropertiesSchemaIsEnforcedInEveryMode(?array $property, string $validJson, string $invalidJson): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $colors = [
+            'type' => 'object',
+            'required' => ['name'],
+            'properties' => ['name' => ['type' => 'string']],
+            'additionalProperties' => ['type' => 'integer'],
+        ];
+        $spec = $property === null ? self::probeSpec([]) : self::probeSpec($property);
+        if ($property === null) {
+            $spec['components']['schemas']['Probe'] = $colors;
+        }
+        $spec['components']['schemas']['Colors'] = $colors;
+        $key = 'additionalProperties schema ' . $invalidJson . ' ' . md5((string)json_encode($property));
+
+        // Both hydrating modes bind the payload into a typed object before anything validates it, and an
+        // undeclared key has nowhere to go there — the same boundary as `additionalProperties: false`.
+        $hydrated = $property === null || ($property['type'] ?? null) !== 'object';
+        $diverges = $hydrated ? [
+            ...self::diverges(
+                mode: GenerationMode::Symfony,
+                expected: ['valid' => true, 'invalid' => true],
+                reason: 'the serializer denormalizes before any constraint runs, so the undeclared key is already gone',
+            ),
+            ...self::diverges(
+                mode: GenerationMode::Yii3,
+                expected: ['valid' => true, 'invalid' => true],
+                reason: 'the hydrator fills the object first, so the undeclared key has nowhere to survive',
+            ),
+        ] : [];
+
+        $this->assertEveryModeYields(
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict(
+                mode: $mode,
+                spec: $spec,
+                key: $key,
+                validJson: $validJson,
+                invalidJson: $invalidJson,
+            ),
+            diverges: $diverges,
+            context: $key,
+        );
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>|null, string, string}>
+     */
+    public static function additionalPropertiesSchemaProvider(): iterable
+    {
+        $colors = ['$ref' => '#/components/schemas/Colors'];
+
+        yield 'at the root' => [null, '{"name":"x","red":5}', '{"name":"x","red":"s"}'];
+        yield 'behind a $ref' => [$colors, '{"f":{"name":"x","red":5}}', '{"f":{"name":"x","red":"s"}}'];
+        yield 'in a list of them' => [['type' => 'array', 'items' => $colors], '{"f":[{"name":"x","red":5}]}', '{"f":[{"name":"x","red":"s"}]}'];
+        yield 'a plain map' => [['type' => 'object', 'additionalProperties' => ['type' => 'integer']], '{"f":{"red":5}}', '{"f":{"red":"s"}}'];
+    }
+
+    /**
+     * A property that is a discriminated union OR null. Each spelling put `nullable` beside the folded
+     * union in the rule-based modes, and the union check reads nullability only from its own branches,
+     * so `{"f":null}` was refused with "does not match any oneOf branch" — and every other mode accepts
+     * it. The invalid payload is a member missing its required field, so a fix that stopped checking
+     * the union would fail here too.
+     *
+     * @param array<string, mixed> $property the schema of `f`
+     * @param array<string, array{expected: array{valid: bool, invalid: bool}, reason: string}> $diverges
+     */
+    #[DataProvider('nullableUnionProvider')]
+    public function testANullableDiscriminatedUnionAdmitsNullInEveryMode(array $property, string $validJson, string $invalidJson, array $diverges = []): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = self::probeSpec($property);
+        $spec['components']['schemas'] += [
+            // The union sorts before its members: the parity harness loads the generated files in
+            // name order, and a member needs the interface it implements already declared.
+            'Animal' => [
+                'oneOf' => [['$ref' => '#/components/schemas/Cat'], ['$ref' => '#/components/schemas/Dog']],
+                'discriminator' => [
+                    'propertyName' => 'kind',
+                    'mapping' => ['c' => '#/components/schemas/Cat', 'd' => '#/components/schemas/Dog'],
+                ],
+            ],
+            'Cat' => ['type' => 'object', 'required' => ['kind', 'lives'], 'properties' => ['kind' => ['type' => 'string'], 'lives' => ['type' => 'integer']]],
+            'Dog' => ['type' => 'object', 'required' => ['kind', 'size'], 'properties' => ['kind' => ['type' => 'string'], 'size' => ['type' => 'number']]],
+        ];
+        $key = 'nullable union ' . $validJson . ' ' . md5((string)json_encode($property));
+
+        $this->assertEveryModeYields(
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict(
+                mode: $mode,
+                spec: $spec,
+                key: $key,
+                validJson: $validJson,
+                invalidJson: $invalidJson,
+            ),
+            diverges: $diverges,
+            context: $key,
+        );
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>, 1: string, 2: string, 3?: array<string, array{expected: array{valid: bool, invalid: bool}, reason: string}>}>
+     */
+    public static function nullableUnionProvider(): iterable
+    {
+        $animal = ['$ref' => '#/components/schemas/Animal'];
+        $broken = '{"f":{"kind":"c"}}';
+
+        yield 'oneOf with a null branch' => [['oneOf' => [$animal, ['type' => 'null']]], '{"f":null}', $broken];
+        yield 'anyOf with a null branch' => [['anyOf' => [$animal, ['type' => 'null']]], '{"f":null}', $broken];
+        yield 'null branch first' => [['oneOf' => [['type' => 'null'], $animal]], '{"f":null}', $broken];
+        yield 'an OAS 3.0 nullable branch' => [['oneOf' => [$animal, ['nullable' => true]]], '{"f":null}', $broken];
+        yield 'allOf with nullable' => [['allOf' => [$animal], 'nullable' => true], '{"f":null}', $broken];
+        yield '$ref with nullable' => [[...$animal, 'nullable' => true], '{"f":null}', $broken];
+        // The member is still checked once null is let through.
+        yield 'oneOf with a null branch, a member' => [['oneOf' => [$animal, ['type' => 'null']]], '{"f":{"kind":"c","lives":9}}', $broken];
+        yield 'oneOf with a null branch, an unknown value' => [['oneOf' => [$animal, ['type' => 'null']]], '{"f":{"kind":"d","size":2}}', '{"f":{"kind":"zz","size":2}}'];
+        // Neighbours: without a null anywhere, null stays refused — and a plain object with a null branch
+        // already admitted it.
+        yield 'no null anywhere' => [$animal, '{"f":{"kind":"d","size":2}}', '{"f":null}'];
+        yield 'a plain object or null' => [['oneOf' => [['$ref' => '#/components/schemas/Cat'], ['type' => 'null']]], '{"f":null}', $broken];
+    }
+
+    /**
+     * A value the yii3 hydrator cannot hold as sent: it casts to the declared type before any rule
+     * runs, or leaves the property unset when no cast fits, so only the raw `#[Validate]` checks see
+     * what the payload said. Each case is a shape where that check was missing or answered wrong — an
+     * optional enum or object given null, an integer read as a Unix timestamp for a date, a union of
+     * scalars cast to whichever member took the value. Every other mode refuses these from the payload
+     * itself. A date inside a union is pinned in yii3's own suite (`Yii3RawValueCheckTest`): the other
+     * modes do not agree with one another on those yet.
+     *
+     * @param array<string, mixed> $property the schema of `f`
+     */
+    #[DataProvider('rawValueProvider')]
+    public function testAValueTheHydratorWouldCastIsJudgedAsSentInEveryMode(
+        array $property,
+        bool $required,
+        string $validJson,
+        string $invalidJson,
+    ): void {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = self::probeSpec($property);
+        $spec['components']['schemas']['Probe']['required'] = $required ? ['f'] : [];
+        $spec['components']['schemas'] += [
+            'Color' => ['type' => 'string', 'enum' => ['red', 'blue']],
+            'Widget' => ['type' => 'object', 'required' => ['id'], 'properties' => ['id' => ['type' => 'integer']]],
+        ];
+        $key = 'raw value ' . ($required ? 'required ' : 'optional ') . $invalidJson . ' ' . md5((string)json_encode($property));
+
+        $this->assertEveryModeYields(
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict(
+                mode: $mode,
+                spec: $spec,
+                key: $key,
+                validJson: $validJson,
+                invalidJson: $invalidJson,
+            ),
+            context: $key,
+        );
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>, bool, string, string}>
+     */
+    public static function rawValueProvider(): iterable
+    {
+        $inlineEnum = ['type' => 'string', 'enum' => ['a', 'b']];
+        $color = ['$ref' => '#/components/schemas/Color'];
+        $widget = ['$ref' => '#/components/schemas/Widget'];
+        $date = ['type' => 'string', 'format' => 'date'];
+        $dateTime = ['type' => 'string', 'format' => 'date-time'];
+
+        // An enum the hydrator cannot fill is left unset; optional, that read as "not sent".
+        yield 'optional inline enum, unknown value' => [$inlineEnum, false, '{"f":"a"}', '{"f":"zzz"}'];
+        yield 'optional enum $ref, unknown value' => [$color, false, '{"f":"red"}', '{"f":"zzz"}'];
+        yield 'required inline enum, unknown value' => [$inlineEnum, true, '{"f":"b"}', '{"f":"zzz"}'];
+        // Null for an optional property the schema does not let be null.
+        yield 'optional object $ref, null' => [$widget, false, '{"f":{"id":1}}', '{"f":null}'];
+        yield 'optional enum $ref, null' => [$color, false, '{"f":"blue"}', '{"f":null}'];
+        yield 'optional inline enum, null' => [$inlineEnum, false, '{}', '{"f":null}'];
+        yield 'optional string, null' => [['type' => 'string'], false, '{"f":"x"}', '{"f":null}'];
+        yield 'optional nullable object $ref, null is fine' => [['oneOf' => [$widget, ['type' => 'null']]], false, '{"f":null}', '{"f":{"id":"x"}}'];
+        yield 'optional nullable enum $ref, null is fine' => [[...$color, 'nullable' => true], false, '{"f":null}', '{"f":"zzz"}'];
+        // An integer is not a date string, though the yii3 rule and the hydrator both take it as a timestamp.
+        yield 'date given an integer' => [$date, true, '{"f":"2024-01-02"}', '{"f":20240102}'];
+        yield 'optional date given an integer' => [$date, false, '{"f":"2024-01-02"}', '{"f":5}'];
+        yield 'date-time given an integer' => [$dateTime, true, '{"f":"2024-01-02T03:04:05Z"}', '{"f":5}'];
+        yield 'date given nonsense' => [$date, true, '{"f":"2024-01-02"}', '{"f":"nonsense"}'];
+        // A union of scalars: the hydrator cast the value to one member, so nothing was refused.
+        $numberOrBool = ['anyOf' => [['type' => 'number'], ['type' => 'boolean']]];
+        yield 'number or boolean, a word' => [$numberOrBool, true, '{"f":1.5}', '{"f":"x"}'];
+        yield 'number or boolean, a list' => [$numberOrBool, true, '{"f":true}', '{"f":[1]}'];
+        yield 'number or boolean, an object' => [$numberOrBool, true, '{"f":2}', '{"f":{"a":1}}'];
+        yield 'type list integer or boolean, a word' => [['type' => ['integer', 'boolean']], true, '{"f":3}', '{"f":"x"}'];
+        yield 'type list integer or boolean, a fraction' => [['type' => ['integer', 'boolean']], true, '{"f":false}', '{"f":1.5}'];
+        yield 'string or integer, a fraction' => [['oneOf' => [['type' => 'string'], ['type' => 'integer']]], true, '{"f":"x"}', '{"f":1.5}'];
+        yield 'optional number or boolean, a word' => [$numberOrBool, false, '{}', '{"f":"x"}'];
+    }
+
+    /**
+     * A composed or discriminated component two containers deep. The plain-object component at that
+     * depth was already folded into the rules; an `allOf` child or a discriminated union was not, so a
+     * list of lists of them validated nothing below the inner list.
+     *
+     * @param array<string, mixed> $property the schema of `f`
+     * @param array<int, GenerationMode> $divergent the modes that still accept the invalid payload, each for the reason below
+     */
+    #[DataProvider('deepCompositionProvider')]
+    public function testACompositionTwoContainersDeepIsEnforcedInEveryMode(array $property, string $validJson, string $invalidJson, array $divergent = []): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = self::probeSpec($property);
+        $spec['components']['schemas'] += [
+            'Base' => ['type' => 'object', 'required' => ['id'], 'properties' => ['id' => ['type' => 'integer']]],
+            'Shape' => ['allOf' => [
+                ['$ref' => '#/components/schemas/Base'],
+                ['type' => 'object', 'required' => ['side'], 'properties' => ['side' => ['type' => 'number']]],
+            ]],
+            'Cat' => ['type' => 'object', 'required' => ['kind', 'lives'], 'properties' => ['kind' => ['type' => 'string', 'enum' => ['cat']], 'lives' => ['type' => 'integer']]],
+            'Dog' => ['type' => 'object', 'required' => ['kind', 'bark'], 'properties' => ['kind' => ['type' => 'string', 'enum' => ['dog']], 'bark' => ['type' => 'boolean']]],
+            'Animal' => [
+                'oneOf' => [['$ref' => '#/components/schemas/Cat'], ['$ref' => '#/components/schemas/Dog']],
+                'discriminator' => ['propertyName' => 'kind', 'mapping' => ['cat' => '#/components/schemas/Cat', 'dog' => '#/components/schemas/Dog']],
+            ],
+            'Plain' => ['type' => 'object', 'required' => ['id'], 'properties' => ['id' => ['type' => 'integer']]],
+        ];
+        $key = 'composition two deep ' . $invalidJson . ' ' . md5((string)json_encode($property));
+        $reasons = [
+            GenerationMode::Symfony->value => 'OPEN GAP, not a boundary: the serializer builds the variant objects '
+                . 'two containers down through the discriminator map, and nothing checks them there; inlining the '
+                . 'union instead refused valid payloads, its branches reading the objects\' private state as missing',
+        ];
+        $diverges = [];
+        foreach ($divergent as $mode) {
+            $diverges += self::diverges($mode, ['valid' => true, 'invalid' => true], $reasons[$mode->value]);
+        }
+
+        $this->assertEveryModeYields(
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict(
+                mode: $mode,
+                spec: $spec,
+                key: $key,
+                validJson: $validJson,
+                invalidJson: $invalidJson,
+            ),
+            diverges: $diverges,
+            context: $key,
+        );
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>, 1: string, 2: string, 3?: array<int, GenerationMode>}>
+     */
+    public static function deepCompositionProvider(): iterable
+    {
+        $listOf = static fn(array $items): array => ['type' => 'array', 'items' => $items];
+        $mapOf = static fn(array $values): array => ['type' => 'object', 'additionalProperties' => $values];
+        $shape = ['$ref' => '#/components/schemas/Shape'];
+        $animal = ['$ref' => '#/components/schemas/Animal'];
+        $plain = ['$ref' => '#/components/schemas/Plain'];
+
+        yield 'control: plain list of lists' => [$listOf($listOf($plain)), '{"f":[[{"id":1}]]}', '{"f":[[{"id":"x"}]]}'];
+        yield 'control: allOf one list deep' => [$listOf($shape), '{"f":[{"id":1,"side":2}]}', '{"f":[{"id":"x","side":2}]}'];
+        yield 'allOf list of lists: parent property' => [$listOf($listOf($shape)), '{"f":[[{"id":1,"side":2}]]}', '{"f":[[{"id":"x","side":2}]]}'];
+        yield 'allOf list of lists: own property' => [$listOf($listOf($shape)), '{"f":[[{"id":1,"side":2}]]}', '{"f":[[{"id":1}]]}'];
+        yield 'allOf list of lists: a scalar item' => [$listOf($listOf($shape)), '{"f":[[{"id":1,"side":2}]]}', '{"f":[["str"]]}'];
+        yield 'allOf map of lists' => [$mapOf($listOf($shape)), '{"f":{"a":[{"id":1,"side":2}]}}', '{"f":{"a":[{"id":"x","side":2}]}}'];
+        yield 'allOf list of maps' => [$listOf($mapOf($shape)), '{"f":[{"a":{"id":1,"side":2}}]}', '{"f":[{"a":{"id":"x"}}]}'];
+        yield 'union list of lists' => [$listOf($listOf($animal)), '{"f":[[{"kind":"cat","lives":9}]]}', '{"f":[[{"kind":"cat","lives":"x"}]]}', [GenerationMode::Symfony]];
+        yield 'union map of lists' => [$mapOf($listOf($animal)), '{"f":{"a":[{"kind":"dog","bark":true}]}}', '{"f":{"a":[{"kind":"dog"}]}}', [GenerationMode::Symfony]];
+    }
+
+    /**
+     * Runtime and Symfony only: they are the two modes that hydrate a union with no discriminator —
+     * the Laravel modes and yii3 refuse to guess which member a payload is — so they are the two that
+     * can be held to one answer on every shape the providers above list.
+     *
+     * @param array<string, mixed> $spec
+     * @param array<int, string> $validJsons
+     * @param array<int, string> $invalidJsons
+     * @param array<int, GenerationMode> $modes
+     */
+    private function assertHydratingModesRefuse(
+        array $spec,
+        string $key,
+        array $validJsons,
+        array $invalidJsons,
+        array $modes = [GenerationMode::Runtime, GenerationMode::Symfony],
+    ): void {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        foreach ($modes as $mode) {
+            foreach ($invalidJsons as $invalidJson) {
+                foreach ($validJsons as $validJson) {
+                    $this->assertSame(
+                        expected: ['valid' => true, 'invalid' => false],
+                        actual: $this->verdict(
+                            mode: $mode,
+                            spec: $spec,
+                            key: $key,
+                            validJson: $validJson,
+                            invalidJson: $invalidJson,
+                        ),
+                        message: sprintf('%s: %s against %s', $mode->value, $invalidJson, $validJson),
+                    );
+                }
+            }
+        }
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    private static function unionMemberSchemas(): array
+    {
+        return [
+            'Alpha' => [
+                'type' => 'object',
+                'required' => ['a'],
+                'properties' => ['kind' => ['type' => 'string'], 'a' => ['type' => 'string', 'minLength' => 2]],
+            ],
+            'Beta' => [
+                'type' => 'object',
+                'required' => ['b'],
+                'properties' => ['kind' => ['type' => 'string'], 'b' => ['type' => 'integer', 'minimum' => 10]],
+            ],
+        ];
     }
 
     /**
@@ -3151,6 +4398,12 @@ final class ValidationParityTest extends TestCase
      * cannot hold is not "accepted" in any useful sense — and in this mode hydration is where several
      * rejections actually happen (an out-of-range enum, a nested shape that will not build).
      *
+     * Through `ValidatingHydrator`, the setup README.yii3 makes mandatory: the hydrator casts before
+     * any rule runs, and only the raw `#[Validate]` checks see what the payload actually said. A plain
+     * `Hydrator` skips them by design, so measuring through it charged yii3 with gaps — a string cast
+     * to `0`, an optional enum the hydrator could not fill and left absent — that the documented
+     * setup does not have.
+     *
      * @param array<string, mixed> $spec
      * @return array{valid: bool, invalid: bool}
      */
@@ -3166,9 +4419,7 @@ final class ValidationParityTest extends TestCase
             }
 
             try {
-                $container = new Yii3Container();
-
-                return $container->validate($container->hydrate($fqcn, $payload))->isValid();
+                return (new Yii3Container())->hydrateValidated($fqcn, $payload)->isValid();
             } catch (Throwable) {
                 return false;
             }
@@ -3188,9 +4439,9 @@ final class ValidationParityTest extends TestCase
     private static function declaredDivergences(): array
     {
         $coerced = self::diverges(
-            GenerationMode::Yii3,
-            ['valid' => true, 'invalid' => true],
-            'the hydrator CASTS before any rule runs — PhpNativeTypeCaster turned 5 into "5", so the '
+            mode: GenerationMode::Yii3,
+            expected: ['valid' => true, 'invalid' => true],
+            reason: 'the hydrator CASTS before any rule runs — PhpNativeTypeCaster turned 5 into "5", so the '
             . 'type rule sees a valid value. Dropping that caster was measured too and is worse: '
             . 'valid payloads stop hydrating as well. Symfony mode diverges here for the same reason.',
         );
@@ -3200,24 +4451,19 @@ final class ValidationParityTest extends TestCase
         // records. Pinned again one level down, because a container is reached through different
         // code and "the scalar diverges" is not proof that the item does.
         $lenientDateTime = self::diverges(
-            GenerationMode::Symfony,
-            ['valid' => true, 'invalid' => true],
-            'the property is a DateTimeImmutable and the serializer parses the item before any '
+            mode: GenerationMode::Symfony,
+            expected: ['valid' => true, 'invalid' => true],
+            reason: 'the property is a DateTimeImmutable and the serializer parses the item before any '
             . 'constraint runs; PHP accepts what the schema does not, exactly as for a scalar '
             . 'date-time — see "a loose format: date-time string"',
         );
 
         return [
-            'type string' => $coerced,
-            'type integer' => $coerced,
-            'int64 given a string' => $coerced,
             // A `false` branch can never match, so this `anyOf` collapses to the single `type: string`
-            // branch and the property is typed `?string` — which puts it back under the caster above.
-            // The boolean is carried into the constraints correctly; what diverges is the same
-            // coercion the two scalar cases record, reached by a different route.
+            // branch and the property is typed `?string` — but no raw `#[Validate]` is emitted for a
+            // composition, so the caster above reaches the value first. The boolean is carried into
+            // the constraints correctly; what diverges is the coercion alone.
             'anyOf with a false branch' => $coerced,
-            'type union with null' => $coerced,
-            'type union null first' => $coerced,
             'format date-time in a list' => $lenientDateTime,
         ];
     }
@@ -3247,8 +4493,8 @@ final class ValidationParityTest extends TestCase
             }
 
             self::assertTrue(
-                GenerationMode::Yii3->isLast(),
-                'yii3 may be skipped for a missing ext-intl, and a skip aborts the whole test — so it '
+                condition: GenerationMode::Yii3->isLast(),
+                message: 'yii3 may be skipped for a missing ext-intl, and a skip aborts the whole test — so it '
                 . 'must be the LAST case in GenerationMode, or the modes after it stop being measured.',
             );
             self::markTestSkipped(sprintf('yii3 mode needs ext-intl for a temporal property ("%s").', $key));
@@ -3365,8 +4611,8 @@ final class ValidationParityTest extends TestCase
         LaravelDataContainer::boot();
 
         $accepts = static fn(string $json): bool => (bool)LaravelDataContainer::withRequest(
-            $json,
-            static function (LaravelRequest $request) use ($fqcn): bool {
+            json: $json,
+            work: static function (LaravelRequest $request) use ($fqcn): bool {
                 try {
                     // Hydration is part of the verdict, as in every other mode: a payload the rules
                     // accept but the object cannot hold is not "accepted" in any useful sense.
@@ -3393,18 +4639,18 @@ final class ValidationParityTest extends TestCase
         $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
         $typeExtractor = new PropertyInfoExtractor([], [new PhpDocExtractor(), new ReflectionExtractor()]);
         $serializer = new Serializer(
-            [
+            normalizers: [
                 new BackedEnumNormalizer(),
                 new DateTimeNormalizer(),
                 new ObjectNormalizer(
-                    $classMetadataFactory,
-                    new MetadataAwareNameConverter($classMetadataFactory),
-                    null,
-                    $typeExtractor,
+                    classMetadataFactory: $classMetadataFactory,
+                    nameConverter: new MetadataAwareNameConverter($classMetadataFactory),
+                    propertyAccessor: null,
+                    propertyTypeExtractor: $typeExtractor,
                 ),
                 new ArrayDenormalizer(),
             ],
-            [new JsonEncoder()],
+            encoders: [new JsonEncoder()],
         );
         $validator = Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator();
 

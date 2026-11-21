@@ -100,8 +100,8 @@ final class SymfonySerializationGroupsTest extends TestCase
         $dto = $serializer->deserialize(self::PAYLOAD, $fqcn, 'json');
 
         $this->assertSame(
-            ['id' => 99, 'login' => 'u', 'child' => ['note' => 'n']],
-            $serializer->normalize($dto, null, ['groups' => 'read']),
+            expected: ['id' => 99, 'login' => 'u', 'child' => ['note' => 'n']],
+            actual: $serializer->normalize($dto, null, ['groups' => 'read']),
         );
     }
 
@@ -141,8 +141,8 @@ final class SymfonySerializationGroupsTest extends TestCase
         // that passes no context still sees the writeOnly field. This is why the generated class
         // docblock spells the context out.
         $this->assertSame(
-            ['id' => 99, 'login' => 'u', 'password' => 'secret', 'child' => ['note' => 'n']],
-            $serializer->normalize($dto),
+            expected: ['id' => 99, 'login' => 'u', 'password' => 'secret', 'child' => ['note' => 'n']],
+            actual: $serializer->normalize($dto),
         );
     }
 
@@ -248,16 +248,16 @@ final class SymfonySerializationGroupsTest extends TestCase
         $typeExtractor = new PropertyInfoExtractor([], [new PhpDocExtractor(), new ReflectionExtractor()]);
 
         return new Serializer(
-            [
+            normalizers: [
                 new ObjectNormalizer(
-                    $classMetadataFactory,
-                    new MetadataAwareNameConverter($classMetadataFactory),
-                    null,
-                    $typeExtractor,
+                    classMetadataFactory: $classMetadataFactory,
+                    nameConverter: new MetadataAwareNameConverter($classMetadataFactory),
+                    propertyAccessor: null,
+                    propertyTypeExtractor: $typeExtractor,
                 ),
                 new ArrayDenormalizer(),
             ],
-            [new JsonEncoder()],
+            encoders: [new JsonEncoder()],
         );
     }
 }

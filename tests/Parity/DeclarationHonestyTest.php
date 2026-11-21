@@ -114,7 +114,7 @@ final class DeclarationHonestyTest extends TestCase
         $namespace = 'DeclSibling' . $mode->tag();
         $target = $this->outputDirectory . '/' . $namespace;
         (new GenerateDtoCommand())->generateFromArray(
-            [
+            openApi: [
                 'openapi' => '3.1.0',
                 'info' => ['title' => 'T', 'version' => '1.0.0'],
                 'paths' => [],
@@ -130,15 +130,15 @@ final class DeclarationHonestyTest extends TestCase
                     ],
                 ]],
             ],
-            $target,
-            $namespace,
-            $mode->value,
+            outputDirectory: $target,
+            namespace: $namespace,
+            mode: $mode->value,
         );
         $source = (string)file_get_contents($target . '/Memo.php');
 
         $declares = static fn(string $name, string $type): bool => preg_match(
-            sprintf('/function get%1$s\(\): %2$s\b|readonly %2$s \$%3$s\b/', ucfirst($name), preg_quote($type, '/'), $name),
-            $source,
+            pattern: sprintf('/function get%1$s\(\): %2$s\b|readonly %2$s \$%3$s\b/', ucfirst($name), preg_quote($type, '/'), $name),
+            subject: $source,
         ) === 1;
         $this->assertTrue($declares('extra', 'string'), 'extra is required beside the allOf');
         $this->assertFalse($declares('spare', 'string'), 'spare is not');

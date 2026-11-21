@@ -39,8 +39,8 @@ trait RendersCommonDtoParts
             $position[$property['name']] ??= $index;
         }
         usort(
-            $params,
-            static fn(array $a, array $b): int => ($position[$a['name']] ?? PHP_INT_MAX) <=> ($position[$b['name']] ?? PHP_INT_MAX),
+            array: $params,
+            callback: static fn(array $a, array $b): int => ($position[$a['name']] ?? PHP_INT_MAX) <=> ($position[$b['name']] ?? PHP_INT_MAX),
         );
 
         return $params;
@@ -71,8 +71,8 @@ trait RendersCommonDtoParts
         }
 
         return array_values(array_unique(array_filter(
-            $interfaces,
-            static fn(string $interface): bool => $interface !== $className,
+            array: $interfaces,
+            callback: static fn(string $interface): bool => $interface !== $className,
         )));
     }
 
@@ -129,6 +129,13 @@ trait RendersCommonDtoParts
 
     private function numericLiteral(int|float $value): string
     {
+        // The smallest integer has no literal: `-9223372036854775808` is unary minus on a number one
+        // past PHP_INT_MAX, which PHP has already read as a float. Emitted bare, it was a float default
+        // on an `int` parameter — a fatal on load — and an int-backed enum case that never resolved.
+        if ($value === PHP_INT_MIN) {
+            return '(-' . PHP_INT_MAX . ' - 1)';
+        }
+
         if (is_int($value)) {
             return (string)$value;
         }
@@ -388,8 +395,8 @@ trait RendersCommonDtoParts
         // default), otherwise PHP emits an "optional before required" deprecation and construction by
         // the required args alone fails. usort is stable on PHP 8.3, so schema order is otherwise kept.
         usort(
-            $values,
-            static fn(array $a, array $b): int => ($b['required'] ? 1 : 0) <=> ($a['required'] ? 1 : 0),
+            array: $values,
+            callback: static fn(array $a, array $b): int => ($b['required'] ? 1 : 0) <=> ($a['required'] ? 1 : 0),
         );
 
         return $values;
@@ -403,8 +410,8 @@ trait RendersCommonDtoParts
      *
      * A `$ref` branch counts too. Symfony writes the child as one flat class holding the parent's
      * properties, and nothing else checks the parent's rules for them there; listed as merely
-     * evaluated, a uuid the parent pinned went through the child unchecked. The child's own schema for
-     * a property it redeclares wins. With the parent's keys in `properties`, an `additionalProperties`
+     * evaluated, a uuid the parent pinned went through the child unchecked. A property the child
+     * redeclares keeps the parent's schema beside its own. With the parent's keys in `properties`, an `additionalProperties`
      * or `unevaluatedProperties` on the class or a branch no longer counts them as extra.
      *
      * @param array<mixed> $schemaDefinition
@@ -442,7 +449,10 @@ trait RendersCommonDtoParts
                         className: $parentClass,
                         visiting: $visiting,
                     );
-                    $inherited = [...$inherited, ...(is_array($parentMerged['properties'] ?? null) ? $parentMerged['properties'] : [])];
+                    $inherited = $this->withRestatedPropertySchemas(
+                        properties: $inherited,
+                        restated: is_array($parentMerged['properties'] ?? null) ? $parentMerged['properties'] : [],
+                    );
                 }
                 continue;
             }
@@ -453,10 +463,10 @@ trait RendersCommonDtoParts
                 ...(is_array($merged['required'] ?? null) ? $merged['required'] : []),
                 ...(is_array($branch['required'] ?? null) ? $branch['required'] : []),
             ];
-            $properties = [
-                ...(is_array($merged['properties'] ?? null) ? $merged['properties'] : []),
-                ...(is_array($branch['properties'] ?? null) ? $branch['properties'] : []),
-            ];
+            $properties = $this->withRestatedPropertySchemas(
+                properties: is_array($merged['properties'] ?? null) ? $merged['properties'] : [],
+                restated: is_array($branch['properties'] ?? null) ? $branch['properties'] : [],
+            );
             $merged = [...$merged, ...$branch];
             if ($required !== []) {
                 $merged['required'] = array_values(array_unique($required));
@@ -467,9 +477,31 @@ trait RendersCommonDtoParts
         }
 
         if ($inherited !== []) {
-            $merged['properties'] = [...$inherited, ...(is_array($merged['properties'] ?? null) ? $merged['properties'] : [])];
+            $merged['properties'] = $this->withRestatedPropertySchemas(
+                properties: $inherited,
+                restated: is_array($merged['properties'] ?? null) ? $merged['properties'] : [],
+            );
         }
 
         return $merged;
+    }
+
+    /**
+     * The `properties` of two `allOf` branches as one map. A property both declare keeps BOTH schemas
+     * under an `allOf`, because both hold: the later one replaced the earlier, so a branch restating
+     * `name` with a `minLength` dropped the parent's `maxLength`, its type and its pattern.
+     *
+     * @param array<mixed> $properties
+     * @param array<mixed> $restated
+     * @return array<mixed>
+     */
+    private function withRestatedPropertySchemas(array $properties, array $restated): array
+    {
+        foreach ($restated as $name => $schema) {
+            $earlier = $properties[$name] ?? null;
+            $properties[$name] = $earlier === null || $earlier === $schema ? $schema : ['allOf' => [$earlier, $schema]];
+        }
+
+        return $properties;
     }
 }

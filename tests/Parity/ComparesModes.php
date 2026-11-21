@@ -34,18 +34,18 @@ trait ComparesModes
             $divergence = $diverges[$mode->value] ?? null;
             if ($divergence === null) {
                 $this->assertSame(
-                    $expected,
-                    $observe($mode),
-                    sprintf('%s mode must agree with the other modes%s', $mode->value, $where),
+                    expected: $expected,
+                    actual: $observe($mode),
+                    message: sprintf('%s mode must agree with the other modes%s', $mode->value, $where),
                 );
 
                 continue;
             }
 
             $this->assertNotSame(
-                $expected,
-                $divergence['expected'],
-                sprintf(
+                expected: $expected,
+                actual: $divergence['expected'],
+                message: sprintf(
                     '%s mode declares a divergence%s but expects the common answer — drop the reason: %s',
                     $mode->value,
                     $where,
@@ -53,9 +53,9 @@ trait ComparesModes
                 ),
             );
             $this->assertSame(
-                $divergence['expected'],
-                $observe($mode),
-                sprintf(
+                expected: $divergence['expected'],
+                actual: $observe($mode),
+                message: sprintf(
                     "%s mode diverges%s, and the documented divergence no longer holds.\n reason: %s",
                     $mode->value,
                     $where,

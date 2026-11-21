@@ -178,8 +178,8 @@ final class GenerationIntegrityTest extends TestCase
         ], 'patternProperties' => ['^a\Rb$' => ['type' => 'string']]]]), $this->root . '/out', 'Integrity');
 
         $warnings = array_values(array_filter(
-            $generator->getGenerationWarnings(),
-            static fn(string $warning): bool => str_contains($warning, 'ECMA-262'),
+            array: $generator->getGenerationWarnings(),
+            callback: static fn(string $warning): bool => str_contains($warning, 'ECMA-262'),
         ));
         self::assertCount(2, $warnings);
         self::assertStringContainsString('uses \h', $warnings[0]);

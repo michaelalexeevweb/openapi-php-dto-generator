@@ -110,7 +110,7 @@ trait RendersSchemaInterpreter
      *                              replaces the one emitted here. Yii3 mode does: presence there is an
      *                              uninitialised property, not a boolean flag. Its two constants are read
      *                              by nothing once that swap happens, so they are not emitted either.
-     * @return array{consts: string, methods: string, imports: array<int, string>}
+     * @return array{consts: string, methods: string}
      */
     private function renderInterpreterBlock(
         array $constraints,
@@ -122,7 +122,7 @@ trait RendersSchemaInterpreter
         bool $ownsPayloadView = false,
     ): array {
         if ($constraints === []) {
-            return ['consts' => '', 'methods' => '', 'imports' => []];
+            return ['consts' => '', 'methods' => ''];
         }
 
         // Before ANYTHING reads the schema: the emitted constant below and the keyword flags that
@@ -148,15 +148,10 @@ trait RendersSchemaInterpreter
             resolvesRecursiveRefs: $recursiveSchemas !== [],
         );
 
-        // The emitted helpers reference these classes unqualified, so the DTO needs the matching
-        // imports — which ones depends on the keyword blocks that were actually emitted.
-        $imports = [];
-        foreach (['BackedEnum', 'DateTimeInterface', 'DateTimeImmutable', 'stdClass'] as $referencedClass) {
-            if (preg_match('/\b' . $referencedClass . '\b/', $methods) === 1) {
-                $imports[] = $referencedClass;
-            }
-        }
-
+        // The emitted helpers name every class they use in full — `\BackedEnum`, `\stdClass` — and the
+        // rendered file imports each one only where no class of the document owns that short name. They
+        // were imported unconditionally from here, and a schema named `BackedEnum` was a fatal in Symfony
+        // mode and a silently retargeted `instanceof` in yii3.
         // The name map and the presence flags exist only for `toOpenApiValidationPayload()`, which
         // turns THIS object into a payload. A mode validating a raw array never calls it, and the
         // two constants would be emitted empty and read by nobody.
@@ -194,7 +189,6 @@ PHP;
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 PHP,
             'methods' => $methods,
-            'imports' => $imports,
         ];
     }
 
@@ -334,7 +328,7 @@ PHP,
         if ($payloadIsHydratedObject) {
             $sections[] = <<<'PHP'
     #[Assert\Callback]
-    public function validateOpenApiConstraints(ExecutionContextInterface $context): void
+    public function validateOpenApiConstraints(\Symfony\Component\Validator\Context\ExecutionContextInterface $context): void
     {
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $violation = $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.');
@@ -508,7 +502,7 @@ PHP
             // never overlap, so among the temporal branches one match is all a date can have.
             $temporalMatchCount = $canHoldTemporal
                 ? <<<'PHP'
-                    if ($value instanceof DateTimeInterface && in_array($branch['format'] ?? null, ['date', 'date-time'], true)) {
+                    if ($value instanceof \DateTimeInterface && in_array($branch['format'] ?? null, ['date', 'date-time'], true)) {
                         $temporalBranchMatched = true;
                         continue;
                     }
@@ -646,8 +640,8 @@ PHP;
             // `exclusiveMinimum`, `exclusiveMaximum` and `multipleOf` — keywords the document never
             // wrote. The verdict was the same; the generated method was 40 lines longer than the spec.
             $numericKeywords = array_values(array_filter(
-                ['minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf'],
-                fn(string $keyword): bool => $this->schemaUsesKeyword($constraints, $keyword),
+                array: ['minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf'],
+                callback: fn(string $keyword): bool => $this->schemaUsesKeyword($constraints, $keyword),
             ));
             $numericKeywordList = "'" . implode("', '", $numericKeywords) . "'";
 
@@ -772,8 +766,8 @@ PHP;
             // Only the string keywords this schema actually uses get a check (and only then does
             // the block need the length reader at all).
             $stringKeywords = array_values(array_filter(
-                ['minLength', 'maxLength', 'pattern', 'format'],
-                fn(string $keyword): bool => $this->schemaUsesKeyword($constraints, $keyword),
+                array: ['minLength', 'maxLength', 'pattern', 'format'],
+                callback: fn(string $keyword): bool => $this->schemaUsesKeyword($constraints, $keyword),
             ));
             $stringKeywordList = "'" . implode("', '", $stringKeywords) . "'";
 
@@ -1366,7 +1360,7 @@ PHP;
         if ($hasOneOf || $hasAnyOf) {
             $enumUnwrapInDescription = $canHoldEnum
                 ? <<<'PHP'
-        if ($value instanceof BackedEnum) {
+        if ($value instanceof \BackedEnum) {
             $value = $value->value;
         }
 
@@ -1446,7 +1440,7 @@ PHP;
             }
             $enumUnwrapInMatcher = $canHoldEnum
                 ? <<<'PHP'
-        if ($value instanceof BackedEnum) {
+        if ($value instanceof \BackedEnum) {
             $value = $value->value;
         }
 
@@ -1487,7 +1481,7 @@ PHP;
         if ($needsValueNormalization && ($canHoldEnum || $canHoldTemporal)) {
             $enumUnwrap = $canHoldEnum
                 ? <<<'PHP'
-        if ($value instanceof BackedEnum) {
+        if ($value instanceof \BackedEnum) {
             $value = $value->value;
         }
 
@@ -1495,18 +1489,18 @@ PHP
                 : '';
             $temporalUnwrap = $canHoldTemporal
                 ? <<<'PHP'
-        if (!$value instanceof DateTimeInterface) {
+        if (!$value instanceof \DateTimeInterface) {
             return $value;
         }
 
         $format = $schema['format'] ?? null;
         if (!is_string($format)) {
-            return $value->format(DateTimeInterface::ATOM);
+            return $value->format(\DateTimeInterface::ATOM);
         }
 
         return match ($format) {
             'date' => $value->format('Y-m-d'),
-            default => $value->format(DateTimeInterface::ATOM),
+            default => $value->format(\DateTimeInterface::ATOM),
         };
 PHP
                 : '        return $value;';
@@ -1550,7 +1544,7 @@ PHP;
         if ($hasConst || $hasEnum || $hasUniqueItems) {
             $equalityEnumUnwrap = $canHoldEnum
                 ? <<<'PHP'
-        if ($value instanceof BackedEnum) {
+        if ($value instanceof \BackedEnum) {
             $value = $value->value;
         }
 PHP
@@ -1559,7 +1553,7 @@ PHP
             // distinct dates were equal under uniqueItems.
             $equalityTemporalView = $canHoldTemporal
                 ? <<<'PHP'
-        if ($value instanceof DateTimeInterface) {
+        if ($value instanceof \DateTimeInterface) {
             return 'date-time:' . $value->format('Y-m-d\TH:i:s.uP');
         }
 
@@ -2170,7 +2164,7 @@ PHP, preg_replace('/^(?=.)/m', '    ', $patternArm) ?? $patternArm);
             $errors = [...$errors, ...$this->openApiContentShapeErrors($value, $branch, $path, $depth + 1)];
         }
 
-        if ($value instanceof stdClass) {
+        if ($value instanceof \stdClass) {
             $properties = is_array($schema['properties'] ?? null) ? $schema['properties'] : [];
             $extra = is_array($schema['patternProperties'] ?? null) ? null : ($schema['additionalProperties'] ?? null);
             foreach (get_object_vars($value) as $name => $member) {
@@ -2394,7 +2388,7 @@ PHP;
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/D', $value)) {
             return false;
         }
-        $date = DateTimeImmutable::createFromFormat('Y-m-d', $value);
+        $date = \DateTimeImmutable::createFromFormat('Y-m-d', $value);
         return $date !== false && $date->format('Y-m-d') === $value;
     }
 PHP,
@@ -2407,10 +2401,10 @@ PHP,
         // clean and a payload the schema forbids was accepted. Only ATOM was tried before, which
         // also meant a sub-second value passed on leftover input rather than on being valid.
         foreach (['Y-m-d\TH:i:sp', 'Y-m-d\TH:i:s.up', 'Y-m-d H:i:s', 'Y-m-d\TH:i:s'] as $format) {
-            if (DateTimeImmutable::createFromFormat($format, $value) === false) {
+            if (\DateTimeImmutable::createFromFormat($format, $value) === false) {
                 continue;
             }
-            $errors = DateTimeImmutable::getLastErrors();
+            $errors = \DateTimeImmutable::getLastErrors();
             if ($errors === false) {
                 return true;
             }
@@ -2888,7 +2882,7 @@ PHP,
                         }
                         $filtered[$key][] = is_array($schema)
                             ? $this->filterInterpreterConstraints(
-                                $schema,
+                                constraints: $schema,
                                 allowScalarKeywords: true,
                                 belowContainer: true,
                             )
@@ -2901,7 +2895,7 @@ PHP,
                         // `Assert\All` with a bound in it — the callback owns a scalar item's `type`,
                         // and a bound beside it would ask a value of the wrong type about it as well.
                         $nested = $this->filterInterpreterConstraints(
-                            $value,
+                            constraints: $value,
                             allowScalarKeywords: true,
                             belowContainer: true,
                         );
@@ -2923,7 +2917,7 @@ PHP,
                 case 'unevaluatedItems':
                     if (is_array($value)) {
                         $nested = $this->filterInterpreterConstraints(
-                            $value,
+                            constraints: $value,
                             allowScalarKeywords: true,
                             belowContainer: true,
                         );
@@ -2948,7 +2942,7 @@ PHP,
                         // first hop and Symfony emitted `{}` for a branch carrying `required` and bounds
                         // — measured against runtime, which kept them, on all four keys.
                         $nested = $this->filterInterpreterConstraints(
-                            $value,
+                            constraints: $value,
                             allowScalarKeywords: true,
                             belowContainer: true,
                         );
@@ -3001,7 +2995,7 @@ PHP,
                             continue;
                         }
                         $nested = $this->filterInterpreterConstraints(
-                            $branch,
+                            constraints: $branch,
                             allowScalarKeywords: true,
                             belowContainer: $belowContainer,
                         );

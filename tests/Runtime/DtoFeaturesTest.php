@@ -51,8 +51,8 @@ final class DtoFeaturesTest extends TestCase
     public function testMinimumConstraintAcceptsExactMinimum(): void
     {
         $dto = $this->deserializer->deserialize(
-            $this->jsonRequest(['amount' => 10, 'multiplier' => 3]),
-            NumericConstraintsDto::class,
+            request: $this->jsonRequest(['amount' => 10, 'multiplier' => 3]),
+            dtoClass: NumericConstraintsDto::class,
         );
 
         $this->assertSame(10, $dto->amount);
@@ -71,8 +71,8 @@ final class DtoFeaturesTest extends TestCase
     public function testExclusiveMinimumConstraintAcceptsAbove(): void
     {
         $dto = $this->deserializer->deserialize(
-            $this->jsonRequest(['amount' => 10, 'multiplier' => 3, 'score' => 6]),
-            NumericConstraintsDto::class,
+            request: $this->jsonRequest(['amount' => 10, 'multiplier' => 3, 'score' => 6]),
+            dtoClass: NumericConstraintsDto::class,
         );
 
         $this->assertSame(6, $dto->score);
@@ -91,8 +91,8 @@ final class DtoFeaturesTest extends TestCase
     public function testMaximumConstraintAcceptsExactMaximum(): void
     {
         $dto = $this->deserializer->deserialize(
-            $this->jsonRequest(['amount' => 10, 'multiplier' => 3, 'score' => 6, 'limit' => 100]),
-            NumericConstraintsDto::class,
+            request: $this->jsonRequest(['amount' => 10, 'multiplier' => 3, 'score' => 6, 'limit' => 100]),
+            dtoClass: NumericConstraintsDto::class,
         );
 
         $this->assertSame(100, $dto->limit);
@@ -111,8 +111,8 @@ final class DtoFeaturesTest extends TestCase
     public function testMultipleOfConstraintAcceptsMultiple(): void
     {
         $dto = $this->deserializer->deserialize(
-            $this->jsonRequest(['amount' => 12, 'multiplier' => 9]),
-            NumericConstraintsDto::class,
+            request: $this->jsonRequest(['amount' => 12, 'multiplier' => 9]),
+            dtoClass: NumericConstraintsDto::class,
         );
 
         $this->assertSame(9, $dto->multiplier);
@@ -135,8 +135,8 @@ final class DtoFeaturesTest extends TestCase
     public function testMinLengthConstraintAcceptsExactLength(): void
     {
         $dto = $this->deserializer->deserialize(
-            $this->jsonRequest(['username' => 'hello', 'code' => '123456']),
-            StringConstraintsDto::class,
+            request: $this->jsonRequest(['username' => 'hello', 'code' => '123456']),
+            dtoClass: StringConstraintsDto::class,
         );
 
         $this->assertSame('hello', $dto->username);
@@ -165,8 +165,8 @@ final class DtoFeaturesTest extends TestCase
     public function testPatternConstraintAcceptsMatchingString(): void
     {
         $dto = $this->deserializer->deserialize(
-            $this->jsonRequest(['username' => 'hello', 'code' => '123456']),
-            StringConstraintsDto::class,
+            request: $this->jsonRequest(['username' => 'hello', 'code' => '123456']),
+            dtoClass: StringConstraintsDto::class,
         );
 
         $this->assertSame('123456', $dto->code);
@@ -189,8 +189,8 @@ final class DtoFeaturesTest extends TestCase
     public function testFormatEmailAcceptsValidEmail(): void
     {
         $dto = $this->deserializer->deserialize(
-            $this->jsonRequest(['email' => 'user@example.com']),
-            EmailFormatDto::class,
+            request: $this->jsonRequest(['email' => 'user@example.com']),
+            dtoClass: EmailFormatDto::class,
         );
 
         $this->assertSame('user@example.com', $dto->email);
@@ -209,8 +209,8 @@ final class DtoFeaturesTest extends TestCase
     public function testFormatUuidAcceptsValidUuid(): void
     {
         $dto = $this->deserializer->deserialize(
-            $this->jsonRequest(['uuid' => '550e8400-e29b-41d4-a716-446655440000']),
-            UuidFormatDto::class,
+            request: $this->jsonRequest(['uuid' => '550e8400-e29b-41d4-a716-446655440000']),
+            dtoClass: UuidFormatDto::class,
         );
 
         $this->assertSame('550e8400-e29b-41d4-a716-446655440000', $dto->uuid);
@@ -230,8 +230,8 @@ final class DtoFeaturesTest extends TestCase
     public function testFormatDateAcceptsValidDate(): void
     {
         $dto = $this->deserializer->deserialize(
-            $this->jsonRequest(['dateStr' => '2024-06-15']),
-            DateFormatDto::class,
+            request: $this->jsonRequest(['dateStr' => '2024-06-15']),
+            dtoClass: DateFormatDto::class,
         );
 
         $this->assertSame('2024-06-15', $dto->dateStr);
@@ -250,8 +250,8 @@ final class DtoFeaturesTest extends TestCase
     public function testFormatDateTimeAcceptsValidDateTime(): void
     {
         $dto = $this->deserializer->deserialize(
-            $this->jsonRequest(['dateTimeStr' => '2024-01-15T10:30:00+00:00']),
-            DateTimeFormatDto::class,
+            request: $this->jsonRequest(['dateTimeStr' => '2024-01-15T10:30:00+00:00']),
+            dtoClass: DateTimeFormatDto::class,
         );
 
         $this->assertSame('2024-01-15T10:30:00+00:00', $dto->dateTimeStr);
@@ -274,8 +274,8 @@ final class DtoFeaturesTest extends TestCase
     public function testMinItemsConstraintAcceptsEnoughItems(): void
     {
         $dto = $this->deserializer->deserialize(
-            $this->jsonRequest(['tags' => ['a', 'b']]),
-            ArrayConstraintsDto::class,
+            request: $this->jsonRequest(['tags' => ['a', 'b']]),
+            dtoClass: ArrayConstraintsDto::class,
         );
 
         $this->assertCount(2, $dto->tags);
@@ -304,8 +304,8 @@ final class DtoFeaturesTest extends TestCase
     public function testUniqueItemsConstraintAcceptsUnique(): void
     {
         $dto = $this->deserializer->deserialize(
-            $this->jsonRequest(['tags' => ['a', 'b']]),
-            ArrayConstraintsDto::class,
+            request: $this->jsonRequest(['tags' => ['a', 'b']]),
+            dtoClass: ArrayConstraintsDto::class,
         );
 
         $this->assertSame(['a', 'b'], $dto->tags);
@@ -476,8 +476,8 @@ final class DtoFeaturesTest extends TestCase
     public function testMissingNullableFieldWithDefaultUsesPhpDefaultAndNotMarkedAsProvided(): void
     {
         $dto = $this->deserializer->deserialize(
-            $this->jsonRequest([]),
-            TrackableDefaultNullableDto::class,
+            request: $this->jsonRequest([]),
+            dtoClass: TrackableDefaultNullableDto::class,
         );
 
         $this->assertSame('default-message', $dto->message);
@@ -562,11 +562,11 @@ final class DtoFeaturesTest extends TestCase
         file_put_contents($tmpPath, 'fake file content');
 
         $uploadedFile = new UploadedFile(
-            $tmpPath,
-            'document.txt',
-            'text/plain',
-            null,
-            true, // test mode
+            path: $tmpPath,
+            originalName: 'document.txt',
+            mimeType: 'text/plain',
+            error: null,
+            test: true, // test mode
         );
 
         // Multipart form upload: files in $request->files

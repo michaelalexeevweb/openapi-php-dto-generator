@@ -254,8 +254,8 @@ final class DocumentSelectionTest extends TestCase
         }
         $this->assertSame($needed, $this->generatedFiles(['--attributes' => $mode->value, '--exclude' => ['unrelated*']]));
         $this->assertSame(
-            ['Unrelated.php', 'UnrelatedChild.php'],
-            $this->generatedFiles(['--attributes' => $mode->value, '--only' => ['Unrelated']]),
+            expected: ['Unrelated.php', 'UnrelatedChild.php'],
+            actual: $this->generatedFiles(['--attributes' => $mode->value, '--only' => ['Unrelated']]),
         );
     }
 
@@ -451,8 +451,8 @@ final class DocumentSelectionTest extends TestCase
             return;
         }
         $iterator = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS),
-            RecursiveIteratorIterator::CHILD_FIRST,
+            iterator: new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS),
+            mode: RecursiveIteratorIterator::CHILD_FIRST,
         );
         foreach ($iterator as $entry) {
             $entry->isDir() && !$entry->isLink() ? rmdir((string)$entry) : unlink((string)$entry);

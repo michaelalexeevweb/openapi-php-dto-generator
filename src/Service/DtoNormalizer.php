@@ -195,8 +195,8 @@ final class DtoNormalizer implements DtoNormalizerInterface
     {
         return json_encode(
             // A list here is a DTO whose only keys are `additionalProperties` ones spelled as digits.
-            self::isListShaped($payload) ? (object)$payload : $payload,
-            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
+            value: self::isListShaped($payload) ? (object)$payload : $payload,
+            flags: JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
         );
     }
 
@@ -300,10 +300,10 @@ final class DtoNormalizer implements DtoNormalizerInterface
         // kind, and ends both with a full stop. Anything the constraint validator already finalised
         // passes through unchanged, because the operation is idempotent.
         return array_map(
-            static fn(string $message): string => str_starts_with($message, 'field "')
+            callback: static fn(string $message): string => str_starts_with($message, 'field "')
                 ? DtoValidator::finalizeMessage($message, 'field "')
                 : DtoValidator::finalizeMessage($message),
-            $this->validateDtoRecursive(
+            array: $this->validateDtoRecursive(
                 dto: $dto,
                 pathPrefix: '',
                 visited: $visited,
@@ -447,7 +447,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
                 // Infrastructure exceptions must propagate instead of being converted into
                 // validation messages, otherwise runtime failures are silently masked.
                 throw new RuntimeException(
-                    sprintf('Getter %s() threw infrastructure exception: %s', $methodName, $exception::class),
+                    message: sprintf('Getter %s() threw infrastructure exception: %s', $methodName, $exception::class),
                     previous: $exception,
                 );
             }
@@ -567,7 +567,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
                 // should not be caught here — they indicate a genuine runtime problem
                 // that should propagate and fail the operation, not silently skip the field.
                 throw new RuntimeException(
-                    sprintf('Getter %s() threw infrastructure exception: %s', $getterMeta['methodName'], $exception::class),
+                    message: sprintf('Getter %s() threw infrastructure exception: %s', $getterMeta['methodName'], $exception::class),
                     previous: $exception,
                 );
             }
@@ -719,7 +719,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
             $objectId = spl_object_id($value);
             if (array_key_exists($objectId, $visited)) {
                 throw new RuntimeException(
-                    sprintf('Circular reference detected for object of class %s', get_class($value)),
+                    message: sprintf('Circular reference detected for object of class %s', get_class($value)),
                 );
             }
             $visited[$objectId] = true;
@@ -880,7 +880,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
         return match ($expectedType) {
             'int' => is_int($value) ? null : "Method {$methodName}() must return int, got " . gettype($value),
             'float' => (is_float($value) || is_int(
-                $value,
+                value: $value,
             )) ? null : "Method {$methodName}() must return float, got " . gettype($value),
             'string' => is_string($value) ? null : "Method {$methodName}() must return string, got " . gettype($value),
             'bool' => is_bool($value) ? null : "Method {$methodName}() must return bool, got " . gettype($value),

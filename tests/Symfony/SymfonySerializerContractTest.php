@@ -133,9 +133,9 @@ final class SymfonySerializerContractTest extends TestCase
         $dto = $this->serializer(dateTime: false)->deserialize(self::ORDER_JSON, $fqcn, 'json');
 
         $this->assertNotSame(
-            '2026-03-10T12:00:00+00:00',
-            $dto->getAt(),
-            'without DateTimeNormalizer the date is silently replaced by the current time',
+            expected: '2026-03-10T12:00:00+00:00',
+            actual: $dto->getAt(),
+            message: 'without DateTimeNormalizer the date is silently replaced by the current time',
         );
     }
 
@@ -143,8 +143,8 @@ final class SymfonySerializerContractTest extends TestCase
     {
         $fqcn = $this->generate(self::orderSpec(), 'ContractAlias');
         $bare = new Serializer(
-            [new BackedEnumNormalizer(), new DateTimeNormalizer(), new ObjectNormalizer(), new ArrayDenormalizer()],
-            [new JsonEncoder()],
+            normalizers: [new BackedEnumNormalizer(), new DateTimeNormalizer(), new ObjectNormalizer(), new ArrayDenormalizer()],
+            encoders: [new JsonEncoder()],
         );
 
         $this->expectExceptionMessage('$firstName');
@@ -189,9 +189,9 @@ final class SymfonySerializerContractTest extends TestCase
         $this->expectException(ExtraAttributesException::class);
 
         $this->resolvePayload(
-            'ContractStrict',
-            substr(self::ORDER_JSON, 0, -1) . ',"nope":1}',
-            [AbstractObjectNormalizer::ALLOW_EXTRA_ATTRIBUTES => false],
+            namespace: 'ContractStrict',
+            json: substr(self::ORDER_JSON, 0, -1) . ',"nope":1}',
+            serializationContext: [AbstractObjectNormalizer::ALLOW_EXTRA_ATTRIBUTES => false],
         );
     }
 
@@ -214,10 +214,10 @@ final class SymfonySerializerContractTest extends TestCase
         );
 
         $patched = $this->serializer()->deserialize(
-            '{"first_name":"new"}',
-            $fqcn,
-            'json',
-            [AbstractNormalizer::OBJECT_TO_POPULATE => $existing],
+            data: '{"first_name":"new"}',
+            type: $fqcn,
+            format: 'json',
+            context: [AbstractNormalizer::OBJECT_TO_POPULATE => $existing],
         );
 
         $this->assertSame($existing, $patched, 'the same instance comes back');
@@ -251,8 +251,8 @@ final class SymfonySerializerContractTest extends TestCase
 
         $fqcn = $this->generate($spec, 'ContractPresence');
         $resolver = new RequestPayloadValueResolver(
-            $this->serializer(),
-            Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator(),
+            serializer: $this->serializer(),
+            validator: Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator(),
         );
 
         $attribute = new MapRequestPayload();
@@ -264,16 +264,16 @@ final class SymfonySerializerContractTest extends TestCase
             }
         };
         $event = new ControllerArgumentsEvent(
-            $kernel,
-            static fn(): null => null,
-            [$attribute],
-            Request::create(
+            kernel: $kernel,
+            controller: static fn(): null => null,
+            arguments: [$attribute],
+            request: Request::create(
                 uri: '/',
                 method: 'PATCH',
                 server: ['CONTENT_TYPE' => 'application/json'],
                 content: '{"first_name":"Jo","note":null}',
             ),
-            HttpKernelInterface::MAIN_REQUEST,
+            requestType: HttpKernelInterface::MAIN_REQUEST,
         );
 
         $resolver->onKernelControllerArguments($event);
@@ -295,8 +295,8 @@ final class SymfonySerializerContractTest extends TestCase
     {
         $fqcn = $this->generate(self::orderSpec(), $namespace);
         $resolver = new RequestPayloadValueResolver(
-            $this->serializer(),
-            Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator(),
+            serializer: $this->serializer(),
+            validator: Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator(),
         );
 
         $attribute = new MapRequestPayload(serializationContext: $serializationContext);
@@ -310,11 +310,11 @@ final class SymfonySerializerContractTest extends TestCase
         };
 
         $event = new ControllerArgumentsEvent(
-            $kernel,
-            static fn(): null => null,
-            [$attribute],
-            Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $json),
-            HttpKernelInterface::MAIN_REQUEST,
+            kernel: $kernel,
+            controller: static fn(): null => null,
+            arguments: [$attribute],
+            request: Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $json),
+            requestType: HttpKernelInterface::MAIN_REQUEST,
         );
 
         try {
@@ -336,10 +336,10 @@ final class SymfonySerializerContractTest extends TestCase
             $normalizers[] = new DateTimeNormalizer();
         }
         $normalizers[] = new ObjectNormalizer(
-            $classMetadataFactory,
-            new MetadataAwareNameConverter($classMetadataFactory),
-            null,
-            new PropertyInfoExtractor([], $extractors),
+            classMetadataFactory: $classMetadataFactory,
+            nameConverter: new MetadataAwareNameConverter($classMetadataFactory),
+            propertyAccessor: null,
+            propertyTypeExtractor: new PropertyInfoExtractor([], $extractors),
         );
         $normalizers[] = new ArrayDenormalizer();
 
