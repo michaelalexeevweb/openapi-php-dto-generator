@@ -173,7 +173,7 @@ trait RendersSymfonyDto
         $validationConstraints = $this->filterInterpreterConstraints(
             constraints: $this->withConstraintSourceOf(
                 className: $className,
-                extraction: fn(): array => $this->extractValidationConstraints($this->classSchemaWithInlineAllOfMerged($schemaDefinition)),
+                extraction: fn(): array => $this->extractValidationConstraints($this->classSchemaWithInlineAllOfMerged(schemaDefinition: $schemaDefinition, className: $className)),
             ),
             allowScalarKeywords: false,
             forceScalarOnProperties: $forceRootCallbackBounds,
@@ -381,7 +381,7 @@ trait RendersSymfonyDto
         return $this->filterInterpreterConstraints(
             constraints: $this->withConstraintSourceOf(
                 className: $className,
-                extraction: fn(): array => $this->extractValidationConstraints($this->classSchemaWithInlineAllOfMerged($schemaDefinition)),
+                extraction: fn(): array => $this->extractValidationConstraints($this->classSchemaWithInlineAllOfMerged(schemaDefinition: $schemaDefinition, className: $className)),
             ),
             allowScalarKeywords: false,
             forceScalarOnProperties: $forceRootCallbackBounds,
@@ -1379,7 +1379,12 @@ PHP;
         if ($inAnyOfBranch) {
             $branchSpec = match ($format) {
                 'email', 'idn-email' => ['name' => 'Email', 'args' => ''],
-                'uuid' => ['name' => 'Uuid', 'args' => ''],
+                // The shape only, as the callback checks a uuid everywhere else: `Assert\Uuid` pins the
+                // version and variant, and refused here what a `oneOf` branch accepted.
+                'uuid' => [
+                    'name' => 'Regex',
+                    'args' => "pattern: '/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/D', message: 'This is not a valid UUID.'",
+                ],
                 'hostname' => ['name' => 'Hostname', 'args' => ''],
                 'ipv4' => ['name' => 'Ip', 'args' => "version: '4'"],
                 'ipv6' => ['name' => 'Ip', 'args' => "version: '6'"],

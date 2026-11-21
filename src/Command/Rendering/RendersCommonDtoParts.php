@@ -402,10 +402,16 @@ trait RendersCommonDtoParts
      * a `const`, `uniqueItems` were checked by nothing. A `$ref` branch is the parent the class
      * extends, and the parent enforces its own rules.
      *
+     * Its properties are still the class's own, though: where `additionalProperties` or
+     * `unevaluatedProperties` speaks about the keys the class does NOT declare — on the class itself or
+     * on an inline branch — each inherited key is listed as evaluated (`true`, no rule of its own).
+     * Without it every property the parent brought was refused as an extra, or checked against the
+     * schema meant for extras.
+     *
      * @param array<mixed> $schemaDefinition
      * @return array<mixed>
      */
-    private function classSchemaWithInlineAllOfMerged(array $schemaDefinition): array
+    private function classSchemaWithInlineAllOfMerged(array $schemaDefinition, string $className): array
     {
         $allOf = $schemaDefinition['allOf'] ?? null;
         if (!is_array($allOf) || $allOf === []) {
@@ -418,27 +424,23 @@ trait RendersCommonDtoParts
                 $merged[$keyword] = $value;
             }
         }
-        $inherits = false;
+        $inherited = [];
         foreach ($allOf as $branch) {
-            if (is_array($branch) && array_key_exists('$ref', $branch)) {
-                $inherits = true;
-            }
-        }
-        foreach ($allOf as $branch) {
-            if (!is_array($branch) || array_key_exists('$ref', $branch)) {
+            if (!is_array($branch)) {
                 continue;
             }
-            // A branch closed with `additionalProperties: false` beside a `$ref` parent: merged as is,
-            // it closed the class over the branch's properties alone and refused every inherited one.
-            // The class as a whole is what the document describes, as runtime mode reads it.
-            if ($inherits) {
-                $open = [];
-                foreach ($branch as $keyword => $value) {
-                    if (!in_array($keyword, ['additionalProperties', 'unevaluatedProperties'], true) || $value !== false) {
-                        $open[$keyword] = $value;
-                    }
+            if (is_string($branch['$ref'] ?? null)) {
+                $parentClass = $this->schemaRefToClassName(
+                    ref: $branch['$ref'],
+                    currentSourceFile: $this->getSchemaSourceFile($className),
+                );
+                foreach ($this->getSchemaProperties($parentClass) as $property) {
+                    $inherited[] = $property['openApiName'];
                 }
-                $branch = $open;
+                continue;
+            }
+            if (array_key_exists('$ref', $branch)) {
+                continue;
             }
             $required = [
                 ...(is_array($merged['required'] ?? null) ? $merged['required'] : []),
@@ -455,6 +457,16 @@ trait RendersCommonDtoParts
             if ($properties !== []) {
                 $merged['properties'] = $properties;
             }
+        }
+
+        if (array_key_exists('additionalProperties', $merged) || array_key_exists('unevaluatedProperties', $merged)) {
+            $properties = is_array($merged['properties'] ?? null) ? $merged['properties'] : [];
+            foreach ($inherited as $name) {
+                if (!array_key_exists($name, $properties)) {
+                    $properties[$name] = true;
+                }
+            }
+            $merged['properties'] = $properties;
         }
 
         return $merged;

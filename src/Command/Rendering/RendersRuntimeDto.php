@@ -1152,6 +1152,16 @@ trait RendersRuntimeDto
             // `additionalProperties: {$ref: Gear}`: on a property such a map is typed and hydrated, so
             // the extraction leaves the reference alone — but beside named properties nothing
             // materializes the extra keys, and the key was neither checked against Gear nor kept.
+            //
+            // A reference to a generated class is checked BY that class: the deserializer hydrates
+            // each extra value through it and keeps what was sent. An inlined copy stops after a few
+            // levels of a component that holds itself, and accepted a wrong value below that.
+            $extraClass = $this->extraPropertiesDtoClass(className: $className, schema: $schema['additionalProperties']);
+            if ($extraClass !== null) {
+                $objectConstraints['additionalProperties'] = ['x-php-dto' => $extraClass];
+
+                return $objectConstraints;
+            }
             $extraKeys = $this->withConstraintSourceOf(
                 className: $className,
                 extraction: fn(): array => $this->extractValidationConstraints($this->inlineNestedContainerValidation(
@@ -1166,6 +1176,33 @@ trait RendersRuntimeDto
 
         return $objectConstraints;
     }
+    /**
+     * The fully qualified generated class a bare `{$ref: X}` names, when X is an object DTO the
+     * deserializer can hydrate — not an enum, not a union interface, not a scalar alias.
+     *
+     * @param array<mixed> $schema
+     */
+    private function extraPropertiesDtoClass(string $className, array $schema): ?string
+    {
+        if (count($schema) !== 1 || !is_string($schema['$ref'] ?? null)) {
+            return null;
+        }
+        $refClass = $this->nestedRefClassName($schema['$ref'], $this->getSchemaSourceFile($className));
+        $refSchema = $refClass === null ? null : $this->dtoSchemas[$refClass] ?? null;
+        if (
+            $refClass === null
+            || !is_array($refSchema)
+            || array_key_exists($refClass, $this->enumSchemas)
+            || array_key_exists('oneOf', $refSchema)
+            || array_key_exists('anyOf', $refSchema)
+            || !(($refSchema['type'] ?? null) === 'object' || array_key_exists('properties', $refSchema) || array_key_exists('allOf', $refSchema))
+        ) {
+            return null;
+        }
+
+        return ltrim(($this->schemaNamespaces[$refClass] ?? $this->baseNamespace) . '\\' . $refClass, '\\');
+    }
+
     /**
      * @param array<int, SchemaProperty> $properties
      * @return array<int, array{name: string, value: string}>

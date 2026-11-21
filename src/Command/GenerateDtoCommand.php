@@ -3368,7 +3368,13 @@ final class GenerateDtoCommand extends Command
                     continue;
                 }
 
-                foreach ($this->extractProperties($allOfItem, $className) as $property) {
+                foreach (
+                    $this->extractProperties(
+                        schemaDefinition: $allOfItem,
+                        ownerClassName: $className,
+                        siblingPropertyNames: $this->allOfBranchPropertyNames($schemaDefinition, $className),
+                    ) as $property
+                ) {
                     $allProperties[] = $property;
                 }
             }
@@ -3602,9 +3608,10 @@ final class GenerateDtoCommand extends Command
 
     /**
      * @param array<string, mixed> $schemaDefinition
+     * @param list<string> $siblingPropertyNames the PHP names the other `allOf` branches of the class declare
      * @return array<int, SchemaProperty>
      */
-    private function extractProperties(array $schemaDefinition, string $ownerClassName): array
+    private function extractProperties(array $schemaDefinition, string $ownerClassName, array $siblingPropertyNames = []): array
     {
         $properties = $schemaDefinition['properties'] ?? [];
         $required = $schemaDefinition['required'] ?? [];
@@ -3728,10 +3735,13 @@ final class GenerateDtoCommand extends Command
                 ));
             }
             $normalizedName = $this->disambiguateCaseInsensitiveName($normalizedName, $openApiPropertyName, $normalizedToOpenApiName);
-            $classPropertyNames = array_map(
-                $this->normalizePropertyName(...),
-                array_map('strval', array_keys($properties)),
-            );
+            $classPropertyNames = [
+                ...array_map(
+                    $this->normalizePropertyName(...),
+                    array_map('strval', array_keys($properties)),
+                ),
+                ...$siblingPropertyNames,
+            ];
             // The suffixed name must miss the properties still to come as well: `this` renamed to
             // `this2` beside a real `this2` later in the list was a collision the order decided.
             $normalizedName = $this->avoidGeneratedMemberName(
@@ -7413,6 +7423,7 @@ final class GenerateDtoCommand extends Command
                     $this->extractProperties(
                         schemaDefinition: $allOfItem,
                         ownerClassName: $className,
+                        siblingPropertyNames: $this->allOfBranchPropertyNames($schemaDefinition, $className),
                     ) as $property
                 ) {
                     $allProperties[] = $property;
@@ -7574,6 +7585,36 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * The PHP names of every property the `allOf` branches of a class declare directly — inline or on a
+     * referenced component. Each branch is read on its own, so a rename in one (`this` to `this2`)
+     * could not see a real `this2` in another, and the two were merged into one property.
+     *
+     * @param array<mixed> $schemaDefinition
+     * @return list<string>
+     */
+    private function allOfBranchPropertyNames(array $schemaDefinition, string $className): array
+    {
+        $names = [];
+        foreach (is_array($schemaDefinition['allOf'] ?? null) ? $schemaDefinition['allOf'] : [] as $branch) {
+            if (!is_array($branch)) {
+                continue;
+            }
+            if (is_string($branch['$ref'] ?? null)) {
+                $refClassName = $this->schemaRefToClassName(
+                    ref: $branch['$ref'],
+                    currentSourceFile: $this->getSchemaSourceFile($className),
+                );
+                $branch = $this->dtoSchemas[$refClassName] ?? [];
+            }
+            foreach (array_keys(is_array($branch['properties'] ?? null) ? $branch['properties'] : []) as $propertyName) {
+                $names[] = $this->normalizePropertyName((string)$propertyName);
+            }
+        }
+
+        return $names;
+    }
+
+    /**
      * The names the emitted class takes for itself beside the document's properties: `$this`, which
      * no parameter may be called; runtime's bag of undeclared keys and its `<property>InPath`-style
      * source flags; Laravel's presence bookkeeping;
@@ -7588,23 +7629,36 @@ final class GenerateDtoCommand extends Command
         $reserved = ['this' => true];
         if ($this->attributeMode === self::ATTRIBUTE_MODE_RUNTIME) {
             $reserved['undeclaredproperties'] = true;
-            foreach ($propertyNames as $propertyName) {
-                foreach (['InRequest', 'InPath', 'InQuery', 'InHeader', 'InCookie'] as $source) {
-                    $reserved[strtolower($this->normalizeTrackingFlagName($propertyName, $source))] = true;
-                }
-            }
         }
         if ($this->attributeMode === self::ATTRIBUTE_MODE_LARAVEL) {
             $reserved['providedopenapikeys'] = true;
             $reserved['omitsunsetnulls'] = true;
         }
-        if ($this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY) {
-            foreach ($propertyNames as $propertyName) {
-                $reserved[strtolower($propertyName . 'Provided')] = true;
+        foreach ($propertyNames as $propertyName) {
+            foreach ($this->memberNamesOfProperty($propertyName) as $memberName) {
+                $reserved[$memberName] = true;
             }
         }
 
         return $reserved;
+    }
+
+    /**
+     * The members the emitted class declares for ONE property beside the property itself: runtime's
+     * source flags, Symfony's `<property>Provided`.
+     *
+     * @return list<string> lower-cased
+     */
+    private function memberNamesOfProperty(string $propertyName): array
+    {
+        return match ($this->attributeMode) {
+            self::ATTRIBUTE_MODE_RUNTIME => array_map(
+                fn(string $source): string => strtolower($this->normalizeTrackingFlagName($propertyName, $source)),
+                ['InRequest', 'InPath', 'InQuery', 'InHeader', 'InCookie'],
+            ),
+            self::ATTRIBUTE_MODE_SYMFONY => [strtolower($propertyName . 'Provided')],
+            default => [],
+        };
     }
 
     /**
@@ -7621,11 +7675,29 @@ final class GenerateDtoCommand extends Command
         }
         $takenLower = array_flip(array_map('strtolower', $taken));
         $suffix = 2;
-        while (array_key_exists(strtolower($name . $suffix), $reserved) || array_key_exists(strtolower($name . $suffix), $takenLower)) {
+        while ($this->renamedMemberCollides(candidate: $name . $suffix, reserved: $reserved, takenLower: $takenLower)) {
             $suffix++;
         }
 
         return $name . $suffix;
+    }
+
+    /**
+     * The new name and the members it brings along: `this` renamed to `this2` declares `$this2InPath`,
+     * and a real `this2InPath` beside it was "Cannot redeclare".
+     *
+     * @param array<string, true> $reserved
+     * @param array<string, int> $takenLower
+     */
+    private function renamedMemberCollides(string $candidate, array $reserved, array $takenLower): bool
+    {
+        foreach ([strtolower($candidate), ...$this->memberNamesOfProperty($candidate)] as $memberName) {
+            if (array_key_exists($memberName, $reserved) || array_key_exists($memberName, $takenLower)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

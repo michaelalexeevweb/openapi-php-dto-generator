@@ -529,10 +529,26 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 // A schema rather than `false`: the undeclared key is allowed, its value must match,
                 // and the DTO keeps it — see `withUndeclaredProperties()`.
                 if (is_array($extraPropertySchema)) {
-                    foreach ($this->constraintValidator->validate('param "' . $bodyKey . '"', $bodyData[$bodyKey], $extraPropertySchema) as $extraError) {
-                        $errors[] = $extraError;
+                    $extraDtoClass = $extraPropertySchema['x-php-dto'] ?? null;
+                    if (is_string($extraDtoClass) && class_exists($extraDtoClass)) {
+                        // A generated class checks the value itself, at every depth it holds itself.
+                        try {
+                            $this->castArrayItemValue(
+                                itemValue: $bodyData[$bodyKey],
+                                arrayItemType: $extraDtoClass,
+                                // A digit key arrives as an int, whatever the array is typed as.
+                                itemPath: "{$bodyKey}",
+                                source: 'json',
+                            );
+                        } catch (RuntimeException $extraException) {
+                            $errors[] = $extraException->getMessage();
+                        }
+                    } else {
+                        foreach ($this->constraintValidator->validate('param "' . $bodyKey . '"', $bodyData[$bodyKey], $extraPropertySchema) as $extraError) {
+                            $errors[] = $extraError;
+                        }
                     }
-                    $undeclared[$bodyKey] = $bodyData[$bodyKey];
+                    $undeclared[$bodyKey] = $this->keptExtraValue(value: $bodyData[$bodyKey], schema: $extraPropertySchema);
                     continue;
                 }
 
@@ -3856,6 +3872,19 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         return null;
+    }
+
+    /**
+     * An extra value whose schema is an object, as an object: a PHP array payload spells `{}` as `[]`,
+     * and kept as it came, the value was written back as a JSON list.
+     *
+     * @param array<array-key, mixed> $schema
+     */
+    private function keptExtraValue(mixed $value, array $schema): mixed
+    {
+        $isObject = array_key_exists('x-php-dto', $schema) || ($schema['type'] ?? null) === 'object';
+
+        return $isObject && is_array($value) && array_is_list($value) ? (object)$value : $value;
     }
 
     /**

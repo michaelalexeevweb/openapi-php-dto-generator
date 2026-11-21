@@ -578,6 +578,77 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * `additionalProperties` / `unevaluatedProperties` beside `allOf: [$ref Parent, inline]` — on the class
+     * itself, or as a schema on the inline branch — speak about the keys the class does not declare.
+     * Symfony merged the inline branch into the class and counted every inherited key as an extra one.
+     * The parent's own rules still apply to its keys.
+     *
+     * @param array<string, mixed> $closing
+     * @param array<string, mixed> $branchClosing
+     */
+    #[DataProvider('closedCompositionSpellings')]
+    public function testInheritedPropertiesAreNotExtraOnesBesideAParent(string $key, array $closing, array $branchClosing): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Base' => ['type' => 'object', 'required' => ['id'], 'properties' => ['id' => ['type' => 'integer']]],
+                'Probe' => [...$closing, 'allOf' => [
+                    ['$ref' => '#/components/schemas/Base'],
+                    ['type' => 'object', 'properties' => ['name' => ['type' => 'string']], ...$branchClosing],
+                ]],
+            ]],
+        ];
+
+        foreach ([GenerationMode::Symfony, GenerationMode::Runtime] as $mode) {
+            $this->assertSame(
+                ['valid' => true, 'invalid' => false],
+                $this->verdict($mode, $spec, $key, '{"id":5,"name":"n"}', '{"id":"x","name":"n"}'),
+                $mode->value . ' ' . $key,
+            );
+        }
+    }
+
+    /**
+     * @return iterable<string, array{string, array<string, mixed>, array<string, mixed>}>
+     */
+    public static function closedCompositionSpellings(): iterable
+    {
+        yield 'unevaluatedProperties false on the class' => ['closed class unevaluated', ['unevaluatedProperties' => false], []];
+        yield 'additionalProperties false on the class' => ['closed class additional', ['additionalProperties' => false], []];
+        yield 'additionalProperties false on the branch' => ['closed branch additional', [], ['additionalProperties' => false]];
+        yield 'additionalProperties schema on the branch' => ['schema branch additional', [], ['additionalProperties' => ['type' => 'string']]];
+        yield 'unevaluatedProperties schema on the branch' => ['schema branch unevaluated', [], ['unevaluatedProperties' => ['type' => 'string']]];
+    }
+
+    /**
+     * A uuid in a property-level `anyOf` branch is checked for its shape, like one in a `oneOf` branch:
+     * Symfony turned it into `Assert\Uuid`, which pins version and variant.
+     */
+    public function testUuidInAnAnyOfBranchIsCheckedForItsShapeOnly(): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        foreach (['anyOf', 'oneOf'] as $keyword) {
+            $spec = self::probeSpec([$keyword => [['type' => 'string', 'format' => 'uuid'], ['type' => 'integer']]]);
+
+            $this->assertEveryModeYields(
+                ['valid' => true, 'invalid' => false],
+                fn(GenerationMode $mode): array => $this->verdict($mode, $spec, 'uuid branch ' . $keyword, '{"f":"12345678-1234-0234-c234-123456789012"}', '{"f":"nope"}'),
+                [],
+                context: 'uuid branch ' . $keyword,
+            );
+        }
+    }
+
+    /**
      * @param array<string, mixed> $schema
      */
     #[DataProvider('schemaAssertionCases')]

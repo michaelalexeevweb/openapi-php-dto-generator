@@ -2264,20 +2264,42 @@ final class LaravelRulesEnforcementTest extends TestCase
     }
 
     /**
-     * The `array` rule a `$ref` to a DTO gets is not for a union: one of its branches may be a scalar.
+     * A `$ref` to a class carrying `anyOf`/`oneOf` keeps its `array` rule, whether that class is a union
+     * interface with a scalar branch or a concrete class whose `anyOf` only lists required keys: the
+     * property can only be hydrated from an object, and a scalar let through reached `fromValidated()`
+     * as a TypeError — a 500 where the request deserved a 422.
      */
-    public function testAReferenceToAUnionWithAScalarBranchAcceptsTheScalar(): void
+    public function testAReferenceToAClassWithAnyOfStillRefusesAScalar(): void
     {
         $fqcn = $this->generateProbe(
-            'reference to a union with a scalar branch',
+            'reference to a class with anyOf refuses a scalar',
             ['$ref' => '#/components/schemas/Choice'],
             [
                 'Leaf' => ['type' => 'object', 'properties' => ['a' => ['type' => 'string']]],
                 'Choice' => ['oneOf' => [['$ref' => '#/components/schemas/Leaf'], ['type' => 'string']]],
+                'Shape' => [
+                    'properties' => ['a' => ['type' => 'string'], 'b' => ['type' => 'string']],
+                    'anyOf' => [['required' => ['a']], ['required' => ['b']]],
+                ],
             ],
         );
+        $shapeFqcn = $this->generateProbe(
+            'reference to a concrete class with anyOf refuses a scalar',
+            ['$ref' => '#/components/schemas/Shape'],
+            ['Shape' => [
+                'properties' => ['a' => ['type' => 'string'], 'b' => ['type' => 'string']],
+                'anyOf' => [['required' => ['a']], ['required' => ['b']]],
+            ]],
+        );
 
-        $validator = $this->validatorFactory()->make(['f' => 'hello'], call_user_func([$fqcn, 'rules']));
-        $this->assertFalse($validator->fails(), json_encode($validator->errors()->toArray()) ?: '');
+        foreach ([$fqcn, $shapeFqcn] as $class) {
+            foreach (['hello', 5, null] as $invalid) {
+                $validator = $this->validatorFactory()->make(['f' => $invalid], call_user_func([$class, 'rules']));
+                $this->assertTrue($validator->fails(), sprintf('%s: %s must be refused', $class, json_encode($invalid)));
+            }
+        }
+        $validator = $this->validatorFactory()->make(['f' => ['a' => 'x']], call_user_func([$shapeFqcn, 'rules']));
+        $this->assertFalse($validator->fails());
+        $this->assertNotNull(call_user_func([$shapeFqcn, 'fromValidated'], $validator->validated())->getF());
     }
 }

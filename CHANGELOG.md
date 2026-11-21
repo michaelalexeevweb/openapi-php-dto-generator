@@ -3,6 +3,46 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.126 — 2026-11-21
+
+- laravel keeps array rule
+- renames avoid generated members
+- allOf renames see every branch
+- recursive extras validated fully
+- empty extra objects stay objects
+- symfony allOf inherits evaluated keys
+- symfony anyOf uuid by shape
+
+A review of the 2.15.125 changes.
+
+**Runtime mode with `--dto-generator-directory`: regenerate after upgrading.** The deserializer changed.
+
+laravel and laravel-data:
+
+- a `$ref` to a class carrying `oneOf`/`anyOf` has its `array` rule back — 2.15.125 dropped it. A scalar
+  can never be hydrated into such a property, so it reached `fromValidated()` as a TypeError (a 500) where
+  2.15.124 answered 422; a concrete class whose `anyOf` only lists required keys lost the rule too.
+
+All modes:
+
+- a property renamed past a generated member no longer lands on another one: `this` became `this2`, whose
+  `$this2InPath` flag (runtime) or `$this2Provided` (symfony) sat beside a real property of that name;
+- a rename sees the properties of every `allOf` branch: `this` and `this2` in different branches were
+  merged into one property, and the `this` key was gone.
+
+Runtime mode:
+
+- `additionalProperties: {$ref: X}` naming an object class is checked by `X` itself, at every depth. A
+  component holding more of itself there was checked through an inlined copy that stopped after a few
+  levels;
+- an extra value whose schema is an object goes out as one when it arrived as an empty PHP array.
+
+symfony:
+
+- `additionalProperties` / `unevaluatedProperties` beside `allOf: [$ref Parent, …]` — `false` on the class,
+  or a schema on an inline branch — no longer count the inherited properties as extra ones;
+- a uuid in a property-level `anyOf` branch is checked for its shape, as everywhere else.
+
 ## 2.15.125 — 2026-11-21
 
 - referenced documents never overwritten

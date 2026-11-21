@@ -471,8 +471,9 @@ trait RendersLaravelValidation
             // A `$ref` to a generated DTO carries no `type` of its own, and without one `"x"` passed
             // `rules()` and then broke `fromValidated()` with a TypeError — a 500 for a bad request.
             // An enum or a date is a scalar on the wire and is left alone.
-            // A union interface is left alone too: one of its branches may be a scalar.
-            null => $this->laravelIsNestedDtoType($phpType) && !$this->laravelIsUnionClass($phpType) ? "'array'" : null,
+            // A union interface too, scalar branch or not: the property is typed as the interface, and
+            // only an object can be hydrated into it — a scalar let through here broke `fromValidated()`.
+            null => $this->laravelIsNestedDtoType($phpType) ? "'array'" : null,
             default => null,
         };
         if ($typeRule !== null) {
@@ -1035,13 +1036,6 @@ trait RendersLaravelValidation
         $base = $this->laravelBaseTypeName($phpType);
 
         return $base !== null && array_key_exists($base, $this->dtoSchemas) && !$this->laravelIsEnumClass($base);
-    }
-
-    private function laravelIsUnionClass(string $phpType): bool
-    {
-        $schema = $this->dtoSchemas[$this->laravelBaseTypeName($phpType) ?? ''] ?? [];
-
-        return array_key_exists('oneOf', $schema) || array_key_exists('anyOf', $schema);
     }
 
     private function laravelLooksLikeClassType(string $phpType): bool
