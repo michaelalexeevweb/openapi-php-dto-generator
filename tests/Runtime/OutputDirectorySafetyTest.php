@@ -139,6 +139,56 @@ final class OutputDirectorySafetyTest extends TestCase
         $this->assertFileExists($this->project . '/specs/notes.md');
     }
 
+    public function testDirectoryHoldingAReferencedDocumentIsRefusedAsOutput(): void
+    {
+        mkdir($this->project . '/shared');
+        file_put_contents($this->project . '/shared/common.json', (string)json_encode([
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'Common', 'version' => '1.0.0'],
+            'paths' => [],
+            'components' => ['schemas' => ['Shape' => ['type' => 'object', 'properties' => ['sides' => ['type' => 'integer']]]]],
+        ]));
+        file_put_contents($this->project . '/main.json', (string)json_encode([
+            'openapi' => '3.0.0',
+            'info' => ['title' => 'Main', 'version' => '1.0.0'],
+            'paths' => [],
+            'components' => ['schemas' => [
+                'Widget' => ['type' => 'object', 'properties' => ['shape' => ['$ref' => './shared/common.json#/components/schemas/Shape']]],
+            ]],
+        ]));
+
+        $tester = new CommandTester(new GenerateDtoCommand());
+        $exitCode = $tester->execute([
+            '--file' => 'main.json',
+            '--directory' => 'shared',
+            '--namespace' => 'Zoo\Gen',
+        ]);
+
+        $this->assertSame(1, $exitCode, $tester->getDisplay());
+        $this->assertStringContainsString('common.json', $this->display($tester));
+        $this->assertFileExists($this->project . '/shared/common.json');
+    }
+
+    public function testCaseVariantOfTheDocumentsDirectoryIsRefusedAsOutput(): void
+    {
+        mkdir($this->project . '/specs');
+        rename($this->project . '/spec.json', $this->project . '/specs/spec.json');
+        if (!is_dir($this->project . '/SPECS')) {
+            $this->markTestSkipped('The filesystem tells case apart: SPECS is another directory there.');
+        }
+
+        $tester = new CommandTester(new GenerateDtoCommand());
+        $exitCode = $tester->execute([
+            '--file' => 'specs/spec.json',
+            '--directory' => 'SPECS',
+            '--namespace' => 'Zoo\Gen',
+        ]);
+
+        $this->assertSame(1, $exitCode, $tester->getDisplay());
+        $this->assertStringContainsString('contains the input document', $this->display($tester));
+        $this->assertFileExists($this->project . '/specs/spec.json');
+    }
+
     public function testOwnOutputDirectoryIsStillRegeneratedWhole(): void
     {
         mkdir($this->project . '/gen');

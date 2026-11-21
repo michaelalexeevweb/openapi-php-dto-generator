@@ -471,7 +471,8 @@ trait RendersLaravelValidation
             // A `$ref` to a generated DTO carries no `type` of its own, and without one `"x"` passed
             // `rules()` and then broke `fromValidated()` with a TypeError — a 500 for a bad request.
             // An enum or a date is a scalar on the wire and is left alone.
-            null => $this->laravelIsNestedDtoType($phpType) ? "'array'" : null,
+            // A union interface is left alone too: one of its branches may be a scalar.
+            null => $this->laravelIsNestedDtoType($phpType) && !$this->laravelIsUnionClass($phpType) ? "'array'" : null,
             default => null,
         };
         if ($typeRule !== null) {
@@ -1034,6 +1035,13 @@ trait RendersLaravelValidation
         $base = $this->laravelBaseTypeName($phpType);
 
         return $base !== null && array_key_exists($base, $this->dtoSchemas) && !$this->laravelIsEnumClass($base);
+    }
+
+    private function laravelIsUnionClass(string $phpType): bool
+    {
+        $schema = $this->dtoSchemas[$this->laravelBaseTypeName($phpType) ?? ''] ?? [];
+
+        return array_key_exists('oneOf', $schema) || array_key_exists('anyOf', $schema);
     }
 
     private function laravelLooksLikeClassType(string $phpType): bool
@@ -2359,11 +2367,27 @@ trait RendersLaravelValidation
      */
     private function laravelNestedHasPaths(string $className, string $kind, array $visited = []): bool
     {
+        $cutShort = false;
+
+        return $this->laravelNestedHasPathsBelow(className: $className, kind: $kind, visited: $visited, cutShort: $cutShort);
+    }
+
+    /**
+     * An answer that stopped at a class among `$visited` holds only for that `$visited`: cached, it
+     * told another parent — one the cycle does not pass through — that nothing below had a path,
+     * and that parent dropped the checks. Only an answer the cycle did not touch is cached.
+     *
+     * @param array<int, string> $visited
+     */
+    private function laravelNestedHasPathsBelow(string $className, string $kind, array $visited, bool &$cutShort): bool
+    {
         $key = $kind . ':' . $className;
         if (array_key_exists($key, $this->laravelNestedPathsCache)) {
             return $this->laravelNestedPathsCache[$key];
         }
         if (in_array($className, $visited, true)) {
+            $cutShort = true;
+
             return false;
         }
 
@@ -2371,8 +2395,22 @@ trait RendersLaravelValidation
         $has = $kind === 'escapedDots'
             ? array_filter([...$plan['objectPaths'], ...array_keys($plan['scalarPaths'])], static fn(string $path): bool => str_contains($path, '\.')) !== []
             : $plan[$kind] !== [];
+        $childCutShort = false;
         foreach ($plan['children'] as $child) {
-            $has = $has || $this->laravelNestedHasPaths($child['class'], $kind, [...$visited, $className]);
+            if ($has) {
+                break;
+            }
+            $has = $this->laravelNestedHasPathsBelow(
+                className: $child['class'],
+                kind: $kind,
+                visited: [...$visited, $className],
+                cutShort: $childCutShort,
+            );
+        }
+        if ($childCutShort && !$has) {
+            $cutShort = true;
+
+            return false;
         }
 
         return $this->laravelNestedPathsCache[$key] = $has;

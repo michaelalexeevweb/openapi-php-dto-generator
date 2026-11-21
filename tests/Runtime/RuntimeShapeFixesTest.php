@@ -173,6 +173,103 @@ final class RuntimeShapeFixesTest extends TestCase
         $this->assertRejected(class: $class, body: '{"price":1e400}', message: 'must be a finite number');
     }
 
+    public function testSubtypeBelowAnIntermediateClassKeepsItsOwnFields(): void
+    {
+        $class = $this->generate(
+            components: [
+                'Pet' => [
+                    'type' => 'object',
+                    'required' => ['kind'],
+                    'properties' => ['kind' => ['type' => 'string']],
+                    'discriminator' => ['propertyName' => 'kind', 'mapping' => [
+                        'cat' => '#/components/schemas/Cat',
+                        'lion' => '#/components/schemas/Lion',
+                    ]],
+                ],
+                'Cat' => ['allOf' => [['$ref' => '#/components/schemas/Pet'], ['type' => 'object', 'properties' => ['meow' => ['type' => 'string']]]]],
+                'Lion' => ['allOf' => [['$ref' => '#/components/schemas/Cat'], ['type' => 'object', 'properties' => ['mane' => ['type' => 'string']]]]],
+            ],
+            properties: ['cat' => ['$ref' => '#/components/schemas/Cat']],
+        );
+
+        $body = '{"cat":{"kind":"lion","mane":"big"}}';
+        $dto = $this->deserialize(class: $class, body: $body);
+        $this->assertStringEndsWith('\Lion', get_class($dto->getCat()));
+        $this->assertSame($body, $dto->toJson());
+        $this->assertStringEndsWith('\Cat', get_class($this->deserialize(class: $class, body: '{"cat":{"kind":"cat"}}')->getCat()));
+    }
+
+    public function testUndeclaredKeysSpelledAsDigitsGoOutAsAnObject(): void
+    {
+        $class = $this->generate(properties: [
+            'extra' => ['type' => 'object', 'properties' => ['count' => ['type' => 'integer']], 'additionalProperties' => ['type' => 'string']],
+        ]);
+
+        foreach (['{"extra":{"0":"a"}}', '{"extra":{"0":"a","1":"b"}}'] as $body) {
+            $dto = $this->deserialize(class: $class, body: $body);
+            $this->assertSame($body, $dto->toJson());
+            $this->assertSame($body, (new DtoNormalizer())->toJson($dto));
+        }
+    }
+
+    public function testDateOrIntegerUnionGoesOutAsTheBranchItCameIn(): void
+    {
+        $class = $this->generate(properties: [
+            'day' => ['oneOf' => [['type' => 'string', 'format' => 'date'], ['type' => 'integer']]],
+        ]);
+
+        foreach (['{"day":"2024-01-02"}', '{"day":7}'] as $body) {
+            $dto = $this->deserialize(class: $class, body: $body);
+            $this->assertSame($body, $dto->toJson());
+            $this->assertSame($body, (new DtoNormalizer())->toJson($dto));
+        }
+    }
+
+    public function testAdditionalPropertiesNamingAComponentAreValidatedAndKept(): void
+    {
+        $class = $this->generate(
+            components: ['Gear' => ['type' => 'object', 'required' => ['name'], 'properties' => ['name' => ['type' => 'string']], 'additionalProperties' => false]],
+            properties: [
+                'extra' => ['type' => 'object', 'properties' => ['alpha' => ['type' => 'string']], 'additionalProperties' => ['$ref' => '#/components/schemas/Gear']],
+            ],
+        );
+
+        $body = '{"extra":{"alpha":"a","x":{"name":"n"}}}';
+        $this->assertSame($body, $this->deserialize(class: $class, body: $body)->toJson());
+        $this->assertRejected(class: $class, body: '{"extra":{"alpha":"a","x":{"bogus":1}}}', message: 'bogus');
+        $this->assertRejected(class: $class, body: '{"extra":{"alpha":"a","x":5}}', message: 'object');
+    }
+
+    public function testNullableOnThePropertyAndOnABranchAdmitsNullOnce(): void
+    {
+        $class = $this->generate(properties: [
+            'b' => ['nullable' => true, 'oneOf' => [['type' => 'string', 'nullable' => true], ['type' => 'integer']]],
+        ]);
+
+        $this->assertNull($this->deserialize(class: $class, body: '{"b":null}')->getB());
+        $this->assertSame('x', $this->deserialize(class: $class, body: '{"b":"x"}')->getB());
+    }
+
+    public function testUuidIsCheckedForItsShapeOnly(): void
+    {
+        $class = $this->generate(properties: ['id' => ['type' => 'string', 'format' => 'uuid']]);
+
+        foreach (['3f2504e0-4f89-41d3-da0c-0305e82c3301', '3f2504e0-4f89-01d3-9a0c-0305e82c3301', '00000000-0000-0000-0000-000000000000'] as $uuid) {
+            $this->assertSame($uuid, $this->deserialize(class: $class, body: sprintf('{"id":"%s"}', $uuid))->getId());
+        }
+        $this->assertRejected(class: $class, body: '{"id":"3f2504e0-4f89-41d3-da0c-0305e82c330"}', message: 'uuid');
+    }
+
+    public function testPropertiesNamedLikeGeneratedMembersCompileInAnyOrder(): void
+    {
+        foreach ([['this', 'this2'], ['this2', 'this'], ['alpha', 'alphaInPath']] as $names) {
+            $class = $this->generate(properties: array_fill_keys($names, ['type' => 'string']));
+            $body = (string)json_encode(array_combine($names, ['a', 'b']));
+
+            $this->assertSame($body, $this->deserialize(class: $class, body: $body)->toJson(), implode(', ', $names));
+        }
+    }
+
     /**
      * @param array<string, mixed> $properties
      * @param array<string, mixed> $components

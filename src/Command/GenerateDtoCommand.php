@@ -580,6 +580,7 @@ final class GenerateDtoCommand extends Command
         $files = [];
         $ownedDirectories = [];
         $warnings = [];
+        $readFiles = array_column($documents, 'file');
         $count = 0;
         try {
             $this->setExternalRefMappings($refPairs, $refNamespacePairs);
@@ -619,6 +620,7 @@ final class GenerateDtoCommand extends Command
                 }
                 $ownedDirectories = [...$ownedDirectories, ...$generated['ownedDirectories']];
                 $warnings = [...$warnings, ...$generated['warnings']];
+                $readFiles = [...$readFiles, ...$generated['readFiles']];
                 $count += $generated['count'];
             }
             $filter->assertEveryMaskMatched();
@@ -647,7 +649,7 @@ final class GenerateDtoCommand extends Command
             (new GeneratedFilePublisher())->publish(
                 files: $files,
                 ownedDirectories: $ownedDirectories,
-                inputFiles: array_column($documents, 'file'),
+                inputFiles: $readFiles,
             );
         } catch (RuntimeException $exception) {
             $io->error($exception->getMessage());
@@ -809,7 +811,7 @@ final class GenerateDtoCommand extends Command
      * the next, so a mask run gives exactly what one run per document would.
      *
      * @param array{file: string, directory: string, namespace: string} $document
-     * @return array{files: array<string, string>, ownedDirectories: list<string>, warnings: list<string>, count: int}
+     * @return array{files: array<string, string>, ownedDirectories: list<string>, warnings: list<string>, count: int, readFiles: list<string>}
      */
     private function generateDocument(
         array $document,
@@ -862,6 +864,9 @@ final class GenerateDtoCommand extends Command
             'ownedDirectories' => $worker->ownedOutputDirectories,
             'warnings' => array_values($worker->generationWarnings),
             'count' => $count,
+            // Every document a `$ref` led to, so an output directory holding one is refused like
+            // one holding the root document.
+            'readFiles' => array_keys($worker->externalDocSchemas),
         ];
     }
 
@@ -3723,13 +3728,16 @@ final class GenerateDtoCommand extends Command
                 ));
             }
             $normalizedName = $this->disambiguateCaseInsensitiveName($normalizedName, $openApiPropertyName, $normalizedToOpenApiName);
+            $classPropertyNames = array_map(
+                $this->normalizePropertyName(...),
+                array_map('strval', array_keys($properties)),
+            );
+            // The suffixed name must miss the properties still to come as well: `this` renamed to
+            // `this2` beside a real `this2` later in the list was a collision the order decided.
             $normalizedName = $this->avoidGeneratedMemberName(
                 name: $normalizedName,
-                reserved: $this->generatedMemberNames(array_map(
-                    $this->normalizePropertyName(...),
-                    array_map('strval', array_keys($properties)),
-                )),
-                taken: array_keys($normalizedToOpenApiName),
+                reserved: $this->generatedMemberNames($classPropertyNames),
+                taken: [...array_keys($normalizedToOpenApiName), ...$classPropertyNames],
             );
             $normalizedToOpenApiName[$normalizedName] = $openApiPropertyName;
 
@@ -7567,7 +7575,8 @@ final class GenerateDtoCommand extends Command
 
     /**
      * The names the emitted class takes for itself beside the document's properties: `$this`, which
-     * no parameter may be called; runtime's bag of undeclared keys; Laravel's presence bookkeeping;
+     * no parameter may be called; runtime's bag of undeclared keys and its `<property>InPath`-style
+     * source flags; Laravel's presence bookkeeping;
      * Symfony's `<property>Provided` flag for each property. A document property spelled like one of them generated a class PHP refused
      * to compile — "Cannot redeclare", "Cannot use $this as parameter".
      *
@@ -7579,6 +7588,11 @@ final class GenerateDtoCommand extends Command
         $reserved = ['this' => true];
         if ($this->attributeMode === self::ATTRIBUTE_MODE_RUNTIME) {
             $reserved['undeclaredproperties'] = true;
+            foreach ($propertyNames as $propertyName) {
+                foreach (['InRequest', 'InPath', 'InQuery', 'InHeader', 'InCookie'] as $source) {
+                    $reserved[strtolower($this->normalizeTrackingFlagName($propertyName, $source))] = true;
+                }
+            }
         }
         if ($this->attributeMode === self::ATTRIBUTE_MODE_LARAVEL) {
             $reserved['providedopenapikeys'] = true;

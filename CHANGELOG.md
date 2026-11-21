@@ -3,6 +3,67 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.125 — 2026-11-21
+
+- referenced documents never overwritten
+- output guard ignores path case
+- inherited discriminator keeps subtypes
+- nullable union admits null once
+- uuid checked by shape
+- map extras validated and kept
+- laravel nested checks survive cycles
+- symfony allOf keeps inherited fields
+
+A review of the 2.15.124 changes. Most of it repairs what that release introduced.
+
+**Runtime mode with `--dto-generator-directory`: regenerate after upgrading.** The deserializer,
+normalizer and validator changed, and the copies in your tree keep the old code until the next run.
+
+Output directory (all modes):
+
+- a directory holding a document a `$ref` leads to is refused like one holding the document named by
+  `--file`. Only the latter was checked, so `--directory` pointed at the folder of a shared document
+  deleted it and reported success;
+- on a case-insensitive filesystem `--directory=API` and the folder `api` are one directory. The guard
+  compared the paths as strings and let the case variant through; directories are now compared by
+  device and inode.
+
+Runtime mode:
+
+- a class that inherits its parent's discriminator — an `allOf` child — again becomes the mapped subclass
+  below it. 2.15.124 ignored an inherited discriminator altogether, so a `lion` sent where a `Cat` was
+  expected came back as a `Cat` and its own fields were dropped without an error;
+- an object whose only keys are `additionalProperties` ones spelled as digits (`{"0":"a"}`) is written as
+  a JSON object, not a list the deserializer then refused;
+- a union of a date and a non-temporal branch (`[date, integer]`) writes a date as the date it was, not as
+  PHP's `{"date": …, "timezone": …}`, and an integer as an integer;
+- `additionalProperties: {$ref: X}` beside named properties — and a map component made of nothing else —
+  validates each extra key against `X` and keeps it. Only an inline schema did; the extra keys of a `$ref`
+  were neither checked nor written back;
+- a property named like a generated member (`this`, `alphaInPath` beside `alpha`) is renamed past every
+  property of the class, not only the ones before it: `this` with a later `this2`, and `alpha` with
+  `alphaInPath`, produced a class PHP refused to compile.
+
+Validation (runtime, symfony, yii3 and the laravel interpreter):
+
+- `nullable: true` on a property AND on one of its `oneOf` branches admits null once. 2.15.124 counted it
+  as two matching branches and refused it;
+- `format: uuid` is checked for its shape — `8-4-4-4-12` hex digits — as JSON Schema defines it. Version
+  and variant were pinned, which refused version-0 identifiers and the Microsoft-variant GUIDs .NET writes;
+  yii3 accepted them until 2.15.124.
+
+laravel and laravel-data:
+
+- whether a nested class has paths to check is no longer cached from a lookup a cycle cut short. A class
+  rendered inside a cycle first cached "nothing below", and another parent reaching the same class then
+  dropped its nested type checks;
+- a `$ref` to a `oneOf`/`anyOf` union gets no `array` rule: one of its branches may be a scalar.
+
+symfony:
+
+- an inline `allOf` branch closed with `additionalProperties: false` beside a `$ref` parent no longer closes
+  the class over the branch's own properties. Every inherited property was refused as an extra one.
+
 ## 2.15.124 — 2026-11-20
 
 - document text never picks a class

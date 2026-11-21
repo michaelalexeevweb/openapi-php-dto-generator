@@ -682,6 +682,7 @@ final class DtoValidator implements DtoValidatorInterface
     private function validateUnionBranches(string $subject, mixed $value, array $branches, bool $isOneOf, int $depth): array
     {
         $validBranches = 0;
+        $nullableBranchAdmitsNull = false;
         $errors = [];
 
         foreach ($branches as $branch) {
@@ -689,11 +690,18 @@ final class DtoValidator implements DtoValidatorInterface
                 continue;
             }
 
+            // OpenAPI 3.0 `nullable: true` lets null into a branch its `type` alone would keep it out
+            // of. It says "or null", not "this branch is null", so it never makes null match twice:
+            // `nullable` on the property AND on a branch is a common way to write one thing.
+            if ($value === null && ($branch['nullable'] ?? false) === true) {
+                $nullableBranchAdmitsNull = true;
+
+                continue;
+            }
+
             // Type-gate: a branch whose declared type can't match the value would fail its
             // own type check anyway, so skip it. Branches without a type are always evaluated.
-            // OpenAPI 3.0 `nullable: true` lets null into a branch its `type` alone would keep it out of.
-            $nullAllowed = $value === null && ($branch['nullable'] ?? false) === true;
-            if (!$nullAllowed && !$this->matchesOpenApiType(value: $value, type: $branch['type'] ?? null)) {
+            if (!$this->matchesOpenApiType(value: $value, type: $branch['type'] ?? null)) {
                 continue;
             }
 
@@ -711,6 +719,10 @@ final class DtoValidator implements DtoValidatorInterface
             }
 
             array_push($errors, ...$branchErrors);
+        }
+
+        if ($validBranches === 0 && $nullableBranchAdmitsNull) {
+            return [];
         }
 
         if ($isOneOf) {
@@ -2135,21 +2147,12 @@ final class DtoValidator implements DtoValidatorInterface
 
     private function isValidUuid(string $value): bool
     {
-        // RFC 9562 special-case UUIDs: the nil UUID (all zeros) and the max UUID (all
-        // ones) carry version/variant nibbles that the general pattern rejects, but both
-        // are valid and common in real data (e.g. default/sentinel identifiers).
-        if (
-            $value === '00000000-0000-0000-0000-000000000000'
-            || strtolower($value) === 'ffffffff-ffff-ffff-ffff-ffffffffffff'
-        ) {
-            return true;
-        }
-
-        // Variant nibble [89abABcCdD] deliberately accepts the legacy Microsoft/COM variant
-        // (c/d), not only the strict RFC 4122 10xx variant ([89ab]). This is intentional:
-        // real-world payloads from .NET/Windows carry variant-2 GUIDs and must not be rejected.
+        // The shape only, as JSON Schema's `uuid` asks and as Laravel's and yiisoft's rules check it:
+        // version and variant nibbles are not looked at. Pinning them refused the nil and max UUIDs,
+        // version-0 identifiers and the Microsoft/COM variant GUIDs .NET writes — all of them data a
+        // document calling the field a `uuid` sends.
         return preg_match(
-            pattern: '/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abABcCdD][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/D',
+            pattern: '/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/D',
             subject: $value,
         ) === 1;
     }

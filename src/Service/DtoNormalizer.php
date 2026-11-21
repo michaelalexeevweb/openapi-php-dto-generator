@@ -194,9 +194,21 @@ final class DtoNormalizer implements DtoNormalizerInterface
     private function encode(array $payload): string
     {
         return json_encode(
-            $payload === [] ? (object)$payload : $payload,
+            // A list here is a DTO whose only keys are `additionalProperties` ones spelled as digits.
+            self::isListShaped($payload) ? (object)$payload : $payload,
             JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR,
         );
+    }
+
+    /**
+     * The payload is typed by its declared names, but a key `additionalProperties` admitted arrives
+     * as an int when it is spelled as one, and an object holding only such keys is a list to PHP.
+     *
+     * @param array<array-key, mixed> $payload
+     */
+    private static function isListShaped(array $payload): bool
+    {
+        return array_is_list($payload);
     }
 
     /**
@@ -739,8 +751,9 @@ final class DtoNormalizer implements DtoNormalizerInterface
                     // set left as `[]`, contradicting the document it was generated from, in every
                     // position: on its own, inside a list and inside a map. Restricted to a generated
                     // DTO on purpose: a hand-written `toArray()` makes no such promise.
-                    return $normalized === [] && $value instanceof GeneratedDtoInterface
-                        ? new stdClass()
+                    // `{"0":"a"}` kept by `additionalProperties` is a list to PHP as well.
+                    return self::isListShaped($normalized) && $value instanceof GeneratedDtoInterface
+                        ? (object)$normalized
                         : $normalized;
                 }
             } catch (LogicException $e) {

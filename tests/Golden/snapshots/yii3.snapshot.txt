@@ -1,4 +1,4 @@
-# yii3 mode — 80 files, 35893 lines
+# yii3 mode — 80 files, 35876 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -2664,7 +2664,6 @@ use function sprintf;
 use function str_ends_with;
 use function str_starts_with;
 use function strpos;
-use function strtolower;
 use function substr;
 
 use const PREG_SPLIT_NO_EMPTY;
@@ -3163,12 +3162,8 @@ final class ApiTestCatsActionsGetQueryParams extends AbstractInput implements Da
 
     private function isValidOpenApiUuid(string $value): bool
     {
-        // RFC 9562's nil and max UUIDs carry no version or variant, and are valid all the same.
-        if ($value === '00000000-0000-0000-0000-000000000000' || strtolower($value) === 'ffffffff-ffff-ffff-ffff-ffffffffffff') {
-            return true;
-        }
-
-        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/D', $value) === 1;
+        // The shape only, as JSON Schema's `uuid` asks: version and variant nibbles are not looked at.
+        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/D', $value) === 1;
     }
 }
 
@@ -3223,7 +3218,6 @@ use function sprintf;
 use function str_ends_with;
 use function str_starts_with;
 use function strpos;
-use function strtolower;
 use function substr;
 
 use const PREG_SPLIT_NO_EMPTY;
@@ -3722,12 +3716,8 @@ final class ApiTestCatsActionsPostQueryParams extends AbstractInput implements D
 
     private function isValidOpenApiUuid(string $value): bool
     {
-        // RFC 9562's nil and max UUIDs carry no version or variant, and are valid all the same.
-        if ($value === '00000000-0000-0000-0000-000000000000' || strtolower($value) === 'ffffffff-ffff-ffff-ffff-ffffffffffff') {
-            return true;
-        }
-
-        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/D', $value) === 1;
+        // The shape only, as JSON Schema's `uuid` asks: version and variant nibbles are not looked at.
+        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/D', $value) === 1;
     }
 }
 
@@ -3782,7 +3772,6 @@ use function sprintf;
 use function str_ends_with;
 use function str_starts_with;
 use function strpos;
-use function strtolower;
 use function substr;
 
 use const PREG_SPLIT_NO_EMPTY;
@@ -4281,12 +4270,8 @@ final class ApiTestDogsTagsGetQueryParams extends AbstractInput implements DataS
 
     private function isValidOpenApiUuid(string $value): bool
     {
-        // RFC 9562's nil and max UUIDs carry no version or variant, and are valid all the same.
-        if ($value === '00000000-0000-0000-0000-000000000000' || strtolower($value) === 'ffffffff-ffff-ffff-ffff-ffffffffffff') {
-            return true;
-        }
-
-        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/D', $value) === 1;
+        // The shape only, as JSON Schema's `uuid` asks: version and variant nibbles are not looked at.
+        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/D', $value) === 1;
     }
 }
 
@@ -4341,7 +4326,6 @@ use function sprintf;
 use function str_ends_with;
 use function str_starts_with;
 use function strpos;
-use function strtolower;
 use function substr;
 
 use const PREG_SPLIT_NO_EMPTY;
@@ -4840,12 +4824,8 @@ final class ApiTestDogsTagsPatchQueryParams extends AbstractInput implements Dat
 
     private function isValidOpenApiUuid(string $value): bool
     {
-        // RFC 9562's nil and max UUIDs carry no version or variant, and are valid all the same.
-        if ($value === '00000000-0000-0000-0000-000000000000' || strtolower($value) === 'ffffffff-ffff-ffff-ffff-ffffffffffff') {
-            return true;
-        }
-
-        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/D', $value) === 1;
+        // The shape only, as JSON Schema's `uuid` asks: version and variant nibbles are not looked at.
+        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/D', $value) === 1;
     }
 }
 
@@ -4891,7 +4871,6 @@ use function sprintf;
 use function str_ends_with;
 use function str_starts_with;
 use function strpos;
-use function strtolower;
 use function substr;
 
 use const PREG_SPLIT_NO_EMPTY;
@@ -5281,12 +5260,8 @@ final class ApiTestFileDeleteQueryParams extends AbstractInput implements DataSe
 
     private function isValidOpenApiUuid(string $value): bool
     {
-        // RFC 9562's nil and max UUIDs carry no version or variant, and are valid all the same.
-        if ($value === '00000000-0000-0000-0000-000000000000' || strtolower($value) === 'ffffffff-ffff-ffff-ffff-ffffffffffff') {
-            return true;
-        }
-
-        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/D', $value) === 1;
+        // The shape only, as JSON Schema's `uuid` asks: version and variant nibbles are not looked at.
+        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/D', $value) === 1;
     }
 }
 
@@ -5332,7 +5307,6 @@ use function sprintf;
 use function str_ends_with;
 use function str_starts_with;
 use function strpos;
-use function strtolower;
 use function substr;
 
 use const PREG_SPLIT_NO_EMPTY;
@@ -5722,12 +5696,8 @@ final class ApiTestFilePatchQueryParams extends AbstractInput implements DataSet
 
     private function isValidOpenApiUuid(string $value): bool
     {
-        // RFC 9562's nil and max UUIDs carry no version or variant, and are valid all the same.
-        if ($value === '00000000-0000-0000-0000-000000000000' || strtolower($value) === 'ffffffff-ffff-ffff-ffff-ffffffffffff') {
-            return true;
-        }
-
-        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/D', $value) === 1;
+        // The shape only, as JSON Schema's `uuid` asks: version and variant nibbles are not looked at.
+        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/D', $value) === 1;
     }
 }
 
@@ -31293,7 +31263,6 @@ use function str_contains;
 use function str_ends_with;
 use function str_starts_with;
 use function strpos;
-use function strtolower;
 use function substr;
 
 use const PREG_SPLIT_NO_EMPTY;
@@ -31659,6 +31628,7 @@ final class TestPostRequest extends AbstractInput implements DataSetInterface, R
 
         if (is_array($schema['oneOf'] ?? null)) {
             $matchingBranches = 0;
+            $nullableBranchAdmitsNull = false;
             $branchErrors = [];
             foreach ($schema['oneOf'] as $branch) {
                 if (!is_array($branch)) {
@@ -31673,11 +31643,12 @@ final class TestPostRequest extends AbstractInput implements DataSetInterface, R
                     continue;
                 }
 
-                if (
-                    array_key_exists('type', $branch)
-                    && !($normalizedValue === null && ($branch['nullable'] ?? false) === true)
-                    && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])
-                ) {
+                // `nullable: true` says "or null": it admits null, and never makes null match twice.
+                if ($normalizedValue === null && ($branch['nullable'] ?? false) === true) {
+                    $nullableBranchAdmitsNull = true;
+                    continue;
+                }
+                if (array_key_exists('type', $branch) && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
                     continue;
                 }
                 // Keep why each branch failed: with no match at all those reasons are far more
@@ -31689,6 +31660,10 @@ final class TestPostRequest extends AbstractInput implements DataSetInterface, R
                 }
 
                 $branchErrors = [...$branchErrors, ...$errorsForBranch];
+            }
+
+            if ($matchingBranches === 0 && $nullableBranchAdmitsNull) {
+                $matchingBranches = 1;
             }
 
             if ($matchingBranches > 1) {
@@ -31974,12 +31949,8 @@ final class TestPostRequest extends AbstractInput implements DataSetInterface, R
 
     private function isValidOpenApiUuid(string $value): bool
     {
-        // RFC 9562's nil and max UUIDs carry no version or variant, and are valid all the same.
-        if ($value === '00000000-0000-0000-0000-000000000000' || strtolower($value) === 'ffffffff-ffff-ffff-ffff-ffffffffffff') {
-            return true;
-        }
-
-        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/D', $value) === 1;
+        // The shape only, as JSON Schema's `uuid` asks: version and variant nibbles are not looked at.
+        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/D', $value) === 1;
     }
 
     private function isValidOpenApiUri(string $value): bool
@@ -32407,6 +32378,7 @@ final class TreeNode extends AbstractInput implements DataSetInterface, RulesPro
 
         if (is_array($schema['oneOf'] ?? null)) {
             $matchingBranches = 0;
+            $nullableBranchAdmitsNull = false;
             $branchErrors = [];
             foreach ($schema['oneOf'] as $branch) {
                 if (!is_array($branch)) {
@@ -32421,11 +32393,12 @@ final class TreeNode extends AbstractInput implements DataSetInterface, RulesPro
                     continue;
                 }
 
-                if (
-                    array_key_exists('type', $branch)
-                    && !($normalizedValue === null && ($branch['nullable'] ?? false) === true)
-                    && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])
-                ) {
+                // `nullable: true` says "or null": it admits null, and never makes null match twice.
+                if ($normalizedValue === null && ($branch['nullable'] ?? false) === true) {
+                    $nullableBranchAdmitsNull = true;
+                    continue;
+                }
+                if (array_key_exists('type', $branch) && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
                     continue;
                 }
                 // Keep why each branch failed: with no match at all those reasons are far more
@@ -32437,6 +32410,10 @@ final class TreeNode extends AbstractInput implements DataSetInterface, RulesPro
                 }
 
                 $branchErrors = [...$branchErrors, ...$errorsForBranch];
+            }
+
+            if ($matchingBranches === 0 && $nullableBranchAdmitsNull) {
+                $matchingBranches = 1;
             }
 
             if ($matchingBranches > 1) {
@@ -33254,6 +33231,7 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
 
         if (is_array($schema['oneOf'] ?? null)) {
             $matchingBranches = 0;
+            $nullableBranchAdmitsNull = false;
             $branchErrors = [];
             foreach ($schema['oneOf'] as $branch) {
                 if (!is_array($branch)) {
@@ -33268,11 +33246,12 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
                     continue;
                 }
 
-                if (
-                    array_key_exists('type', $branch)
-                    && !($normalizedValue === null && ($branch['nullable'] ?? false) === true)
-                    && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])
-                ) {
+                // `nullable: true` says "or null": it admits null, and never makes null match twice.
+                if ($normalizedValue === null && ($branch['nullable'] ?? false) === true) {
+                    $nullableBranchAdmitsNull = true;
+                    continue;
+                }
+                if (array_key_exists('type', $branch) && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
                     continue;
                 }
                 // Keep why each branch failed: with no match at all those reasons are far more
@@ -33284,6 +33263,10 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
                 }
 
                 $branchErrors = [...$branchErrors, ...$errorsForBranch];
+            }
+
+            if ($matchingBranches === 0 && $nullableBranchAdmitsNull) {
+                $matchingBranches = 1;
             }
 
             if ($matchingBranches > 1) {

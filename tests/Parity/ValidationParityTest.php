@@ -499,6 +499,85 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * `nullable` on the property AND on a branch — a common way to write one thing in 3.0 — made
+     * null match two `oneOf` branches, and `oneOf` refused it.
+     */
+    public function testNullableOnThePropertyAndOnABranchAdmitsNullOnce(): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = self::probeSpec(['nullable' => true, 'oneOf' => [['type' => 'string', 'nullable' => true], ['type' => 'integer']]]);
+        $spec['openapi'] = '3.0.3';
+
+        $this->assertEveryModeYields(
+            ['valid' => true, 'invalid' => false],
+            fn(GenerationMode $mode): array => $this->verdict($mode, $spec, 'nullable twice', '{"f":null}', '{"f":[1]}'),
+            [],
+            context: 'nullable twice',
+        );
+    }
+
+    /**
+     * A `uuid` is checked for its shape. Version and variant nibbles were pinned in the interpreter
+     * and refused the Microsoft-variant GUIDs .NET writes, which yii3 had accepted until 2.15.124.
+     */
+    public function testUuidIsCheckedForItsShapeOnly(): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = self::probeSpec(['type' => 'array', 'items' => ['type' => 'string', 'format' => 'uuid']]);
+
+        $this->assertEveryModeYields(
+            ['valid' => true, 'invalid' => false],
+            fn(GenerationMode $mode): array => $this->verdict(
+                $mode,
+                $spec,
+                'uuid shape',
+                '{"f":["3f2504e0-4f89-41d3-da0c-0305e82c3301","3f2504e0-4f89-01d3-9a0c-0305e82c3301"]}',
+                '{"f":["3f2504e0-4f89-41d3-da0c-0305e82c330"]}',
+            ),
+            [],
+            context: 'uuid shape',
+        );
+    }
+
+    /**
+     * An inline `allOf` branch closed with `additionalProperties: false` beside a `$ref` parent: Symfony
+     * merged the branch into the class and refused every property the parent brought.
+     */
+    public function testClosedBranchBesideAParentKeepsTheInheritedProperties(): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Base' => ['type' => 'object', 'properties' => ['id' => ['type' => 'string']]],
+                'Probe' => ['allOf' => [
+                    ['$ref' => '#/components/schemas/Base'],
+                    ['type' => 'object', 'required' => ['f'], 'properties' => ['f' => ['type' => 'string']], 'additionalProperties' => false],
+                ]],
+            ]],
+        ];
+
+        $this->assertSame(
+            ['valid' => true, 'invalid' => false],
+            $this->verdict(GenerationMode::Symfony, $spec, 'closed branch beside a parent', '{"id":"a","f":"b"}', '{"f":1}'),
+        );
+        $this->assertSame(
+            ['valid' => true, 'invalid' => false],
+            $this->verdict(GenerationMode::Runtime, $spec, 'closed branch beside a parent', '{"id":"a","f":"b"}', '{"f":1}'),
+        );
+    }
+
+    /**
      * @param array<string, mixed> $schema
      */
     #[DataProvider('schemaAssertionCases')]

@@ -3877,15 +3877,24 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return null;
         }
 
-        // The class must declare the discriminator itself. A union MEMBER inherits its parent's, and a
-        // property typed with the member — `cat: $ref Cat` — refused every `kind` but the mapped ones,
-        // and a mapped `dog` with "Dog must extend or implement Cat".
-        if ((new ReflectionMethod($baseClass, 'getDiscriminatorMapping'))->getDeclaringClass()->getName() !== ltrim($baseClass, '\\')) {
-            return null;
-        }
+        // A class that inherits the discriminator — a union MEMBER, an `allOf` child — only narrows to
+        // its OWN subclasses. A property typed with the member, `cat: $ref Cat`, refused every `kind`
+        // but the mapped ones, and a mapped `dog` with "Dog must extend or implement Cat"; yet a mapped
+        // `lion` below Cat must still become a Lion, or its own fields are dropped.
+        $inherited = (new ReflectionMethod($baseClass, 'getDiscriminatorMapping'))->getDeclaringClass()->getName() !== ltrim($baseClass, '\\');
 
         $discriminatorProperty = $baseClass::getDiscriminatorPropertyName();
         $mapping = $baseClass::getDiscriminatorMapping();
+        if ($inherited) {
+            $inheritedKey = is_string($discriminatorProperty) ? $value[$discriminatorProperty] ?? null : null;
+            $inheritedTarget = is_array($mapping) && (is_string($inheritedKey) || is_int($inheritedKey))
+                ? $mapping[(string)$inheritedKey] ?? null
+                : null;
+
+            return is_string($inheritedTarget) && class_exists($inheritedTarget) && is_a($inheritedTarget, $baseClass, true)
+                ? $inheritedTarget
+                : null;
+        }
 
         if (
             !is_string($discriminatorProperty) || $discriminatorProperty === '' || !is_array(

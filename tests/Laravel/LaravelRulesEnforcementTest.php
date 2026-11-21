@@ -2223,4 +2223,61 @@ final class LaravelRulesEnforcementTest extends TestCase
         $this->assertSame('{"f":{"code":"x"}}', json_encode($dto));
         $this->assertSame('{"f":{}}', json_encode(call_user_func([$fqcn, 'fromValidated'], ['f' => []])));
     }
+
+    /**
+     * Whether a nested class has wire-shape paths to check was cached per class, also when the answer
+     * had stopped at a cycle: rendered first, `Alpha` asked about `Beta` with itself already on the way,
+     * cached "nothing below", and `Widget` — which the cycle does not pass through — read that and
+     * dropped the check of `beta.alpha.n`.
+     */
+    public function testACycleSeenFirstFromInsideDoesNotHideTheNestedChecksFromAnotherParent(): void
+    {
+        $namespace = 'LvRuleCycleCache';
+        $target = $this->outputDirectory . '/' . $namespace;
+        (new GenerateDtoCommand())->generateFromArray([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Alpha' => ['type' => 'object', 'properties' => ['n' => ['type' => 'integer'], 'beta' => ['$ref' => '#/components/schemas/Beta']]],
+                'Beta' => ['type' => 'object', 'properties' => ['alpha' => ['$ref' => '#/components/schemas/Alpha']]],
+                'Widget' => ['type' => 'object', 'properties' => ['beta' => ['$ref' => '#/components/schemas/Beta']]],
+            ]],
+        ], $target, $namespace, 'laravel');
+        spl_autoload_register(static function (string $class) use ($target, $namespace): void {
+            $file = $target . '/' . substr($class, strlen($namespace) + 1) . '.php';
+            if (str_starts_with($class, $namespace . '\\') && is_file($file)) {
+                require_once $file;
+            }
+        });
+        $fqcn = $namespace . '\Widget';
+        $fails = function (string $json) use ($fqcn): bool {
+            /** @var array<string, mixed> $rules */
+            $rules = call_user_func([$fqcn, 'rules']);
+            $validator = $this->validatorFactory()->make((array)json_decode($json, true), $rules);
+            call_user_func([$fqcn, 'withValidator'], $validator, $json);
+
+            return $validator->fails();
+        };
+
+        $this->assertTrue($fails('{"beta":{"alpha":{"n":"5"}}}'));
+        $this->assertFalse($fails('{"beta":{"alpha":{"n":5}}}'));
+    }
+
+    /**
+     * The `array` rule a `$ref` to a DTO gets is not for a union: one of its branches may be a scalar.
+     */
+    public function testAReferenceToAUnionWithAScalarBranchAcceptsTheScalar(): void
+    {
+        $fqcn = $this->generateProbe(
+            'reference to a union with a scalar branch',
+            ['$ref' => '#/components/schemas/Choice'],
+            [
+                'Leaf' => ['type' => 'object', 'properties' => ['a' => ['type' => 'string']]],
+                'Choice' => ['oneOf' => [['$ref' => '#/components/schemas/Leaf'], ['type' => 'string']]],
+            ],
+        );
+
+        $validator = $this->validatorFactory()->make(['f' => 'hello'], call_user_func([$fqcn, 'rules']));
+        $this->assertFalse($validator->fails(), json_encode($validator->errors()->toArray()) ?: '');
+    }
 }

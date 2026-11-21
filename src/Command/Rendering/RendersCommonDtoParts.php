@@ -418,9 +418,27 @@ trait RendersCommonDtoParts
                 $merged[$keyword] = $value;
             }
         }
+        $inherits = false;
+        foreach ($allOf as $branch) {
+            if (is_array($branch) && array_key_exists('$ref', $branch)) {
+                $inherits = true;
+            }
+        }
         foreach ($allOf as $branch) {
             if (!is_array($branch) || array_key_exists('$ref', $branch)) {
                 continue;
+            }
+            // A branch closed with `additionalProperties: false` beside a `$ref` parent: merged as is,
+            // it closed the class over the branch's properties alone and refused every inherited one.
+            // The class as a whole is what the document describes, as runtime mode reads it.
+            if ($inherits) {
+                $open = [];
+                foreach ($branch as $keyword => $value) {
+                    if (!in_array($keyword, ['additionalProperties', 'unevaluatedProperties'], true) || $value !== false) {
+                        $open[$keyword] = $value;
+                    }
+                }
+                $branch = $open;
             }
             $required = [
                 ...(is_array($merged['required'] ?? null) ? $merged['required'] : []),

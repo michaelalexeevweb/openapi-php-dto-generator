@@ -500,7 +500,8 @@ interface {{ className }}
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+{# A DTO is a JSON object, also when its only keys are `additionalProperties` ones like "0". #}
+        return array_is_list($result) ? (object)$result : $result;
     }
 
 {# Slashes are left alone here for the same reason `DtoNormalizer::toJson()` leaves them alone:

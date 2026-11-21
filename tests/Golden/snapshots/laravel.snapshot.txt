@@ -1,4 +1,4 @@
-# laravel mode — 106 files, 29228 lines
+# laravel mode — 106 files, 29247 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -16423,6 +16423,7 @@ final class Containers implements JsonSerializable
 
         if (is_array($schema['oneOf'] ?? null)) {
             $matchingBranches = 0;
+            $nullableBranchAdmitsNull = false;
             $branchErrors = [];
             foreach ($schema['oneOf'] as $branch) {
                 if (!is_array($branch)) {
@@ -16437,11 +16438,12 @@ final class Containers implements JsonSerializable
                     continue;
                 }
 
-                if (
-                    array_key_exists('type', $branch)
-                    && !($normalizedValue === null && ($branch['nullable'] ?? false) === true)
-                    && !self::matchesOpenApiCallbackType($normalizedValue, $branch['type'])
-                ) {
+                // `nullable: true` says "or null": it admits null, and never makes null match twice.
+                if ($normalizedValue === null && ($branch['nullable'] ?? false) === true) {
+                    $nullableBranchAdmitsNull = true;
+                    continue;
+                }
+                if (array_key_exists('type', $branch) && !self::matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
                     continue;
                 }
                 // Keep why each branch failed: with no match at all those reasons are far more
@@ -16453,6 +16455,10 @@ final class Containers implements JsonSerializable
                 }
 
                 $branchErrors = [...$branchErrors, ...$errorsForBranch];
+            }
+
+            if ($matchingBranches === 0 && $nullableBranchAdmitsNull) {
+                $matchingBranches = 1;
             }
 
             if ($matchingBranches > 1) {
@@ -24263,7 +24269,6 @@ use function str_contains;
 use function str_ends_with;
 use function str_starts_with;
 use function strlen;
-use function strtolower;
 use function substr;
 use function trim;
 
@@ -24723,6 +24728,7 @@ final class TestPostRequest implements JsonSerializable
 
         if (is_array($schema['oneOf'] ?? null)) {
             $matchingBranches = 0;
+            $nullableBranchAdmitsNull = false;
             $branchErrors = [];
             foreach ($schema['oneOf'] as $branch) {
                 if (!is_array($branch)) {
@@ -24737,11 +24743,12 @@ final class TestPostRequest implements JsonSerializable
                     continue;
                 }
 
-                if (
-                    array_key_exists('type', $branch)
-                    && !($normalizedValue === null && ($branch['nullable'] ?? false) === true)
-                    && !self::matchesOpenApiCallbackType($normalizedValue, $branch['type'])
-                ) {
+                // `nullable: true` says "or null": it admits null, and never makes null match twice.
+                if ($normalizedValue === null && ($branch['nullable'] ?? false) === true) {
+                    $nullableBranchAdmitsNull = true;
+                    continue;
+                }
+                if (array_key_exists('type', $branch) && !self::matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
                     continue;
                 }
                 // Keep why each branch failed: with no match at all those reasons are far more
@@ -24753,6 +24760,10 @@ final class TestPostRequest implements JsonSerializable
                 }
 
                 $branchErrors = [...$branchErrors, ...$errorsForBranch];
+            }
+
+            if ($matchingBranches === 0 && $nullableBranchAdmitsNull) {
+                $matchingBranches = 1;
             }
 
             if ($matchingBranches > 1) {
@@ -24949,12 +24960,8 @@ final class TestPostRequest implements JsonSerializable
 
     private static function isValidOpenApiUuid(string $value): bool
     {
-        // RFC 9562's nil and max UUIDs carry no version or variant, and are valid all the same.
-        if ($value === '00000000-0000-0000-0000-000000000000' || strtolower($value) === 'ffffffff-ffff-ffff-ffff-ffffffffffff') {
-            return true;
-        }
-
-        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/D', $value) === 1;
+        // The shape only, as JSON Schema's `uuid` asks: version and variant nibbles are not looked at.
+        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/D', $value) === 1;
     }
 
     private static function isValidOpenApiUri(string $value): bool
@@ -25688,6 +25695,7 @@ final class TreeNode implements JsonSerializable
 
         if (is_array($schema['oneOf'] ?? null)) {
             $matchingBranches = 0;
+            $nullableBranchAdmitsNull = false;
             $branchErrors = [];
             foreach ($schema['oneOf'] as $branch) {
                 if (!is_array($branch)) {
@@ -25702,11 +25710,12 @@ final class TreeNode implements JsonSerializable
                     continue;
                 }
 
-                if (
-                    array_key_exists('type', $branch)
-                    && !($normalizedValue === null && ($branch['nullable'] ?? false) === true)
-                    && !self::matchesOpenApiCallbackType($normalizedValue, $branch['type'])
-                ) {
+                // `nullable: true` says "or null": it admits null, and never makes null match twice.
+                if ($normalizedValue === null && ($branch['nullable'] ?? false) === true) {
+                    $nullableBranchAdmitsNull = true;
+                    continue;
+                }
+                if (array_key_exists('type', $branch) && !self::matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
                     continue;
                 }
                 // Keep why each branch failed: with no match at all those reasons are far more
@@ -25718,6 +25727,10 @@ final class TreeNode implements JsonSerializable
                 }
 
                 $branchErrors = [...$branchErrors, ...$errorsForBranch];
+            }
+
+            if ($matchingBranches === 0 && $nullableBranchAdmitsNull) {
+                $matchingBranches = 1;
             }
 
             if ($matchingBranches > 1) {
@@ -26778,6 +26791,7 @@ final class UnionUnderContainer implements JsonSerializable
 
         if (is_array($schema['oneOf'] ?? null)) {
             $matchingBranches = 0;
+            $nullableBranchAdmitsNull = false;
             $branchErrors = [];
             foreach ($schema['oneOf'] as $branch) {
                 if (!is_array($branch)) {
@@ -26792,11 +26806,12 @@ final class UnionUnderContainer implements JsonSerializable
                     continue;
                 }
 
-                if (
-                    array_key_exists('type', $branch)
-                    && !($normalizedValue === null && ($branch['nullable'] ?? false) === true)
-                    && !self::matchesOpenApiCallbackType($normalizedValue, $branch['type'])
-                ) {
+                // `nullable: true` says "or null": it admits null, and never makes null match twice.
+                if ($normalizedValue === null && ($branch['nullable'] ?? false) === true) {
+                    $nullableBranchAdmitsNull = true;
+                    continue;
+                }
+                if (array_key_exists('type', $branch) && !self::matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
                     continue;
                 }
                 // Keep why each branch failed: with no match at all those reasons are far more
@@ -26808,6 +26823,10 @@ final class UnionUnderContainer implements JsonSerializable
                 }
 
                 $branchErrors = [...$branchErrors, ...$errorsForBranch];
+            }
+
+            if ($matchingBranches === 0 && $nullableBranchAdmitsNull) {
+                $matchingBranches = 1;
             }
 
             if ($matchingBranches > 1) {
@@ -27808,7 +27827,7 @@ final class User implements JsonSerializable
         return [
             'id' => self::withBlankStringValidation(['present', 'integer']),
             'name' => self::withBlankStringValidation(['present', 'string']),
-            'pet' => self::withBlankStringValidation(['present', 'nullable', 'array']),
+            'pet' => self::withBlankStringValidation(['present', 'nullable']),
             'createdAt' => self::withBlankStringValidation(['present', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.vp,Y-m-d H:i:s,Y-m-d\TH:i:s']),
         ];
     }
@@ -27904,7 +27923,7 @@ final class User implements JsonSerializable
                 'rules' => [
                     $prefix . '.id' => self::withBlankStringValidation(['integer']),
                     $prefix . '.name' => self::withBlankStringValidation(['string']),
-                    $prefix . '.pet' => self::withBlankStringValidation(['nullable', 'array']),
+                    $prefix . '.pet' => self::withBlankStringValidation(['nullable']),
                     $prefix . '.createdAt' => self::withBlankStringValidation(['date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.vp,Y-m-d H:i:s,Y-m-d\TH:i:s']),
                 ],
                 'objectPaths' => [

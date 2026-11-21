@@ -6033,13 +6033,14 @@ final class GenerateDtoCommandTest extends TestCase
             $this->assertStringNotContainsString(' = [];', $body, "method must not assign temp array: {$marker}");
         }
 
-        // The wire form, delegating and then casting the empty case.
+        // The wire form, delegating and then casting what PHP would write as a JSON list: the empty
+        // case, and the keys `additionalProperties` admitted spelled as digits.
         $this->assertStringContainsString(
             "    public function jsonSerialize(): array|object\n"
             . "    {\n"
             . "        \$result = \$this->toArray();\n"
             . "\n"
-            . "        return \$result === [] ? (object)\$result : \$result;\n"
+            . "        return array_is_list(\$result) ? (object)\$result : \$result;\n"
             . '    }',
             $content,
         );

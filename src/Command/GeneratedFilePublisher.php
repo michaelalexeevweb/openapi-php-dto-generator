@@ -248,9 +248,31 @@ final class GeneratedFilePublisher
         ));
     }
 
+    /**
+     * `realpath()` keeps the case it was given, so on a case-insensitive filesystem `API` and `api`
+     * — one directory — compared as two and the guard let the wrong one through. Each directory on
+     * the way up from `$path` is compared by device and inode instead; the string comparison stays
+     * for a filesystem that reports no inode.
+     */
     private function isWithin(string $path, string $directory): bool
     {
-        return $path === $directory || str_starts_with($path, rtrim($directory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR);
+        if ($path === $directory || str_starts_with($path, rtrim($directory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR)) {
+            return true;
+        }
+        $target = @stat($directory);
+        if ($target === false || $target['ino'] === 0) {
+            return false;
+        }
+        for ($current = $path;; $current = $parent) {
+            $stat = @stat($current);
+            if ($stat !== false && $stat['dev'] === $target['dev'] && $stat['ino'] === $target['ino']) {
+                return true;
+            }
+            $parent = dirname($current);
+            if ($parent === $current) {
+                return false;
+            }
+        }
     }
 
     /**

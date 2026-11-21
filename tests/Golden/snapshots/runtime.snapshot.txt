@@ -1,4 +1,4 @@
-# runtime mode — 80 files, 23546 lines
+# runtime mode — 80 files, 23620 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -130,6 +130,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -212,7 +213,7 @@ final class Animal2AnyOf4 implements Animal2, GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -340,6 +341,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -422,7 +424,7 @@ final class AnimalOneOf3 implements Animal, GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -547,6 +549,7 @@ use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use Stringable;
 
+use function array_is_list;
 use function is_string;
 use function json_encode;
 
@@ -628,7 +631,7 @@ final class ApiTest2403 implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -714,6 +717,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -841,7 +845,7 @@ final class ApiTest2PatchRequest implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -996,6 +1000,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -1166,7 +1171,7 @@ final class ApiTest2PostRequest implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -1345,6 +1350,7 @@ use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use Stringable;
 
+use function array_is_list;
 use function is_string;
 use function json_encode;
 
@@ -1426,7 +1432,7 @@ final class ApiTest403 implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -1510,6 +1516,7 @@ use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Contract\UnsetValue;
 use Stringable;
 
+use function array_is_list;
 use function is_string;
 use function json_encode;
 
@@ -1727,7 +1734,7 @@ final class ApiTestCatsActionsGetQueryParams implements GeneratedDtoInterface, S
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -1908,6 +1915,7 @@ use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Contract\UnsetValue;
 use Stringable;
 
+use function array_is_list;
 use function is_string;
 use function json_encode;
 
@@ -2125,7 +2133,7 @@ final class ApiTestCatsActionsPostQueryParams implements GeneratedDtoInterface, 
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -2306,6 +2314,7 @@ use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Contract\UnsetValue;
 use Stringable;
 
+use function array_is_list;
 use function is_string;
 use function json_encode;
 
@@ -2523,7 +2532,7 @@ final class ApiTestDogsTagsGetQueryParams implements GeneratedDtoInterface, Stri
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -2704,6 +2713,7 @@ use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Contract\UnsetValue;
 use Stringable;
 
+use function array_is_list;
 use function is_string;
 use function json_encode;
 
@@ -2921,7 +2931,7 @@ final class ApiTestDogsTagsPatchQueryParams implements GeneratedDtoInterface, St
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -3101,6 +3111,7 @@ use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use Stringable;
 
+use function array_is_list;
 use function is_string;
 use function json_encode;
 
@@ -3186,7 +3197,7 @@ final class ApiTestFileDeleteQueryParams implements GeneratedDtoInterface, Strin
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -3300,6 +3311,7 @@ use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use Stringable;
 
+use function array_is_list;
 use function is_string;
 use function json_encode;
 
@@ -3385,7 +3397,7 @@ final class ApiTestFilePatchQueryParams implements GeneratedDtoInterface, String
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -3503,6 +3515,7 @@ use Stringable;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -3587,7 +3600,7 @@ final class ApiTestFilePostRequest implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -3712,6 +3725,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -3796,7 +3810,7 @@ final class ApiTestJobs200 implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -3924,6 +3938,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -4008,7 +4023,7 @@ final class ApiTestJobs404 implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -4136,6 +4151,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -4220,7 +4236,7 @@ final class ApiTestJobsDefault implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -4348,6 +4364,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -4432,7 +4449,7 @@ final class ApiTestJobsPostRequest implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -4560,6 +4577,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -4646,7 +4664,7 @@ final class ApiTestLegacy200 implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -4772,6 +4790,7 @@ use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Contract\UnsetValue;
 use Stringable;
 
+use function array_is_list;
 use function is_string;
 use function json_encode;
 
@@ -4853,7 +4872,7 @@ final class ApiTestLegacyPostQueryParams implements GeneratedDtoInterface, Strin
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -4970,6 +4989,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -5056,7 +5076,7 @@ final class ApiTestLegacyPostRequest implements GeneratedDtoInterface, Stringabl
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -5184,6 +5204,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -5268,7 +5289,7 @@ final class ApiTestRepresentations200 implements GeneratedDtoInterface, Stringab
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -5396,6 +5417,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -5480,7 +5502,7 @@ final class ApiTestRepresentations200Csv implements GeneratedDtoInterface, Strin
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -5608,6 +5630,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -5692,7 +5715,7 @@ final class ApiTestRepresentationsPostRequest implements GeneratedDtoInterface, 
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -5820,6 +5843,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -5904,7 +5928,7 @@ final class ApiTestRepresentationsPostRequestForm implements GeneratedDtoInterfa
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -6032,6 +6056,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -6116,7 +6141,7 @@ final class ApiTestRepresentationsPostRequestXml implements GeneratedDtoInterfac
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -6241,6 +6266,7 @@ use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use Stringable;
 
+use function array_is_list;
 use function is_string;
 use function json_encode;
 
@@ -6391,7 +6417,7 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams implements Gen
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -6528,6 +6554,7 @@ use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Contract\UnsetValue;
 use Stringable;
 
+use function array_is_list;
 use function is_string;
 use function json_encode;
 
@@ -7165,7 +7192,7 @@ final class ApiTestSerializationGetQueryParams implements GeneratedDtoInterface,
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -7535,6 +7562,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -7647,7 +7675,7 @@ final class ApiTestSerializationGetQueryParamsFilter implements GeneratedDtoInte
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -7769,6 +7797,7 @@ use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Contract\UnsetValue;
 use Stringable;
 
+use function array_is_list;
 use function is_string;
 use function json_encode;
 
@@ -7848,7 +7877,7 @@ final class ApiTestSharedPathGetQueryParams implements GeneratedDtoInterface, St
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -7963,6 +7992,7 @@ use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Contract\UnsetValue;
 use Stringable;
 
+use function array_is_list;
 use function is_string;
 use function json_encode;
 
@@ -8127,7 +8157,7 @@ final class ApiTestTenantsDeleteQueryParams implements GeneratedDtoInterface, St
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -8289,6 +8319,7 @@ use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Contract\UnsetValue;
 use Stringable;
 
+use function array_is_list;
 use function is_string;
 use function json_encode;
 
@@ -8496,7 +8527,7 @@ final class ApiTestTenantsGetQueryParams implements GeneratedDtoInterface, Strin
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -8683,6 +8714,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function array_unique;
@@ -9442,7 +9474,7 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -9870,6 +9902,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -9957,7 +9990,7 @@ final class ApplicatorRefsConditional implements GeneratedDtoInterface, Stringab
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -10099,6 +10132,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -10186,7 +10220,7 @@ final class ApplicatorRefsKeyed implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -10327,6 +10361,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -10414,7 +10449,7 @@ final class ApplicatorRefsPoisonedKey implements GeneratedDtoInterface, Stringab
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -10651,6 +10686,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -10874,7 +10910,7 @@ final class AwkwardNames implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -11080,6 +11116,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -11164,7 +11201,7 @@ final class CallbackJobDonePostRequest implements GeneratedDtoInterface, Stringa
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -11292,6 +11329,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -11376,7 +11414,7 @@ final class CallbackJobFailedPostRequest implements GeneratedDtoInterface, Strin
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -11501,6 +11539,7 @@ use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use Stringable;
 
+use function array_is_list;
 use function is_string;
 use function json_encode;
 
@@ -11582,7 +11621,7 @@ class Cat extends Pet implements Animal, Animal2, GeneratedDtoInterface, Stringa
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -11715,6 +11754,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function array_values;
@@ -11869,7 +11909,7 @@ final class ChainLink implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -12020,6 +12060,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function array_values;
@@ -12119,7 +12160,7 @@ final class ChainMiddle implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -12247,6 +12288,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -12333,7 +12375,7 @@ final class ChainTag implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -12458,6 +12500,7 @@ use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use Stringable;
 
+use function array_is_list;
 use function is_string;
 use function json_encode;
 
@@ -12580,7 +12623,7 @@ final class Circle extends Shape implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -12733,6 +12776,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function array_unique;
@@ -13034,7 +13078,7 @@ final class ContainerAliases implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -13233,6 +13277,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function array_unique;
@@ -13641,7 +13686,7 @@ final class Containers implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -13862,6 +13907,7 @@ use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use Stringable;
 
+use function array_is_list;
 use function is_string;
 use function json_encode;
 
@@ -13922,7 +13968,7 @@ final class CountMap implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -13995,6 +14041,7 @@ use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use Stringable;
 
+use function array_is_list;
 use function is_string;
 use function json_encode;
 
@@ -14133,7 +14180,7 @@ class Discriminator implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -14282,6 +14329,7 @@ use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use Stringable;
 
+use function array_is_list;
 use function is_string;
 use function json_encode;
 
@@ -14367,7 +14415,7 @@ final class Discriminator1 extends Discriminator implements GeneratedDtoInterfac
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -14496,6 +14544,7 @@ use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use Stringable;
 
+use function array_is_list;
 use function is_string;
 use function json_encode;
 
@@ -14624,7 +14673,7 @@ final class Discriminator2 extends Discriminator implements GeneratedDtoInterfac
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -14874,6 +14923,7 @@ use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use Stringable;
 
+use function array_is_list;
 use function is_string;
 use function json_encode;
 
@@ -14955,7 +15005,7 @@ class Dog extends Pet implements Animal, Animal2, GeneratedDtoInterface, Stringa
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -15084,6 +15134,7 @@ use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use Stringable;
 
+use function array_is_list;
 use function is_string;
 use function json_encode;
 
@@ -15165,7 +15216,7 @@ final class Dog2 extends Pet implements Animal2, GeneratedDtoInterface, Stringab
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -15298,6 +15349,7 @@ use Stringable;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -15466,7 +15518,7 @@ final class FileRequest implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -15648,6 +15700,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function array_values;
@@ -15881,7 +15934,7 @@ final class ItemBounds implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -16056,6 +16109,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function array_unique;
@@ -16615,7 +16669,7 @@ final class NestedContainers implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -16909,6 +16963,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function array_values;
@@ -17221,7 +17276,7 @@ final class NullableContainerValues implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -17419,6 +17474,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -17593,7 +17649,7 @@ final class ObjectWideRules implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -17787,6 +17843,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -17869,7 +17926,7 @@ class Pet implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -18042,6 +18099,7 @@ use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Contract\UnsetValue;
 use Stringable;
 
+use function array_is_list;
 use function is_string;
 use function json_encode;
 
@@ -18280,7 +18338,7 @@ final class ReadOnlyFields implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -18426,6 +18484,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -18510,7 +18569,7 @@ final class RetiredShape implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -18635,6 +18694,7 @@ use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use Stringable;
 
+use function array_is_list;
 use function is_string;
 use function json_encode;
 
@@ -18684,7 +18744,7 @@ abstract class Shape implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -18787,6 +18847,7 @@ use JsonException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use Stringable;
 
+use function array_is_list;
 use function is_string;
 use function json_encode;
 
@@ -18909,7 +18970,7 @@ final class Square extends Shape implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -19061,6 +19122,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -19186,7 +19248,7 @@ final class Tag implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -19341,6 +19403,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -19423,7 +19486,7 @@ final class Test implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -19549,6 +19612,7 @@ use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Contract\UnsetValue;
 use Stringable;
 
+use function array_is_list;
 use function array_values;
 use function is_string;
 use function json_encode;
@@ -19874,7 +19938,7 @@ final class Test2 implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -20158,6 +20222,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -20245,7 +20310,7 @@ final class Test2UserType implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -20369,6 +20434,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -20537,7 +20603,7 @@ final class TestPatchRequest implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -20720,6 +20786,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -20988,7 +21055,7 @@ final class TestPostRequest implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -21216,6 +21283,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -21359,7 +21427,7 @@ final class TreeNode implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -21611,6 +21679,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function array_values;
@@ -21874,7 +21943,7 @@ final class UnionUnderContainer implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -22070,6 +22139,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function array_values;
@@ -22172,7 +22242,7 @@ final class UniqueScalars implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -22301,6 +22371,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -22526,7 +22597,7 @@ final class User implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -22736,6 +22807,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -22959,7 +23031,7 @@ final class User2 implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -23168,6 +23240,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -23381,7 +23454,7 @@ final class User2Pet implements GeneratedDtoInterface, Stringable
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**
@@ -23590,6 +23663,7 @@ use RuntimeException;
 use Stringable;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_unique;
 use function implode;
@@ -23674,7 +23748,7 @@ final class WebhookOrderPlacedPostRequest implements GeneratedDtoInterface, Stri
     {
         $result = $this->toArray();
 
-        return $result === [] ? (object)$result : $result;
+        return array_is_list($result) ? (object)$result : $result;
     }
 
     /**

@@ -710,9 +710,13 @@ trait RendersRuntimeDto
             $expectedFormat = $temporalFormat;
             $phpDateFormat = $temporalFormat === 'Y-m-d' ? 'Y-m-d' : 'c';
             $isNullableTemporal = $property['nullable'] || $usesUnsetSentinel;
-        } elseif ($phpType === 'DateTimeImmutable' && ($property['unionTemporalFormats'] ?? []) !== []) {
-            // A `oneOf` / `anyOf` of temporal branches: the getter keeps the object, the wire form is
-            // the branch's string — see `temporalUnionOutput` below.
+        } elseif (
+            in_array('DateTimeImmutable', explode('|', ltrim($phpType, '?')), true)
+            && ($property['unionTemporalFormats'] ?? []) !== []
+        ) {
+            // A `oneOf` / `anyOf` with temporal branches: the getter keeps the object, the wire form is
+            // the branch's string — see `temporalUnionOutput` below. A non-temporal branch beside them
+            // (`[date, integer]`) goes out as it came in.
             $returnKind = 'temporalUnion';
         } elseif ($isTemporalArray) {
             $returnKind = 'temporalArray';
@@ -1144,6 +1148,20 @@ trait RendersRuntimeDto
         // emitted, an `{"a":1,"b":2}` against `additionalProperties: {type: string}` was accepted.
         if (!$closed && is_array($schema['additionalProperties'] ?? null) && is_array($extracted['additionalProperties'] ?? null)) {
             $objectConstraints['additionalProperties'] = $extracted['additionalProperties'];
+        } elseif (!$closed && is_array($schema['additionalProperties'] ?? null) && array_key_exists('$ref', $schema['additionalProperties'])) {
+            // `additionalProperties: {$ref: Gear}`: on a property such a map is typed and hydrated, so
+            // the extraction leaves the reference alone — but beside named properties nothing
+            // materializes the extra keys, and the key was neither checked against Gear nor kept.
+            $extraKeys = $this->withConstraintSourceOf(
+                className: $className,
+                extraction: fn(): array => $this->extractValidationConstraints($this->inlineNestedContainerValidation(
+                    schema: $schema['additionalProperties'],
+                    belowMaterialization: true,
+                )),
+            );
+            if ($extraKeys !== []) {
+                $objectConstraints['additionalProperties'] = $extraKeys;
+            }
         }
 
         return $objectConstraints;
@@ -1389,27 +1407,23 @@ trait RendersRuntimeDto
     /**
      * The wire form of a temporal union's value: a date-only union writes `Y-m-d`, a date-time-only one
      * RFC 3339, and `[date, date-time]` writes a UTC midnight — what the date branch reads a date as —
-     * back as the date it was.
+     * back as the date it was. A value of a non-temporal branch, and null, go out unchanged.
      *
      * @param list<string> $formats
      */
     private function temporalUnionOutput(string $getter, array $formats): string
     {
         $value = sprintf('$this->%s()', $getter);
-        if (!in_array('date-time', $formats, true)) {
-            return sprintf("%s?->format('Y-m-d')", $value);
-        }
+        $date = "\$temporal->format('Y-m-d')";
         // Sub-seconds only when there are some, as `DtoNormalizer` writes a date-time.
         $dateTime = "(\$temporal->format('u') === '000000' ? \$temporal->format('Y-m-d\\TH:i:sP') : \$temporal->format('Y-m-d\\TH:i:s.uP'))";
-        if (!in_array('date', $formats, true)) {
-            return sprintf('($temporal = %s) === null ? null : %s', $value, $dateTime);
-        }
+        $written = match (true) {
+            !in_array('date-time', $formats, true) => $date,
+            !in_array('date', $formats, true) => $dateTime,
+            default => sprintf("(\$temporal->format('H:i:s.u') === '00:00:00.000000' && \$temporal->getOffset() === 0 ? %s : %s)", $date, $dateTime),
+        };
 
-        return sprintf(
-            "(\$temporal = %s) === null ? null : (\$temporal->format('H:i:s.u') === '00:00:00.000000' && \$temporal->getOffset() === 0 ? \$temporal->format('Y-m-d') : %s)",
-            $value,
-            $dateTime,
-        );
+        return sprintf('($temporal = %s) instanceof \DateTimeInterface ? %s : $temporal', $value, $written);
     }
 
     /** `array<string, array<string, V>>`: a map whose values are maps themselves. */

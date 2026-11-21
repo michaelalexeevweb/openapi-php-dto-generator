@@ -488,15 +488,20 @@ PHP;
             // instead of contributing a misleading "must be of type ..." reason.
             $oneOfTypeGate = $needsTypeMatcher
                 ? <<<'PHP'
-                if (
-                    array_key_exists('type', $branch)
-                    && !($normalizedValue === null && ($branch['nullable'] ?? false) === true)
-                    && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])
-                ) {
+                // `nullable: true` says "or null": it admits null, and never makes null match twice.
+                if ($normalizedValue === null && ($branch['nullable'] ?? false) === true) {
+                    $nullableBranchAdmitsNull = true;
+                    continue;
+                }
+                if (array_key_exists('type', $branch) && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
                     continue;
                 }
 
 PHP
+                : '';
+            $nullableInit = $needsTypeMatcher ? "\n            \$nullableBranchAdmitsNull = false;" : '';
+            $nullableFold = $needsTypeMatcher
+                ? "\n\n            if (\$matchingBranches === 0 && \$nullableBranchAdmitsNull) {\n                \$matchingBranches = 1;\n            }"
                 : '';
             // A hydrated date has lost its wire shape, and each branch renders it in that branch's own
             // format — so `format: date` and `format: date-time` both matched it. On the wire the two
@@ -516,7 +521,7 @@ PHP
                 : '';
             $sections[] = <<<PHP
         if (is_array(\$schema['oneOf'] ?? null)) {
-            \$matchingBranches = 0;{$temporalMatchInit}
+            \$matchingBranches = 0;{$temporalMatchInit}{$nullableInit}
             \$branchErrors = [];
             foreach (\$schema['oneOf'] as \$branch) {
                 if (!is_array(\$branch)) {
@@ -540,7 +545,7 @@ PHP
                 }
 
                 \$branchErrors = [...\$branchErrors, ...\$errorsForBranch];
-            }{$temporalMatchFold}
+            }{$temporalMatchFold}{$nullableFold}
 
             if (\$matchingBranches > 1) {
                 \$errors[] = sprintf('%s matches more than one allowed oneOf branch', \$path);
@@ -2428,12 +2433,8 @@ PHP,
 
     private function isValidOpenApiUuid(string $value): bool
     {
-        // RFC 9562's nil and max UUIDs carry no version or variant, and are valid all the same.
-        if ($value === '00000000-0000-0000-0000-000000000000' || strtolower($value) === 'ffffffff-ffff-ffff-ffff-ffffffffffff') {
-            return true;
-        }
-
-        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/D', $value) === 1;
+        // The shape only, as JSON Schema's `uuid` asks: version and variant nibbles are not looked at.
+        return preg_match('/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/D', $value) === 1;
     }
 PHP,
             'uri' => <<<'PHP'
