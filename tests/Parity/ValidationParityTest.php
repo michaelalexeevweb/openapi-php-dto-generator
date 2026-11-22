@@ -139,6 +139,24 @@ final class ValidationParityTest extends TestCase
             // allowed." while validating, so yii3 mode refused every payload until it left it alone.
             'negative minLength' => [['type' => 'string', 'minLength' => -1, 'maxLength' => 2], '{"f":"ab"}', '{"f":"abc"}'],
             'pattern' => [['type' => 'string', 'pattern' => '^a'], '{"f":"ab"}', '{"f":"ba"}'],
+            // Document strings that are PHP syntax inside a single-quoted literal: a quote, `\'`, a
+            // trailing backslash. Escaped twice, the enforced value is no longer the document's and the
+            // valid payload fails; not at all, the file does not parse.
+            'enum with quotes and backslashes' => [
+                ['type' => 'string', 'enum' => ["a'b\\c\\'d?>e*/f\${x}g\\", 'plain']],
+                (string)json_encode(['f' => "a'b\\c\\'d?>e*/f\${x}g\\"]),
+                (string)json_encode(['f' => "a'b\\c\\\\'d?>e*/f\${x}g\\\\"]),
+            ],
+            'const with quotes and backslashes' => [
+                ['type' => 'string', 'const' => "a'b\\c\\'d?>e*/f\${x}g\\"],
+                (string)json_encode(['f' => "a'b\\c\\'d?>e*/f\${x}g\\"]),
+                (string)json_encode(['f' => "a\\'b\\c\\'d?>e*/f\${x}g\\"]),
+            ],
+            'pattern with quotes and backslashes' => [
+                ['type' => 'string', 'pattern' => "^q'\\\\?\\'?>*/\\{x\\}\\\\$"],
+                (string)json_encode(['f' => "q'\\'>>/{x}\\"]),
+                (string)json_encode(['f' => "q\\'\\'>>/{x}\\"]),
+            ],
             // ECMA-262 `$` is the very end; PCRE's also matched before a final newline, so an
             // allow-list pattern let "abc\n" through in every mode.
             // An `allOf` class: Symfony mode read its constraints from the raw schema, where every
@@ -3483,6 +3501,61 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * A string enum beside a string branch the enum's own values do not satisfy: `red` is the enum's,
+     * `123` the pattern's. Runtime holds the enum as a case, and the string branch took the case for a
+     * string while skipping its `pattern` — `red` matched two `oneOf` branches and was refused.
+     *
+     * @param array<string, mixed> $stringBranch
+     */
+    #[DataProvider('enumBesideAConstrainedStringProvider')]
+    public function testAnEnumCaseIsJudgedByItsValueInAStringBranch(
+        string $keyword,
+        array $stringBranch,
+        string $validJson,
+        string $invalidJson,
+    ): void {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = self::probeSpec([$keyword => [
+            ['$ref' => '#/components/schemas/Tint'],
+            $stringBranch,
+            ['type' => 'integer'],
+        ]]);
+        $spec['components']['schemas']['Tint'] = ['type' => 'string', 'enum' => ['red', 'blue']];
+        $key = sprintf('enum beside a string branch %s %s %s', $keyword, json_encode($stringBranch), $validJson);
+
+        $this->assertEveryModeYields(
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict(
+                mode: $mode,
+                spec: $spec,
+                key: $key,
+                validJson: $validJson,
+                invalidJson: $invalidJson,
+            ),
+            context: $key,
+        );
+    }
+
+    /**
+     * @return iterable<string, array{string, array<string, mixed>, string, string}>
+     */
+    public static function enumBesideAConstrainedStringProvider(): iterable
+    {
+        $digits = ['type' => 'string', 'pattern' => '^\d+$'];
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            yield $keyword . ': the enum, pattern' => [$keyword, $digits, '{"f":"red"}', '{"f":"abc"}'];
+            yield $keyword . ': the other case, pattern' => [$keyword, $digits, '{"f":"blue"}', '{"f":true}'];
+            yield $keyword . ': the pattern' => [$keyword, $digits, '{"f":"123"}', '{"f":"12a"}'];
+            yield $keyword . ': the integer' => [$keyword, $digits, '{"f":42}', '{"f":null}'];
+            yield $keyword . ': the enum, length' => [$keyword, ['type' => 'string', 'minLength' => 5], '{"f":"blue"}', '{"f":"abc"}'];
+            yield $keyword . ': the string, length' => [$keyword, ['type' => 'string', 'minLength' => 5], '{"f":"longer"}', '{"f":"abcd"}'];
+        }
+    }
+
+    /**
      * A `$ref` to an enum beside a scalar branch. Runtime hydrates the enum, so the class branch holds
      * the case and the scalar branch the integer; a wire value that is neither is refused.
      */
@@ -4313,6 +4386,335 @@ final class ValidationParityTest extends TestCase
         yield 'allOf list of maps' => [$listOf($mapOf($shape)), '{"f":[{"a":{"id":1,"side":2}}]}', '{"f":[{"a":{"id":"x"}}]}'];
         yield 'union list of lists' => [$listOf($listOf($animal)), '{"f":[[{"kind":"cat","lives":9}]]}', '{"f":[[{"kind":"cat","lives":"x"}]]}', [GenerationMode::Symfony]];
         yield 'union map of lists' => [$mapOf($listOf($animal)), '{"f":{"a":[{"kind":"dog","bark":true}]}}', '{"f":{"a":[{"kind":"dog"}]}}', [GenerationMode::Symfony]];
+    }
+
+    /**
+     * A document pattern the regex engine gives up on. `preg_match()` returns false once a subject
+     * exhausts the backtrack limit or the JIT stack, and every place that read false as "did not
+     * match" opened a door: a `patternProperties` key slipped past its schema, `not: {pattern}` and
+     * `if: {pattern}` flipped, and a pattern run over ten thousand items held a worker for twenty
+     * seconds. The attack must be refused, and quickly — the clock starts after a warm-up run, so it
+     * measures the request rather than the generator.
+     *
+     * The neighbours in the provider are ordinary mismatches of the same shapes: they were refused
+     * before and must stay refused, for the same reason.
+     *
+     * @param array<string, mixed> $propertySchema
+     */
+    #[DataProvider('regexEngineLimitProvider')]
+    public function testAPatternTheEngineGivesUpOnRefusesQuickly(array $propertySchema, string $validJson, string $invalidJson): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = self::probeSpec($propertySchema);
+        $key = 'regex engine limit ' . md5((string)json_encode([$propertySchema, $validJson, $invalidJson]));
+
+        $this->assertEveryModeYields(
+            expected: ['valid' => true, 'invalid' => false, 'quick' => true],
+            observe: fn(GenerationMode $mode): array => $this->timedVerdict(
+                mode: $mode,
+                spec: $spec,
+                key: $key,
+                validJson: $validJson,
+                invalidJson: $invalidJson,
+            ),
+            context: $key,
+        );
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>, string, string}>
+     */
+    public static function regexEngineLimitProvider(): iterable
+    {
+        // A long run of letters is a JIT-stack error for this alternation inside a repeat.
+        $letters = '^(?:[a-z]|_)+$';
+        $percent = ['type' => 'integer', 'minimum' => 0, 'maximum' => 100];
+        $longKey = str_repeat('a', 20000);
+        yield 'patternProperties: a key the engine gives up on' => [
+            ['type' => 'object', 'patternProperties' => [$letters => $percent]],
+            '{"f":{"max_items":5}}',
+            (string)json_encode(['f' => [$longKey => -999999]]),
+        ];
+        yield 'patternProperties: a short key out of range' => [
+            ['type' => 'object', 'patternProperties' => [$letters => $percent]],
+            '{"f":{"max_items":5}}',
+            '{"f":{"max_items":999999}}',
+        ];
+
+        // Nested quantifiers: thirty letters and a stray character exhaust the backtrack limit.
+        $nested = '^(?:(a+)+b|a+)$';
+        yield 'patternProperties: a backtracking key' => [
+            ['type' => 'object', 'patternProperties' => [$nested => $percent]],
+            '{"f":{"aaa":5}}',
+            (string)json_encode(['f' => [str_repeat('a', 30) . '!' => -5]]),
+        ];
+        $manyKeys = [];
+        for ($index = 0; $index < 20000; $index++) {
+            $manyKeys[str_repeat('a', 30) . '!' . $index] = 1;
+        }
+        yield 'patternProperties: twenty thousand backtracking keys' => [
+            ['type' => 'object', 'patternProperties' => [$nested => $percent]],
+            '{"f":{"aaa":5}}',
+            (string)json_encode(['f' => $manyKeys]),
+        ];
+
+        $tag = '(?:<|%3[cC])(?:[a-z]|\s)*script';
+        $hidden = '<' . str_repeat('a', 20000) . 'script>alert(1)</script>';
+        yield 'not pattern: a value the engine gives up on' => [
+            ['type' => 'string', 'maxLength' => 100000, 'not' => ['pattern' => $tag]],
+            '{"f":"hello"}',
+            (string)json_encode(['f' => $hidden]),
+        ];
+        yield 'not pattern: a short forbidden value' => [
+            ['type' => 'string', 'maxLength' => 100000, 'not' => ['pattern' => $tag]],
+            '{"f":"hello"}',
+            '{"f":"<aaascript>"}',
+        ];
+        yield 'if pattern: a value the engine gives up on' => [
+            ['type' => 'string', 'maxLength' => 100000, 'if' => ['pattern' => $tag], 'then' => ['maxLength' => 0]],
+            '{"f":"hello"}',
+            (string)json_encode(['f' => $hidden]),
+        ];
+        yield 'if pattern: a short value that takes then' => [
+            ['type' => 'string', 'maxLength' => 100000, 'if' => ['pattern' => $tag], 'then' => ['maxLength' => 0]],
+            '{"f":"hello"}',
+            '{"f":"<aaascript>"}',
+        ];
+        yield 'propertyNames not pattern: a key the engine gives up on' => [
+            ['type' => 'object', 'propertyNames' => ['not' => ['pattern' => $tag]]],
+            '{"f":{"hello":1}}',
+            (string)json_encode(['f' => [$hidden => 1]]),
+        ];
+        yield 'propertyNames not pattern: a short forbidden key' => [
+            ['type' => 'object', 'propertyNames' => ['not' => ['pattern' => $tag]]],
+            '{"f":{"hello":1}}',
+            '{"f":{"<script>":1}}',
+        ];
+
+        yield 'pattern under maxLength: a long backtracking value' => [
+            ['type' => 'string', 'maxLength' => 64, 'pattern' => '^(\w+\s?)*$'],
+            '{"f":"alpha beta"}',
+            (string)json_encode(['f' => str_repeat('a', 5000) . '!']),
+        ];
+        yield 'pattern: a short backtracking value' => [
+            ['type' => 'string', 'maxLength' => 64, 'pattern' => '^(\w+\s?)*$'],
+            '{"f":"alpha beta"}',
+            (string)json_encode(['f' => str_repeat('a', 30) . '!']),
+        ];
+    }
+
+    /**
+     * The same attack spread over a long list: one engine failure must end the walk, and a list over
+     * its `maxItems` must not be walked at all.
+     *
+     * Every spelling of "a pattern on each member" is listed — items, items of items, map values, the
+     * properties of inline and of `$ref` items — because the Laravel modes reach each of them through a
+     * different wildcard path (`f.*`, `f.*.*`, `f.*.name`). A native `regex:` rule on such a path is
+     * applied by Laravel to every member with no way for one member to stop the others, so those
+     * patterns belong to the interpreter there, whose walk stops at the first engine failure. The
+     * attack on a list of OBJECTS is in the next test, which says why it is not asked of every mode.
+     *
+     * @param array<string, mixed> $spec
+     */
+    #[DataProvider('regexEngineLimitOverManyItemsProvider')]
+    public function testAPatternTheEngineGivesUpOnStopsTheListWalk(array $spec, string $validJson, string $invalidJson): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $key = 'regex engine limit over items ' . md5((string)json_encode([$spec, $validJson, $invalidJson]));
+
+        $this->assertEveryModeYields(
+            expected: ['valid' => true, 'invalid' => false, 'quick' => true],
+            observe: fn(GenerationMode $mode): array => $this->timedVerdict(
+                mode: $mode,
+                spec: $spec,
+                key: $key,
+                validJson: $validJson,
+                invalidJson: $invalidJson,
+            ),
+            context: $key,
+        );
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>, string, string}>
+     */
+    public static function regexEngineLimitOverManyItemsProvider(): iterable
+    {
+        // A common "words" pattern; each item below burns the whole backtrack limit.
+        $words = ['type' => 'string', 'maxLength' => 64, 'pattern' => '^([a-zA-Z0-9]+\s?)*$'];
+        $burning = str_repeat('a', 26) . '!';
+        $burningList = array_fill(start_index: 0, count: 10000, value: $burning);
+        $named = ['type' => 'object', 'required' => ['name'], 'properties' => ['name' => $words]];
+        $withWidget = static function (array $propertySchema) use ($named): array {
+            $spec = self::probeSpec($propertySchema);
+            $spec['components']['schemas']['Widget'] = $named;
+
+            return $spec;
+        };
+        $widgets = ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Widget']];
+
+        yield 'items pattern: ten thousand backtracking items' => [
+            self::probeSpec(['type' => 'array', 'items' => $words]),
+            '{"f":["alpha beta","gamma"]}',
+            (string)json_encode(['f' => $burningList]),
+        ];
+        yield 'items pattern: one short mismatch' => [
+            self::probeSpec(['type' => 'array', 'items' => $words]),
+            '{"f":["alpha beta","gamma"]}',
+            '{"f":["alpha","beta!"]}',
+        ];
+        yield 'items pattern under maxItems: ten thousand backtracking items' => [
+            self::probeSpec(['type' => 'array', 'maxItems' => 20, 'items' => $words]),
+            '{"f":["alpha beta","gamma"]}',
+            (string)json_encode(['f' => $burningList]),
+        ];
+        yield 'items pattern under maxItems: too many good items' => [
+            self::probeSpec(['type' => 'array', 'maxItems' => 2, 'items' => $words]),
+            '{"f":["alpha beta","gamma"]}',
+            '{"f":["alpha","beta","gamma"]}',
+        ];
+        yield 'items pattern: an item over its maxLength' => [
+            self::probeSpec(['type' => 'array', 'items' => $words]),
+            '{"f":["alpha beta","gamma"]}',
+            (string)json_encode(['f' => ['alpha', str_repeat('b', 65)]]),
+        ];
+        yield 'items pattern: an item of the wrong type' => [
+            self::probeSpec(['type' => 'array', 'items' => $words]),
+            '{"f":["alpha beta","gamma"]}',
+            '{"f":["alpha",7]}',
+        ];
+        yield 'nested items pattern: ten thousand backtracking items' => [
+            self::probeSpec(['type' => 'array', 'items' => ['type' => 'array', 'items' => $words]]),
+            '{"f":[["alpha beta"],["gamma"]]}',
+            (string)json_encode(['f' => [$burningList]]),
+        ];
+        yield 'nested items pattern: one short mismatch' => [
+            self::probeSpec(['type' => 'array', 'items' => ['type' => 'array', 'items' => $words]]),
+            '{"f":[["alpha beta"],["gamma"]]}',
+            '{"f":[["alpha"],["beta!"]]}',
+        ];
+        yield 'map values pattern: ten thousand backtracking values' => [
+            self::probeSpec(['type' => 'object', 'additionalProperties' => $words]),
+            '{"f":{"red":"alpha beta","blue":"gamma"}}',
+            (string)json_encode(['f' => array_combine(
+                keys: array_map(callback: static fn(int $i): string => 'k' . $i, array: range(0, 9999)),
+                values: $burningList,
+            )]),
+        ];
+        yield 'map values pattern: one short mismatch' => [
+            self::probeSpec(['type' => 'object', 'additionalProperties' => $words]),
+            '{"f":{"red":"alpha beta","blue":"gamma"}}',
+            '{"f":{"red":"alpha","blue":"beta!"}}',
+        ];
+        yield 'inline object items pattern: one short mismatch' => [
+            self::probeSpec(['type' => 'array', 'items' => $named]),
+            '{"f":[{"name":"alpha beta"},{"name":"gamma"}]}',
+            '{"f":[{"name":"alpha"},{"name":"beta!"}]}',
+        ];
+        yield '$ref items pattern: one short mismatch' => [
+            $withWidget($widgets),
+            '{"f":[{"name":"alpha beta"},{"name":"gamma"}]}',
+            '{"f":[{"name":"alpha"},{"name":"beta!"}]}',
+        ];
+        yield '$ref items pattern: a missing name' => [
+            $withWidget($widgets),
+            '{"f":[{"name":"alpha beta"},{"name":"gamma"}]}',
+            '{"f":[{"name":"alpha"},{}]}',
+        ];
+        yield '$ref property pattern: one short mismatch' => [
+            $withWidget(['$ref' => '#/components/schemas/Widget']),
+            '{"f":{"name":"alpha beta"}}',
+            '{"f":{"name":"beta!"}}',
+        ];
+        yield 'property pattern: one short mismatch' => [
+            self::probeSpec($words),
+            '{"f":"alpha beta"}',
+            '{"f":"beta!"}',
+        ];
+    }
+
+    /**
+     * The attack on a list of objects. In the Laravel modes the member's `pattern` is folded into the
+     * interpreter of the class that owns the list, so one engine failure ends the walk; runtime
+     * hydrates every member as a DTO of its own, and stops at the first member whose refusal says the
+     * engine gave up (`tests/Runtime/HostileRequestTest` measures it at ten thousand members and depth).
+     *
+     * Not Symfony and yii3: there the walk is the framework's own cascade — `#[Assert\Valid]`, yii3's
+     * nested validation — which validates every member regardless, so the same request still costs a
+     * backtrack limit per member (measured: ~19 s for ten thousand members). Generating code that
+     * steps outside the framework for it is not on the table; the README documents the limitation.
+     *
+     * Three thousand members: enough that a per-member burn (~2 ms each) blows the budget, few enough
+     * that Laravel's own cost of expanding `f.*.name` stays well inside it.
+     *
+     * @param array<string, mixed> $spec
+     */
+    #[DataProvider('regexEngineLimitOverManyObjectsProvider')]
+    public function testAPatternTheEngineGivesUpOnStopsTheWalkOverObjects(array $spec, string $validJson, string $invalidJson): void
+    {
+        $key = 'regex engine limit over objects ' . md5((string)json_encode([$spec, $validJson, $invalidJson]));
+
+        foreach ([GenerationMode::Runtime, GenerationMode::Laravel, GenerationMode::LaravelData] as $mode) {
+            $this->assertSame(
+                expected: ['valid' => true, 'invalid' => false, 'quick' => true],
+                actual: $this->timedVerdict(
+                    mode: $mode,
+                    spec: $spec,
+                    key: $key,
+                    validJson: $validJson,
+                    invalidJson: $invalidJson,
+                ),
+                message: $mode->value,
+            );
+        }
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>, string, string}>
+     */
+    public static function regexEngineLimitOverManyObjectsProvider(): iterable
+    {
+        $words = ['type' => 'string', 'maxLength' => 64, 'pattern' => '^([a-zA-Z0-9]+\s?)*$'];
+        $named = ['type' => 'object', 'required' => ['name'], 'properties' => ['name' => $words]];
+        $burningObjects = (string)json_encode([
+            'f' => array_fill(start_index: 0, count: 3000, value: ['name' => str_repeat('a', 26) . '!']),
+        ]);
+        $validJson = '{"f":[{"name":"alpha beta"},{"name":"gamma"}]}';
+
+        yield 'inline object items' => [
+            self::probeSpec(['type' => 'array', 'items' => $named]),
+            $validJson,
+            $burningObjects,
+        ];
+
+        $spec = self::probeSpec(['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Widget']]);
+        $spec['components']['schemas']['Widget'] = $named;
+        yield '$ref items' => [$spec, $validJson, $burningObjects];
+    }
+
+    /**
+     * The usual verdict, plus whether the invalid payload was answered within the budget. The classes
+     * are generated and loaded by a warm-up run first, so the clock measures the request alone.
+     *
+     * @param array<string, mixed> $spec
+     * @return array{valid: bool, invalid: bool, quick: bool}
+     */
+    private function timedVerdict(GenerationMode $mode, array $spec, string $key, string $validJson, string $invalidJson): array
+    {
+        $this->verdict(mode: $mode, spec: $spec, key: $key, validJson: $validJson, invalidJson: $validJson);
+        $started = hrtime(true);
+        $verdict = $this->verdict(mode: $mode, spec: $spec, key: $key, validJson: $validJson, invalidJson: $invalidJson);
+        $seconds = (hrtime(true) - $started) / 1e9;
+
+        // One second is the budget; the bound is generous because CI machines are slow, and the
+        // failure it guards against took twenty.
+        return [...$verdict, 'quick' => $seconds < 3.0];
     }
 
     /**

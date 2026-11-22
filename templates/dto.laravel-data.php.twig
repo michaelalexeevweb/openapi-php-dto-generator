@@ -352,22 +352,22 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
         $prefix = $path === '' ? '' : $path . '.';
         $errors = [];
 {% for step in morphGuard.steps %}
-{% set wire = step.wireName|php_string %}
+{% set wire = step.wireName %}
 {% if step.many %}
-        foreach (is_array($node['{{ wire }}'] ?? null) ? $node['{{ wire }}'] : [] as $key => $item) {
+        foreach (is_array($node['{{ wire|php_string }}'] ?? null) ? $node['{{ wire|php_string }}'] : [] as $key => $item) {
 {% if step.union %}
-            $errors += {{ step.class }}::openApiMorphUnionErrors($item, $prefix . '{{ wire }}.' . $key, true);
+            $errors += {{ step.class }}::openApiMorphUnionErrors($item, $prefix . '{{ wire|php_string }}.' . $key, true);
 {% else %}
             if (is_array($item)) {
-                $errors += {{ step.class }}::openApiMorphNodeErrors($item, $prefix . '{{ wire }}.' . $key);
+                $errors += {{ step.class }}::openApiMorphNodeErrors($item, $prefix . '{{ wire|php_string }}.' . $key);
             }
 {% endif %}
         }
 {% elseif step.union %}
-        $errors += {{ step.class }}::openApiMorphUnionErrors($node['{{ wire }}'] ?? null, $prefix . '{{ wire }}', false);
+        $errors += {{ step.class }}::openApiMorphUnionErrors($node['{{ wire|php_string }}'] ?? null, $prefix . '{{ wire|php_string }}', false);
 {% else %}
-        if (is_array($node['{{ wire }}'] ?? null)) {
-            $errors += {{ step.class }}::openApiMorphNodeErrors($node['{{ wire }}'], $prefix . '{{ wire }}');
+        if (is_array($node['{{ wire|php_string }}'] ?? null)) {
+            $errors += {{ step.class }}::openApiMorphNodeErrors($node['{{ wire|php_string }}'], $prefix . '{{ wire|php_string }}');
         }
 {% endif %}
 {% endfor %}
@@ -443,7 +443,7 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
      */
     private const array OPENAPI_SCALAR_PATHS = [
 {% for scalarPath, scalarType in scalarTypePaths %}
-        '{{ scalarPath|php_string }}' => '{{ scalarType }}',
+        '{{ scalarPath|php_string }}' => '{{ scalarType|php_string }}',
 {% endfor %}
     ];
 {% endif %}

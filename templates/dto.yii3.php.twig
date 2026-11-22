@@ -98,7 +98,7 @@ final class {{ className }} extends {{ libAbstractInput }} implements {{ impleme
     /** OpenAPI name => PHP property name. */
     private const array OPENAPI_PROPERTY_NAMES = [
 {% for param in params %}
-        '{{ param.openApiName|php_string }}' => '{{ param.name }}',
+        '{{ param.openApiName|php_string }}' => '{{ param.name|php_string }}',
 {% endfor %}
     ];
 

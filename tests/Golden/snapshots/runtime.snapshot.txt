@@ -1,4 +1,4 @@
-# runtime mode — 80 files, 23620 lines
+# runtime mode — 80 files, 23830 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -937,6 +937,21 @@ final class ApiTest2PatchRequest implements GeneratedDtoInterface, Stringable
     }
 
     /**
+     * The media types an operation accepts this class as a request body under.
+     *
+     * `DtoDeserializer` reads it to keep a JSON-only body inside the JSON body: without it a body
+     * property missing from the JSON was looked up in the query string and the form fields too, so a
+     * cross-site `<form>` post — which needs no CORS preflight — filled an endpoint the document
+     * says takes `application/json` only. Where a form type is listed, form fields are the body.
+     *
+     * @return list<string>
+     */
+    public static function getRequestBodyMediaTypes(): array
+    {
+        return ['application/json'];
+    }
+
+    /**
      * Straight-line hydration from a decoded body — machinery for `DtoDeserializer`, not an API to
      * call yourself.
      *
@@ -1280,6 +1295,21 @@ final class ApiTest2PostRequest implements GeneratedDtoInterface, Stringable
         $constraints['surnamePostTest2'] = ['type' => 'string'];
 
         return $constraints;
+    }
+
+    /**
+     * The media types an operation accepts this class as a request body under.
+     *
+     * `DtoDeserializer` reads it to keep a JSON-only body inside the JSON body: without it a body
+     * property missing from the JSON was looked up in the query string and the form fields too, so a
+     * cross-site `<form>` post — which needs no CORS preflight — filled an endpoint the document
+     * says takes `application/json` only. Where a form type is listed, form fields are the body.
+     *
+     * @return list<string>
+     */
+    public static function getRequestBodyMediaTypes(): array
+    {
+        return ['application/json'];
     }
 
     /**
@@ -3669,6 +3699,21 @@ final class ApiTestFilePostRequest implements GeneratedDtoInterface, Stringable
     }
 
     /**
+     * The media types an operation accepts this class as a request body under.
+     *
+     * `DtoDeserializer` reads it to keep a JSON-only body inside the JSON body: without it a body
+     * property missing from the JSON was looked up in the query string and the form fields too, so a
+     * cross-site `<form>` post — which needs no CORS preflight — filled an endpoint the document
+     * says takes `application/json` only. Where a form type is listed, form fields are the body.
+     *
+     * @return list<string>
+     */
+    public static function getRequestBodyMediaTypes(): array
+    {
+        return ['multipart/form-data'];
+    }
+
+    /**
      * Straight-line hydration from a decoded body — machinery for `DtoDeserializer`, not an API to
      * call yourself.
      *
@@ -4521,6 +4566,21 @@ final class ApiTestJobsPostRequest implements GeneratedDtoInterface, Stringable
     }
 
     /**
+     * The media types an operation accepts this class as a request body under.
+     *
+     * `DtoDeserializer` reads it to keep a JSON-only body inside the JSON body: without it a body
+     * property missing from the JSON was looked up in the query string and the form fields too, so a
+     * cross-site `<form>` post — which needs no CORS preflight — filled an endpoint the document
+     * says takes `application/json` only. Where a form type is listed, form fields are the body.
+     *
+     * @return list<string>
+     */
+    public static function getRequestBodyMediaTypes(): array
+    {
+        return ['application/json'];
+    }
+
+    /**
      * Straight-line hydration from a decoded body — machinery for `DtoDeserializer`, not an API to
      * call yourself.
      *
@@ -5145,6 +5205,21 @@ final class ApiTestLegacyPostRequest implements GeneratedDtoInterface, Stringabl
         $constraints['payload'] = ['type' => 'string'];
 
         return $constraints;
+    }
+
+    /**
+     * The media types an operation accepts this class as a request body under.
+     *
+     * `DtoDeserializer` reads it to keep a JSON-only body inside the JSON body: without it a body
+     * property missing from the JSON was looked up in the query string and the form fields too, so a
+     * cross-site `<form>` post — which needs no CORS preflight — filled an endpoint the document
+     * says takes `application/json` only. Where a form type is listed, form fields are the body.
+     *
+     * @return list<string>
+     */
+    public static function getRequestBodyMediaTypes(): array
+    {
+        return ['application/json'];
     }
 
     /**
@@ -5787,6 +5862,21 @@ final class ApiTestRepresentationsPostRequest implements GeneratedDtoInterface, 
     }
 
     /**
+     * The media types an operation accepts this class as a request body under.
+     *
+     * `DtoDeserializer` reads it to keep a JSON-only body inside the JSON body: without it a body
+     * property missing from the JSON was looked up in the query string and the form fields too, so a
+     * cross-site `<form>` post — which needs no CORS preflight — filled an endpoint the document
+     * says takes `application/json` only. Where a form type is listed, form fields are the body.
+     *
+     * @return list<string>
+     */
+    public static function getRequestBodyMediaTypes(): array
+    {
+        return ['application/json'];
+    }
+
+    /**
      * Straight-line hydration from a decoded body — machinery for `DtoDeserializer`, not an API to
      * call yourself.
      *
@@ -6000,6 +6090,21 @@ final class ApiTestRepresentationsPostRequestForm implements GeneratedDtoInterfa
     }
 
     /**
+     * The media types an operation accepts this class as a request body under.
+     *
+     * `DtoDeserializer` reads it to keep a JSON-only body inside the JSON body: without it a body
+     * property missing from the JSON was looked up in the query string and the form fields too, so a
+     * cross-site `<form>` post — which needs no CORS preflight — filled an endpoint the document
+     * says takes `application/json` only. Where a form type is listed, form fields are the body.
+     *
+     * @return list<string>
+     */
+    public static function getRequestBodyMediaTypes(): array
+    {
+        return ['application/x-www-form-urlencoded'];
+    }
+
+    /**
      * Straight-line hydration from a decoded body — machinery for `DtoDeserializer`, not an API to
      * call yourself.
      *
@@ -6210,6 +6315,21 @@ final class ApiTestRepresentationsPostRequestXml implements GeneratedDtoInterfac
         $constraints['element'] = ['type' => 'string'];
 
         return $constraints;
+    }
+
+    /**
+     * The media types an operation accepts this class as a request body under.
+     *
+     * `DtoDeserializer` reads it to keep a JSON-only body inside the JSON body: without it a body
+     * property missing from the JSON was looked up in the query string and the form fields too, so a
+     * cross-site `<form>` post — which needs no CORS preflight — filled an endpoint the document
+     * says takes `application/json` only. Where a form type is listed, form fields are the body.
+     *
+     * @return list<string>
+     */
+    public static function getRequestBodyMediaTypes(): array
+    {
+        return ['application/xml'];
     }
 
     /**
@@ -11273,6 +11393,21 @@ final class CallbackJobDonePostRequest implements GeneratedDtoInterface, Stringa
     }
 
     /**
+     * The media types an operation accepts this class as a request body under.
+     *
+     * `DtoDeserializer` reads it to keep a JSON-only body inside the JSON body: without it a body
+     * property missing from the JSON was looked up in the query string and the form fields too, so a
+     * cross-site `<form>` post — which needs no CORS preflight — filled an endpoint the document
+     * says takes `application/json` only. Where a form type is listed, form fields are the body.
+     *
+     * @return list<string>
+     */
+    public static function getRequestBodyMediaTypes(): array
+    {
+        return ['application/json'];
+    }
+
+    /**
      * Straight-line hydration from a decoded body — machinery for `DtoDeserializer`, not an API to
      * call yourself.
      *
@@ -11483,6 +11618,21 @@ final class CallbackJobFailedPostRequest implements GeneratedDtoInterface, Strin
         $constraints['failure'] = ['type' => 'string'];
 
         return $constraints;
+    }
+
+    /**
+     * The media types an operation accepts this class as a request body under.
+     *
+     * `DtoDeserializer` reads it to keep a JSON-only body inside the JSON body: without it a body
+     * property missing from the JSON was looked up in the query string and the form fields too, so a
+     * cross-site `<form>` post — which needs no CORS preflight — filled an endpoint the document
+     * says takes `application/json` only. Where a form type is listed, form fields are the body.
+     *
+     * @return list<string>
+     */
+    public static function getRequestBodyMediaTypes(): array
+    {
+        return ['application/json'];
     }
 
     /**
@@ -15626,6 +15776,21 @@ final class FileRequest implements GeneratedDtoInterface, Stringable
         $constraints['surname'] = ['type' => 'string'];
 
         return $constraints;
+    }
+
+    /**
+     * The media types an operation accepts this class as a request body under.
+     *
+     * `DtoDeserializer` reads it to keep a JSON-only body inside the JSON body: without it a body
+     * property missing from the JSON was looked up in the query string and the form fields too, so a
+     * cross-site `<form>` post — which needs no CORS preflight — filled an endpoint the document
+     * says takes `application/json` only. Where a form type is listed, form fields are the body.
+     *
+     * @return list<string>
+     */
+    public static function getRequestBodyMediaTypes(): array
+    {
+        return ['multipart/form-data'];
     }
 
     /**
@@ -20715,6 +20880,21 @@ final class TestPatchRequest implements GeneratedDtoInterface, Stringable
     }
 
     /**
+     * The media types an operation accepts this class as a request body under.
+     *
+     * `DtoDeserializer` reads it to keep a JSON-only body inside the JSON body: without it a body
+     * property missing from the JSON was looked up in the query string and the form fields too, so a
+     * cross-site `<form>` post — which needs no CORS preflight — filled an endpoint the document
+     * says takes `application/json` only. Where a form type is listed, form fields are the body.
+     *
+     * @return list<string>
+     */
+    public static function getRequestBodyMediaTypes(): array
+    {
+        return ['application/json'];
+    }
+
+    /**
      * Straight-line hydration from a decoded body — machinery for `DtoDeserializer`, not an API to
      * call yourself.
      *
@@ -21204,6 +21384,21 @@ final class TestPostRequest implements GeneratedDtoInterface, Stringable
         $constraints['endpoint'] = ['type' => 'string', 'format' => 'uri-template'];
 
         return $constraints;
+    }
+
+    /**
+     * The media types an operation accepts this class as a request body under.
+     *
+     * `DtoDeserializer` reads it to keep a JSON-only body inside the JSON body: without it a body
+     * property missing from the JSON was looked up in the query string and the form fields too, so a
+     * cross-site `<form>` post — which needs no CORS preflight — filled an endpoint the document
+     * says takes `application/json` only. Where a form type is listed, form fields are the body.
+     *
+     * @return list<string>
+     */
+    public static function getRequestBodyMediaTypes(): array
+    {
+        return ['application/json'];
     }
 
     /**
@@ -23817,6 +24012,21 @@ final class WebhookOrderPlacedPostRequest implements GeneratedDtoInterface, Stri
         $constraints['orderId'] = ['type' => 'string'];
 
         return $constraints;
+    }
+
+    /**
+     * The media types an operation accepts this class as a request body under.
+     *
+     * `DtoDeserializer` reads it to keep a JSON-only body inside the JSON body: without it a body
+     * property missing from the JSON was looked up in the query string and the form fields too, so a
+     * cross-site `<form>` post — which needs no CORS preflight — filled an endpoint the document
+     * says takes `application/json` only. Where a form type is listed, form fields are the body.
+     *
+     * @return list<string>
+     */
+    public static function getRequestBodyMediaTypes(): array
+    {
+        return ['application/json'];
     }
 
     /**

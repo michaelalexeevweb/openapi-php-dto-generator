@@ -302,7 +302,7 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
      */
     private const array OPENAPI_SCALAR_PATHS = [
 {% for scalarPath, scalarType in scalarTypePaths %}
-        '{{ scalarPath|php_string }}' => '{{ scalarType }}',
+        '{{ scalarPath|php_string }}' => '{{ scalarType|php_string }}',
 {% endfor %}
     ];
 

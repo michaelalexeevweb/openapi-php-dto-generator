@@ -53,7 +53,7 @@
                 ],
                 'scalarPaths' => [
 {% for scalarPath, scalarType in nestedValidation.scalarPaths %}
-                    $prefix . '.{{ scalarPath|php_string }}' => '{{ scalarType }}',
+                    $prefix . '.{{ scalarPath|php_string }}' => '{{ scalarType|php_string }}',
 {% endfor %}
                 ],
             ],

@@ -4751,6 +4751,14 @@ final class GenerateDtoCommandTest extends TestCase
                 YAML,
         );
 
+        // `../common` is outside the root document's directory, and `Generated/Common` outside
+        // `--directory`: the user names both with one `--ref`, and the classes land where the
+        // `common` convention would have put them.
+        $this->generator->setExternalRefMappings(
+            refDirectoryPairs: [$commonDir . '=' . $baseDir . '/Generated/Common/Schemas=TestNamespace\Common\Schemas'],
+            refNamespacePairs: [],
+        );
+
         try {
             $count = $this->generator->generateFromFile(
                 filePath: $specDir . '/module.yml',
@@ -4829,6 +4837,14 @@ final class GenerateDtoCommandTest extends TestCase
                         success:
                           type: boolean
                 YAML,
+        );
+
+        // `../common` is outside the root document's directory, and `Generated/Common` outside
+        // `--directory`: the user names both with one `--ref`, and the classes land where the
+        // `common` convention would have put them.
+        $this->generator->setExternalRefMappings(
+            refDirectoryPairs: [$commonDir . '=' . $baseDir . '/Generated/Common/Schemas=TestNamespace\Common\Schemas'],
+            refNamespacePairs: [],
         );
 
         try {

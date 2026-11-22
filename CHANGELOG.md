@@ -3,6 +3,74 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.129 — 2026-11-22
+
+- parameter style is never code
+- enum case judged by value
+- regex failures refuse, fast
+- recursive unions parse linearly
+- form bodies keep PHP's limits
+- JSON bodies stay JSON
+- references stay in the spec tree
+- output stays in chosen directories
+- hostile documents refused early
+- template output always escaped
+
+**Security — upgrade and regenerate.** A red-team review attacked the generator with a malicious OpenAPI
+document and the generated code with hostile requests. Each attack is now a test that failed before the
+fix.
+
+**Runtime mode: a document could put PHP code into the generated class.** A parameter's `style` — on the
+parameter, on a multipart part's `encoding`, or written as `x-parameter-style` — was copied unescaped into a
+string of the generated class, so a crafted value produced valid PHP that ran on every request reading
+that parameter. A style outside OpenAPI's list now stops generation, and every value a template places
+inside a PHP string is escaped by the template itself; a guard test fails the build on an unescaped one,
+and every unescaped code fragment (`|raw`) is on a reviewed list. Classes generated from a document you
+did not write should be regenerated and reviewed.
+
+**Breaking, by design:**
+
+- a `$ref` that leaves the root document's directory (`../shared/x.yml`, an absolute path, a link pointing
+  out) is refused until you map that directory with `--ref`;
+- the `common` convention writes only inside `--directory`, `--dto-generator-directory` or a `--ref`
+  target; where it would write elsewhere the run stops and prints the `--ref` that keeps the old place;
+- runtime: a request body the document declares as JSON only is no longer filled from the query string,
+  form fields or uploaded files.
+
+Production (hostile requests):
+
+- a regex error — the engine giving up on a document `pattern` — refuses the value everywhere it is
+  evaluated (`pattern`, `not`, `if`, `contains`, `patternProperties`, `propertyNames`), never passes it;
+- a list, map or collection stops at the first member the engine gives up on, so one request costs one
+  backtrack limit, not one per member; `maxLength` / `maxItems` are checked before the pattern; laravel
+  and laravel-data now check member patterns in the interpreter, whose message replaces
+  `validation.regex` for those members. Symfony and yii3 still cascade into every object of a list
+  (documented in the support matrix);
+- recursive `anyOf` / `oneOf` without a discriminator is hydrated in linear time; a 270-byte request took
+  24 s;
+- re-reading a form body or query string stops at `max_input_vars` and `max_input_nesting_level`, as PHP's
+  own parser does.
+
+Generation (hostile documents):
+
+- line breaks in any document text that reaches a docblock are folded, so no line can start a phpDoc tag;
+- Unicode format characters (bidi overrides, zero-width spaces) are stripped from generated identifiers;
+- a YAML file whose aliases expand far beyond its size is refused in milliseconds; output over 64 MB is
+  refused before anything is written; deeply nested YAML flow collections are refused instead of crashing
+  the parser;
+- running out of memory prints the document, its size and the `memory_limit` to use, and writes nothing —
+  see [Large documents](README.cli.md#large-documents).
+
+Validation:
+
+- runtime: since 2.15.128 a `oneOf` keeps a `$ref` enum branch beside scalar branches, and a string branch
+  took the enum case for a string while skipping its `pattern`, `minLength` and `format`. So for `oneOf:
+  [$ref Tint (red, blue), {type: string, pattern: '^\d+$'}, integer]` the value `"red"` matched two branches
+  and was refused, from a request and from a DTO built in code alike. A backed enum case is now its value
+  to every string and number keyword;
+- yii3: a union with an enum member got no raw check, and the cast turned `true` into the `"1"` a string
+  branch accepts. The enum member now takes exactly its listed values.
+
 ## 2.15.128 — 2026-11-21
 
 - allOf required and restatements honoured

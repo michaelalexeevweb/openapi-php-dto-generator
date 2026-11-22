@@ -1,4 +1,4 @@
-# laravel mode — 106 files, 29775 lines
+# laravel mode — 106 files, 30054 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -18635,18 +18635,22 @@ use Illuminate\Contracts\Validation\ValidatorAwareRule;
 use Illuminate\Validation\Validator;
 use JsonSerializable;
 use LogicException;
+use OverflowException;
 use stdClass;
 
 use function array_is_list;
+use function array_key_exists;
 use function array_keys;
 use function array_map;
 use function array_shift;
+use function array_slice;
 use function array_unique;
 use function array_values;
 use function explode;
 use function filter_var;
 use function floor;
 use function get_object_vars;
+use function implode;
 use function in_array;
 use function is_array;
 use function is_bool;
@@ -18656,8 +18660,18 @@ use function is_object;
 use function is_string;
 use function json_decode;
 use function method_exists;
+use function preg_last_error;
+use function preg_match;
+use function preg_match_all;
 use function property_exists;
+use function restore_error_handler;
+use function set_error_handler;
 use function sprintf;
+use function str_ends_with;
+use function str_starts_with;
+use function strlen;
+use function strpos;
+use function substr;
 use function trim;
 
 /**
@@ -18682,6 +18696,19 @@ use function trim;
  */
 final class ItemBounds implements JsonSerializable
 {
+    private const array OPENAPI_VALIDATION_CONSTRAINTS = [
+        'fields' => [
+            'codes' => [
+                'items' => [
+                    'pattern' => '^[a-z]+$',
+                ],
+            ],
+        ],
+        'object' => [],
+    ];
+
+    private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
+
     /**
      * The payload keys that were actually sent, which is what `isXxxProvided()` — and so `toArray()` —
      * reads. `fromValidated()` sets it from the payload exactly. A hand-built instance gets every
@@ -18726,7 +18753,7 @@ final class ItemBounds implements JsonSerializable
             'scoresByKey' => self::withBlankStringValidation(['sometimes', 'array']),
             'scoresByKey.*' => self::withBlankStringValidation(['integer', 'min:5']),
             'codes' => self::withBlankStringValidation(['sometimes', 'list']),
-            'codes.*' => self::withBlankStringValidation(['string', 'min:2', 'regex:#^[a-z]+$#uD']),
+            'codes.*' => self::withBlankStringValidation(['string', 'min:2']),
         ];
     }
 
@@ -18821,8 +18848,9 @@ final class ItemBounds implements JsonSerializable
     ];
 
     /**
-     * What Laravel's rules cannot check: `type: object` given a JSON array, and a JSON string or 0/1 where
-     * the schema says integer, number or boolean.
+     * The half of the schema Laravel's rule vocabulary cannot express — composition, conditionals,
+     * `contains`, `unevaluated*`, `content*`, `propertyNames`, `discriminator` — checked against the
+     * raw payload the validator already holds.
      *
      * Hook it up once, in the FormRequest:
      *
@@ -18844,6 +18872,21 @@ final class ItemBounds implements JsonSerializable
         $validator->excludeUnvalidatedArrayKeys = false;
 
         $validator->after(static function (Validator $validator) use ($rawJson): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema names them
+            // literally, so `required: [a.b]` failed against the very key it asks for.
+            /** @var array<string, mixed> $payload */
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+
+            foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
+                if (!array_key_exists($property, $payload)) {
+                    continue;
+                }
+
+                foreach (self::validateOpenApiNode($payload[$property], $schema, $property, 0) as $error) {
+                    self::addOpenApiFieldError($validator, $property, $payload[$property], $error);
+                }
+            }
+
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawJsonShapes($validator, $rawJson);
             }
@@ -18988,6 +19031,242 @@ final class ItemBounds implements JsonSerializable
         $copy->providedOpenApiKeys = array_values(array_unique([...$this->providedOpenApiKeys, ...$openApiNames]));
 
         return $copy;
+    }
+
+    /**
+     * Reports an interpreter message under the field it is about, as Laravel's own rules do: a key
+     * missing deep inside a union lands on `shape.radius`, a list item on `levels.0` — the message
+     * opens with that path. Before 2.15.91 every one of them was keyed by the top-level property.
+     *
+     * A claim a Laravel rule also makes — a missing key, a wrong type, a value outside an enum — is
+     * reported AS that rule, so it reads like the rest of the error bag and the application's
+     * translations apply. Anything else keeps the interpreter's sentence.
+     *
+     * A path the payload does not lead along — one into a JSON string's decoded `contentSchema` — is not
+     * a field of the request, so that message stays on the property with its own sentence.
+     */
+    private static function addOpenApiFieldError(Validator $validator, string $property, mixed $value, string $error): void
+    {
+        // `shape.radius is required`, `levels[0] must be one of: 1, 2`: the deeper segments, then the claim.
+        $rest = str_starts_with($error, $property) ? substr($error, strlen($property)) : '';
+        if (preg_match('/^((?:\.[^ .\[]+|\[\d+\])*) (.+)$/s', $rest, $match) !== 1) {
+            $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
+
+            return;
+        }
+
+        preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
+        $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
+        $node = $value;
+        foreach (array_slice($segments, 0, -1) as $segment) {
+            if (!is_array($node) || !array_key_exists($segment, $node)) {
+                $node = null;
+                break;
+            }
+            $node = $node[$segment];
+        }
+        if ($segments !== [] && !is_array($node)) {
+            $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
+
+            return;
+        }
+
+        $path = implode('.', [$property, ...$segments]);
+        $claim = $match[2];
+        // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
+        // a union that holds a scalar branch carries `array` — is one mistake, reported once.
+        if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
+            return;
+        }
+
+        $rule = match ($claim) {
+            'is required' => 'present',
+            'must be of type integer' => 'integer',
+            'must be of type number' => 'numeric',
+            'must be of type string' => 'string',
+            'must be of type boolean' => 'boolean',
+            'must be of type array' => 'list',
+            'must be of type object' => 'array',
+            default => str_starts_with($claim, 'must be one of: ') ? 'enum' : null,
+        };
+
+        if ($rule !== null) {
+            $validator->addFailure($path, $rule);
+
+            return;
+        }
+
+        $validator->errors()->add($path, str_ends_with($error, '.') ? $error : $error . '.');
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private static function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
+    {
+        if ($depth > 0) {
+            return self::validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return self::validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private static function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
+        if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
+        }
+
+        $errors = [];
+        $normalizedValue = $value;
+
+        if (is_string($normalizedValue) && self::schemaHasAnyOpenApiKey($schema, ['pattern'])) {
+            if (is_string($pattern = $schema['pattern'] ?? null) && $pattern !== '') {
+                $regex = self::delimitOpenApiPattern($pattern);
+                set_error_handler(static fn(): bool => true);
+                try {
+                    $match = preg_match($regex, $normalizedValue);
+                } finally {
+                    restore_error_handler();
+                }
+
+                if ($match === false) {
+                    throw new OverflowException(match (true) {
+                        preg_last_error() === PREG_BAD_UTF8_ERROR => sprintf('%s contains invalid UTF-8 characters', $path),
+                        preg_last_error() === PREG_INTERNAL_ERROR => sprintf('%s has invalid regex pattern in schema: %s', $path, $pattern),
+                        default => sprintf('%s could not be checked: the regex engine gave up on pattern %s', $path, $pattern),
+                    });
+                }
+                if ($match !== 1) {
+                    $errors[] = sprintf('%s must match pattern %s', $path, $pattern);
+                }
+            }
+        }
+
+        $listValue = is_array($value) && array_is_list($value);
+
+        if ($listValue && ($schema['items'] ?? null) === false) {
+            foreach (array_keys($value) as $index) {
+                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+            }
+        }
+
+        if ($listValue && is_array($schema['items'] ?? null)) {
+            foreach ($value as $index => $itemValue) {
+                $errors = [
+                    ...$errors,
+                    ...self::validateOpenApiNode($itemValue, $schema['items'], $path . '[' . $index . ']', $depth + 1),
+                ];
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
+     * @param array<int, string> $keys
+     */
+    private static function schemaHasAnyOpenApiKey(array $schema, array $keys): bool
+    {
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $schema)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static function delimitOpenApiPattern(string $pattern, bool $unicode = true): string
+    {
+        $delimited = '#';
+        $length = strlen($pattern);
+        $inClass = false;
+        $classOpenedAt = -1;
+        for ($i = 0; $i < $length; $i++) {
+            $character = $pattern[$i];
+            if ($character === '\\' && $i + 1 < $length) {
+                $next = $pattern[$i + 1];
+                // ECMA-262 `\uXXXX` and `\u{X…}` are PCRE's `\x{…}`; PCRE has no `\u` at all.
+                if ($next === 'u' && preg_match('/\G(?:\{([0-9A-Fa-f]{1,6})\}|([0-9A-Fa-f]{4}))/', $pattern, $hex, 0, $i + 2) === 1) {
+                    $delimited .= '\\x{' . ($hex[1] !== '' ? $hex[1] : $hex[2]) . '}';
+                    $i += 1 + strlen($hex[0]);
+                    continue;
+                }
+                $i++;
+                // ECMA-262 `\v` is the one vertical TAB; PCRE's is a class that also holds `\n` and `\r`.
+                if ($next === 'v') {
+                    $delimited .= '\\x{B}';
+                    continue;
+                }
+                // ECMA-262 `\d` `\w` `\b` are ASCII, even under its `u` flag. PHP's `u` also turns on
+                // Unicode properties, where `\d` matches `٣` and `\w` matches `ж`: spell them out.
+                $ascii = !$unicode ? null : ($inClass ? match ($next) {
+                    'd' => '0-9',
+                    'D' => '\x{0}-\x{2F}\x{3A}-\x{10FFFF}',
+                    'w' => 'A-Za-z0-9_',
+                    'W' => '\x{0}-\x{2F}\x{3A}-\x{40}\x{5B}-\x{5E}\x{60}\x{7B}-\x{10FFFF}',
+                    default => null,
+                } : match ($next) {
+                    'd' => '[0-9]',
+                    'D' => '[^0-9]',
+                    'w' => '[A-Za-z0-9_]',
+                    'W' => '[^A-Za-z0-9_]',
+                    'b' => '(?:(?<=[A-Za-z0-9_])(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])(?=[A-Za-z0-9_]))',
+                    'B' => '(?:(?<=[A-Za-z0-9_])(?=[A-Za-z0-9_])|(?<![A-Za-z0-9_])(?![A-Za-z0-9_]))',
+                    default => null,
+                });
+                $delimited .= $ascii ?? '\\' . $next;
+                continue;
+            }
+            if ($inClass && $character === '[' && ($pattern[$i + 1] ?? '') === ':') {
+                // A POSIX class carries its own `]`; copied whole, it cannot close the outer class.
+                $end = strpos($pattern, ':]', $i + 2);
+                if ($end !== false) {
+                    $delimited .= substr($pattern, $i, $end + 2 - $i);
+                    $i = $end + 1;
+                    continue;
+                }
+            }
+            // ECMA-262 `[^]` is any character and `[]` none; PCRE reads the `]` as a member and the
+            // class never closes, so every value failed as "invalid regex".
+            if (!$inClass && $character === '[' && substr($pattern, $i, 3) === '[^]') {
+                $delimited .= '[\\s\\S]';
+                $i += 2;
+                continue;
+            }
+            if (!$inClass && $character === '[' && ($pattern[$i + 1] ?? '') === ']') {
+                $delimited .= '(?!)';
+                $i++;
+                continue;
+            }
+            // ECMA-262 `.` stops at every line terminator; PCRE's stops at `\\n` alone.
+            if (!$inClass && $character === '.') {
+                $delimited .= $unicode ? '[^\\n\\r\\x{2028}\\x{2029}]' : '[^\\n\\r]';
+                continue;
+            }
+            if (!$inClass && $character === '[') {
+                $inClass = true;
+                $classOpenedAt = ($pattern[$i + 1] ?? '') === '^' ? $i + 1 : $i;
+            } elseif ($inClass && $character === ']' && $i > $classOpenedAt + 1) {
+                // PCRE reads a `]` right after `[` or `[^` as a literal member, not as the end.
+                $inClass = false;
+            }
+            $delimited .= $character === '#' ? '\\#' : $character;
+        }
+
+        // `D`: ECMA-262 `$` is the very end. PCRE's also matches before a final `\\n`, and
+        // `^[a-z]+$` let "abc\\n" through to a log line or a header.
+        return $delimited . ($unicode ? '#uD' : '#D');
     }
 
     /**

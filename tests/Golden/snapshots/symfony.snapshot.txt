@@ -1,4 +1,4 @@
-# symfony mode — 77 files, 12797 lines
+# symfony mode — 77 files, 12798 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -7341,12 +7341,13 @@ final class ItemBounds
                 }
 
                 if ($match === false) {
-                    if (preg_last_error() === PREG_BAD_UTF8_ERROR) {
-                        $errors[] = sprintf('%s contains invalid UTF-8 characters', $path);
-                    } else {
-                        $errors[] = sprintf('%s has invalid regex pattern in schema: %s', $path, $pattern);
-                    }
-                } elseif ($match !== 1) {
+                    throw new OverflowException(match (true) {
+                        preg_last_error() === PREG_BAD_UTF8_ERROR => sprintf('%s contains invalid UTF-8 characters', $path),
+                        preg_last_error() === PREG_INTERNAL_ERROR => sprintf('%s has invalid regex pattern in schema: %s', $path, $pattern),
+                        default => sprintf('%s could not be checked: the regex engine gave up on pattern %s', $path, $pattern),
+                    });
+                }
+                if ($match !== 1) {
                     $errors[] = sprintf('%s must match pattern %s', $path, $pattern);
                 }
             }

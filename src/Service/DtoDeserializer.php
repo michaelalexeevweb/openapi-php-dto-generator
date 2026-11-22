@@ -26,7 +26,9 @@ use stdClass;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
 use UnitEnum;
+use WeakMap;
 
+use function array_diff_key;
 use function array_filter;
 use function array_is_list;
 use function array_key_exists;
@@ -34,6 +36,7 @@ use function array_key_first;
 use function array_key_last;
 use function array_keys;
 use function array_map;
+use function array_pop;
 use function array_unique;
 use function array_values;
 use function call_user_func;
@@ -48,6 +51,7 @@ use function floor;
 use function gettype;
 use function implode;
 use function in_array;
+use function ini_get;
 use function is_a;
 use function is_array;
 use function is_bool;
@@ -108,6 +112,14 @@ final class DtoDeserializer implements DtoDeserializerInterface
      */
     private const string PHP_RENAMED_NAME_CHARACTERS = '. ';
 
+    /**
+     * PHP's own defaults for the two input limits the raw re-reads honour, for an ini that reports
+     * none — see `inputPairs()` and `assignRawQueryValue()`.
+     */
+    private const int DEFAULT_MAX_INPUT_VARS = 1000;
+
+    private const int DEFAULT_MAX_INPUT_NESTING_LEVEL = 64;
+
     // -----------------------------------------------------------------------
     // Static per-class reflection caches (populated once, shared across all
     // instances and requests within the same PHP worker process).
@@ -131,6 +143,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
      * @var array<class-string, array{
      *   hasConstructor: bool,
      *   plainBodyOnly: bool,
+     *   jsonOnlyBody: bool,
      *   params: list<array{
      *     name: string,
      *     requestFieldName: string,
@@ -211,6 +224,53 @@ final class DtoDeserializer implements DtoDeserializerInterface
     private static array $fileImportsCache = [];
 
     private DtoValidatorInterface $constraintValidator;
+
+    /**
+     * How many union trials are open on the stack — see `castUnionValue()`.
+     */
+    private int $unionTrialDepth = 0;
+
+    /**
+     * What each JSON object came to when hydrated as a given class, while a union trial is open.
+     *
+     * A union with no discriminator is resolved by trying its branches in turn, and a branch that
+     * fails still hydrates everything below it — errors are collected, not raised on the first one.
+     * In a recursive union (`A.c` and `B.c` both `A|B`) every level therefore hydrated its subtree
+     * once per branch of every level above it: 2^depth, a 300-byte body tying a worker up for
+     * minutes. The answer for one object as one class does not depend on which outer branch asked,
+     * so it is kept and reused, and each (object, class) is hydrated once — linear again, and the
+     * branch chosen is the one chosen before, because every answer is the one it would have been.
+     *
+     * Keyed by the decoded `stdClass` itself, in a WeakMap: an object id can be reused once the
+     * object is gone, an object key cannot. Dropped when the outermost trial ends, so nothing is
+     * carried from one value — or one request — to the next.
+     *
+     * @var WeakMap<stdClass, array<string, object>>|null
+     */
+    private ?WeakMap $unionTrialResults = null;
+
+    /**
+     * The same memory for an object that arrived as a PHP array — form fields, a `deepObject` query
+     * parameter, a pre-decoded body — where PHP nests a name up to 64 levels and a recursive union
+     * cost 2^depth all the same.
+     *
+     * An array has no identity to key by, and two sibling values with the same content must still
+     * become two DTOs, so the key is where the object sits: the path of nested objects opened since
+     * the outermost trial began (`$unionTrialPath`), its own path, the class. Paths are joined with
+     * dots, and a map key the client chose may hold a dot itself, so the remembered input is
+     * compared as well: an answer is reused only for the very content it was given — which is
+     * also why reuse cannot change an answer.
+     *
+     * @var array<string, array{data: array<string, mixed>, outcome: object}>
+     */
+    private array $unionTrialArrayResults = [];
+
+    /**
+     * The paths of the nested objects being hydrated inside the open union trials, outermost first.
+     *
+     * @var list<string>
+     */
+    private array $unionTrialPath = [];
 
     public function __construct(
         ?DtoValidatorInterface $constraintValidator = null,
@@ -374,6 +434,11 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 foreach (explode("\n", $e->getMessage()) as $message) {
                     $errors[] = sprintf('element %d: %s', $index, $message);
                 }
+                // The stop {@see castArrayItems()} makes, for the same reason: the body is refused
+                // either way, and each further element would burn the backtrack limit again.
+                if (DtoValidator::reportsEngineGaveUp($e->getMessage())) {
+                    break;
+                }
             }
         }
 
@@ -495,6 +560,24 @@ final class DtoDeserializer implements DtoDeserializerInterface
             self::$dtoMetaCache[$dtoClass] = $this->buildDtoMeta(reflection: $reflection, dtoClass: $dtoClass);
         }
         $classMeta = self::$dtoMetaCache[$dtoClass];
+
+        // A body the document accepts as JSON only is read from the JSON body only. The lookup below
+        // otherwise falls back to the query string and the form fields for a key the body lacks —
+        // right for a class nothing says more about, and a hole for this one: a cross-site
+        // `<form method="post">` is a CORS "simple" request, sent with the victim's cookies and no
+        // preflight, and it filled an endpoint whose only declared body was `application/json`,
+        // defeating the "we only take JSON" CSRF defence. With no other source, such a request now
+        // fails as what it is — a JSON body that is not there. Clearing both is safe because the
+        // class binds nothing to the query (`jsonOnlyBody` excludes any bound parameter); path
+        // attributes still lead, as they do for every class. Uploaded files go with the form fields
+        // they arrive beside: a JSON body holds no file, and a property typed as one (`format:
+        // binary`) was otherwise filled by the same cross-site multipart post.
+        $readsUploadedFiles = true;
+        if ($request !== null && $classMeta['jsonOnlyBody']) {
+            $queryData = [];
+            $formData = [];
+            $readsUploadedFiles = false;
+        }
 
         if (!$classMeta['hasConstructor']) {
             throw new RuntimeException(
@@ -660,7 +743,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     $rawWasProvided = true;
                     $rawSource = $bodySource;
                     $rawValue = $bodyData[$requestFieldName];
-                } elseif ($request !== null && $request->files->has($requestFieldName)) {
+                } elseif ($readsUploadedFiles && $request !== null && $request->files->has($requestFieldName)) {
                     // Files before query, for the reason spelled out in `resolveRawRequestValue()`:
                     // a query string is never an upload, so `?avatar=x` must not stand in for the
                     // multipart `avatar`. The two routes MUST agree, which is why the same swap is made
@@ -693,6 +776,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     wasProvided: $rawWasProvided,
                     source: $rawSource,
                     bodySource: $bodySource,
+                    readsUploadedFiles: $readsUploadedFiles,
                 );
             }
 
@@ -1024,6 +1108,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
      * @return array{
      *   hasConstructor: bool,
      *   plainBodyOnly: bool,
+     *   jsonOnlyBody: bool,
      *   params: list<array{
      *     name: string,
      *     requestFieldName: string,
@@ -1066,6 +1151,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return [
                 'hasConstructor' => false,
                 'plainBodyOnly' => true,
+                'jsonOnlyBody' => false,
                 'params' => [],
                 'inRequestProperties' => [],
                 'inPathProperties' => [],
@@ -1272,9 +1358,21 @@ final class DtoDeserializer implements DtoDeserializerInterface
             }
         }
 
+        // A class whose every declared request-body media type is JSON, and which reads no parameter
+        // from a bound source. Such a body has exactly one place to come from — see
+        // `declaresJsonOnlyBody()` and its use in `deserializeInternal()`.
+        $jsonOnlyBody = $this->declaresJsonOnlyBody($reflection);
+        foreach ($params as $param) {
+            if ($param['sourceConstraint'] !== null) {
+                $jsonOnlyBody = false;
+                break;
+            }
+        }
+
         return [
             'hasConstructor' => true,
             'plainBodyOnly' => $plainBodyOnly,
+            'jsonOnlyBody' => $jsonOnlyBody,
             'params' => $params,
             'inRequestProperties' => $inRequestProperties,
             'inPathProperties' => $inPathProperties,
@@ -1282,6 +1380,43 @@ final class DtoDeserializer implements DtoDeserializerInterface
             'inHeaderProperties' => $inHeaderProperties,
             'inCookieProperties' => $inCookieProperties,
         ];
+    }
+
+    /**
+     * Whether the class says it arrives as a request body in JSON media types only.
+     *
+     * Read from `getRequestBodyMediaTypes()`, which runtime mode emits on the class an operation names
+     * as its body — and only where the class declares it itself: a subclass inherits the method
+     * without being anyone's body. A class with no such method (a nested or response component, a
+     * hand-written DTO, one generated before the method existed) says nothing, and keeps the
+     * permissive lookup. So does one also declared under a form or multipart type, whose fields ARE
+     * form fields.
+     *
+     * @param ReflectionClass<object> $reflection
+     */
+    private function declaresJsonOnlyBody(ReflectionClass $reflection): bool
+    {
+        if (!$reflection->hasMethod('getRequestBodyMediaTypes')) {
+            return false;
+        }
+
+        $method = $reflection->getMethod('getRequestBodyMediaTypes');
+        if (!$method->isStatic() || $method->getDeclaringClass()->getName() !== $reflection->getName()) {
+            return false;
+        }
+
+        $mediaTypes = $method->invoke(null);
+        if (!is_array($mediaTypes) || $mediaTypes === []) {
+            return false;
+        }
+
+        foreach ($mediaTypes as $mediaType) {
+            if (!is_string($mediaType) || !$this->isJsonMediaType($mediaType)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -1765,6 +1900,8 @@ final class DtoDeserializer implements DtoDeserializerInterface
      *  - otherwise (request-body / plain component-schema field): the permissive waterfall
      *    path → JSON → query → files → form (preserves pre-existing behaviour). Header and
      *    cookie are intentionally absent here so they only ever feed their bound params.
+     *    `$readsUploadedFiles` is false for a JSON-only body, whose caller also empties the query
+     *    and form data, leaving path → JSON.
      *
      * @param array<string, mixed> $bodyData
      * @param array<string, mixed> $queryData
@@ -1783,6 +1920,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         bool &$wasProvided,
         string &$source,
         string $bodySource,
+        bool $readsUploadedFiles,
     ): mixed {
         if ($sourceConstraint !== null) {
             return $this->resolveFromBoundSource(
@@ -1819,7 +1957,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         // Nothing else changes order: a query value still beats a form field, because for a scalar the
         // document cannot say which one was meant, while for a file it can — a query string is never a
         // file.
-        if ($request !== null && $request->files->has($paramName)) {
+        if ($readsUploadedFiles && $request !== null && $request->files->has($paramName)) {
             $wasProvided = true;
             $source = 'files';
             return $request->files->get($paramName);
@@ -1975,6 +2113,56 @@ final class DtoDeserializer implements DtoDeserializerInterface
             );
         }
 
+        // Opens a trial: nested objects hydrated from here down are remembered, see
+        // `$unionTrialResults`. Closed in `finally`, so a branch that throws still closes it.
+        $this->unionTrialDepth++;
+        try {
+            return $this->castFirstMatchingUnionBranch(
+                paramName: $paramName,
+                typeNames: $typeNames,
+                rawValue: $rawValue,
+                rawSource: $rawSource,
+                arrayItemType: $arrayItemType,
+                schemaAllowsNull: $schemaAllowsNull,
+                dtoReflection: $dtoReflection,
+                openApiFormat: $openApiFormat,
+                allowsAssociativeArray: $allowsAssociativeArray,
+                arrayItemsNullable: $arrayItemsNullable,
+                arrayItemTemporalFormat: $arrayItemTemporalFormat,
+                nestedArrayItemType: $nestedArrayItemType,
+                nestedArrayItemsNullable: $nestedArrayItemsNullable,
+            );
+        } finally {
+            $this->unionTrialDepth--;
+            if ($this->unionTrialDepth === 0) {
+                $this->unionTrialResults = null;
+                $this->unionTrialArrayResults = [];
+            }
+        }
+    }
+
+    /**
+     * The branch loop of `castUnionValue()`: the first type the value casts to wins, in declaration
+     * order; when none does, every branch's complaint is reported.
+     *
+     * @param array<int, string> $typeNames
+     * @param ReflectionClass<object> $dtoReflection
+     */
+    private function castFirstMatchingUnionBranch(
+        string $paramName,
+        array $typeNames,
+        mixed $rawValue,
+        string $rawSource,
+        ?string $arrayItemType,
+        bool $schemaAllowsNull,
+        ReflectionClass $dtoReflection,
+        ?string $openApiFormat,
+        bool $allowsAssociativeArray,
+        bool $arrayItemsNullable,
+        ?string $arrayItemTemporalFormat,
+        ?string $nestedArrayItemType,
+        bool $nestedArrayItemsNullable,
+    ): mixed {
         $errors = [];
         foreach ($typeNames as $typeName) {
             $temporalFormat = $typeName === DateTimeImmutable::class
@@ -2110,11 +2298,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         $lists = [];
-        foreach (explode('&', $encoded) as $pair) {
-            if ($pair === '') {
-                continue;
-            }
-
+        foreach (self::inputPairs($encoded) as $pair) {
             $eqPos = strpos($pair, '=');
             $key = $eqPos === false ? $pair : substr($pair, 0, $eqPos);
             if (str_contains($key, '[')) {
@@ -2128,6 +2312,47 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         return $lists;
+    }
+
+    /**
+     * The `&`-separated pairs of a query string or urlencoded body, as far as PHP itself reads them.
+     *
+     * Both re-reads above walk text PHP has already parsed once, into `$_GET` or `$_POST`, and that
+     * parser stops after `max_input_vars` pairs — the limit exists because array keys are hashed
+     * without a random seed, so a client can send thousands of keys sharing one bucket and make
+     * every insert walk all the others. The raw body knows no limit: a 2 MB form of colliding names
+     * cost seconds of CPU here, while PHP's own parse of the same body stopped at the limit. The
+     * re-read stops at the same pair, so it costs what PHP allowed and sees what PHP saw — a pair
+     * PHP dropped is not one the caller ever had.
+     *
+     * Empty pairs (`a=1&&b=2`) are skipped and not counted, as PHP skips them. Walked with `strpos()`
+     * rather than `explode()`: a body of nothing but `&` would otherwise become an array of millions
+     * of empty strings before the first one was looked at.
+     *
+     * @return list<string>
+     */
+    private static function inputPairs(string $encoded): array
+    {
+        $limit = (int)ini_get('max_input_vars');
+        if ($limit <= 0) {
+            $limit = self::DEFAULT_MAX_INPUT_VARS;
+        }
+
+        $pairs = [];
+        $length = strlen($encoded);
+        $offset = 0;
+        while ($offset < $length && count($pairs) < $limit) {
+            $end = strpos($encoded, '&', $offset);
+            if ($end === false) {
+                $end = $length;
+            }
+            if ($end > $offset) {
+                $pairs[] = substr($encoded, $offset, $end - $offset);
+            }
+            $offset = $end + 1;
+        }
+
+        return $pairs;
     }
 
     /**
@@ -2167,11 +2392,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         // Parse query string while preserving + signs in values (allowReserved support).
         // Use rawurldecode to preserve encoded plus signs (%2B) and allow literal + in values.
         $result = [];
-        foreach (explode('&', $queryString) as $pair) {
-            if ($pair === '') {
-                continue;
-            }
-
+        foreach (self::inputPairs($queryString) as $pair) {
             $eqPos = strpos($pair, '=');
             if ($eqPos === false) {
                 // No value: ?key → key => ''
@@ -2228,6 +2449,16 @@ final class DtoDeserializer implements DtoDeserializerInterface
         preg_match_all('/\[([^\[\]]*)\]/', $leading[1], $matches);
         /** @var array<int, string> $segments an empty segment means "append" */
         $segments = $matches[1];
+
+        // PHP drops a variable nested deeper than `max_input_nesting_level` — the whole name, with
+        // whatever earlier pairs had already put under it — so `$request->query` does not have it.
+        // The re-read drops it too: the two readings must differ in how `+` decodes, not in shape.
+        $nestingLimit = (int)ini_get('max_input_nesting_level');
+        if (count($segments) > ($nestingLimit > 0 ? $nestingLimit : self::DEFAULT_MAX_INPUT_NESTING_LEVEL)) {
+            $result = array_diff_key($result, [$baseKey => true]);
+
+            return;
+        }
 
         /** @var array<array-key, mixed> $cursor */
         $cursor = &$result;
@@ -2768,6 +2999,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         if ($kind === 'dto') {
+            $decodedObject = $value instanceof stdClass ? $value : null;
             if ($value instanceof stdClass) {
                 $value = $this->stdClassToArray($value);
             } elseif (is_array($value) && $value !== [] && array_is_list($value)) {
@@ -2790,14 +3022,13 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 // either throws on unknown class, or returns null and we fall back to $typeName
                 // (already validated by the 'dto' kind resolution above).
                 /** @var class-string<object> $targetDtoClass */
-                try {
-                    return $this->deserializeFromArray(data: $value, dtoClass: $targetDtoClass, source: $source);
-                } catch (RuntimeException $e) {
-                    throw new RuntimeException(
-                        message: $this->prependParamPath(message: $e->getMessage(), prefix: $paramPath),
-                        previous: $e,
-                    );
-                }
+                return $this->hydrateNestedObject(
+                    decoded: $decodedObject,
+                    data: $value,
+                    dtoClass: $targetDtoClass,
+                    source: $source,
+                    paramPath: $paramPath,
+                );
             }
             throw new RuntimeException(
                 message: $this->finalizeParamMessage(
@@ -2848,6 +3079,14 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 );
             } catch (RuntimeException $e) {
                 $errors[] = $e->getMessage();
+                // A member the regex engine gave up on settles the request, and every member after it
+                // would burn the whole backtrack limit again — once per member, ~2 ms each, seconds for
+                // a list of a few thousand. A list nested in this member stopped the same way, and its
+                // message carries the failure up here, so the stop holds at any depth. An ordinary
+                // mismatch is a verdict, not this, and every member that has one is still reported.
+                if (DtoValidator::reportsEngineGaveUp($e->getMessage())) {
+                    break;
+                }
             }
         }
 
@@ -2953,6 +3192,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         if ($kind === 'dto') {
+            $decodedObject = $itemValue instanceof stdClass ? $itemValue : null;
             if ($itemValue instanceof stdClass) {
                 $itemValue = $this->stdClassToArray($itemValue);
             } elseif (is_array($itemValue) && $itemValue !== [] && array_is_list($itemValue)) {
@@ -2977,20 +3217,102 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 );
             }
 
-            try {
-                /** @var class-string<object> $targetClass */
-                return $this->deserializeFromArray(data: $itemValue, dtoClass: $targetClass, source: $source);
-            } catch (RuntimeException $e) {
-                throw new RuntimeException(
-                    message: $this->prependParamPath(message: $e->getMessage(), prefix: $itemPath),
-                    previous: $e,
-                );
-            }
+            /** @var class-string<object> $targetClass */
+            return $this->hydrateNestedObject(
+                decoded: $decodedObject,
+                data: $itemValue,
+                dtoClass: $targetClass,
+                source: $source,
+                paramPath: $itemPath,
+            );
         }
 
         throw new RuntimeException(
             message: "Cannot deserialize array item at \"{$itemPath}\": unknown type \"{$arrayItemType}\".",
         );
+    }
+
+    /**
+     * One nested object hydrated as `$dtoClass`, its errors reported under `$paramPath`.
+     *
+     * Inside a union trial the outcome — the DTO, or the refusal — is remembered for the decoded
+     * object it came from, or for the position of an array, and reused when another branch above
+     * asks the same question; see `$unionTrialResults` and `$unionTrialArrayResults`. The refusal
+     * is kept WITHOUT the path, which belongs to the asker.
+     *
+     * @template T of object
+     * @param array<string, mixed> $data
+     * @param class-string<T> $dtoClass
+     * @return T
+     */
+    private function hydrateNestedObject(
+        ?stdClass $decoded,
+        array $data,
+        string $dtoClass,
+        string $source,
+        string $paramPath,
+    ): object {
+        if ($this->unionTrialDepth === 0) {
+            try {
+                return $this->deserializeFromArray(data: $data, dtoClass: $dtoClass, source: $source);
+            } catch (RuntimeException $e) {
+                throw new RuntimeException(
+                    message: $this->prependParamPath(message: $e->getMessage(), prefix: $paramPath),
+                    previous: $e,
+                );
+            }
+        }
+
+        $resultKey = $dtoClass . '|' . $source;
+        $positionKey = implode("\0", [...$this->unionTrialPath, $paramPath, $resultKey]);
+        $known = null;
+        if ($decoded !== null) {
+            $known = $this->unionTrialResults !== null
+                ? ($this->unionTrialResults[$decoded] ?? [])[$resultKey] ?? null
+                : null;
+        } else {
+            $remembered = $this->unionTrialArrayResults[$positionKey] ?? null;
+            // `===` on two arrays is a pointer compare when both are the one array the parent was
+            // given, which is the case every branch above asks about; a full compare only on a
+            // dotted-key clash.
+            if ($remembered !== null && $remembered['data'] === $data) {
+                $known = $remembered['outcome'];
+            }
+        }
+        if ($known instanceof RuntimeException) {
+            throw new RuntimeException(
+                message: $this->prependParamPath(message: $known->getMessage(), prefix: $paramPath),
+                previous: $known,
+            );
+        }
+        if ($known instanceof $dtoClass) {
+            return $known;
+        }
+
+        $this->unionTrialPath[] = $paramPath;
+        try {
+            $outcome = $this->deserializeFromArray(data: $data, dtoClass: $dtoClass, source: $source);
+        } catch (RuntimeException $e) {
+            $outcome = $e;
+        } finally {
+            array_pop($this->unionTrialPath);
+        }
+
+        if ($decoded !== null) {
+            $results = $this->unionTrialResults ??= new WeakMap();
+            $results[$decoded] = [...($results[$decoded] ?? []), $resultKey => $outcome];
+        } else {
+            $this->unionTrialArrayResults[$positionKey] = ['data' => $data, 'outcome' => $outcome];
+        }
+
+        if ($outcome instanceof RuntimeException) {
+            throw new RuntimeException(
+                message: $this->prependParamPath(message: $outcome->getMessage(), prefix: $paramPath),
+                previous: $outcome,
+            );
+        }
+
+        return $outcome;
     }
 
     private function prependParamPath(string $message, string $prefix): string

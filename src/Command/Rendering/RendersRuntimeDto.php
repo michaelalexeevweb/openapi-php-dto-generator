@@ -20,6 +20,16 @@ use RuntimeException;
 trait RendersRuntimeDto
 {
     /**
+     * The styles the deserializer reads a parameter by: OpenAPI's, plus `json` (a `content` parameter
+     * or a JSON multipart part) and `querystring` (OAS 3.2 `in: querystring`), which the generator sets.
+     *
+     * @var list<string>
+     */
+    private const array RUNTIME_PARAMETER_STYLES = [
+        'form', 'simple', 'matrix', 'label', 'spaceDelimited', 'pipeDelimited', 'deepObject', 'json', 'querystring',
+    ];
+
+    /**
      * Builds the property → allowEmptyValue map emitted as getParameterAllowEmptyValue().
      *
      * Only parameters whose spec states the keyword are listed: `true` allows `?flag=`,
@@ -354,6 +364,12 @@ trait RendersRuntimeDto
                 array_keys($objectConstraints),
                 array_values($objectConstraints),
             ),
+            // Only on the class an operation names as its body: a subclass or a nested component says
+            // nothing about how a request carries it, and the deserializer reads the method only where
+            // the class declares it itself.
+            'requestBodyMediaTypes' => array_key_exists($className, $this->requestBodyMediaTypes)
+                ? $this->renderPhpLiteral($this->requestBodyMediaTypes[$className])
+                : null,
             'fastHydrator' => $fastHydrator,
             'unsetValueRef' => $unsetValueRef,
             'closureRef' => $closureRef,
@@ -883,16 +899,18 @@ trait RendersRuntimeDto
      */
     private function resolveDiscriminatorRenderData(array $discriminator, string $namespace): array
     {
+        // Raw values: the template escapes each where it puts it in quotes (`|php_string`), so escaping
+        // here as well would write `it\\\'s` for `it's` — see TemplateEscapingTest.
         $mappingEntries = [];
         foreach ($discriminator['mapping'] as $value => $targetClass) {
             $mappingEntries[] = [
-                'value' => $this->escapeSingleQuoted($value),
+                'value' => $value,
                 'targetClass' => $this->formatClassNameForNamespace($targetClass, $namespace),
             ];
         }
 
         return [
-            'propertyName' => $this->escapeSingleQuoted($discriminator['propertyName']),
+            'propertyName' => $discriminator['propertyName'],
             'mappingEntries' => $mappingEntries,
         ];
     }
@@ -961,6 +979,17 @@ trait RendersRuntimeDto
             $explode = $property['parameterExplode'] ?? null;
             if (!is_string($style) || !is_bool($explode)) {
                 continue;
+            }
+            // The document wrote this string — on a parameter, on a multipart part's `encoding`, or as
+            // `x-parameter-style` itself — and it lands in the generated class. Copied as it came,
+            // `form'.touch(…).'` closed the quotes and ran on every request that read the parameter.
+            if (!in_array($style, self::RUNTIME_PARAMETER_STYLES, true)) {
+                throw new RuntimeException(sprintf(
+                    'Parameter "%s" has style "%s", which is not an OpenAPI parameter style (%s).',
+                    $property['name'],
+                    $style,
+                    implode(', ', self::RUNTIME_PARAMETER_STYLES),
+                ));
             }
 
             $result[] = [
@@ -1592,7 +1621,8 @@ trait RendersRuntimeDto
         // `\x80-\xFF`, and stripping those bytes collapsed every non-ASCII name to `value` — so two
         // such properties emitted `$valueInRequest` twice and the class would not even load
         // ("Cannot redeclare P::$valueInRequest"). The flag name has to track the property name.
-        $splitResult = preg_split('/[^A-Za-z0-9\x80-\xFF]+/', $propertyName);
+        // The format characters go first, as they do from the property name the flag sits beside.
+        $splitResult = preg_split('/[^A-Za-z0-9\x80-\xFF]+/', $this->withoutFormatCharacters($propertyName));
         $parts = array_values(array_filter($splitResult !== false ? $splitResult : [], static fn(string $part): bool => $part !== ''));
 
         if ($parts === []) {

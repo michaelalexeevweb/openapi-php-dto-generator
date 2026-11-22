@@ -794,24 +794,32 @@ PHP;
 PHP;
             }
 
-            $patternCheck = $hasPattern ? <<<'PHP'
-            if (is_string($pattern = $schema['pattern'] ?? null) && $pattern !== '') {
-                $regex = $this->delimitOpenApiPattern($pattern);
+            // A value already too long is refused, and the length was the cheap question: running the
+            // pattern over it as well let a long value buy a full backtrack-limit burn.
+            $withinMaxLength = $hasMaxLength ? '($maxLength === null || $length <= $maxLength) && ' : '';
+            // A pattern `preg_match()` could not run has no verdict, so it is thrown like the depth
+            // limit: `not`, `if` and `contains` read errors as "did not match" and passed a value the
+            // engine gave up on, and the throw also ends the walk — the next item of a long list would
+            // burn the whole backtrack limit again.
+            $patternCheck = $hasPattern ? <<<PHP
+            if ({$withinMaxLength}is_string(\$pattern = \$schema['pattern'] ?? null) && \$pattern !== '') {
+                \$regex = \$this->delimitOpenApiPattern(\$pattern);
                 set_error_handler(static fn(): bool => true);
                 try {
-                    $match = preg_match($regex, $normalizedValue);
+                    \$match = preg_match(\$regex, \$normalizedValue);
                 } finally {
                     restore_error_handler();
                 }
 
-                if ($match === false) {
-                    if (preg_last_error() === PREG_BAD_UTF8_ERROR) {
-                        $errors[] = sprintf('%s contains invalid UTF-8 characters', $path);
-                    } else {
-                        $errors[] = sprintf('%s has invalid regex pattern in schema: %s', $path, $pattern);
-                    }
-                } elseif ($match !== 1) {
-                    $errors[] = sprintf('%s must match pattern %s', $path, $pattern);
+                if (\$match === false) {
+                    throw new \\OverflowException(match (true) {
+                        preg_last_error() === PREG_BAD_UTF8_ERROR => sprintf('%s contains invalid UTF-8 characters', \$path),
+                        preg_last_error() === PREG_INTERNAL_ERROR => sprintf('%s has invalid regex pattern in schema: %s', \$path, \$pattern),
+                        default => sprintf('%s could not be checked: the regex engine gave up on pattern %s', \$path, \$pattern),
+                    });
+                }
+                if (\$match !== 1) {
+                    \$errors[] = sprintf('%s must match pattern %s', \$path, \$pattern);
                 }
             }
 
@@ -975,7 +983,13 @@ PHP;
                     }
                     \$propertyName = (string)\$propertyName;
                     // `@`: a pattern PCRE cannot compile matches no key rather than raising a warning.
-                    if (@preg_match(\$regex, \$propertyName) !== 1) {
+                    \$matched = @preg_match(\$regex, \$propertyName);
+                    // A key the engine ran out of resources on is undecided, not unmatched: its value
+                    // skipped the very schema the pattern guards. Thrown, so no further key burns too.
+                    if (\$matched === false && preg_last_error() !== PREG_INTERNAL_ERROR && preg_last_error() !== PREG_BAD_UTF8_ERROR) {
+                        throw new \\OverflowException(sprintf('%s key "%s" could not be checked: the regex engine gave up on pattern %s', \$path, \$propertyName, \$pattern));
+                    }
+                    if (\$matched !== 1) {
                         continue;
                     }
 {$trackPatternMatched}                    \$errors = [
@@ -2023,7 +2037,13 @@ PHP;
                 }
                 $regex = $this->delimitOpenApiPattern($pattern);
                 foreach (array_keys($object) as $key) {
-                    if (@preg_match($regex, (string)$key) === 1) {
+                    $matched = @preg_match($regex, (string)$key);
+                    // Undecided marks nothing — an unevaluated key is the closed answer — and stops:
+                    // the validation walk refuses this object on the same key.
+                    if ($matched === false && preg_last_error() !== PREG_INTERNAL_ERROR && preg_last_error() !== PREG_BAD_UTF8_ERROR) {
+                        break 2;
+                    }
+                    if ($matched === 1) {
                         $evaluated[(string)$key] = true;
                     }
                 }

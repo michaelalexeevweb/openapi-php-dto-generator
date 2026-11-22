@@ -352,6 +352,81 @@ final class InterpreterMessageParityTest extends TestCase
     }
 
     /**
+     * A member's pattern mismatch is reported ONCE, in every mode, whichever path reaches the member.
+     *
+     * In the Laravel modes these patterns moved from the native `regex:` rule on the wildcard path to
+     * the interpreter (a native rule cannot stop at the first member the regex engine gives up on).
+     * Moving a keyword is exactly where both halves can end up owning it — the rule still emitted, the
+     * prune no longer dropping it — so each wildcard spelling is counted here.
+     *
+     * @param array<string, mixed> $spec
+     */
+    #[DataProvider('memberPatternProvider')]
+    public function testAMemberPatternMismatchIsReportedOnceInEveryMode(array $spec, string $json): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $key = 'member pattern ' . md5((string)json_encode([$spec, $json]));
+        foreach (GenerationMode::cases() as $mode) {
+            $messages = $this->messages($mode, $spec, $key, $json);
+
+            $this->assertCount(
+                expectedCount: 1,
+                haystack: $messages,
+                message: sprintf(
+                    "%s mode reports one member pattern mismatch %d times:\n %s",
+                    $mode->value,
+                    count($messages),
+                    implode("\n ", $messages),
+                ),
+            );
+        }
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>, string}>
+     */
+    public static function memberPatternProvider(): iterable
+    {
+        $letters = ['type' => 'string', 'pattern' => '^[a-z]+$'];
+        $probe = static fn(array $propertySchema, array $more = []): array => [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Probe' => [
+                        'type' => 'object',
+                        'required' => ['f'],
+                        'properties' => ['f' => $propertySchema],
+                    ],
+                    ...$more,
+                ],
+            ],
+        ];
+        $widget = ['Widget' => ['type' => 'object', 'properties' => ['name' => $letters]]];
+
+        yield 'property' => [$probe($letters), '{"f":"alpha1"}'];
+        yield 'list items' => [$probe(['type' => 'array', 'items' => $letters]), '{"f":["alpha","beta1"]}'];
+        // Laravel skips most rules for an empty string; the pattern still has to refuse it.
+        yield 'list items: an empty member' => [$probe(['type' => 'array', 'items' => $letters]), '{"f":["alpha",""]}'];
+        yield 'items of items' => [
+            $probe(['type' => 'array', 'items' => ['type' => 'array', 'items' => $letters]]),
+            '{"f":[["alpha"],["beta1"]]}',
+        ];
+        yield 'map values' => [
+            $probe(['type' => 'object', 'additionalProperties' => $letters]),
+            '{"f":{"red":"alpha","blue":"beta1"}}',
+        ];
+        yield '$ref property' => [$probe(['$ref' => '#/components/schemas/Widget'], $widget), '{"f":{"name":"beta1"}}'];
+        yield '$ref items' => [
+            $probe(['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Widget']], $widget),
+            '{"f":[{"name":"alpha"},{"name":"beta1"}]}',
+        ];
+    }
+
+    /**
      * A property-level `allOf` reports each violation ONCE, in every mode.
      *
      * 2.15.11 taught the emitted interpreter the keyword — it had none, so an `allOf` that could not be

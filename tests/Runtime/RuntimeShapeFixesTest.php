@@ -633,6 +633,29 @@ final class RuntimeShapeFixesTest extends TestCase
     }
 
     /**
+     * A DTO built in code with an enum case for `oneOf: [$ref Tint, {string, pattern}, integer]`: the
+     * case is the enum branch's alone. The string branch took it for a string and skipped its pattern,
+     * so `Tint::BLUE` matched two branches and the DTO failed its own validation.
+     */
+    public function testAnEnumCaseBuiltInCodeMatchesOnlyTheEnumBranch(): void
+    {
+        $class = $this->generate(
+            components: ['Tint' => ['type' => 'string', 'enum' => ['red', 'blue']]],
+            properties: ['shade' => ['oneOf' => [
+                ['$ref' => '#/components/schemas/Tint'],
+                ['type' => 'string', 'pattern' => '^\d+$'],
+                ['type' => 'integer'],
+            ]]],
+        );
+        $tint = substr($class, 0, -strlen('Probe')) . 'Tint';
+
+        foreach ([$tint::from('blue'), $tint::from('red'), '123', 42] as $value) {
+            $this->assertSame([], (new DtoNormalizer())->validate(new $class(shade: $value)), var_export($value, true));
+        }
+        $this->assertNotSame([], (new DtoNormalizer())->validate(new $class(shade: 'abc')));
+    }
+
+    /**
      * @param array<string, mixed> $properties
      * @param array<string, mixed> $components
      * @param array<string, mixed>|null $probe the whole `Probe` schema, for a shape `$properties` cannot spell

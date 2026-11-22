@@ -1,9 +1,9 @@
 {% for read in parameterReads %}
         if (array_key_exists('{{ read.wireName|php_string }}', ${{ parameterVariable }})) {
 {% if read.list %}
-            ${{ parameterVariable }}['{{ read.wireName|php_string }}'] = self::openApiParameterList(${{ parameterVariable }}['{{ read.wireName|php_string }}'], {{ read.delimiter is null ? 'null' : "'" ~ (read.delimiter|php_string) ~ "'" }}, '{{ read.kind }}');
+            ${{ parameterVariable }}['{{ read.wireName|php_string }}'] = self::openApiParameterList(${{ parameterVariable }}['{{ read.wireName|php_string }}'], {% if read.delimiter is null %}null{% else %}'{{ read.delimiter|php_string }}'{% endif %}, '{{ read.kind|php_string }}');
 {% else %}
-            ${{ parameterVariable }}['{{ read.wireName|php_string }}'] = self::openApiParameterValue(${{ parameterVariable }}['{{ read.wireName|php_string }}'], '{{ read.kind }}');
+            ${{ parameterVariable }}['{{ read.wireName|php_string }}'] = self::openApiParameterValue(${{ parameterVariable }}['{{ read.wireName|php_string }}'], '{{ read.kind|php_string }}');
 {% endif %}
         }
 {% endfor %}

@@ -60,11 +60,18 @@ Parameters:
 | `--exclude` | | | Leave out the classes whose name matches this mask; a kept class that needs one stops generation. Repeatable. |
 
 Without `--ref`, a class from another document goes under the output directory, at the path its namespace
-gives: the document's directory relative to the root one, `.` and `..` dropped, each segment in class-name
-case. `../shared/money.yml` from the root document's directory becomes `<namespace>\Shared` in
-`<directory>/Shared/`. A `common` directory follows the `Common` convention instead when the output path
-has a segment to rebase it on. To put a document's classes anywhere else — one place shared by several
-root documents, say — map its directory with `--ref`:
+gives: the document's directory relative to the root one, each segment in class-name case —
+`models/money.yml` becomes `<namespace>\Models` in `<directory>/Models/`. A `common` directory follows the
+`Common` convention instead when the output path has a segment to rebase it on, as long as the place it
+rebases to is inside a directory you chose (`--directory`, `--dto-generator-directory`, a `--ref` target).
+
+**A document may only read what you let it read, and only write where you said.** A `$ref` is resolved
+inside the root document's directory and below it; one that leaves it (`../shared/money.yml`, an absolute
+path, a link pointing out) is refused until you map that directory with `--ref`. Nothing a run writes lands
+outside `--directory`, `--dto-generator-directory` and the `--ref` targets: when the `common` convention
+would, the run stops before writing and prints the `--ref` that puts the classes in that same place. Both
+guard against a document you did not write. To put a document's classes anywhere else — one place shared
+by several root documents, say — map its directory with `--ref`:
 
 ```bash
 php bin/console openapi:generate-dto \
@@ -194,6 +201,23 @@ file and schema remain supported, including recursive references.
 
 DTOs, enums and Laravel FormRequests must also have distinct generated classes and output files.
 Collisions stop generation before publication, preserving the previous output.
+
+## Large documents
+
+The generator holds the whole document and the whole output in memory until it publishes, so that a
+failure never leaves half a tree behind. Parsing is cheap — `json_decode()` reads 100 MB in under half a
+second — but the classes are built in memory: a 10 MB document of 22 500 schemas needed about 460 MB and
+5–6 minutes. The largest public specs are a few MB and fit PHP's default `memory_limit` of 128M only
+narrowly, so give a big document room:
+
+```bash
+php -d memory_limit=1G bin/console openapi:generate-dto --file=… --directory=… --namespace=…
+```
+
+Run out anyway and the generator says so — the document, its size, the limit, and the command above —
+and writes nothing. Two limits stop a document that is built to be expensive rather than big: a YAML file
+whose aliases expand far beyond its own size is refused before generation, and so is a run whose output
+would pass 64 MB.
 
 ## Requirements
 

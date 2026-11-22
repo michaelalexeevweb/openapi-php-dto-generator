@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OpenapiPhpDtoGenerator\Tests\Runtime;
 
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 
@@ -81,8 +82,16 @@ final class UntrustedDocumentInputTest extends TestCase
         mkdir($this->root . '/app/Common', 0o775, true);
         file_put_contents($this->root . '/app/Common/Kernel.php', '<?php final class Kernel {}');
 
+        // `app/Common` is outside `--directory`, so the user names it with `--ref`; the `common`
+        // convention alone no longer writes there.
+        $generator = new GenerateDtoCommand();
+        $generator->setExternalRefMappings(
+            refDirectoryPairs: [$this->root . '/specs/common=' . $this->root . '/app/Common=App\Common'],
+            refNamespacePairs: [],
+        );
+
         try {
-            (new GenerateDtoCommand())->generateFromFile($this->root . '/specs/api.yaml', $this->root . '/app/Api', 'App\Api');
+            $generator->generateFromFile($this->root . '/specs/api.yaml', $this->root . '/app/Api', 'App\Api');
             $this->fail('A hand-written class must not be replaced.');
         } catch (RuntimeException $exception) {
             $this->assertStringContainsString('Refusing to replace', $exception->getMessage());
@@ -90,9 +99,72 @@ final class UntrustedDocumentInputTest extends TestCase
         $this->assertSame('<?php final class Kernel {}', file_get_contents($this->root . '/app/Common/Kernel.php'));
 
         unlink($this->root . '/app/Common/Kernel.php');
-        (new GenerateDtoCommand())->generateFromFile($this->root . '/specs/api.yaml', $this->root . '/app/Api', 'App\Api');
-        (new GenerateDtoCommand())->generateFromFile($this->root . '/specs/api.yaml', $this->root . '/app/Api', 'App\Api');
+        $generator->generateFromFile($this->root . '/specs/api.yaml', $this->root . '/app/Api', 'App\Api');
+        $generator->generateFromFile($this->root . '/specs/api.yaml', $this->root . '/app/Api', 'App\Api');
         $this->assertStringContainsString('auto-generated', (string)file_get_contents($this->root . '/app/Common/Kernel.php'));
+    }
+
+    /**
+     * A parameter's `style` — on the parameter, on a multipart part's `encoding`, or written straight
+     * into a schema as the generator's own `x-parameter-style` — was copied into a single-quoted string of
+     * the generated class unescaped. `form'.touch(…).'` closed the quotes and generated valid PHP that ran
+     * on every request reading the parameter. A style outside OpenAPI's list stops generation; nothing is
+     * written and nothing runs.
+     *
+     * @param array<string, mixed> $document
+     */
+    #[DataProvider('styleInjectionProvider')]
+    public function testAParameterStyleIsNeverCode(array $document): void
+    {
+        $marker = $this->root . '/PWNED';
+        $json = str_replace('MARKER', addslashes($marker), (string)json_encode($document));
+        try {
+            (new GenerateDtoCommand())->generateFromArray(
+                openApi: (array)json_decode($json, true),
+                outputDirectory: $this->root . '/out',
+                namespace: 'Untrusted\Styles',
+            );
+            $this->fail('An unknown parameter style must stop generation.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('style', $exception->getMessage());
+        }
+
+        foreach (glob($this->root . '/out/*.php') ?: [] as $file) {
+            $this->assertStringNotContainsString('touch', (string)file_get_contents($file));
+        }
+        $this->assertFileDoesNotExist($marker);
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>}>
+     */
+    public static function styleInjectionProvider(): iterable
+    {
+        $payload = "form'.touch('MARKER').'";
+        $document = static fn(array $operation, array $schemas = []): array => [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'Styles', 'version' => '1.0.0'],
+            'paths' => ['/widgets' => $operation],
+            'components' => ['schemas' => $schemas],
+        ];
+
+        yield 'parameter style' => [$document(['get' => [
+            'operationId' => 'listWidgets',
+            'parameters' => [['name' => 'q', 'in' => 'query', 'style' => $payload, 'schema' => ['type' => 'array', 'items' => ['type' => 'string']]]],
+            'responses' => ['200' => ['description' => 'ok']],
+        ]])];
+        yield 'multipart encoding style' => [$document(['post' => [
+            'operationId' => 'uploadWidget',
+            'requestBody' => ['content' => ['multipart/form-data' => [
+                'schema' => ['type' => 'object', 'properties' => ['tags' => ['type' => 'array', 'items' => ['type' => 'string']]]],
+                'encoding' => ['tags' => ['style' => $payload]],
+            ]]],
+            'responses' => ['200' => ['description' => 'ok']],
+        ]])];
+        yield 'the generator marker written by the document' => [$document([], ['Widget' => [
+            'type' => 'object',
+            'properties' => ['q' => ['type' => 'string', 'x-parameter-in' => 'query', 'x-parameter-style' => $payload, 'x-parameter-explode' => false]],
+        ]])];
     }
 
     private function writeRootDocument(string $ref): void

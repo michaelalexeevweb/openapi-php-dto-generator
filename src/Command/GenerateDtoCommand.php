@@ -109,6 +109,16 @@ final class GenerateDtoCommand extends Command
     private array $requestPayloadClasses = [];
 
     /**
+     * The media types each class is declared as a REQUEST BODY under, across every operation that
+     * names it — an inline body's own type, or each type a body `$ref` to a component appears under.
+     * Runtime mode emits them, so the deserializer can tell a JSON-only body from one the document
+     * also lets arrive as form fields; see `getRequestBodyMediaTypes()` in the runtime template.
+     *
+     * @var array<string, list<string>>
+     */
+    private array $requestBodyMediaTypes = [];
+
+    /**
      * The subset of {@see $requestPayloadClasses} built from an operation's PARAMETERS. Their values come
      * from the path, query, headers and cookies — never from the JSON body — so nothing read off the raw
      * body may be checked against them.
@@ -122,6 +132,19 @@ final class GenerateDtoCommand extends Command
 
     /** The most array nodes a parsed YAML document may hold — see `fitsNodeBudget()`. */
     private const int MAX_DOCUMENT_NODES = 5_000_000;
+
+    /** The node budget of a small YAML document, whatever its size — see `parseSpecFile()`. */
+    private const int MIN_DOCUMENT_NODE_BUDGET = 100_000;
+
+    /** How many nodes each byte of YAML text may expand to through aliases — see `parseSpecFile()`. */
+    private const int DOCUMENT_NODES_PER_BYTE = 4;
+
+    /**
+     * The deepest flow nesting a YAML document may have — see `YamlFlowDepth`. symfony/yaml refuses
+     * anything past 128 levels on its own; this is the guard for the depth at which its lexer crashes
+     * before it can, set well above the first and far below the second.
+     */
+    private const int MAX_YAML_FLOW_DEPTH = 512;
 
     /** Generation mode emitting Symfony Validator/Serializer attributes (no library runtime). */
     public const string ATTRIBUTE_MODE_SYMFONY = 'symfony';
@@ -266,6 +289,15 @@ final class GenerateDtoCommand extends Command
 
     /** @var list<string> */
     private array $ownedOutputDirectories = [];
+
+    /**
+     * Directories the user chose for this run besides `--directory` and the `--ref` targets — the
+     * runtime services' `--dto-generator-directory`. The `common` convention may place classes inside
+     * them, see `assertCommonTargetChosen()`.
+     *
+     * @var list<string>
+     */
+    private array $extraOutputRoots = [];
 
     public ?Environment $twig = null;
 
@@ -628,6 +660,7 @@ final class GenerateDtoCommand extends Command
             $this->setExternalRefMappings($refPairs, $refNamespacePairs);
 
             foreach ($documents as $document) {
+                MemoryExhaustionReport::watch($document['file']);
                 try {
                     $generated = $this->generateDocument(
                         document: $document,
@@ -665,6 +698,7 @@ final class GenerateDtoCommand extends Command
                 $readFiles = [...$readFiles, ...$generated['readFiles']];
                 $count += $generated['count'];
             }
+            MemoryExhaustionReport::stopWatching();
             $filter->assertEveryMaskMatched();
 
             // The copied services are the runtime mode's own deserializer, normalizer and validator;
@@ -696,6 +730,8 @@ final class GenerateDtoCommand extends Command
         } catch (RuntimeException $exception) {
             $io->error($exception->getMessage());
             return Command::FAILURE;
+        } finally {
+            MemoryExhaustionReport::stopWatching();
         }
 
         if ($withPsr7 && $mode === self::ATTRIBUTE_MODE_RUNTIME && $dtoGeneratorDirectory === null) {
@@ -881,6 +917,11 @@ final class GenerateDtoCommand extends Command
             );
             $worker->generatedDtoInterfaceImportFqcn = $servicesNamespace . '\GeneratedDtoInterface';
             $worker->unsetValueImportFqcn = $servicesNamespace . '\UnsetValue';
+            // Only runtime mode copies the services; in any other mode the option is ignored, and a
+            // directory nothing is written to grants nothing.
+            $worker->extraOutputRoots = $mode === self::ATTRIBUTE_MODE_RUNTIME
+                ? [$this->dtoGeneratorDirectoryPath(outputDirectory: $outputDirectory, dtoGeneratorDirectory: $dtoGeneratorDirectory)]
+                : [];
         } else {
             $worker->generatedDtoInterfaceImportFqcn = 'OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface';
             $worker->unsetValueImportFqcn = 'OpenapiPhpDtoGenerator\Contract\UnsetValue';
@@ -994,6 +1035,17 @@ final class GenerateDtoCommand extends Command
             }
         }
 
+        // Measured on the text, before the parser sees it: past a few thousand levels it is the parser's
+        // recursion that kills the process, and a dead process reports nothing at all.
+        $text = @file_get_contents($filePath);
+        if (is_string($text) && YamlFlowDepth::measure(yaml: $text, limit: self::MAX_YAML_FLOW_DEPTH) > self::MAX_YAML_FLOW_DEPTH) {
+            throw new RuntimeException(message: sprintf(
+                '%s nests flow collections ([ ] or { }) more than %d levels deep; the YAML parser would crash on it. Nothing was generated.',
+                $filePath,
+                self::MAX_YAML_FLOW_DEPTH,
+            ));
+        }
+
         try {
             $parsed = Yaml::parseFile($filePath);
         } catch (ParseException $e) {
@@ -1003,12 +1055,19 @@ final class GenerateDtoCommand extends Command
             throw new RuntimeException(sprintf('Invalid YAML in referenced file %s at line %d.', $filePath, $e->getParsedLine()));
         }
 
-        $budget = self::MAX_DOCUMENT_NODES;
+        // The budget grows with the text: written out, a document holds about one node per twenty
+        // bytes, so four per byte leaves an honest document's anchors far more room than they use,
+        // while a few hundred bytes of nested aliases standing for millions of nodes — a 600-byte
+        // document took 16 s and 856 MB under the old fixed budget — is refused before anything is built.
+        $textBytes = is_string($text) ? strlen($text) : 0;
+        $limit = min(self::MAX_DOCUMENT_NODES, max(self::MIN_DOCUMENT_NODE_BUDGET, self::DOCUMENT_NODES_PER_BYTE * $textBytes));
+        $budget = $limit;
         if (!$this->fitsNodeBudget(node: $parsed, budget: $budget)) {
-            throw new RuntimeException(sprintf(
-                '%s expands to more than %d nodes — YAML aliases nested into one another? Nothing was generated.',
+            throw new RuntimeException(message: sprintf(
+                '%s expands to more than %d nodes from %d bytes of text — YAML aliases nested into one another? Nothing was generated.',
                 $filePath,
-                self::MAX_DOCUMENT_NODES,
+                $limit,
+                $textBytes,
             ));
         }
 
@@ -1505,23 +1564,7 @@ final class GenerateDtoCommand extends Command
         bool $withPsr7 = false,
     ): void {
         $dtoGeneratorDirectory ??= 'Common';
-
-        // If dtoGeneratorDirectory is a relative path, calculate it from current directory
-        if (
-            str_starts_with($dtoGeneratorDirectory, '/') || (strlen(
-                string: $dtoGeneratorDirectory,
-            ) > 1 && $dtoGeneratorDirectory[1] === ':')
-        ) {
-            $commonDir = rtrim($dtoGeneratorDirectory, '/');
-        } elseif ($dtoGeneratorDirectory === 'Common') {
-            // Special case: if default 'Common' value is used,
-            // maintain backward compatibility and copy it inside $outputDirectory
-            $commonDir = rtrim($outputDirectory, '/') . '/Common';
-        } else {
-            $cwd = getcwd();
-            $workingDirectory = $cwd !== false ? $cwd : '.';
-            $commonDir = rtrim($workingDirectory . '/' . ltrim($dtoGeneratorDirectory, '/'), '/');
-        }
+        $commonDir = $this->dtoGeneratorDirectoryPath(outputDirectory: $outputDirectory, dtoGeneratorDirectory: $dtoGeneratorDirectory);
 
         $pendingFiles = [];
 
@@ -1593,6 +1636,30 @@ final class GenerateDtoCommand extends Command
         );
     }
 
+    /**
+     * Where `--dto-generator-directory` puts the runtime services: an absolute path as is, the default
+     * `Common` inside the output directory, any other relative path from the working directory.
+     */
+    private function dtoGeneratorDirectoryPath(string $outputDirectory, string $dtoGeneratorDirectory): string
+    {
+        if (
+            str_starts_with($dtoGeneratorDirectory, '/') || (strlen(
+                string: $dtoGeneratorDirectory,
+            ) > 1 && $dtoGeneratorDirectory[1] === ':')
+        ) {
+            return rtrim($dtoGeneratorDirectory, '/');
+        }
+        if ($dtoGeneratorDirectory === 'Common') {
+            // Special case: if default 'Common' value is used,
+            // maintain backward compatibility and copy it inside $outputDirectory
+            return rtrim($outputDirectory, '/') . '/Common';
+        }
+        $cwd = getcwd();
+        $workingDirectory = $cwd !== false ? $cwd : '.';
+
+        return rtrim($workingDirectory . '/' . ltrim($dtoGeneratorDirectory, '/'), '/');
+    }
+
     private function initializeGeneration(string $outputDirectory, string $namespace, ?string $rootSpecFile): void
     {
         $this->pendingOutputFiles = [];
@@ -1612,6 +1679,7 @@ final class GenerateDtoCommand extends Command
         $this->documentSelfUri = null;
         $this->generationWarnings = [];
         $this->requestPayloadClasses = [];
+        $this->requestBodyMediaTypes = [];
         $this->parameterPayloadClasses = [];
         $this->parentClasses = [];
         $this->unionInterfacesByClass = [];
@@ -2617,8 +2685,69 @@ final class GenerateDtoCommand extends Command
         }
 
         $prefix = str_starts_with($this->baseOutputDirectory, DIRECTORY_SEPARATOR) ? DIRECTORY_SEPARATOR : '';
+        $target = $prefix . implode(DIRECTORY_SEPARATOR, $targetParts);
+        $this->assertCommonTargetChosen(sourceFile: $sourceFile, target: $target);
 
-        return $prefix . implode(DIRECTORY_SEPARATOR, $targetParts);
+        return $target;
+    }
+
+    /**
+     * The `common` convention rebases the output segment named after the root document, and the
+     * document's file name — not the user — chose that segment: `api.yaml` against
+     * `src/Api/Generated/Petstore` rebased `Api`, two levels above `--directory`, and replaced another
+     * tree's generated class. So the rebased directory has to lie inside one the user chose:
+     * `--directory`, `--dto-generator-directory` or a `--ref` target. Otherwise the run stops before
+     * anything is written, naming the `--ref` that places the classes exactly there.
+     */
+    private function assertCommonTargetChosen(string $sourceFile, string $target): void
+    {
+        $absoluteTarget = $this->lexicalAbsolutePath($target);
+        $roots = [$this->baseOutputDirectory, ...$this->extraOutputRoots];
+        foreach ($this->refOutputDirectoryMap as $refTarget) {
+            // A target with a `{n}` is filled per file; what it covers is not known here, so it
+            // allows nothing it did not map itself.
+            if (preg_match('/\{\d+\}/', $refTarget) === 0) {
+                $roots[] = $refTarget;
+            }
+        }
+        foreach ($roots as $root) {
+            $absoluteRoot = $this->lexicalAbsolutePath($root);
+            if ($absoluteTarget === $absoluteRoot || str_starts_with($absoluteTarget, $absoluteRoot . '/')) {
+                return;
+            }
+        }
+
+        throw new RuntimeException(message: sprintf(
+            '%s would place its classes in %s by the `common` convention, outside --directory %s. '
+            . "To write them there, map its directory with --ref='%s=%s=%s'.",
+            $sourceFile,
+            $target,
+            $this->baseOutputDirectory,
+            dirname($sourceFile),
+            $target,
+            $this->resolveCommonNamespaceForSourceFile($sourceFile) ?? $this->baseNamespace,
+        ));
+    }
+
+    /**
+     * An absolute path with `.` and `..` folded, without touching the filesystem — the directories a
+     * run writes to need not exist yet.
+     */
+    private function lexicalAbsolutePath(string $path): string
+    {
+        $segments = [];
+        foreach (explode('/', $this->resolveOutputDirectory($path)) as $segment) {
+            if ($segment === '' || $segment === '.') {
+                continue;
+            }
+            if ($segment === '..') {
+                array_pop($segments);
+                continue;
+            }
+            $segments[] = $segment;
+        }
+
+        return '/' . implode('/', $segments);
     }
 
     /**
@@ -2808,8 +2937,42 @@ final class GenerateDtoCommand extends Command
         if ($absoluteFile === false) {
             throw new RuntimeException(sprintf('Referenced OpenAPI file not found: %s', $ref));
         }
+        $this->assertReferenceReadable(ref: $ref, realFile: $absoluteFile);
 
         return [$this->canonicalSourceFile($absoluteFile), '#' . $pointerPart];
+    }
+
+    /**
+     * The document and the files beside it may be someone else's; the directories around them are the
+     * user's. So a `$ref` reads below the root document's directory, or from a file a `--ref` maps —
+     * the user named that one. `../secret/creds.yaml` used to be read like any neighbour, and its
+     * schema's defaults and enums were copied into the generated class.
+     *
+     * `$realFile` is a `realpath()`, so a link inside the tree is judged by where it leads; the
+     * containment is compared by inode, so a spelling in another case on a case-folding filesystem is
+     * judged by the directory it reaches, not by its letters.
+     */
+    private function assertReferenceReadable(string $ref, string $realFile): void
+    {
+        if ($this->rootSpecFile === null) {
+            return;
+        }
+
+        $rootDirectory = dirname($this->rootSpecFile);
+        if ((new GeneratedFilePublisher())->isWithin(path: $realFile, directory: $rootDirectory)) {
+            return;
+        }
+        if ($this->matchRefMapping(sourceFile: $realFile, map: $this->refOutputDirectoryMap, separator: '/') !== null) {
+            return;
+        }
+
+        // The reference is named, not the file it reached: what a document points at outside its tree
+        // is the user's, and an error message is output too.
+        throw new RuntimeException(message: sprintf(
+            '$ref "%s" leaves the directory of the root document, %s. To read it, map the directory it points into with --ref.',
+            $ref,
+            $rootDirectory,
+        ));
     }
 
     /**
@@ -7222,6 +7385,24 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * Document text as it may stand on one docblock line. Descriptions were folded onto one line where
+     * they were read; `format`, `pattern`, a wire name were not, and a line break in them started a new
+     * docblock line — one that begins with `@` is a TAG to every static analyser, so a `format` of
+     * `x\n * @var \Other` rewrote the type a reviewer saw. Folding here, in the one filter every
+     * docblock interpolation goes through, covers the text no reader thought of. Only the breaks are
+     * folded: a run of spaces inside a pattern is part of what it says.
+     */
+    private function docBlockText(string $value): string
+    {
+        // `\R` under `/u` is every line break a phpDoc parser may split on, U+2028 and U+2029 included.
+        // Text that is not UTF-8 has no such characters, and the byte-wise breaks are folded instead.
+        $folded = preg_replace('/[ \t]*\R[ \t]*/u', ' ', $value)
+            ?? str_replace(["\r\n", "\r", "\n", "\v", "\f"], ' ', $value);
+
+        return str_replace('*/', '* /', $folded);
+    }
+
+    /**
      * @param array<string, mixed> $context
      */
     private function renderTwig(string $templateName, array $context): string
@@ -7256,7 +7437,7 @@ final class GenerateDtoCommand extends Command
 
         $this->twig->addFilter(new TwigFilter(
             name: 'php_doc',
-            callable: static fn(string $value): string => str_replace('*/', '* /', $value),
+            callable: fn(string $value): string => $this->docBlockText($value),
         ));
 
         return $this->twig;
@@ -8151,7 +8332,7 @@ final class GenerateDtoCommand extends Command
 
     private function normalizePropertyName(string $name): string
     {
-        $normalized = trim($name);
+        $normalized = trim($this->withoutFormatCharacters($name));
         if ($normalized === '') {
             return 'value';
         }
@@ -8183,6 +8364,21 @@ final class GenerateDtoCommand extends Command
         }
 
         return $propertyName;
+    }
+
+    /**
+     * A name with its Unicode format characters (category Cf) taken out, for use as a PHP identifier.
+     * They render as nothing or reorder the text around them — U+200B, U+2060, U+FEFF, the bidi
+     * controls — so `$is<U+200B>admin` beside `$isAdmin` was two properties that read as one, and a
+     * U+202E made a line display differently from what it does. They are dropped, not turned into a
+     * separator: a reader sees no boundary there either. Two names that meet afterwards are a collision
+     * like any other. The wire name keeps them; it is data.
+     *
+     * Text that is not UTF-8 cannot be read character by character, so every non-ASCII byte goes.
+     */
+    private function withoutFormatCharacters(string $name): string
+    {
+        return preg_replace('/\p{Cf}+/u', '', $name) ?? (string)preg_replace('/[\x80-\xFF]+/', '', $name);
     }
 
     /**
@@ -9090,6 +9286,7 @@ final class GenerateDtoCommand extends Command
                         $referencedSchema = $this->externalPointerSchemaName($bodyRef);
                         if ($referencedSchema !== null) {
                             $this->requestPayloadClasses[$this->schemaClassName($referencedSchema)] = true;
+                            $this->recordRequestBodyMediaType(className: $this->schemaClassName($referencedSchema), mediaType: $mediaType);
                         }
                         continue;
                     }
@@ -9113,11 +9310,25 @@ final class GenerateDtoCommand extends Command
                     $inlineOwners[$schemaName] = $ownerKey;
                     $this->endpointByClass[$this->schemaClassName($schemaName)] = $ownerKey;
                     $this->requestPayloadClasses[$this->schemaClassName($schemaName)] = true;
+                    $this->recordRequestBodyMediaType(className: $this->schemaClassName($schemaName), mediaType: $mediaType);
                 }
             }
         }
 
         return $inlineSchemas;
+    }
+
+    private function recordRequestBodyMediaType(string $className, mixed $mediaType): void
+    {
+        if (!is_string($mediaType) || $mediaType === '') {
+            return;
+        }
+
+        $known = $this->requestBodyMediaTypes[$className] ?? [];
+        if (!in_array($mediaType, $known, true)) {
+            $known[] = $mediaType;
+        }
+        $this->requestBodyMediaTypes[$className] = $known;
     }
 
     private function isHttpMethod(string $method): bool

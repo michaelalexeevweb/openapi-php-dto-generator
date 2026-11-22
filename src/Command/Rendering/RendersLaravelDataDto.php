@@ -116,7 +116,7 @@ trait RendersLaravelDataDto
 
             $rules[] = [
                 'path' => $property['openApiName'],
-                'rules' => $this->laravelRulesLiteral($this->laravelRulesForProperty($property)),
+                'rules' => $this->laravelRulesLiteral($this->laravelRulesForProperty($property, true)),
             ];
             foreach ($this->laravelItemRulesForProperty($property) as $path => $itemRules) {
                 $rules[] = ['path' => $path, 'rules' => $this->laravelRulesLiteral($itemRules)];

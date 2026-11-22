@@ -162,11 +162,12 @@ trait RendersLaravelValidation
      * is what `isXxxProvided()` reads.
      *
      * @param SchemaProperty $property
+     * @param bool $patternAsRule whether the property is the class's OWN, see `laravelSchemaRuleSpec()`
      * @return array<int, string> each entry is already PHP source (a quoted rule or a `Rule::` call)
      */
-    private function laravelRulesForProperty(array $property): array
+    private function laravelRulesForProperty(array $property, bool $patternAsRule): array
     {
-        return $this->laravelRuleSpecFor($property)['rules'];
+        return $this->laravelRuleSpecFor($property, $patternAsRule)['rules'];
     }
 
     /**
@@ -264,9 +265,10 @@ trait RendersLaravelValidation
      * parity suite caught all three at once (17 disagreements against runtime mode).
      *
      * @param SchemaProperty $property
+     * @param bool $patternAsRule whether the property is the class's OWN, see `laravelSchemaRuleSpec()`
      * @return array{rules: array<int, string>, consumed: array<int, string>}
      */
-    private function laravelRuleSpecFor(array $property): array
+    private function laravelRuleSpecFor(array $property, bool $patternAsRule): array
     {
         $constraints = $this->laravelConstraintsFor($property);
         $nullable = $this->laravelSchemaDeclaresNullable($property);
@@ -316,7 +318,11 @@ trait RendersLaravelValidation
             return ['rules' => $rules, 'consumed' => [...$consumed, 'type', 'enum']];
         }
 
-        $schemaSpec = $this->laravelSchemaRuleSpec($constraints, $property['type']);
+        $schemaSpec = $this->laravelSchemaRuleSpec(
+            schema: $constraints,
+            phpType: $property['type'],
+            patternAsRule: $patternAsRule,
+        );
 
         return [
             'rules' => [...$rules, ...$schemaSpec['rules']],
@@ -386,7 +392,8 @@ trait RendersLaravelValidation
                 ));
             }
             $path = $prefix . '.' . $this->laravelPathSegment($nestedProperty['openApiName']);
-            $nestedRules = $this->laravelRulesForProperty($nestedProperty);
+            // A nested property is never the class's own: its pattern is the interpreter's.
+            $nestedRules = $this->laravelRulesForProperty($nestedProperty, false);
 
             // A nested property's PRESENCE is not expressible as a rule, so the interpreter owns it.
             // Both candidates were measured and both were wrong:
@@ -447,10 +454,19 @@ trait RendersLaravelValidation
      * Rules for a subschema plus the keywords they enforce. Shared by the property level and the
      * `items` / map-value level, where presence is meaningless.
      *
+     * `pattern` becomes a `regex:` rule only on a property of the class itself (`$patternAsRule`).
+     * Anywhere below — a list member, a map value, a nested object's property — the rule sits on a
+     * wildcard path (`f.*`, `f.*.name`) or on one a wildcard path shares (a nested class is folded
+     * once for every path that reaches it), and Laravel applies a wildcard rule to every member with
+     * no way for one member to stop the others. A pattern the regex engine gives up on then burned
+     * the whole backtrack limit once per member: ten thousand items held a worker for twenty
+     * seconds, refused in the end but at that price. Left unconsumed, the keyword reaches the
+     * interpreter, whose walk ends at the first engine failure.
+     *
      * @param array<string, mixed> $schema
      * @return array{rules: array<int, string>, consumed: array<int, string>}
      */
-    private function laravelSchemaRuleSpec(array $schema, string $phpType = ''): array
+    private function laravelSchemaRuleSpec(array $schema, string $phpType = '', bool $patternAsRule = false): array
     {
         $rules = [];
         $consumed = [];
@@ -525,7 +541,7 @@ trait RendersLaravelValidation
             }
         }
 
-        if (array_key_exists('pattern', $schema) && is_string($schema['pattern']) && $this->patternCompiles($schema['pattern'])) {
+        if ($patternAsRule && array_key_exists('pattern', $schema) && is_string($schema['pattern']) && $this->patternCompiles($schema['pattern'])) {
             // Array form + explicit delimiters: a pattern containing `|` must not split the list.
             $rules[] = $this->phpStringLiteral('regex:' . DtoValidator::delimitPattern($schema['pattern']));
             $consumed[] = 'pattern';
@@ -873,7 +889,8 @@ trait RendersLaravelValidation
         // import is a fatal on the first `rules()` call — found by running the demo controller, not by a
         // unit test.
         $ruleSets = [
-            $this->laravelRulesForProperty($property),
+            // `Rule::` never comes from a pattern, so which half owns it does not matter here.
+            $this->laravelRulesForProperty($property, false),
             ...array_values($this->laravelItemRulesForProperty($property)),
             // A nested class that writes its own rules imports its own facade.
             ...($this->laravelComposedChild($property) === null ? array_values($this->laravelNestedRules($property)) : []),
@@ -1213,7 +1230,7 @@ trait RendersLaravelValidation
             // unenforced by itself, while the class behind it may declare `contains` or
             // `dependentRequired` that only the interpreter can check. An empty result means the rules
             // cover the property after all.
-            $folded = $this->laravelInterpreterSchemaFor($property, [$ownerClass]);
+            $folded = $this->laravelInterpreterSchemaFor(property: $property, visitedClasses: [$ownerClass], ownProperty: true);
             if ($folded === []) {
                 continue;
             }
@@ -1425,12 +1442,14 @@ trait RendersLaravelValidation
      *
      * @param array<string, mixed> $schema
      * @param SchemaProperty $property
+     * @param bool $patternAsRule whether the rules took this property's `pattern` — only a property of
+     *        the class itself, see `laravelSchemaRuleSpec()`
      * @return array<string, mixed>
      */
-    private function laravelPruneRuleCoveredKeywords(array $schema, array $property): array
+    private function laravelPruneRuleCoveredKeywords(array $schema, array $property, bool $patternAsRule): array
     {
         $consumed = [
-            ...$this->laravelRuleSpecFor($property)['consumed'],
+            ...$this->laravelRuleSpecFor($property, $patternAsRule)['consumed'],
             ...$this->laravelInertKeywords($schema),
         ];
 
@@ -1812,6 +1831,8 @@ trait RendersLaravelValidation
      *
      * @param SchemaProperty $property
      * @param array<int, string> $visitedClasses guards a self-referential schema
+     * @param bool $ownProperty the property belongs to the class being rendered rather than to a class
+     *        folded into it: only there is a `pattern` a native rule, see `laravelSchemaRuleSpec()`
      * @return array<string, mixed>
      */
     private function laravelInterpreterSchemaFor(
@@ -1819,13 +1840,14 @@ trait RendersLaravelValidation
         array $visitedClasses = [],
         bool $pruneByOwnRules = true,
         bool $insideRecursiveFold = false,
+        bool $ownProperty = false,
     ): array {
         $constraints = $this->laravelRestoreUnionEnumBranches(
             schema: $this->laravelConstraintsFor($property),
             phpType: $property['type'],
         );
         $schema = $pruneByOwnRules
-            ? $this->laravelPruneRuleCoveredKeywords($constraints, $property)
+            ? $this->laravelPruneRuleCoveredKeywords(schema: $constraints, property: $property, patternAsRule: $ownProperty)
             : $constraints;
 
         $nestedClass = $this->laravelDtoClass($property);
@@ -2536,7 +2558,8 @@ trait RendersLaravelValidation
         foreach ($this->getSchemaProperties($className) as $property) {
             $segment = $this->laravelPathSegment($property['openApiName']);
             $ownRules = array_values(array_filter(
-                array: $this->laravelRulesForProperty($property),
+                // Written into a parent's rules under the parent's path, so never the parent's own.
+                array: $this->laravelRulesForProperty($property, false),
                 callback: static fn(string $rule): bool => $rule !== "'present'" && $rule !== "'sometimes'",
             ));
             if ($ownRules !== []) {

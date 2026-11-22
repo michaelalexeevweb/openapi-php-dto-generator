@@ -16,11 +16,21 @@ final class GeneratedFilePublisher
     private const string GENERATED_NOTE = 'auto-generated from an OpenAPI schema';
 
     /**
+     * The most bytes one run may write. The largest public specifications generate a few megabytes;
+     * a document that makes the generator write more than this is almost certainly made to — a 600-byte
+     * one wrote 15 MB of one enum repeated — and the cap is the last line that holds whatever got
+     * through the checks on the way in.
+     */
+    public const int MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
+
+    /**
      * @param (Closure(string, string): bool)|null $rename the one filesystem move every step goes
      *        through; a test passes one that fails where the filesystem would, to reach the rollback
+     * @param int $maxOutputBytes the cap on the run's output; a test lowers it to reach it cheaply
      */
     public function __construct(
         private readonly ?Closure $rename = null,
+        private readonly int $maxOutputBytes = self::MAX_OUTPUT_BYTES,
     ) {
     }
 
@@ -36,6 +46,7 @@ final class GeneratedFilePublisher
      */
     public function publish(array $files, array $ownedDirectories, array $inputFiles = []): void
     {
+        $this->assertWithinOutputCap($files);
         $this->assertGeneratedPhpParses($files);
 
         $normalizedFiles = [];
@@ -254,7 +265,7 @@ final class GeneratedFilePublisher
      * the way up from `$path` is compared by device and inode instead; the string comparison stays
      * for a filesystem that reports no inode.
      */
-    private function isWithin(string $path, string $directory): bool
+    public function isWithin(string $path, string $directory): bool
     {
         if ($path === $directory || str_starts_with($path, rtrim($directory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR)) {
             return true;
@@ -272,6 +283,21 @@ final class GeneratedFilePublisher
             if ($parent === $current) {
                 return false;
             }
+        }
+    }
+
+    /**
+     * @param array<string, string> $files
+     */
+    private function assertWithinOutputCap(array $files): void
+    {
+        $total = array_sum(array_map(strlen(...), $files));
+        if ($total > $this->maxOutputBytes) {
+            throw new RuntimeException(message: sprintf(
+                'The generated output totals %.1f MB, over the limit of %.1f MB — does the document expand to far more than it says? Nothing was written.',
+                $total / 1048576,
+                $this->maxOutputBytes / 1048576,
+            ));
         }
     }
 

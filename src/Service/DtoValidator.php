@@ -87,6 +87,18 @@ final class DtoValidator implements DtoValidatorInterface
 {
     private const int MAX_VALIDATION_DEPTH = 256;
 
+    /**
+     * How a check that `preg_match()` could not finish reads: the subject exhausted the backtrack limit,
+     * the recursion limit or the JIT stack. Not a mismatch — the engine gave no answer — so every
+     * keyword that turns "has errors" into "did not match" must treat it as unfinished, and a container
+     * stops checking its other members once one has hit it: each further item would burn the whole
+     * limit again.
+     */
+    private const string PATTERN_GAVE_UP = 'the regex engine gave up on pattern';
+
+    /** The `preg_last_error()` codes that mean "out of resources", not "bad pattern" or "bad input". */
+    private const array PREG_RESOURCE_ERRORS = [PREG_BACKTRACK_LIMIT_ERROR, PREG_RECURSION_LIMIT_ERROR, PREG_JIT_STACKLIMIT_ERROR];
+
     /** ECMA-262 ASCII escapes outside a character class. */
     private const array ASCII_ATOM_ESCAPES = [
         'd' => '[0-9]',
@@ -384,9 +396,14 @@ final class DtoValidator implements DtoValidatorInterface
 
         $errors = [];
 
+        // A backed enum case is its value to every string and number keyword, as it already is to
+        // `type`: a case passed the string branch of `oneOf: [$ref Tint, {string, pattern}]` as a
+        // string, skipped the branch's `pattern`, and matched two branches.
+        $scalar = $value instanceof BackedEnum ? $value->value : $value;
+
         // Computed once: the sections below ask these four times between them.
-        $isNumeric = is_int($value) || is_float($value);
-        $isString = is_string($value);
+        $isNumeric = is_int($scalar) || is_float($scalar);
+        $isString = is_string($scalar);
         $isArray = is_array($value);
 
         // Composition keywords, behind one gate. `$hasComposition` lets a caller that already knows
@@ -559,13 +576,13 @@ final class DtoValidator implements DtoValidatorInterface
             // comparisons below stay exact while both sides are integers.
             $errors = [...$errors, ...$this->validateNumeric(
                 subject: $subject,
-                value: $value,
+                value: $scalar,
                 constraints: $constraints,
             )];
         }
 
         if ($isNumeric && is_string($constraints['format'] ?? null)) {
-            $errors = [...$errors, ...$this->validateNumericFormat(subject: $subject, value: $value, format: $constraints['format'])];
+            $errors = [...$errors, ...$this->validateNumericFormat(subject: $subject, value: $scalar, format: $constraints['format'])];
         }
 
         if (
@@ -574,7 +591,7 @@ final class DtoValidator implements DtoValidatorInterface
                 || array_key_exists('pattern', $constraints)
                 || array_key_exists('format', $constraints))
         ) {
-            $errors = [...$errors, ...$this->validateString(subject: $subject, value: $value, constraints: $constraints)];
+            $errors = [...$errors, ...$this->validateString(subject: $subject, value: $scalar, constraints: $constraints)];
         }
 
         if (
@@ -582,7 +599,7 @@ final class DtoValidator implements DtoValidatorInterface
                 || array_key_exists('contentMediaType', $constraints)
                 || array_key_exists('contentSchema', $constraints))
         ) {
-            $errors = [...$errors, ...$this->validateContent(subject: $subject, value: $value, constraints: $constraints, depth: $depth)];
+            $errors = [...$errors, ...$this->validateContent(subject: $subject, value: $scalar, constraints: $constraints, depth: $depth)];
         }
 
         if (
@@ -1091,26 +1108,22 @@ final class DtoValidator implements DtoValidatorInterface
             $errors[] = "{$subject} length must be at most {$maxLength} characters";
         }
 
-        if (is_string($pattern = $constraints['pattern'] ?? null) && $pattern !== '') {
-            $regex = self::schemaRegex($pattern);
-            // Single compile: preg_match returns false for an invalid pattern (warning
-            // suppressed), 1 on match, 0 on no-match — distinguishing both error cases.
-            set_error_handler(static fn(): bool => true);
-            try {
-                $match = preg_match($regex, $value);
-            } finally {
-                restore_error_handler();
-            }
+        // A value already too long is refused, and the length was the cheap question: running a
+        // document pattern over it as well let a long value buy a full backtrack-limit burn.
+        $tooLong = $maxLength !== null && $length > $maxLength;
+        if (!$tooLong && is_string($pattern = $constraints['pattern'] ?? null) && $pattern !== '') {
+            $match = $this->matchPattern(pattern: $pattern, subject: $value);
 
-            if ($match === false) {
-                // preg_match() fails both for a broken schema pattern and for invalid
-                // UTF-8 in the subject (the `u` modifier) — blame the right side.
-                if (preg_last_error() === PREG_BAD_UTF8_ERROR) {
-                    $errors[] = "{$subject} contains invalid UTF-8 characters";
-                } else {
-                    $errors[] = "{$subject} has invalid regex pattern in schema: {$pattern}";
-                }
-            } elseif ($match !== 1) {
+            if ($match === null) {
+                // preg_match() fails for a broken schema pattern, for invalid UTF-8 in the subject
+                // (the `u` modifier) and for a subject the engine ran out of resources on — blame
+                // the right side.
+                $errors[] = match (true) {
+                    preg_last_error() === PREG_BAD_UTF8_ERROR => "{$subject} contains invalid UTF-8 characters",
+                    in_array(preg_last_error(), self::PREG_RESOURCE_ERRORS, true) => sprintf('%s could not be checked: %s %s', $subject, self::PATTERN_GAVE_UP, $pattern),
+                    default => "{$subject} has invalid regex pattern in schema: {$pattern}",
+                };
+            } elseif (!$match) {
                 $errors[] = "{$subject} must match pattern {$pattern}";
             }
         }
@@ -1244,7 +1257,7 @@ final class DtoValidator implements DtoValidatorInterface
 
     /**
      * The errors that say a subschema was NOT checked to the end — the depth limit, an equality walk
-     * that could not finish. Where a keyword turns "has errors" into "did not match" (`not`, `if`, a
+     * that could not finish, a pattern PCRE could not run. Where a keyword turns "has errors" into "did not match" (`not`, `if`, a
      * `oneOf` count, `contains`), these must not: an unfinished check is not a verdict.
      *
      * @param array<string> $errors
@@ -1255,7 +1268,12 @@ final class DtoValidator implements DtoValidatorInterface
         return array_values(array_filter(
             array: $errors,
             callback: static fn(string $error): bool => str_contains($error, 'schema nesting exceeds')
-                || str_contains($error, 'JSON equality traversal exceeds its limits'),
+                || str_contains($error, 'JSON equality traversal exceeds its limits')
+                // A pattern that could not run has no verdict either: `not: {pattern}` passed a value
+                // the engine gave up on, and `if: {pattern}` sent it to `else`.
+                || str_contains($error, self::PATTERN_GAVE_UP)
+                || str_contains($error, 'has invalid regex pattern in schema')
+                || str_contains($error, 'contains invalid UTF-8 characters'),
         ));
     }
 
@@ -1453,25 +1471,38 @@ final class DtoValidator implements DtoValidatorInterface
             }
         }
 
-        // patternProperties: every key matching a pattern is validated against its schema.
-        $patternSchemas = [];
+        // patternProperties: every key matching a pattern is validated against its schema. The keys
+        // that matched are remembered, so `additionalProperties` below does not run every pattern over
+        // every key a second time.
+        $patternMatchedKeys = [];
         if (is_array($constraints['patternProperties'] ?? null)) {
             foreach ($constraints['patternProperties'] as $pattern => $schema) {
                 if (!is_string($pattern) || !is_array($schema)) {
                     continue;
                 }
-                $patternSchemas[$pattern] = $schema;
                 foreach ($value as $key => $itemValue) {
-                    if ($this->keyMatchesPattern((string)$key, $pattern)) {
-                        array_push(
-                            $errors,
-                            ...$this->validateConstraints(
-                                subject: sprintf('%s.%s', $subject, (string)$key),
-                                value: $itemValue,
-                                constraints: $schema,
-                                depth: $depth + 1,
-                            ),
-                        );
+                    $matches = $this->keyMatchesPattern((string)$key, $pattern);
+                    if ($matches === null) {
+                        // Undecided is not "unmatched": the value would skip the schema the pattern
+                        // guards. Refused here, and no further key is tried — each one could cost
+                        // the same burn.
+                        $errors[] = sprintf('%s key "%s" could not be checked: %s %s', $subject, (string)$key, self::PATTERN_GAVE_UP, $pattern);
+
+                        return $errors;
+                    }
+                    if (!$matches) {
+                        continue;
+                    }
+                    $patternMatchedKeys[(string)$key] = true;
+                    $keyErrors = $this->validateConstraints(
+                        subject: sprintf('%s.%s', $subject, (string)$key),
+                        value: $itemValue,
+                        constraints: $schema,
+                        depth: $depth + 1,
+                    );
+                    array_push($errors, ...$keyErrors);
+                    if ($this->engineGaveUp($keyErrors)) {
+                        return $errors;
                     }
                 }
             }
@@ -1480,33 +1511,24 @@ final class DtoValidator implements DtoValidatorInterface
         // propertyNames: every key (as a string) must validate against the schema.
         if (is_array($constraints['propertyNames'] ?? null)) {
             foreach (array_keys($value) as $key) {
-                array_push(
-                    $errors,
-                    ...$this->validateConstraints(
-                        subject: sprintf('%s key "%s"', $subject, (string)$key),
-                        value: (string)$key,
-                        constraints: $constraints['propertyNames'],
-                        depth: $depth + 1,
-                    ),
+                $keyErrors = $this->validateConstraints(
+                    subject: sprintf('%s key "%s"', $subject, (string)$key),
+                    value: (string)$key,
+                    constraints: $constraints['propertyNames'],
+                    depth: $depth + 1,
                 );
+                array_push($errors, ...$keyErrors);
+                if ($this->engineGaveUp($keyErrors)) {
+                    return $errors;
+                }
             }
         }
 
         $additionalProperties = $constraints['additionalProperties'] ?? null;
         // A key is "additional" only if it is neither a declared property nor matched by
         // any patternProperties entry (JSON Schema semantics).
-        $isKnownKey = function (string $key) use ($definedPropertyNames, $patternSchemas): bool {
-            if ($definedPropertyNames !== null && in_array($key, $definedPropertyNames, true)) {
-                return true;
-            }
-            foreach (array_keys($patternSchemas) as $pattern) {
-                if ($this->keyMatchesPattern($key, $pattern)) {
-                    return true;
-                }
-            }
-
-            return false;
-        };
+        $isKnownKey = static fn(string $key): bool => array_key_exists($key, $patternMatchedKeys)
+            || ($definedPropertyNames !== null && in_array($key, $definedPropertyNames, true));
 
         if ($additionalProperties === false) {
             // No guard on $definedPropertyNames: a schema with only patternProperties (or
@@ -1521,15 +1543,16 @@ final class DtoValidator implements DtoValidatorInterface
                 if ($isKnownKey((string)$key)) {
                     continue;
                 }
-                array_push(
-                    $errors,
-                    ...$this->validateConstraints(
-                        subject: sprintf('%s.%s', $subject, (string)$key),
-                        value: $itemValue,
-                        constraints: $additionalProperties,
-                        depth: $depth + 1,
-                    ),
+                $keyErrors = $this->validateConstraints(
+                    subject: sprintf('%s.%s', $subject, (string)$key),
+                    value: $itemValue,
+                    constraints: $additionalProperties,
+                    depth: $depth + 1,
                 );
+                array_push($errors, ...$keyErrors);
+                if ($this->engineGaveUp($keyErrors)) {
+                    return $errors;
+                }
             }
         }
 
@@ -1570,15 +1593,16 @@ final class DtoValidator implements DtoValidatorInterface
                 if ($unevaluated === false) {
                     $errors[] = "{$subject} has unevaluated property \"{$keyStr}\" which is not allowed";
                 } elseif (is_array($unevaluated) && $unevaluated !== []) {
-                    array_push(
-                        $errors,
-                        ...$this->validateConstraints(
-                            subject: sprintf('%s.%s', $subject, $keyStr),
-                            value: $itemValue,
-                            constraints: $unevaluated,
-                            depth: $depth + 1,
-                        ),
+                    $keyErrors = $this->validateConstraints(
+                        subject: sprintf('%s.%s', $subject, $keyStr),
+                        value: $itemValue,
+                        constraints: $unevaluated,
+                        depth: $depth + 1,
                     );
+                    array_push($errors, ...$keyErrors);
+                    if ($this->engineGaveUp($keyErrors)) {
+                        return $errors;
+                    }
                 }
             }
         }
@@ -1601,7 +1625,9 @@ final class DtoValidator implements DtoValidatorInterface
         }
 
         if (($maxItems = $this->toIntOrNull($constraints['maxItems'] ?? null)) !== null && $count > $maxItems) {
-            $errors[] = "{$subject} must contain at most {$maxItems} items";
+            // The array is refused already, and counting was the cheap question: walking every item
+            // too let a request ten thousand items long pay a document pattern ten thousand times.
+            return ["{$subject} must contain at most {$maxItems} items"];
         }
 
         if (($constraints['uniqueItems'] ?? false) === true) {
@@ -1671,16 +1697,17 @@ final class DtoValidator implements DtoValidatorInterface
                     continue;
                 }
 
-                array_push(
-                    $errors,
-                    ...$this->validateConstraints(
-                        subject: sprintf('%s.%s', $subject, (string)$index),
-                        value: $itemValue,
-                        constraints: $itemConstraints,
-                        depth: $depth + 1,
-                        hasComposition: $itemsHaveComposition,
-                    ),
+                $itemErrors = $this->validateConstraints(
+                    subject: sprintf('%s.%s', $subject, (string)$index),
+                    value: $itemValue,
+                    constraints: $itemConstraints,
+                    depth: $depth + 1,
+                    hasComposition: $itemsHaveComposition,
                 );
+                array_push($errors, ...$itemErrors);
+                if ($this->engineGaveUp($itemErrors)) {
+                    return $errors;
+                }
             }
         }
 
@@ -1703,6 +1730,9 @@ final class DtoValidator implements DtoValidatorInterface
                     $matchCount++;
                 }
                 $incompleteMatch = [...$incompleteMatch, ...$this->incompleteVerdict($itemErrors)];
+                if ($this->engineGaveUp($itemErrors)) {
+                    return [...$errors, ...$incompleteMatch];
+                }
             }
             // An item whose match could not be decided makes the count unknown.
             if ($incompleteMatch !== []) {
@@ -1755,15 +1785,16 @@ final class DtoValidator implements DtoValidatorInterface
                 if ($unevaluated === false) {
                     $errors[] = sprintf('%s has an unevaluated item at index %s which is not allowed', $subject, (string)$index);
                 } elseif (is_array($unevaluated) && $unevaluated !== []) {
-                    array_push(
-                        $errors,
-                        ...$this->validateConstraints(
-                            subject: sprintf('%s.%s', $subject, (string)$index),
-                            value: $itemValue,
-                            constraints: $unevaluated,
-                            depth: $depth + 1,
-                        ),
+                    $itemErrors = $this->validateConstraints(
+                        subject: sprintf('%s.%s', $subject, (string)$index),
+                        value: $itemValue,
+                        constraints: $unevaluated,
+                        depth: $depth + 1,
                     );
+                    array_push($errors, ...$itemErrors);
+                    if ($this->engineGaveUp($itemErrors)) {
+                        return $errors;
+                    }
                 }
             }
         }
@@ -1825,7 +1856,13 @@ final class DtoValidator implements DtoValidatorInterface
                     continue;
                 }
                 foreach (array_keys($value) as $key) {
-                    if ($this->keyMatchesPattern((string)$key, $pattern)) {
+                    $matches = $this->keyMatchesPattern((string)$key, $pattern);
+                    // Undecided marks nothing — an unevaluated key is the closed answer — and stops:
+                    // the validation walk has refused this object already.
+                    if ($matches === null) {
+                        break 2;
+                    }
+                    if ($matches) {
                         $evaluated[(string)$key] = true;
                     }
                 }
@@ -2017,16 +2054,63 @@ final class DtoValidator implements DtoValidatorInterface
         };
     }
 
-    private function keyMatchesPattern(string $key, string $pattern): bool
+    private function keyMatchesPattern(string $key, string $pattern): ?bool
+    {
+        $match = $this->matchPattern(pattern: $pattern, subject: $key);
+        // A pattern PCRE cannot compile matches no key, as it always has; only a key the engine ran
+        // out of resources on is left undecided. That one used to read as "no match" too, so its value
+        // skipped the very schema the pattern guarded.
+        if ($match === null && !in_array(preg_last_error(), self::PREG_RESOURCE_ERRORS, true)) {
+            return false;
+        }
+
+        return $match;
+    }
+
+    /**
+     * A document pattern against one subject: true or false, or null when `preg_match()` failed —
+     * `preg_last_error()` then says why. The warning an uncompilable pattern raises is swallowed;
+     * the caller reports it.
+     */
+    private function matchPattern(string $pattern, string $subject): ?bool
     {
         $regex = self::schemaRegex($pattern);
-        // Suppress warnings from an invalid schema pattern → treat as no match.
         set_error_handler(static fn(): bool => true);
         try {
-            return preg_match($regex, $key) === 1;
+            $match = preg_match($regex, $subject);
         } finally {
             restore_error_handler();
         }
+
+        return $match === false ? null : $match === 1;
+    }
+
+    /**
+     * Whether a member's errors say the regex engine gave up on it. A container stops at that member:
+     * the request is refused either way, and the next member would cost the same burn again.
+     *
+     * @param array<string> $errors
+     */
+    private function engineGaveUp(array $errors): bool
+    {
+        foreach ($errors as $error) {
+            if (self::reportsEngineGaveUp($error)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The same question about a refusal that has already left this class as one message — the form
+     * {@see DtoDeserializer} sees when a list member, hydrated as a DTO of its own, is refused. The
+     * deserializer stops that list on it, for the reason a container here stops: the request is refused
+     * either way, and each further member would burn the whole limit again.
+     */
+    public static function reportsEngineGaveUp(string $message): bool
+    {
+        return str_contains($message, self::PATTERN_GAVE_UP);
     }
 
     /**

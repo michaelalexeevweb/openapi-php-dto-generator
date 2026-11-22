@@ -202,9 +202,10 @@ final class GenerationIntegrityTest extends TestCase
     }
 
     /**
-     * `a/page` → `b/grid` → `b/tiles` → `b/units/units`. Every reference is relative to the document
-     * that WRITES it, and from `a/` neither `tiles.json` nor `units/units.json` exists — so a hop
-     * resolved against the root document fails instead of landing on the right file by luck.
+     * `page` → `b/grid` → `b/tiles` → `b/units/units`. Every reference is relative to the document
+     * that WRITES it, and beside `page` neither `tiles.json` nor `units/units.json` exists — so a hop
+     * resolved against the root document fails instead of landing on the right file by luck. The root
+     * document sits above `b/`, because a `$ref` reads only below the root document's directory.
      *
      * `$shape` is the container nesting around the tile reference in `Grid.groups`, outermost first:
      * `m` a map (`additionalProperties`), `l` a list (`items`). The default is a map of maps.
@@ -217,12 +218,12 @@ final class GenerationIntegrityTest extends TestCase
                 ? ['type' => 'object', 'additionalProperties' => $groups]
                 : ['type' => 'array', 'items' => $groups];
         }
-        foreach (['a', 'b', 'b/units'] as $directory) {
+        foreach (['b', 'b/units'] as $directory) {
             mkdir($this->root . '/' . $directory);
         }
         $documents = [
-            'a/page.json' => $this->document(['Page' => ['type' => 'object', 'required' => ['grid'], 'properties' => [
-                'grid' => ['$ref' => '../b/grid.json#/components/schemas/Grid'],
+            'page.json' => $this->document(['Page' => ['type' => 'object', 'required' => ['grid'], 'properties' => [
+                'grid' => ['$ref' => 'b/grid.json#/components/schemas/Grid'],
             ]]]),
             'b/grid.json' => $this->document(['Grid' => ['type' => 'object', 'required' => ['groups'], 'properties' => [
                 'groups' => $groups,
@@ -240,7 +241,7 @@ final class GenerationIntegrityTest extends TestCase
 
     /**
      * The value of a map of maps is resolved two containers down, below where anything is materialized,
-     * and that resolution looked the reference up next to the ROOT document: generating `a/page` failed
+     * and that resolution looked the reference up next to the ROOT document: generating `page` failed
      * with `Referenced OpenAPI file not found: tiles.json#/components/schemas/Tile`. The same
      * document split differently — a plain map, a list, a property — always worked.
      */
@@ -251,7 +252,7 @@ final class GenerationIntegrityTest extends TestCase
         $namespace = 'Integrity' . bin2hex(random_bytes(8));
 
         (new GenerateDtoCommand())->generateFromFile(
-            filePath: $this->root . '/a/page.json',
+            filePath: $this->root . '/page.json',
             outputDirectory: $this->root . '/out',
             namespace: $namespace,
             mode: $mode,
@@ -274,17 +275,17 @@ final class GenerationIntegrityTest extends TestCase
     public function testAnotherDocumentsClassesLandWhereTheirNamespaceSays(): void
     {
         $this->writeChainedDocuments();
-        mkdir($this->root . '/a/sub');
+        mkdir($this->root . '/sub');
         $plain = ['type' => 'object', 'properties' => ['label' => ['type' => 'string']]];
-        file_put_contents($this->root . '/a/sibling.json', json_encode($this->document(['Sibling' => $plain]), JSON_THROW_ON_ERROR));
-        file_put_contents($this->root . '/a/sub/nested.json', json_encode($this->document(['Nested' => $plain]), JSON_THROW_ON_ERROR));
-        file_put_contents($this->root . '/a/root.json', json_encode($this->document(['Probe' => ['type' => 'object', 'properties' => [
+        file_put_contents($this->root . '/sibling.json', json_encode($this->document(['Sibling' => $plain]), JSON_THROW_ON_ERROR));
+        file_put_contents($this->root . '/sub/nested.json', json_encode($this->document(['Nested' => $plain]), JSON_THROW_ON_ERROR));
+        file_put_contents($this->root . '/root.json', json_encode($this->document(['Probe' => ['type' => 'object', 'properties' => [
             'sibling' => ['$ref' => 'sibling.json#/components/schemas/Sibling'],
             'nested' => ['$ref' => './sub/nested.json#/components/schemas/Nested'],
             'page' => ['$ref' => 'page.json#/components/schemas/Page'],
         ]]]), JSON_THROW_ON_ERROR));
 
-        (new GenerateDtoCommand())->generateFromFile($this->root . '/a/root.json', $this->root . '/out', 'Layout');
+        (new GenerateDtoCommand())->generateFromFile($this->root . '/root.json', $this->root . '/out', 'Layout');
 
         $expected = [
             'Probe.php' => 'Layout',
@@ -304,7 +305,7 @@ final class GenerationIntegrityTest extends TestCase
             );
         }
         // Nothing written beside the output directory: the root holds only what the test put there.
-        self::assertSame(['.', '..', 'a', 'b', 'out'], scandir($this->root));
+        self::assertSame(['.', '..', 'b', 'out', 'page.json', 'root.json', 'sibling.json', 'sub'], scandir($this->root));
     }
 
     /**
@@ -316,7 +317,7 @@ final class GenerationIntegrityTest extends TestCase
     {
         $this->writeChainedDocuments();
         $namespace = 'Integrity' . bin2hex(random_bytes(8));
-        (new GenerateDtoCommand())->generateFromFile($this->root . '/a/page.json', $this->root . '/out', $namespace);
+        (new GenerateDtoCommand())->generateFromFile($this->root . '/page.json', $this->root . '/out', $namespace);
 
         $grid = (string)file_get_contents($this->root . '/out/B/Grid.php');
         self::assertStringContainsString('@var array<string, array<string, Tile>>', $grid);
@@ -356,7 +357,7 @@ final class GenerationIntegrityTest extends TestCase
     {
         $this->writeChainedDocuments($shape);
         $namespace = 'Integrity' . bin2hex(random_bytes(8));
-        (new GenerateDtoCommand())->generateFromFile($this->root . '/a/page.json', $this->root . '/out', $namespace);
+        (new GenerateDtoCommand())->generateFromFile($this->root . '/page.json', $this->root . '/out', $namespace);
         foreach (['B/Units/Unit.php', 'B/Tile.php', 'B/Grid.php', 'Page.php'] as $file) {
             require_once $this->root . '/out/' . $file;
         }
@@ -425,7 +426,7 @@ final class GenerationIntegrityTest extends TestCase
             refNamespacePairs: [],
         );
         $generator->generateFromFile(
-            filePath: $this->root . '/a/page.json',
+            filePath: $this->root . '/page.json',
             outputDirectory: $this->root . '/out/Root',
             namespace: $namespace,
             mode: $mode,
@@ -503,7 +504,7 @@ final class GenerationIntegrityTest extends TestCase
     {
         $this->writeChainedDocuments($shape);
         (new GenerateDtoCommand())->generateFromFile(
-            filePath: $this->root . '/a/page.json',
+            filePath: $this->root . '/page.json',
             outputDirectory: $this->root . '/out',
             namespace: 'Integrity' . bin2hex(random_bytes(8)),
             mode: $mode,

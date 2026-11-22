@@ -2297,6 +2297,112 @@ final class DtoValidatorTest extends TestCase
     }
 
     // =========================================================================
+    // pattern: the regex engine gives up (backtrack limit, JIT stack)
+    // =========================================================================
+
+    public function testAPatternTheEngineGivesUpOnIsNotBlamedOnTheSchema(): void
+    {
+        // Thirty letters and a stray character exhaust the backtrack limit on nested quantifiers; the
+        // pattern itself is fine, so "invalid regex pattern" sent the reader to the wrong side.
+        $this->assertSame(
+            expected: ['f could not be checked: the regex engine gave up on pattern ^(a+)+$.'],
+            actual: $this->validator->validate('f', str_repeat('a', 30) . '!', ['pattern' => '^(a+)+$']),
+        );
+    }
+
+    public function testNotPatternRefusesAValueTheEngineGivesUpOn(): void
+    {
+        // An unanswered `not` is not a pass: the deny-pattern was bypassed by any long enough value.
+        $errors = $this->validator->validate('f', str_repeat('a', 30) . '!', ['not' => ['pattern' => '^(a+)+$']]);
+        $this->assertSame(
+            expected: ['f could not be checked: the regex engine gave up on pattern ^(a+)+$.'],
+            actual: $errors,
+        );
+        $this->assertSame(
+            expected: ["f must not match the 'not' schema."],
+            actual: $this->validator->validate('f', 'aaa', ['not' => ['pattern' => '^(a+)+$']]),
+        );
+        $this->assertSame([], $this->validator->validate('f', 'b', ['not' => ['pattern' => '^(a+)+$']]));
+    }
+
+    public function testNotPatternRefusesAnUnreadableSubjectAndABrokenPattern(): void
+    {
+        // The other two ways `preg_match()` answers false: neither says the value is outside the
+        // `not` schema, so neither may pass it.
+        $this->assertSame(
+            expected: ['f contains invalid UTF-8 characters.'],
+            actual: $this->validator->validate('f', "\xFF\xFE", ['not' => ['pattern' => '^[0-9]+$']]),
+        );
+        $this->assertSame(
+            expected: ['f has invalid regex pattern in schema: (.'],
+            actual: $this->validator->validate('f', 'abc', ['not' => ['pattern' => '(']]),
+        );
+    }
+
+    public function testPatternPropertiesRefusesAKeyTheEngineGivesUpOn(): void
+    {
+        $schema = ['patternProperties' => ['^(a+)+$' => ['type' => 'integer', 'minimum' => 0]]];
+        $burning = str_repeat('a', 30) . '!';
+
+        // One message for the one key, however many keys follow it: each would cost the same burn.
+        $value = [$burning => -5];
+        for ($index = 0; $index < 100; $index++) {
+            $value[$burning . $index] = -5;
+        }
+        $this->assertSame(
+            expected: [sprintf('f key "%s" could not be checked: the regex engine gave up on pattern ^(a+)+$.', $burning)],
+            actual: $this->validator->validate('f', $value, $schema),
+        );
+        $this->assertSame(
+            expected: ['f.aaa must be greater than or equal to 0.'],
+            actual: $this->validator->validate('f', ['aaa' => -5, 'b' => -5], $schema),
+        );
+    }
+
+    public function testAnItemTheEngineGivesUpOnEndsTheListWalk(): void
+    {
+        $schema = ['type' => 'array', 'items' => ['type' => 'string', 'pattern' => '^(a+)+$']];
+        $burning = str_repeat('a', 30) . '!';
+
+        $this->assertSame(
+            expected: ['f.1 could not be checked: the regex engine gave up on pattern ^(a+)+$.'],
+            actual: $this->validator->validate('f', ['aaa', $burning, $burning, $burning], $schema),
+        );
+        // An ordinary mismatch does not end it: every item is still reported.
+        $this->assertSame(
+            expected: ['f.0 must match pattern ^(a+)+$.', 'f.1 must match pattern ^(a+)+$.'],
+            actual: $this->validator->validate('f', ['b', 'c', 'aa'], $schema),
+        );
+    }
+
+    public function testATooLongValueIsNotRunThroughThePattern(): void
+    {
+        // The length was the cheap answer, and it already refuses the value: one message, one mistake.
+        $this->assertSame(
+            expected: ['f length must be at most 8 characters.'],
+            actual: $this->validator->validate('f', str_repeat('a', 30) . '!', ['maxLength' => 8, 'pattern' => '^(a+)+$']),
+        );
+        $this->assertSame(
+            expected: ['f must match pattern ^(a+)+$.'],
+            actual: $this->validator->validate('f', 'ab', ['maxLength' => 8, 'pattern' => '^(a+)+$']),
+        );
+    }
+
+    public function testAListOverItsMaxItemsIsNotWalked(): void
+    {
+        $schema = ['type' => 'array', 'maxItems' => 2, 'items' => ['type' => 'string', 'pattern' => '^[a-z]+$']];
+
+        $this->assertSame(
+            expected: ['f must contain at most 2 items.'],
+            actual: $this->validator->validate('f', ['a', '1', '2'], $schema),
+        );
+        $this->assertSame(
+            expected: ['f.1 must match pattern ^[a-z]+$.'],
+            actual: $this->validator->validate('f', ['a', '1'], $schema),
+        );
+    }
+
+    // =========================================================================
     // Union branch selection: oneOf / anyOf incl. 3.1 type-array
     // =========================================================================
 

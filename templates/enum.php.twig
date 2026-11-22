@@ -86,7 +86,7 @@ enum {{ enumName }}: {{ backingType }} implements {{ generatedDtoInterfaceRef }}
             ],
             'value' => [
                 'getter' => 'getValue',
-                'type' => '{{ backingType }}',
+                'type' => '{{ backingType|php_string }}',
                 'nullable' => false,
                 'metadata' => [],
             ],

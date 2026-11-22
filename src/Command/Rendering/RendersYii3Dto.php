@@ -1213,6 +1213,20 @@ trait RendersYii3Dto
                 continue;
             }
 
+            // An enum member is one of its values, sent as the JSON scalar it is: without it the whole
+            // union went unchecked and the cast turned `true` into the `"1"` a string branch accepts.
+            $enum = $this->enumSchemas[$member] ?? null;
+            if ($enum !== null) {
+                $inFqcn = $this->yii3RuleClass('In');
+                $ruleImports[] = $inFqcn;
+                $values = array_map(
+                    callback: static fn(string|int $value): string => var_export($value, true),
+                    array: $enum['values'],
+                );
+                $members[sprintf('new %s([%s], strict: true)', $this->yii3Lib('In', $inFqcn), implode(', ', $values))] = 'one of ' . $member;
+                continue;
+            }
+
             $scalar = match ($member) {
                 'int' => ['Integer', 'an integer'],
                 'float' => ['Number', 'a number'],

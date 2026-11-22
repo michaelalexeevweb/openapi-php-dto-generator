@@ -49,6 +49,24 @@ use Throwable;
  */
 final class NormalizationParityTest extends TestCase
 {
+    /**
+     * A single quote, a lone backslash, an escaped quote (`\'`), `?>`, `*\/`, `${x}` and a TRAILING
+     * backslash — everything that means something to a single-quoted PHP literal or around one.
+     */
+    private const string QUOTED_VALUE = "a'b\\c\\'d?>e*/f\${x}g\\";
+
+    /**
+     * The same, minus `*`: the Laravel modes refuse `.` and `*` in a wire name, which their validator
+     * reads as a path, so the name keeps every character all five modes accept.
+     */
+    private const string QUOTED_WIRE_NAME = "w'b\\c\\'d?>e/f\${x}g\\";
+
+    /**
+     * A pattern with a quote, an escaped quote and backslashes, and a value it matches.
+     */
+    private const string QUOTED_PATTERN = "^q'\\\\?\\'?>*/\\{x\\}\\\\$";
+    private const string QUOTED_PATTERN_MATCH = "q'\\'>>/{x}\\";
+
     private string $outputDirectory;
 
     protected function setUp(): void
@@ -942,6 +960,83 @@ final class NormalizationParityTest extends TestCase
                     ],
                 ],
             ],
+            // Document strings that are PHP syntax inside a single-quoted literal. Each lands in the
+            // generated class — as a wire name, an enum case value, a pattern, a discriminator name and
+            // value, a default — and must come back out exactly as the document wrote it: escaped once
+            // for the literal, never twice (`it\'s` read back as `it\\\'s`), never not at all.
+            'quoted document strings round-trip' => [
+                'schema' => self::object(
+                    properties: [
+                        self::QUOTED_WIRE_NAME => ['type' => 'string'],
+                        'color' => ['type' => 'string', 'enum' => [self::QUOTED_VALUE, 'plain']],
+                        'label' => ['type' => 'string', 'pattern' => self::QUOTED_PATTERN],
+                    ],
+                    required: [self::QUOTED_WIRE_NAME, 'color', 'label'],
+                ),
+                'json' => (string)json_encode([
+                    self::QUOTED_WIRE_NAME => self::QUOTED_VALUE,
+                    'color' => self::QUOTED_VALUE,
+                    'label' => self::QUOTED_PATTERN_MATCH,
+                ]),
+                'runtime' => [
+                    self::QUOTED_WIRE_NAME => self::QUOTED_VALUE,
+                    'color' => self::QUOTED_VALUE,
+                    'label' => self::QUOTED_PATTERN_MATCH,
+                ],
+                'symfony' => [
+                    self::QUOTED_WIRE_NAME => self::QUOTED_VALUE,
+                    'color' => self::QUOTED_VALUE,
+                    'label' => self::QUOTED_PATTERN_MATCH,
+                ],
+            ],
+            'discriminated union with a quoted discriminator' => [
+                'schema' => self::object(['shape' => ['$ref' => '#/components/schemas/Shape']], ['shape']),
+                'extra' => [
+                    'Shape' => [
+                        'oneOf' => [['$ref' => '#/components/schemas/Circle'], ['$ref' => '#/components/schemas/Square']],
+                        'discriminator' => [
+                            'propertyName' => self::QUOTED_WIRE_NAME,
+                            'mapping' => [
+                                self::QUOTED_VALUE => '#/components/schemas/Circle',
+                                self::QUOTED_VALUE . 'square' => '#/components/schemas/Square',
+                            ],
+                        ],
+                    ],
+                    'Circle' => self::object([self::QUOTED_WIRE_NAME => ['type' => 'string'], 'r' => ['type' => 'integer']], [self::QUOTED_WIRE_NAME, 'r']),
+                    'Square' => self::object([self::QUOTED_WIRE_NAME => ['type' => 'string'], 'a' => ['type' => 'integer']], [self::QUOTED_WIRE_NAME, 'a']),
+                ],
+                'json' => (string)json_encode(['shape' => [self::QUOTED_WIRE_NAME => self::QUOTED_VALUE, 'r' => 3]]),
+                'runtime' => ['shape' => [self::QUOTED_WIRE_NAME => self::QUOTED_VALUE, 'r' => 3]],
+                'symfony' => ['shape' => [self::QUOTED_WIRE_NAME => self::QUOTED_VALUE, 'r' => 3]],
+                'diverges' => [
+                    'laravel-data' => [
+                        'expected' => ['shape' => ['r' => 3, self::QUOTED_WIRE_NAME => self::QUOTED_VALUE]],
+                        'reason' => 'the inherited-discriminator key order of "discriminated union": PHP '
+                            . 'reflection lists a class\'s own properties before its parent\'s, and the '
+                            . 'discriminator lives on the abstract base.',
+                    ],
+                ],
+            ],
+            // The default reaches the output only where the constructor default fills an absent key — see
+            // "optional property with a default, absent" — and there it must be the document's string.
+            'quoted default, absent' => [
+                'schema' => self::object(
+                    properties: ['id' => ['type' => 'integer'], 'note' => ['type' => 'string', 'default' => self::QUOTED_VALUE]],
+                    required: ['id'],
+                ),
+                'json' => '{"id":1}',
+                'runtime' => ['id' => 1],
+                'symfony' => ['id' => 1, 'note' => self::QUOTED_VALUE],
+                'reason' => 'the constructor default IS the Symfony DTO\'s value for an absent key — see '
+                    . '"optional property with a default, absent"',
+                'diverges' => [
+                    'laravel-data' => [
+                        'expected' => ['id' => 1, 'note' => self::QUOTED_VALUE],
+                        'reason' => 'the schema default replaces laravel-data\'s `Optional` — see "optional '
+                            . 'property with a default, absent"',
+                    ],
+                ],
+            ],
             'big integer' => [
                 'schema' => self::object(['n' => ['type' => 'integer', 'format' => 'int64']], ['n']),
                 'json' => '{"n":9007199254740993}',
@@ -1011,6 +1106,17 @@ final class NormalizationParityTest extends TestCase
                 'json' => '{"pet":{"kind":"Cat","name":"Tom","purr":true}}',
                 'runtime' => ['pet' => ['kind' => 'Cat', 'name' => 'Tom', 'purr' => true]],
                 'symfony' => ['pet' => ['kind' => 'Cat', 'name' => 'Tom', 'purr' => true]],
+            ],
+            // A format character (zero-width, bidi) is stripped from the PHP identifier so the code reads
+            // as what it is — but the wire name is data, and the payload still answers to it exactly.
+            'format characters stay in the wire name' => [
+                'schema' => self::object(
+                    properties: ["is\u{200B}Admin" => ['type' => 'boolean'], "role\u{202E}" => ['type' => 'string']],
+                    required: ["is\u{200B}Admin"],
+                ),
+                'json' => (string)json_encode(["is\u{200B}Admin" => true, "role\u{202E}" => 'owl']),
+                'runtime' => ["is\u{200B}Admin" => true, "role\u{202E}" => 'owl'],
+                'symfony' => ["is\u{200B}Admin" => true, "role\u{202E}" => 'owl'],
             ],
         ];
 
