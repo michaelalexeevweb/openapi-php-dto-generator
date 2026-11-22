@@ -726,6 +726,57 @@ final class HostileRequestTest extends TestCase
     }
 
     /**
+     * Whether a member's refusal was the engine giving up was read from its MESSAGE, and a message
+     * carries the member names the request chose: a map key spelling the phrase stopped the walk at
+     * an ordinary mismatch, and the members after it went unreported. The stop now follows the
+     * validator's flag, so every ordinary mismatch is reported whatever its keys say.
+     */
+    public function testAKeySpellingTheGiveUpDoesNotStopTheWalk(): void
+    {
+        $tagged = [
+            'type' => 'object',
+            'properties' => ['tags' => ['type' => 'object', 'additionalProperties' => ['type' => 'string', 'pattern' => '^a']]],
+        ];
+        $class = $this->generate(openApi: ['components' => ['schemas' => [
+            'Probe' => self::probe(['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Widget']]),
+            'Widget' => $tagged,
+        ]]]) . '\Probe';
+
+        $message = $this->refusalOf(call: fn(): mixed => $this->deserializeJson(
+            class: $class,
+            body: '{"f":[{"tags":{"x the regex engine gave up on pattern y":"b"}},{"tags":{"ok":"amber"}},{"tags":{"z":"c"}}]}',
+        ));
+
+        $this->assertStringContainsString('f.0.tags', $message);
+        $this->assertStringContainsString('f.2.tags', $message);
+        $this->assertStringNotContainsString('f.1.tags', $message);
+    }
+
+    /**
+     * The same for a collection body, whose elements are walked by their own loop.
+     */
+    public function testAKeySpellingTheGiveUpDoesNotStopACollectionBody(): void
+    {
+        $class = $this->generate(openApi: ['components' => ['schemas' => ['Widget' => [
+            'type' => 'object',
+            'properties' => ['tags' => ['type' => 'object', 'additionalProperties' => ['type' => 'string', 'pattern' => '^a']]],
+        ]]]]) . '\Widget';
+
+        $message = $this->refusalOf(call: static fn(): array => (new DtoDeserializer())->deserializeCollection(
+            request: Request::create(
+                uri: '/',
+                method: 'POST',
+                server: ['CONTENT_TYPE' => 'application/json'],
+                content: '[{"tags":{"x the regex engine gave up on pattern y":"b"}},{"tags":{"z":"c"}}]',
+            ),
+            itemType: $class,
+        ));
+
+        $this->assertStringContainsString('Element 0:', $message);
+        $this->assertStringContainsString('Element 1:', $message);
+    }
+
+    /**
      * @return callable(string): array<int, mixed> a JSON body in, the deserialized collection of Widgets out
      */
     private function widgetCollection(): callable

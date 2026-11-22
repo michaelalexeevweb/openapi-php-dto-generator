@@ -4795,6 +4795,147 @@ final class ValidationParityTest extends TestCase
             (string)json_encode(['f' => $burning]),
             ['valid' => true, 'invalid' => true, 'quick' => true],
         ];
+        // The pattern one level down inside the branch: Symfony read only a top-level `pattern` as the
+        // sign to check the anyOf in its interpreter, so these went to Assert\AtLeastOneOf with the
+        // nested pattern dropped, and the sibling took the value the other modes refuse.
+        yield 'property anyOf: pattern under allOf in the branch' => [
+            ['anyOf' => [['type' => 'string', 'allOf' => [['pattern' => $words['pattern']]]], $short]],
+            '{"f":"alpha beta"}',
+            (string)json_encode(['f' => $burning]),
+            $refused,
+        ];
+        yield 'property anyOf: pattern in an anyOf inside the branch' => [
+            ['anyOf' => [['anyOf' => [$words, ['type' => 'string', 'maxLength' => 3]]], $short]],
+            '{"f":"alpha beta"}',
+            (string)json_encode(['f' => $burning]),
+            $refused,
+        ];
+        yield 'property anyOf: pattern under not in the branch' => [
+            ['anyOf' => [['type' => 'string', 'not' => ['pattern' => $words['pattern']]], $short]],
+            '{"f":"alpha beta"}',
+            (string)json_encode(['f' => $burning]),
+            $refused,
+        ];
+        yield 'property anyOf: pattern under if in the branch' => [
+            ['anyOf' => [['type' => 'string', 'if' => ['pattern' => $words['pattern']], 'then' => ['maxLength' => 64]], $short]],
+            '{"f":"alpha beta"}',
+            (string)json_encode(['f' => $burning]),
+            $refused,
+        ];
+        yield 'property anyOf: no pattern anywhere, the sibling still decides' => [
+            ['anyOf' => [['type' => 'string', 'allOf' => [['minLength' => 40]]], $short]],
+            '{"f":"alpha beta"}',
+            (string)json_encode(['f' => str_repeat('b', 65) . '!']),
+            ['valid' => true, 'invalid' => true, 'quick' => true],
+        ];
+    }
+
+    /**
+     * Whether the regex engine gave up was read from the error MESSAGE, and a message carries the
+     * member names the request chose: a map key spelling the phrase made an ordinary pattern mismatch
+     * look like a give-up, and the anyOf stopped before the sibling that matched. The signal is now
+     * carried beside the message, so no request text can forge it.
+     *
+     * @param array<string, mixed> $propertySchema
+     */
+    #[DataProvider('gaveUpPhraseInTheRequestProvider')]
+    public function testAMemberNamedLikeTheGiveUpIsAnOrdinaryMismatch(array $propertySchema, string $validJson, string $invalidJson): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $key = 'gave up phrase ' . md5((string)json_encode([$propertySchema, $validJson, $invalidJson]));
+
+        $this->assertEveryModeYields(
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict(
+                mode: $mode,
+                spec: self::probeSpec($propertySchema),
+                key: $key,
+                validJson: $validJson,
+                invalidJson: $invalidJson,
+            ),
+            context: $key,
+        );
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>, string, string}>
+     */
+    public static function gaveUpPhraseInTheRequestProvider(): iterable
+    {
+        $mapOrOne = [
+            'type' => 'object',
+            'anyOf' => [
+                ['additionalProperties' => ['type' => 'string', 'pattern' => '^a']],
+                ['maxProperties' => 1],
+            ],
+        ];
+
+        yield 'map key spelling the phrase, the sibling matches' => [
+            $mapOrOne,
+            '{"f":{"x the regex engine gave up on pattern y":"b"}}',
+            '{"f":{"x":"b","y":"c"}}',
+        ];
+        yield 'ordinary map key, the sibling matches' => [
+            $mapOrOne,
+            '{"f":{"x":"b"}}',
+            '{"f":{"x the regex engine gave up on pattern y":"b","y":"c"}}',
+        ];
+        yield 'map key spelling the phrase, the pattern branch matches' => [
+            $mapOrOne,
+            '{"f":{"x the regex engine gave up on pattern y":"alpha","z":"amber"}}',
+            '{"f":{"x the regex engine gave up on pattern y":"alpha","z":"blue"}}',
+        ];
+    }
+
+    /**
+     * An anyOf branch that is an inline enum was kept in the constraints as `{type: string}` — its
+     * enum moved into the generated PHP enum — so it matched every string. Only the members match it
+     * now; the same enum behind a `$ref` already behaved.
+     *
+     * @param array<string, mixed> $spec
+     */
+    #[DataProvider('inlineEnumAnyOfBranchProvider')]
+    public function testAnInlineEnumAnyOfBranchMatchesOnlyItsMembers(array $spec, string $validJson, string $invalidJson): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $key = 'inline enum anyOf branch ' . md5((string)json_encode([$spec, $validJson, $invalidJson]));
+
+        $this->assertEveryModeYields(
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict(
+                mode: $mode,
+                spec: $spec,
+                key: $key,
+                validJson: $validJson,
+                invalidJson: $invalidJson,
+            ),
+            context: $key,
+        );
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>, string, string}>
+     */
+    public static function inlineEnumAnyOfBranchProvider(): iterable
+    {
+        $colors = ['type' => 'string', 'enum' => ['zz', 'teal']];
+        $startsWithA = ['type' => 'string', 'pattern' => '^a'];
+        $oneChar = ['type' => 'string', 'maxLength' => 1];
+
+        yield 'pattern sibling, a member' => [self::probeSpec(['anyOf' => [$startsWithA, $colors]]), '{"f":"zz"}', '{"f":"qq"}'];
+        yield 'pattern sibling, the sibling matches' => [self::probeSpec(['anyOf' => [$startsWithA, $colors]]), '{"f":"amber"}', '{"f":"qq"}'];
+        yield 'length sibling, a member' => [self::probeSpec(['anyOf' => [$oneChar, $colors]]), '{"f":"teal"}', '{"f":"qq"}'];
+        yield 'length sibling, the sibling matches' => [self::probeSpec(['anyOf' => [$oneChar, $colors]]), '{"f":"q"}', '{"f":"qq"}'];
+
+        $spec = self::probeSpec(['anyOf' => [$startsWithA, ['$ref' => '#/components/schemas/Color']]]);
+        $spec['components']['schemas']['Color'] = $colors;
+        yield '$ref enum, a member' => [$spec, '{"f":"teal"}', '{"f":"qq"}'];
     }
 
     /**

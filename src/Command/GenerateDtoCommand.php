@@ -122,9 +122,10 @@ final class GenerateDtoCommand extends Command
      * Request bodies that name no class of their own — a `$ref`, or any schema that is not an inline
      * `type: object` — with the media type each is declared under. Which class such a body arrives
      * as is only known once aliases are redirected, so they are attributed then; see
-     * `attributeReferencedRequestBodies()`.
+     * `attributeReferencedRequestBodies()`. `sourceFile` is the document the body was written in —
+     * another file's `requestBodies` component resolves its own `$ref`s against that file.
      *
-     * @var list<array{schema: array<mixed>, mediaType: string}>
+     * @var list<array{schema: array<mixed>, mediaType: string, sourceFile: string|null}>
      */
     private array $referencedRequestBodies = [];
 
@@ -408,6 +409,15 @@ final class GenerateDtoCommand extends Command
      * @var array<string, array<string, mixed>>
      */
     public array $externalDocSchemas = [];
+
+    /**
+     * The same external documents whole, for the `requestBodies` and `mediaTypes` components a body
+     * may point at in another file; filled beside {@see $externalDocSchemas}, so every file read is
+     * still listed there.
+     *
+     * @var array<string, array<mixed>>
+     */
+    private array $externalDocuments = [];
 
     /**
      * Raw, unmodified schema definitions keyed by generated class name, captured for every
@@ -1047,19 +1057,20 @@ final class GenerateDtoCommand extends Command
             }
         }
 
-        // Tried in a child process first, where it can: deep flow nesting makes the parser's recursion
-        // kill the process, and a dead process reports nothing at all.
         $text = @file_get_contents($filePath);
-        $crashStatus = is_string($text) ? (new YamlParserProbe())->crashStatus(filePath: $filePath, text: $text) : null;
-        if ($crashStatus !== null) {
-            throw new RuntimeException(message: sprintf(
-                '%s crashed the YAML parser (status %d), as a document that nests flow collections ([ ] or { }) thousands of levels deep does. Nothing was generated.',
-                $filePath,
-                $crashStatus,
-            ));
-        }
-
         try {
+            // Tried in a child process first, where it can: deep flow nesting makes the parser's
+            // recursion kill the process, and a dead process reports nothing at all. A parse error the
+            // child met is thrown from the probe, so it is reported here like one met in this process.
+            $crashStatus = is_string($text) ? (new YamlParserProbe())->crashStatus(filePath: $filePath, text: $text) : null;
+            if ($crashStatus !== null) {
+                throw new RuntimeException(message: sprintf(
+                    '%s crashed the YAML parser (status %d), as a document that nests flow collections ([ ] or { }) thousands of levels deep does. Nothing was generated.',
+                    $filePath,
+                    $crashStatus,
+                ));
+            }
+
             $parsed = Yaml::parseFile($filePath);
         } catch (ParseException $e) {
             if (!$referenced) {
@@ -1735,6 +1746,7 @@ final class GenerateDtoCommand extends Command
         $this->enumNamespaces = [];
         $this->enumOutputDirectories = [];
         $this->externalDocSchemas = [];
+        $this->externalDocuments = [];
         $this->endpointByClass = [];
         $this->deprecatedByClass = [];
         $this->relatedByClass = [];
@@ -3050,6 +3062,7 @@ final class GenerateDtoCommand extends Command
         // Fold this external document's own `$defs` into its components.schemas (and rewrite
         // its internal `#/$defs/` pointers) so cross-file `file#/$defs/X` references resolve.
         $data = $this->foldJsonSchemaDefs($data);
+        $this->externalDocuments[$filePath] = $data;
 
         $schemas = $this->extractSchemas($data);
 
@@ -4605,7 +4618,12 @@ final class GenerateDtoCommand extends Command
                     continue;
                 }
 
-                $extracted = $this->extractValidationConstraints($variant);
+                // A branch's own `enum` is the branch: the generated PHP enum it also becomes types
+                // the property, not the branch, so dropped as a property-level enum is, the branch
+                // read `{type: string}` and matched every string. Kept as the members it lists.
+                $extracted = $this->extractValidationConstraints(
+                    propertySchema: is_array($variant['enum'] ?? null) && $variant['enum'] !== [] ? [...$variant, 'x-php-inline-enum' => true] : $variant,
+                );
                 // Laravel validates the raw payload, before anything is hydrated, so the branch a `$ref`
                 // names has to be spelled out: an enum as its members, an object as its properties.
                 // Dropped instead, it took the whole union with it — `oneOf: [$ref Palette, integer]`
@@ -9298,9 +9316,26 @@ final class GenerateDtoCommand extends Command
                     continue;
                 }
 
+                // A body reached through a `requestBodies` component spelled any other way than
+                // `#/components/requestBodies/X` — by the document's own file name, or in another
+                // file — generated nothing and recorded nothing, so a form it declares was refused
+                // by the class a JSON body names. It is now resolved too, but only attributed: the
+                // classes it may arrive as are generated from their own declarations.
                 $requestBody = $this->resolveComponentRef($operation['requestBody'] ?? null, 'requestBodies', $openApi);
+                $bodySourceFile = $this->rootSpecFile;
+                $attributionOnly = false;
                 if (!is_array($requestBody)) {
-                    continue;
+                    $reached = $this->resolveComponentAcrossFiles(
+                        node: $operation['requestBody'] ?? null,
+                        section: 'requestBodies',
+                        openApi: $openApi,
+                        sourceFile: $this->rootSpecFile,
+                    );
+                    if ($reached === null) {
+                        continue;
+                    }
+                    [$requestBody, $bodySourceFile] = $reached;
+                    $attributionOnly = true;
                 }
 
                 $content = $requestBody['content'] ?? [];
@@ -9308,16 +9343,44 @@ final class GenerateDtoCommand extends Command
                     continue;
                 }
 
-                $mediaTypeSuffixes = $this->mediaTypeNameSuffixes($content, $openApi);
+                $mediaTypeSuffixes = $attributionOnly ? [] : $this->mediaTypeNameSuffixes($content, $openApi);
 
                 foreach ($content as $mediaType => $mediaTypeObject) {
-                    $mediaTypeObject = $this->resolveComponentRef($mediaTypeObject, 'mediaTypes', $openApi);
-                    if (!is_array($mediaTypeObject)) {
-                        continue;
+                    $schemaSourceFile = $bodySourceFile;
+                    $mediaTypeAttributionOnly = false;
+                    $resolvedMediaType = $attributionOnly ? null : $this->resolveComponentRef($mediaTypeObject, 'mediaTypes', $openApi);
+                    if (!is_array($resolvedMediaType)) {
+                        $reached = $this->resolveComponentAcrossFiles(
+                            node: $mediaTypeObject,
+                            section: 'mediaTypes',
+                            openApi: $openApi,
+                            sourceFile: $bodySourceFile,
+                        );
+                        if ($reached === null) {
+                            continue;
+                        }
+                        [$resolvedMediaType, $schemaSourceFile] = $reached;
+                        // Reached only here: by a body of another spelling, or by a `mediaTypes`
+                        // reference of one — either way, the walk below never saw it.
+                        $mediaTypeAttributionOnly = true;
                     }
+                    $mediaTypeObject = $resolvedMediaType;
 
                     $schema = $mediaTypeObject['schema'] ?? null;
                     if (!is_array($schema)) {
+                        continue;
+                    }
+
+                    if ($mediaTypeAttributionOnly) {
+                        // An inline object here would be a class of its own that this walk never
+                        // generated, so nothing arrives as it; everything else names classes.
+                        if (
+                            (is_string($schema['$ref'] ?? null) || ($schema['type'] ?? null) !== 'object')
+                            && is_string($mediaType)
+                            && $mediaType !== ''
+                        ) {
+                            $this->referencedRequestBodies[] = ['schema' => $schema, 'mediaType' => $mediaType, 'sourceFile' => $schemaSourceFile];
+                        }
                         continue;
                     }
 
@@ -9340,7 +9403,7 @@ final class GenerateDtoCommand extends Command
                     // the aliases are known.
                     if (is_string($bodyRef) || ($schema['type'] ?? null) !== 'object') {
                         if (is_string($mediaType) && $mediaType !== '') {
-                            $this->referencedRequestBodies[] = ['schema' => $schema, 'mediaType' => $mediaType];
+                            $this->referencedRequestBodies[] = ['schema' => $schema, 'mediaType' => $mediaType, 'sourceFile' => $this->rootSpecFile];
                         }
                         continue;
                     }
@@ -9379,6 +9442,16 @@ final class GenerateDtoCommand extends Command
      * document allows breaks valid traffic, while a missing mark only keeps the permissive lookup every
      * class had before the mark existed. A JSON body needs no such care: it adds only a JSON type,
      * which cannot make a class look JSON-only that is not.
+     *
+     * A body naming a union component arrives as one of its members, never as the abstract base or
+     * the interface generated for the union itself, which nothing can deserialize — so the members
+     * are what its media type is attributed to.
+     *
+     * Last, a class generated into a place several documents share — a `--ref` target, the `common`
+     * convention — gives the mark up: each document sees only its own operations, so the mark would
+     * differ by document, a mask run refuses the second one for writing the shared file differently,
+     * and with one run per document the last one decides what every other accepts. Unmarked, the
+     * class keeps the permissive lookup it had before the mark existed, whichever document writes it.
      */
     private function attributeReferencedRequestBodies(): void
     {
@@ -9386,32 +9459,98 @@ final class GenerateDtoCommand extends Command
         foreach ($this->referencedRequestBodies as $body) {
             $mediaType = $body['mediaType'];
             $wrapped = $this->singleReferenceOfBody($body['schema']);
-            $className = $wrapped === null ? null : $this->requestBodyTargetClass($wrapped);
-            if ($className !== null) {
-                $this->recordRequestBodyMediaType(className: $className, mediaType: $mediaType);
+            $classNames = $wrapped === null
+                ? null
+                : $this->requestBodyArrivalClasses(ref: $wrapped, sourceFile: $body['sourceFile']);
+            if ($classNames !== null) {
+                foreach ($classNames as $className) {
+                    $this->recordRequestBodyMediaType(className: $className, mediaType: $mediaType);
+                }
                 continue;
             }
             if ($this->isJsonMediaTypeName($mediaType)) {
                 continue;
             }
             foreach ($this->composedReferencesOfBody($body['schema']) as $reference) {
-                $candidate = $this->requestBodyTargetClass($reference);
-                if ($candidate === null) {
+                $candidates = $this->requestBodyArrivalClasses(ref: $reference, sourceFile: $body['sourceFile']);
+                if ($candidates === null) {
                     $this->requestBodyMediaTypes = [];
 
                     return;
                 }
-                $uncertain[$candidate] = true;
+                foreach ($candidates as $candidate) {
+                    $uncertain[$candidate] = true;
+                }
             }
         }
 
         $attributed = [];
         foreach ($this->requestBodyMediaTypes as $className => $mediaTypes) {
-            if (!array_key_exists($className, $uncertain)) {
+            if (!array_key_exists($className, $uncertain) && !$this->isGeneratedIntoASharedPlace($className)) {
                 $attributed[$className] = $mediaTypes;
             }
         }
         $this->requestBodyMediaTypes = $attributed;
+    }
+
+    /**
+     * Whether the class is written where other documents write it too: a component of another file
+     * that a `--ref` maps, or that the `common` convention places beside the document's own
+     * directory. A component of another file without either lands below the document's own
+     * directory, which is its own.
+     */
+    private function isGeneratedIntoASharedPlace(string $className): bool
+    {
+        $sourceFile = $this->schemaSourceFiles[$className] ?? null;
+        if ($sourceFile === null || $sourceFile === $this->rootSpecFile) {
+            return false;
+        }
+
+        return $this->matchRefMapping(sourceFile: $sourceFile, map: $this->refOutputDirectoryMap, separator: '/') !== null
+            || $this->resolveCommonOutputDirectoryForSourceFile($sourceFile) !== null;
+    }
+
+    /**
+     * Every generated class a body `$ref` may arrive as: the class it names, and when that class is a
+     * union (`oneOf` / `anyOf` with no properties of its own), each class its members name, at any
+     * depth. Null when any of them cannot be found.
+     *
+     * @return list<string>|null
+     */
+    private function requestBodyArrivalClasses(string $ref, ?string $sourceFile): ?array
+    {
+        $classNames = [];
+        $pending = [[$ref, $sourceFile]];
+        while ($pending !== []) {
+            [$nextRef, $nextSourceFile] = array_shift($pending);
+            $target = $this->requestBodyTarget(ref: $nextRef, sourceFile: $nextSourceFile);
+            if ($target === null) {
+                return null;
+            }
+            if (in_array($target['className'], $classNames, true)) {
+                continue;
+            }
+            $classNames[] = $target['className'];
+
+            $definition = $target['definition'];
+            if (array_key_exists('properties', $definition) || array_key_exists('allOf', $definition)) {
+                continue;
+            }
+            foreach (['oneOf', 'anyOf'] as $keyword) {
+                $members = $definition[$keyword] ?? null;
+                if (!is_array($members)) {
+                    continue;
+                }
+                foreach ($members as $member) {
+                    $memberRef = is_array($member) ? ($member['$ref'] ?? null) : null;
+                    if (is_string($memberRef)) {
+                        $pending[] = [$memberRef, $target['sourceFile']];
+                    }
+                }
+            }
+        }
+
+        return $classNames;
     }
 
     /**
@@ -9476,13 +9615,16 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
-     * The generated class a body `$ref` of the root document arrives as, followed through every alias
-     * that gets no class of its own: a local one (`redirectPureAliasReferences()`) and one that only
-     * points into another file. Null when the chain ends anywhere but at a registered component.
+     * The generated class a body `$ref` arrives as, followed through every alias that gets no class
+     * of its own: a local one (`redirectPureAliasReferences()`) and one that only points into another
+     * file — with the definition it was generated from and the file that declares it, against which
+     * that definition's own `$ref`s resolve. `$sourceFile` is the document the `$ref` is written in.
+     * Null when the chain ends anywhere but at a registered component.
+     *
+     * @return array{className: string, definition: array<mixed>, sourceFile: string|null}|null
      */
-    private function requestBodyTargetClass(string $ref): ?string
+    private function requestBodyTarget(string $ref, ?string $sourceFile): ?array
     {
-        $sourceFile = $this->rootSpecFile;
         $prefix = '#/components/schemas/';
         // Bounded: a chain of aliases that loops back on itself names no class.
         for ($hop = 0; $hop < 64; ++$hop) {
@@ -9514,7 +9656,7 @@ final class GenerateDtoCommand extends Command
             }
             if (!is_string($next)) {
                 return array_key_exists($className, $this->dtoSchemas) || array_key_exists($className, $this->enumSchemas)
-                    ? $className
+                    ? ['className' => $className, 'definition' => $definition, 'sourceFile' => $sourceFile]
                     : null;
             }
             $ref = $next;
@@ -10711,6 +10853,93 @@ final class GenerateDtoCommand extends Command
         }
 
         return is_array($component) ? $component : null;
+    }
+
+    /**
+     * A `requestBodies` / `mediaTypes` component however its `$ref` is spelled — `#/components/…`,
+     * through the document's own file name or `$self`, or in another file — with the file that
+     * declares it, against which its own `$ref`s resolve. A node that is no reference is returned
+     * as it is, with `$sourceFile`. Null for anything that cannot be followed, as before: a body the
+     * walk cannot read was always skipped, and a reference out of the tree is not read at all.
+     *
+     * @param array<mixed> $openApi the root document
+     * @return array{0: array<mixed>, 1: string|null}|null
+     */
+    private function resolveComponentAcrossFiles(mixed $node, string $section, array $openApi, ?string $sourceFile): ?array
+    {
+        $prefix = '#/components/' . $section . '/';
+        // Bounded: a chain of components that loops back on itself names nothing.
+        for ($hop = 0; $hop < 16; ++$hop) {
+            if (!is_array($node)) {
+                return null;
+            }
+            $ref = $node['$ref'] ?? null;
+            if (!is_string($ref)) {
+                return [$node, $sourceFile];
+            }
+
+            $ref = $sourceFile === $this->rootSpecFile ? $this->stripDocumentSelfPrefix($ref) : $ref;
+            [$filePart, $pointer] = explode('#', $ref, 2) + [1 => ''];
+            if ($filePart !== '') {
+                $sourceFile = $this->readableReferencedFile(filePart: $filePart, currentSourceFile: $sourceFile);
+                if ($sourceFile === null) {
+                    return null;
+                }
+            }
+            $pointer = '#' . $pointer;
+            $name = str_starts_with($pointer, $prefix) ? substr($pointer, strlen($prefix)) : '';
+            if ($name === '' || str_contains($name, '/')) {
+                return null;
+            }
+
+            $document = $sourceFile === null || $sourceFile === $this->rootSpecFile
+                ? $openApi
+                : $this->externalDocumentOf($sourceFile);
+            $node = $document['components'][$section][$name] ?? null;
+        }
+
+        return null;
+    }
+
+    /**
+     * The canonical path of the document a `$ref`'s file part names, relative to the document it is
+     * written in, or null when it is not one the generator reads: not a document, missing, or out of
+     * the tree with no `--ref` to it.
+     */
+    private function readableReferencedFile(string $filePart, ?string $currentSourceFile): ?string
+    {
+        $filePart = rtrim($filePart, '/');
+        if ($currentSourceFile === null || $filePart === '') {
+            return null;
+        }
+        $effectivePart = preg_replace('/\.(dist|example|local|sample)$/i', '', $filePart) ?? $filePart;
+        if (!in_array(strtolower(pathinfo($effectivePart, PATHINFO_EXTENSION)), ['yaml', 'yml', 'json'], true)) {
+            return null;
+        }
+        $absoluteFile = realpath(dirname($currentSourceFile) . DIRECTORY_SEPARATOR . $filePart);
+        if ($absoluteFile === false) {
+            return null;
+        }
+        try {
+            $this->assertReferenceReadable(ref: $filePart, realFile: $absoluteFile);
+        } catch (RuntimeException) {
+            return null;
+        }
+
+        return $this->canonicalSourceFile($absoluteFile);
+    }
+
+    /**
+     * An external document whole, parsed once — read through {@see externalSchemasOf()}, so the run
+     * lists it among the files it read.
+     *
+     * @return array<mixed>
+     */
+    private function externalDocumentOf(string $filePath): array
+    {
+        $this->externalSchemasOf($filePath);
+
+        return $this->externalDocuments[$filePath] ?? [];
     }
 
     /**

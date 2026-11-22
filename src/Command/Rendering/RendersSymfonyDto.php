@@ -1164,7 +1164,15 @@ PHP;
             $branches = [];
             $allBranchesValidatable = true;
             foreach ($anyOf as $branch) {
-                $expressions = is_array($branch) ? $this->valueConstraintExpressions($branch) : [];
+                // An inline enum branch is hydrated into the PHP enum generated for it, so holding
+                // that enum is the member check — `Type('string')` beside a `Choice` refused every
+                // member, because by then it was no string.
+                $enumClass = is_array($branch) ? $this->symfonyAnyOfEnumBranchClass(property: $property, branch: $branch) : null;
+                $expressions = match (true) {
+                    $enumClass !== null => ['new Assert\Type(' . $enumClass . '::class)'],
+                    is_array($branch) => $this->valueConstraintExpressions($branch),
+                    default => [],
+                };
                 if ($expressions === []) {
                     $allBranchesValidatable = false;
                     break;
@@ -1443,6 +1451,34 @@ PHP;
             'uint32' => [['name' => 'Range', 'args' => 'min: 0, max: 4294967295']],
             default => [],
         };
+    }
+
+    /**
+     * The generated enum an inline `enum` branch of a property's `anyOf` is hydrated into: the
+     * property's type member that is an enum listing exactly the branch's members. Null where the
+     * branch has no `enum`, or no such enum was generated — a member list that has no PHP enum (bool
+     * or null members) stays a scalar `Choice`.
+     *
+     * @param SchemaProperty $property
+     * @param array<mixed> $branch
+     */
+    private function symfonyAnyOfEnumBranchClass(array $property, array $branch): ?string
+    {
+        $members = $branch['enum'] ?? null;
+        if (!is_array($members) || $members === []) {
+            return null;
+        }
+        $members = array_values(array_filter(array: $members, callback: static fn(mixed $member): bool => $member !== null));
+
+        foreach (explode('|', $property['type']) as $typeMember) {
+            $short = $this->shortClassName(ltrim(trim($typeMember), '?'));
+            $values = $this->enumSchemas[$short]['values'] ?? null;
+            if (is_array($values) && array_values($values) === $members) {
+                return $short;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -1741,19 +1777,60 @@ PHP;
     }
 
     /**
-     * Whether a property-level `anyOf` has a branch with a document `pattern`. Such an `anyOf` is the
-     * callback's, not `Assert\AtLeastOneOf`'s: Symfony's `Regex` reads a pattern the engine gave up on
-     * as a plain mismatch and moves on to the next branch, so a value that could not be checked was
-     * accepted by a sibling — where every other mode refuses it, and where the interpreter tells an
-     * engine failure (refused) from a pattern PCRE cannot compile (a failed branch, as before).
+     * Whether a property-level `anyOf` has a branch with a document `pattern` — at any depth. Such an
+     * `anyOf` is the callback's, not `Assert\AtLeastOneOf`'s: Symfony's `Regex` reads a pattern the
+     * engine gave up on as a plain mismatch and moves on to the next branch, so a value that could not
+     * be checked was accepted by a sibling — where every other mode refuses it, and where the
+     * interpreter tells an engine failure (refused) from a pattern PCRE cannot compile (a failed
+     * branch, as before). A pattern one level down — under `allOf`, `not`, `if`, a nested `anyOf`, a
+     * map's values — is worse still: the branch's `Assert\*` expressions leave it out altogether, so
+     * the regex never ran and the sibling took the value.
      *
      * @param array<mixed> $branches
      */
     private function anyOfBranchCarriesPattern(array $branches): bool
     {
         foreach ($branches as $branch) {
-            if (is_array($branch) && is_string($branch['pattern'] ?? null) && $branch['pattern'] !== '') {
+            if (is_array($branch) && $this->schemaCarriesPattern($branch)) {
                 return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether `$schema` or any schema inside it names a regex: a `pattern`, or `patternProperties`,
+     * whose keys are regexes. Keywords whose values are data — `enum`, `const`, examples, extensions —
+     * are not schemas and are not looked into, nor are the names under `properties`, where a member
+     * called `pattern` is no keyword.
+     *
+     * @param array<mixed> $schema
+     */
+    private function schemaCarriesPattern(array $schema): bool
+    {
+        foreach ($schema as $keyword => $value) {
+            if ($keyword === 'pattern' && is_string($value) && $value !== '') {
+                return true;
+            }
+            if ($keyword === 'patternProperties' && is_array($value) && $value !== []) {
+                return true;
+            }
+            if (
+                !is_array($value)
+                || (is_string($keyword) && (in_array($keyword, ['enum', 'const', 'default', 'example', 'examples'], true) || str_starts_with($keyword, 'x-')))
+            ) {
+                continue;
+            }
+            // A map of named schemas (`properties`, `dependentSchemas`) or a list of them (`allOf`)
+            // is searched member by member; any other array value is a schema of its own.
+            $members = in_array($keyword, ['properties', 'dependentSchemas', '$defs', 'definitions', 'allOf', 'anyOf', 'oneOf', 'prefixItems'], true)
+                ? $value
+                : [$value];
+            foreach ($members as $member) {
+                if (is_array($member) && $this->schemaCarriesPattern($member)) {
+                    return true;
+                }
             }
         }
 

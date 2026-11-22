@@ -226,6 +226,15 @@ final class DtoDeserializer implements DtoDeserializerInterface
     private DtoValidatorInterface $constraintValidator;
 
     /**
+     * How many validations so far ended with the regex engine giving up on a check. A list walk
+     * compares it before and after a member: a member that raised it settles the request, and each
+     * member after it would burn the whole backtrack limit again. Counted from the validator's flag,
+     * at any depth the member's hydration reached — the refusal's MESSAGE carries the member names the
+     * request chose, so a key spelling the give-up stopped the walk on an ordinary mismatch.
+     */
+    private int $engineGaveUpCount = 0;
+
+    /**
      * How many union trials are open on the stack — see `castUnionValue()`.
      */
     private int $unionTrialDepth = 0;
@@ -419,6 +428,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         $result = [];
         $errors = [];
         foreach ($decoded as $index => $element) {
+            $gaveUpBefore = $this->engineGaveUpCount;
             try {
                 // Reuse the array-item caster so scalars, enums, datetimes and DTOs
                 // (with discriminator support) all behave like nested array elements.
@@ -436,7 +446,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 }
                 // The stop {@see castArrayItems()} makes, for the same reason: the body is refused
                 // either way, and each further element would burn the backtrack limit again.
-                if (DtoValidator::reportsEngineGaveUp($e->getMessage())) {
+                if ($this->engineGaveUpCount > $gaveUpBefore) {
                     break;
                 }
             }
@@ -656,7 +666,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                             $errors[] = $extraException->getMessage();
                         }
                     } else {
-                        foreach ($this->constraintValidator->validate('param "' . $bodyKey . '"', $bodyData[$bodyKey], $extraPropertySchema) as $extraError) {
+                        foreach ($this->validateValue('param "' . $bodyKey . '"', $bodyData[$bodyKey], $extraPropertySchema) as $extraError) {
                             $errors[] = $extraError;
                         }
                     }
@@ -684,7 +694,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             // be. The root of a request has no property name of its own, so it needs one given to it,
             // and `body` is the word the neighbouring messages already use
             // ("JSON body must be an object").
-            foreach ($this->constraintValidator->validate('body', $bodyData, $objectConstraints) as $objectError) {
+            foreach ($this->validateValue('body', $bodyData, $objectConstraints) as $objectError) {
                 $errors[] = $objectError;
             }
         }
@@ -1047,7 +1057,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
             if ($rawWasProvided && is_array($paramMeta['fieldConstraints']) && $paramMeta['fieldConstraints'] !== []) {
                 foreach (
-                    $this->constraintValidator->validate(
+                    $this->validateValue(
                         subject: sprintf('param "%s"', $requestFieldName),
                         value: $value,
                         constraints: $paramMeta['fieldConstraints'],
@@ -3104,6 +3114,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             }
 
             $itemPath = $paramPath . '.' . $index;
+            $gaveUpBefore = $this->engineGaveUpCount;
             try {
                 $normalized[$index] = $this->castArrayItemValue(
                     itemValue: $itemValue,
@@ -3119,10 +3130,10 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 $errors[] = $e->getMessage();
                 // A member the regex engine gave up on settles the request, and every member after it
                 // would burn the whole backtrack limit again — once per member, ~2 ms each, seconds for
-                // a list of a few thousand. A list nested in this member stopped the same way, and its
-                // message carries the failure up here, so the stop holds at any depth. An ordinary
+                // a list of a few thousand. A list nested in this member stopped the same way, and the
+                // count it raised is seen here as well, so the stop holds at any depth. An ordinary
                 // mismatch is a verdict, not this, and every member that has one is still reported.
-                if (DtoValidator::reportsEngineGaveUp($e->getMessage())) {
+                if ($this->engineGaveUpCount > $gaveUpBefore) {
                     break;
                 }
             }
@@ -4129,7 +4140,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
             if (is_array($paramMeta['fieldConstraints']) && $paramMeta['fieldConstraints'] !== []) {
                 foreach (
-                    $this->constraintValidator->validate(
+                    $this->validateValue(
                         subject: sprintf('param "%s"', $name),
                         value: $cast,
                         constraints: $paramMeta['fieldConstraints'],
@@ -4141,6 +4152,28 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
             return $cast;
         };
+    }
+
+    /**
+     * The validator's errors for one value, counting a validation the regex engine gave up in — see
+     * {@see $engineGaveUpCount}. A validator other than this package's has no such flag to give, and
+     * a list walk then simply goes on to the end, as it did before the stop existed.
+     *
+     * @param array<string, mixed> $constraints
+     * @return array<string>
+     */
+    private function validateValue(string $subject, mixed $value, array $constraints): array
+    {
+        if (!$this->constraintValidator instanceof DtoValidator) {
+            return $this->constraintValidator->validate($subject, $value, $constraints);
+        }
+
+        $verdict = $this->constraintValidator->validateReportingEngine(subject: $subject, value: $value, constraints: $constraints);
+        if ($verdict['engineGaveUp']) {
+            $this->engineGaveUpCount++;
+        }
+
+        return $verdict['errors'];
     }
 
     /**

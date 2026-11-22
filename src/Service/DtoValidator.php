@@ -126,6 +126,19 @@ final class DtoValidator implements DtoValidatorInterface
     private static array $schemaRegexCache = [];
 
     /**
+     * Every check of the running validation that could not be finished, by the message that reports
+     * it — mapped to whether the regex engine gave up (the other kinds: the depth limit, an equality
+     * walk past its limits, invalid UTF-8 the match never ran on). Recorded where the check fails, and
+     * the only thing {@see incompleteVerdict()} and {@see engineGaveUp()} consult: they used to search
+     * the message TEXT for the phrase, and a message carries the member names the request chose, so a
+     * map key spelling the phrase turned an ordinary mismatch into a give-up and stopped an `anyOf`
+     * before the sibling that matched. A request cannot write into this map.
+     *
+     * @var array<string, bool>
+     */
+    private array $unfinishedChecks = [];
+
+    /**
      * Delimit a schema pattern without escaping an already escaped delimiter twice, and keep the
      * ECMA-262 ASCII meaning of `\d` `\w` `\b` under the Unicode modifier.
      */
@@ -264,13 +277,38 @@ final class DtoValidator implements DtoValidatorInterface
      */
     public function validate(string $subject, mixed $value, array $constraints): array
     {
+        return $this->validateReportingEngine(subject: $subject, value: $value, constraints: $constraints)['errors'];
+    }
+
+    /**
+     * {@see validate()}, and whether the regex engine gave up on a check that is among the errors.
+     * {@see DtoDeserializer} stops a list walk on that, as a container here does: the request is
+     * refused either way, and each further member would burn the whole backtrack limit again. A flag
+     * rather than the message, because the message carries the member names the request chose.
+     *
+     * @param array<string, mixed> $constraints
+     * @return array{errors: array<string>, engineGaveUp: bool}
+     */
+    public function validateReportingEngine(string $subject, mixed $value, array $constraints): array
+    {
+        // Saved and restored, not cleared: a validation that runs inside another one must leave the
+        // outer one's record as it found it.
+        $outerChecks = $this->unfinishedChecks;
+        $this->unfinishedChecks = [];
+        try {
+            $errors = $this->validateConstraints($subject, $value, $constraints, 0);
+            $engineGaveUp = $this->engineGaveUp($errors);
+        } finally {
+            $this->unfinishedChecks = $outerChecks;
+        }
+
         // The one exit: every message this class writes is finalised here rather than at the eighty
         // places that build one. `$subject` is passed on so a message that OPENS with it keeps the
         // name as its owner spelled it — see `finalizeMessages()`.
-        return self::finalizeMessages(
-            messages: $this->validateConstraints($subject, $value, $constraints, 0),
-            subject: $subject,
-        );
+        return [
+            'errors' => self::finalizeMessages(messages: $errors, subject: $subject),
+            'engineGaveUp' => $engineGaveUp,
+        ];
     }
 
     /**
@@ -379,7 +417,7 @@ final class DtoValidator implements DtoValidatorInterface
     ): array {
         // Guard against pathologically nested schemas exhausting the stack.
         if ($depth >= self::MAX_VALIDATION_DEPTH) {
-            return [sprintf('%s: schema nesting exceeds %d levels', $subject, self::MAX_VALIDATION_DEPTH)];
+            return [$this->unfinished(sprintf('%s: schema nesting exceeds %d levels', $subject, self::MAX_VALIDATION_DEPTH))];
         }
 
         if ($constraints === []) {
@@ -464,7 +502,7 @@ final class DtoValidator implements DtoValidatorInterface
                     }
                 }
                 if ($fingerprint === null) {
-                    $errors[] = "{$subject}: JSON equality traversal exceeds its limits";
+                    $errors[] = $this->unfinished("{$subject}: JSON equality traversal exceeds its limits");
                 } elseif (!$matches) {
                     $allowed = implode(', ', array_map(
                         callback: static function (mixed $v): string {
@@ -481,7 +519,7 @@ final class DtoValidator implements DtoValidatorInterface
             if (array_key_exists('const', $constraints)) {
                 $fingerprint = $this->jsonValueFingerprint($value);
                 if ($fingerprint === null) {
-                    $errors[] = "{$subject}: JSON equality traversal exceeds its limits";
+                    $errors[] = $this->unfinished("{$subject}: JSON equality traversal exceeds its limits");
                 } elseif ($fingerprint !== $this->jsonValueFingerprint($constraints['const'])) {
                     $constJson = json_encode($constraints['const']);
                     $errors[] = sprintf(
@@ -754,7 +792,7 @@ final class DtoValidator implements DtoValidatorInterface
             if (!$isOneOf && $this->engineGaveUp($branchErrors)) {
                 return array_values(array: array_filter(
                     array: $branchErrors,
-                    callback: static fn(string $error): bool => self::reportsEngineGaveUp($error),
+                    callback: fn(string $error): bool => $this->unfinishedChecks[$error] ?? false,
                 ));
             }
             if ($branchErrors === []) {
@@ -1131,8 +1169,11 @@ final class DtoValidator implements DtoValidatorInterface
                 // (the `u` modifier) and for a subject the engine ran out of resources on — blame
                 // the right side.
                 $errors[] = match (true) {
-                    preg_last_error() === PREG_BAD_UTF8_ERROR => "{$subject} contains invalid UTF-8 characters",
-                    in_array(preg_last_error(), self::PREG_RESOURCE_ERRORS, true) => sprintf('%s could not be checked: %s %s', $subject, self::PATTERN_GAVE_UP, $pattern),
+                    preg_last_error() === PREG_BAD_UTF8_ERROR => $this->unfinished("{$subject} contains invalid UTF-8 characters"),
+                    in_array(preg_last_error(), self::PREG_RESOURCE_ERRORS, true) => $this->unfinished(
+                        message: sprintf('%s could not be checked: %s %s', $subject, self::PATTERN_GAVE_UP, $pattern),
+                        engineGaveUp: true,
+                    ),
                     default => "{$subject} has invalid regex pattern in schema: {$pattern}",
                 };
             } elseif (!$match) {
@@ -1277,19 +1318,28 @@ final class DtoValidator implements DtoValidatorInterface
      */
     private function incompleteVerdict(array $errors): array
     {
+        // A pattern that could not run has no verdict either: `not: {pattern}` passed a value the
+        // engine gave up on, and `if: {pattern}` sent it to `else`. Invalid UTF-8 in the value is the
+        // same kind of failure — the match never ran on it. A pattern PCRE cannot COMPILE is
+        // deliberately NOT recorded: that is the document's, the same for every value, and it stays a
+        // failed branch (a sibling decides, `not` holds, `if` takes `else`), as it was before run-time
+        // failures refused and as the emitted interpreter treats it.
         return array_values(array_filter(
             array: $errors,
-            callback: static fn(string $error): bool => str_contains($error, 'schema nesting exceeds')
-                || str_contains($error, 'JSON equality traversal exceeds its limits')
-                // A pattern that could not run has no verdict either: `not: {pattern}` passed a value
-                // the engine gave up on, and `if: {pattern}` sent it to `else`. Invalid UTF-8 in the
-                // value is the same kind of failure — the match never ran on it. A pattern PCRE cannot
-                // COMPILE is deliberately NOT here: that is the document's, the same for every value,
-                // and it stays a failed branch (a sibling decides, `not` holds, `if` takes `else`), as it
-                // was before run-time failures refused and as the emitted interpreter treats it.
-                || str_contains($error, self::PATTERN_GAVE_UP)
-                || str_contains($error, 'contains invalid UTF-8 characters'),
+            callback: fn(string $error): bool => array_key_exists($error, $this->unfinishedChecks),
         ));
+    }
+
+    /**
+     * Records `$message` as a check that could not be finished — see {@see $unfinishedChecks} — and
+     * returns it, to be reported like any other error.
+     */
+    private function unfinished(string $message, bool $engineGaveUp = false): string
+    {
+        // A message already recorded as a give-up stays one.
+        $this->unfinishedChecks[$message] = $engineGaveUp || ($this->unfinishedChecks[$message] ?? false);
+
+        return $message;
     }
 
     /**
@@ -1501,7 +1551,10 @@ final class DtoValidator implements DtoValidatorInterface
                         // Undecided is not "unmatched": the value would skip the schema the pattern
                         // guards. Refused here, and no further key is tried — each one could cost
                         // the same burn.
-                        $errors[] = sprintf('%s key "%s" could not be checked: %s %s', $subject, (string)$key, self::PATTERN_GAVE_UP, $pattern);
+                        $errors[] = $this->unfinished(
+                            message: sprintf('%s key "%s" could not be checked: %s %s', $subject, (string)$key, self::PATTERN_GAVE_UP, $pattern),
+                            engineGaveUp: true,
+                        );
 
                         return $errors;
                     }
@@ -1650,7 +1703,7 @@ final class DtoValidator implements DtoValidatorInterface
             foreach ($value as $item) {
                 $fingerprint = $this->jsonValueFingerprint($item);
                 if ($fingerprint === null) {
-                    $errors[] = "{$subject}: JSON equality traversal exceeds its limits";
+                    $errors[] = $this->unfinished("{$subject}: JSON equality traversal exceeds its limits");
                     break;
                 }
 
@@ -2117,23 +2170,12 @@ final class DtoValidator implements DtoValidatorInterface
     private function engineGaveUp(array $errors): bool
     {
         foreach ($errors as $error) {
-            if (self::reportsEngineGaveUp($error)) {
+            if ($this->unfinishedChecks[$error] ?? false) {
                 return true;
             }
         }
 
         return false;
-    }
-
-    /**
-     * The same question about a refusal that has already left this class as one message — the form
-     * {@see DtoDeserializer} sees when a list member, hydrated as a DTO of its own, is refused. The
-     * deserializer stops that list on it, for the reason a container here stops: the request is refused
-     * either way, and each further member would burn the whole limit again.
-     */
-    public static function reportsEngineGaveUp(string $message): bool
-    {
-        return str_contains($message, self::PATTERN_GAVE_UP);
     }
 
     /**

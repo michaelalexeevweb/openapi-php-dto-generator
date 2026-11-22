@@ -3,6 +3,51 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.131 — 2026-11-22
+
+- shared classes stay permissive
+- form bodies through unions read
+- requestBodies refs attributed
+- YAML probe survives any setup
+- engine failures flagged, not parsed
+- nested patterns in symfony anyOf
+- inline enum branches keep members
+
+A review of the 2.15.130 changes.
+
+**Runtime mode with `--dto-generator-directory`: regenerate after upgrading.** The deserializer and the
+validator changed.
+
+The JSON-only body rule (runtime):
+
+- a class generated into a shared place — a `--ref` target, or the `common` convention — no longer carries
+  the JSON-only marker. Since 2.15.130 it got one from whichever document generated it, so a mask run whose
+  documents use the class differently failed with `generates … differently`, and separate runs let the last
+  document decide. The shared file is now the same whoever writes it; classes in a document's own directory
+  keep the marker;
+- a form or multipart body that names a `oneOf` / `anyOf` component is attributed to every member class, so
+  `Cat` and `Dog` read the form, not only the union's base;
+- a body reached through `components/requestBodies` or `components/mediaTypes` (OAS 3.2) is attributed however
+  the reference is spelled — `#/…`, the document's own file name, its `$self`, or another file.
+
+Generation:
+
+- the YAML nesting probe no longer depends on the child process loading the parent's extensions: the child
+  reports what the parser did (finished, refused with its own error, ran out of memory), and the parent never
+  re-runs a parse that could crash. It starts the CLI binary also under `phpdbg`, never waits for input, and
+  gives up after a timeout.
+
+Validation:
+
+- whether the regex engine gave up is a flag the validator carries, no longer a search of the message — a key
+  whose name spelled the phrase made a valid value refused. `DtoValidator::reportsEngineGaveUp()`, added in
+  2.15.129, is replaced by `validateReportingEngine()`;
+- symfony: an `anyOf` whose branch holds a `pattern` anywhere inside it (under `allOf`, `not`, `if`, a nested
+  union, the values of a map) is checked by the interpreter, so a pattern the engine gives up on refuses there
+  too, as in the other modes;
+- an inline `enum` in an `anyOf` branch (`{type: string, enum: [teal]}`) keeps its members, so the branch no
+  longer matches every string; symfony checks such a branch against the generated enum.
+
 ## 2.15.130 — 2026-11-22
 
 - form bodies through aliases read again
