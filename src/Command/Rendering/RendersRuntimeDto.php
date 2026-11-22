@@ -20,13 +20,14 @@ use RuntimeException;
 trait RendersRuntimeDto
 {
     /**
-     * The styles the deserializer reads a parameter by: OpenAPI's, plus `json` (a `content` parameter
-     * or a JSON multipart part) and `querystring` (OAS 3.2 `in: querystring`), which the generator sets.
+     * The styles the deserializer reads a parameter by: OpenAPI's — 3.0 and 3.1 define seven, 3.2 adds
+     * `cookie` for `in: cookie` — plus `json` (a `content` parameter or a JSON multipart part) and
+     * `querystring` (OAS 3.2 `in: querystring`), which the generator sets.
      *
      * @var list<string>
      */
     private const array RUNTIME_PARAMETER_STYLES = [
-        'form', 'simple', 'matrix', 'label', 'spaceDelimited', 'pipeDelimited', 'deepObject', 'json', 'querystring',
+        'form', 'simple', 'matrix', 'label', 'spaceDelimited', 'pipeDelimited', 'deepObject', 'cookie', 'json', 'querystring',
     ];
 
     /**

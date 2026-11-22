@@ -1,4 +1,4 @@
-# symfony mode — 77 files, 12798 lines
+# symfony mode — 77 files, 12825 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -3401,12 +3401,12 @@ final class ApplicatorRefs
             }
         }
 
-        if (is_array($schema['not'] ?? null) && $this->matchesOpenApiNode($value, $schema['not'], $depth + 1)) {
+        if (is_array($schema['not'] ?? null) && $this->matchesOpenApiNode($value, $schema['not'], $path, $depth + 1)) {
             $errors[] = sprintf('%s must not match the \'not\' schema', $path);
         }
 
         if (is_array($schema['if'] ?? null)) {
-            if ($this->matchesOpenApiNode($value, $schema['if'], $depth + 1)) {
+            if ($this->matchesOpenApiNode($value, $schema['if'], $path, $depth + 1)) {
                 if (is_array($schema['then'] ?? null)) {
                     $errors = [...$errors, ...$this->validateOpenApiNode($value, $schema['then'], $path, $depth + 1)];
                 }
@@ -3464,7 +3464,7 @@ final class ApplicatorRefs
         if ($listValue && is_array($schema['contains'] ?? null)) {
             $matchCount = 0;
             foreach ($value as $index => $itemValue) {
-                if ($this->matchesOpenApiNode($itemValue, $schema['contains'], $depth + 1)) {
+                if ($this->matchesOpenApiNode($itemValue, $schema['contains'], $path . '[' . $index . ']', $depth + 1)) {
                     $matchCount++;
                     $evaluatedItemIndices[$index] = true;
                 }
@@ -3508,11 +3508,15 @@ final class ApplicatorRefs
     }
 
     /**
+     * Whether a subschema matches; its errors are thrown away. The path is not: an unfinished check —
+     * the depth limit, a pattern the engine gave up on — is thrown out of here with it, and is the
+     * refusal the caller ends up reporting, so it has to name the value it could not finish.
+     *
      * @param array<string, mixed> $schema
      */
-    private function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    private function matchesOpenApiNode(mixed $value, array $schema, string $path, int $depth): bool
     {
-        return $this->validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+        return $this->validateOpenApiNode($value, $schema, $path, $depth) === [];
     }
 
     private function matchesOpenApiCallbackType(mixed $value, mixed $type): bool
@@ -3935,7 +3939,7 @@ final class ApplicatorRefsConditional
         }
 
         if (is_array($schema['if'] ?? null)) {
-            if ($this->matchesOpenApiNode($value, $schema['if'], $depth + 1)) {
+            if ($this->matchesOpenApiNode($value, $schema['if'], $path, $depth + 1)) {
                 if (is_array($schema['then'] ?? null)) {
                     $errors = [...$errors, ...$this->validateOpenApiNode($value, $schema['then'], $path, $depth + 1)];
                 }
@@ -3948,11 +3952,15 @@ final class ApplicatorRefsConditional
     }
 
     /**
+     * Whether a subschema matches; its errors are thrown away. The path is not: an unfinished check —
+     * the depth limit, a pattern the engine gave up on — is thrown out of here with it, and is the
+     * refusal the caller ends up reporting, so it has to name the value it could not finish.
+     *
      * @param array<string, mixed> $schema
      */
-    private function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    private function matchesOpenApiNode(mixed $value, array $schema, string $path, int $depth): bool
     {
-        return $this->validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+        return $this->validateOpenApiNode($value, $schema, $path, $depth) === [];
     }
 
     private function matchesOpenApiCallbackType(mixed $value, mixed $type): bool
@@ -4608,7 +4616,7 @@ final class ApplicatorRefsPoisonedKey
             }
         }
 
-        if (is_array($schema['not'] ?? null) && $this->matchesOpenApiNode($value, $schema['not'], $depth + 1)) {
+        if (is_array($schema['not'] ?? null) && $this->matchesOpenApiNode($value, $schema['not'], $path, $depth + 1)) {
             $errors[] = sprintf('%s must not match the \'not\' schema', $path);
         }
 
@@ -4616,11 +4624,15 @@ final class ApplicatorRefsPoisonedKey
     }
 
     /**
+     * Whether a subschema matches; its errors are thrown away. The path is not: an unfinished check —
+     * the depth limit, a pattern the engine gave up on — is thrown out of here with it, and is the
+     * refusal the caller ends up reporting, so it has to name the value it could not finish.
+     *
      * @param array<string, mixed> $schema
      */
-    private function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    private function matchesOpenApiNode(mixed $value, array $schema, string $path, int $depth): bool
     {
-        return $this->validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+        return $this->validateOpenApiNode($value, $schema, $path, $depth) === [];
     }
 
     private function normalizeOpenApiStructuralValue(mixed $value): mixed
@@ -7340,14 +7352,13 @@ final class ItemBounds
                     restore_error_handler();
                 }
 
-                if ($match === false) {
-                    throw new OverflowException(match (true) {
-                        preg_last_error() === PREG_BAD_UTF8_ERROR => sprintf('%s contains invalid UTF-8 characters', $path),
-                        preg_last_error() === PREG_INTERNAL_ERROR => sprintf('%s has invalid regex pattern in schema: %s', $path, $pattern),
-                        default => sprintf('%s could not be checked: the regex engine gave up on pattern %s', $path, $pattern),
-                    });
-                }
-                if ($match !== 1) {
+                if ($match === false && preg_last_error() === PREG_INTERNAL_ERROR) {
+                    $errors[] = sprintf('%s has invalid regex pattern in schema: %s', $path, $pattern);
+                } elseif ($match === false) {
+                    throw new OverflowException(preg_last_error() === PREG_BAD_UTF8_ERROR
+                        ? sprintf('%s contains invalid UTF-8 characters', $path)
+                        : sprintf('%s could not be checked: the regex engine gave up on pattern %s', $path, $pattern));
+                } elseif ($match !== 1) {
                     $errors[] = sprintf('%s must match pattern %s', $path, $pattern);
                 }
             }
@@ -9374,12 +9385,12 @@ final class ObjectWideRules
             }
         }
 
-        if (is_array($schema['not'] ?? null) && $this->matchesOpenApiNode($value, $schema['not'], $depth + 1)) {
+        if (is_array($schema['not'] ?? null) && $this->matchesOpenApiNode($value, $schema['not'], $path, $depth + 1)) {
             $errors[] = sprintf('%s must not match the \'not\' schema', $path);
         }
 
         if (is_array($schema['if'] ?? null)) {
-            if ($this->matchesOpenApiNode($value, $schema['if'], $depth + 1)) {
+            if ($this->matchesOpenApiNode($value, $schema['if'], $path, $depth + 1)) {
                 if (is_array($schema['then'] ?? null)) {
                     $errors = [...$errors, ...$this->validateOpenApiNode($value, $schema['then'], $path, $depth + 1)];
                 }
@@ -9392,11 +9403,15 @@ final class ObjectWideRules
     }
 
     /**
+     * Whether a subschema matches; its errors are thrown away. The path is not: an unfinished check —
+     * the depth limit, a pattern the engine gave up on — is thrown out of here with it, and is the
+     * refusal the caller ends up reporting, so it has to name the value it could not finish.
+     *
      * @param array<string, mixed> $schema
      */
-    private function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    private function matchesOpenApiNode(mixed $value, array $schema, string $path, int $depth): bool
     {
-        return $this->validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+        return $this->validateOpenApiNode($value, $schema, $path, $depth) === [];
     }
 
     private function matchesOpenApiCallbackType(mixed $value, mixed $type): bool
@@ -10684,11 +10699,15 @@ final class TestPostRequest
     }
 
     /**
+     * Whether a subschema matches; its errors are thrown away. The path is not: an unfinished check —
+     * the depth limit, a pattern the engine gave up on — is thrown out of here with it, and is the
+     * refusal the caller ends up reporting, so it has to name the value it could not finish.
+     *
      * @param array<string, mixed> $schema
      */
-    private function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    private function matchesOpenApiNode(mixed $value, array $schema, string $path, int $depth): bool
     {
-        return $this->validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+        return $this->validateOpenApiNode($value, $schema, $path, $depth) === [];
     }
 
     /**
@@ -11345,11 +11364,15 @@ final class TreeNode
     }
 
     /**
+     * Whether a subschema matches; its errors are thrown away. The path is not: an unfinished check —
+     * the depth limit, a pattern the engine gave up on — is thrown out of here with it, and is the
+     * refusal the caller ends up reporting, so it has to name the value it could not finish.
+     *
      * @param array<string, mixed> $schema
      */
-    private function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    private function matchesOpenApiNode(mixed $value, array $schema, string $path, int $depth): bool
     {
-        return $this->validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+        return $this->validateOpenApiNode($value, $schema, $path, $depth) === [];
     }
 
     /**
@@ -12111,11 +12134,15 @@ final class UnionUnderContainer
     }
 
     /**
+     * Whether a subschema matches; its errors are thrown away. The path is not: an unfinished check —
+     * the depth limit, a pattern the engine gave up on — is thrown out of here with it, and is the
+     * refusal the caller ends up reporting, so it has to name the value it could not finish.
+     *
      * @param array<string, mixed> $schema
      */
-    private function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    private function matchesOpenApiNode(mixed $value, array $schema, string $path, int $depth): bool
     {
-        return $this->validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+        return $this->validateOpenApiNode($value, $schema, $path, $depth) === [];
     }
 
     /**

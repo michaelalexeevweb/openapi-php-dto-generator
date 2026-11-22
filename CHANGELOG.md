@@ -3,6 +3,68 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.130 — 2026-11-22
+
+- form bodies through aliases read again
+- anyOf stops on a failing regex
+- uncompilable patterns fail one branch
+- OAS 3.2 cookie style accepted
+- YAML crashes become clean errors
+- --ref matches in any case
+- error paths name the member
+
+A review of the 2.15.129 changes and a second red-team pass over its security fixes. No way around the new
+escaping was found; what follows are valid inputs the new guards refused, and gaps in them.
+
+**Runtime mode with `--dto-generator-directory`: regenerate after upgrading.** The deserializer and the
+validator changed.
+
+### Moving to the JSON-only body rule of 2.15.129
+
+Since 2.15.129 a runtime request body the document declares as JSON only is not filled from the query
+string, form fields or uploads. A client that posts a form to such an endpoint now gets
+`Required parameter "…" not found in request`, and the message names the `Content-Type` that was not read.
+To see what a class takes, look at its `getRequestBodyMediaTypes()`. If the form is the endpoint's real
+contract, say so in the document and regenerate:
+
+```yaml
+requestBody:
+  content:
+    application/json:
+      schema: {$ref: '#/components/schemas/Widget'}
+    application/x-www-form-urlencoded:   # or multipart/form-data for uploads
+      schema: {$ref: '#/components/schemas/Widget'}
+```
+
+If the form was an accident, have the client send JSON. Do not edit the generated class.
+
+### Fixed
+
+- runtime: a form or multipart body that reaches its class through an alias component, an alias chain, a
+  single-`$ref` `allOf` / `oneOf` / `anyOf`, or another file was attributed to a name that is never
+  generated, so the class was marked JSON-only and the form was refused — a regression of 2.15.129. Media
+  types now follow the body to the class actually generated; a body that cannot be pinned to one leaves
+  its classes permissive. A component of another file reached only by JSON bodies is now marked JSON-only
+  like a local one;
+- runtime: an `anyOf` branch whose `pattern` the regex engine gives up on now refuses the value, as
+  `oneOf`, `not`, `if` and `contains` already did, so a list stops at the first such member instead of
+  paying the backtrack limit once per member. This departs from JSON Schema where a later sibling branch
+  would match: a document pattern that exhausts the engine is treated as an attack, in every mode. A
+  sibling listed before the pattern still accepts without running it. symfony now checks such an `anyOf`
+  in its interpreter, and an `anyOf` branch naming a class or enum no longer matches every value there;
+- a `pattern` PCRE cannot compile (an unbounded lookbehind, valid in ECMA-262) is again a failed branch
+  under `anyOf` / `oneOf`, a non-match under `not` and a false condition under `if`, as before 2.15.129;
+  on its own it still refuses every value. Only a failure while matching refuses outright;
+- an engine failure inside `not`, `if` or `contains` names the member (`f[0]`), not `payload`;
+- laravel-data: a member failure under a map key containing `.` names the key, not Laravel's internal
+  placeholder;
+- runtime: OAS 3.2 `style: cookie` is accepted and read as 3.2 defines it — raw, not percent-decoded;
+- the YAML nesting guard of 2.15.129 refused valid YAML (a continuation line starting with `[`) and could be
+  walked around. It is replaced: a file with many brackets is first parsed in a child process, and a parser
+  crash there becomes a clean error. Nothing reads YAML except the parser;
+- a `--ref` directory or file spelled in another case than the `$ref` that reaches it is matched on a
+  case-insensitive filesystem, and the classes land where the mapping says.
+
 ## 2.15.129 — 2026-11-22
 
 - parameter style is never code

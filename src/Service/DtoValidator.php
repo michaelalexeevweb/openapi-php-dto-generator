@@ -745,6 +745,18 @@ final class DtoValidator implements DtoValidatorInterface
             if ($isOneOf && $this->incompleteVerdict($branchErrors) !== []) {
                 return $this->incompleteVerdict($branchErrors);
             }
+            // `anyOf` stops at its first match, so a branch that could not be finished is only an
+            // answer when no sibling matches — and dropping it there hid the failure from the list
+            // walk, which then paid the whole backtrack limit again on every item of a request it
+            // went on to accept. A branch the engine gave up on refuses the value, as it does under
+            // `oneOf`, `not`, `if` and `contains`, and as the emitted interpreter's throw does. A
+            // sibling listed EARLIER that matches still ends the `anyOf` before the pattern runs.
+            if (!$isOneOf && $this->engineGaveUp($branchErrors)) {
+                return array_values(array: array_filter(
+                    array: $branchErrors,
+                    callback: static fn(string $error): bool => self::reportsEngineGaveUp($error),
+                ));
+            }
             if ($branchErrors === []) {
                 $validBranches++;
                 if (!$isOneOf) {
@@ -1257,7 +1269,7 @@ final class DtoValidator implements DtoValidatorInterface
 
     /**
      * The errors that say a subschema was NOT checked to the end — the depth limit, an equality walk
-     * that could not finish, a pattern PCRE could not run. Where a keyword turns "has errors" into "did not match" (`not`, `if`, a
+     * that could not finish, a pattern PCRE could not run on the value. Where a keyword turns "has errors" into "did not match" (`not`, `if`, a
      * `oneOf` count, `contains`), these must not: an unfinished check is not a verdict.
      *
      * @param array<string> $errors
@@ -1270,9 +1282,12 @@ final class DtoValidator implements DtoValidatorInterface
             callback: static fn(string $error): bool => str_contains($error, 'schema nesting exceeds')
                 || str_contains($error, 'JSON equality traversal exceeds its limits')
                 // A pattern that could not run has no verdict either: `not: {pattern}` passed a value
-                // the engine gave up on, and `if: {pattern}` sent it to `else`.
+                // the engine gave up on, and `if: {pattern}` sent it to `else`. Invalid UTF-8 in the
+                // value is the same kind of failure — the match never ran on it. A pattern PCRE cannot
+                // COMPILE is deliberately NOT here: that is the document's, the same for every value,
+                // and it stays a failed branch (a sibling decides, `not` holds, `if` takes `else`), as it
+                // was before run-time failures refused and as the emitted interpreter treats it.
                 || str_contains($error, self::PATTERN_GAVE_UP)
-                || str_contains($error, 'has invalid regex pattern in schema')
                 || str_contains($error, 'contains invalid UTF-8 characters'),
         ));
     }
@@ -1724,8 +1739,16 @@ final class DtoValidator implements DtoValidatorInterface
                 || array_key_exists('if', $containsSchema);
             $matchCount = 0;
             $incompleteMatch = [];
-            foreach ($value as $itemValue) {
-                $itemErrors = $this->validateConstraints($subject, $itemValue, $containsSchema, $depth + 1, $containsHasComposition);
+            foreach ($value as $index => $itemValue) {
+                // Only an unfinished check of these errors is ever reported, and it must say which
+                // member it could not finish — `items` names it the same way.
+                $itemErrors = $this->validateConstraints(
+                    subject: sprintf('%s.%s', $subject, (string)$index),
+                    value: $itemValue,
+                    constraints: $containsSchema,
+                    depth: $depth + 1,
+                    hasComposition: $containsHasComposition,
+                );
                 if ($itemErrors === []) {
                     $matchCount++;
                 }

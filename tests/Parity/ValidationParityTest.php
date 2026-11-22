@@ -4699,6 +4699,189 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * An `anyOf` whose pattern branch the engine gives up on, beside a branch that would match. The
+     * runtime validator dropped the "gave up" error as soon as the sibling matched, so nothing told the
+     * list walk to stop, and every item paid the whole backtrack limit again (~14 s for four thousand
+     * items) for a request that was then accepted — while the interpreter modes refused it at the
+     * first item.
+     *
+     * The verdict is the one `oneOf`, `not`, `if` and `contains` already give: a branch that was run
+     * and could not be finished has no answer, and the value is refused rather than waved through on
+     * the strength of a sibling. That is the only reading under which the walk can stop at the first
+     * item without accepting the items after it unchecked. A branch that matches EARLIER ends the
+     * `anyOf` before the pattern runs at all — the neighbour pins that this costs nothing and passes.
+     *
+     * @param array<string, mixed> $propertySchema
+     * @param array{valid: bool, invalid: bool, quick: bool} $expected
+     */
+    #[DataProvider('anyOfBranchTheEngineGivesUpOnProvider')]
+    public function testAnAnyOfBranchTheEngineGivesUpOnRefusesQuickly(
+        array $propertySchema,
+        string $validJson,
+        string $invalidJson,
+        array $expected,
+    ): void {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $key = 'anyOf regex engine limit ' . md5((string)json_encode([$propertySchema, $validJson, $invalidJson]));
+
+        $this->assertEveryModeYields(
+            expected: $expected,
+            observe: fn(GenerationMode $mode): array => $this->timedVerdict(
+                mode: $mode,
+                spec: self::probeSpec($propertySchema),
+                key: $key,
+                validJson: $validJson,
+                invalidJson: $invalidJson,
+            ),
+            context: $key,
+        );
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>, string, string, array{valid: bool, invalid: bool, quick: bool}}>
+     */
+    public static function anyOfBranchTheEngineGivesUpOnProvider(): iterable
+    {
+        $words = ['type' => 'string', 'pattern' => '^([a-zA-Z0-9]+\s?)*$'];
+        $short = ['type' => 'string', 'maxLength' => 64];
+        $burning = str_repeat('a', 26) . '!';
+        $burningList = (string)json_encode(['f' => array_fill(start_index: 0, count: 3000, value: $burning)]);
+        $refused = ['valid' => true, 'invalid' => false, 'quick' => true];
+
+        yield 'items anyOf: pattern first, three thousand backtracking items' => [
+            ['type' => 'array', 'items' => ['anyOf' => [$words, $short]]],
+            '{"f":["alpha beta","gamma"]}',
+            $burningList,
+            $refused,
+        ];
+        // `gamma!` is a quick mismatch of the pattern that the length branch takes; the long value is
+        // refused by both branches at once, without a backtrack.
+        yield 'items anyOf: pattern first, ordinary values' => [
+            ['type' => 'array', 'items' => ['anyOf' => [$words, $short]]],
+            '{"f":["alpha beta","gamma!"]}',
+            (string)json_encode(['f' => ['alpha', '!' . str_repeat('b', 65)]]),
+            $refused,
+        ];
+        yield 'items anyOf: length first, the pattern never runs' => [
+            ['type' => 'array', 'items' => ['anyOf' => [$short, $words]]],
+            '{"f":["alpha beta","gamma"]}',
+            $burningList,
+            ['valid' => true, 'invalid' => true, 'quick' => true],
+        ];
+        yield 'items anyOf: pattern first, no branch can take the value' => [
+            ['type' => 'array', 'items' => ['anyOf' => [$words, ['type' => 'string', 'maxLength' => 3]]]],
+            '{"f":["alpha beta","gamma"]}',
+            $burningList,
+            $refused,
+        ];
+        yield 'property anyOf: pattern first, one backtracking value' => [
+            ['anyOf' => [$words, $short]],
+            '{"f":"alpha beta"}',
+            (string)json_encode(['f' => $burning]),
+            $refused,
+        ];
+        yield 'property anyOf: pattern first, ordinary values' => [
+            ['anyOf' => [$words, $short]],
+            '{"f":"gamma!"}',
+            (string)json_encode(['f' => '!' . str_repeat('b', 65)]),
+            $refused,
+        ];
+        yield 'property anyOf: length first, the pattern never runs' => [
+            ['anyOf' => [$short, $words]],
+            '{"f":"alpha beta"}',
+            (string)json_encode(['f' => $burning]),
+            ['valid' => true, 'invalid' => true, 'quick' => true],
+        ];
+    }
+
+    /**
+     * A pattern that is valid ECMA-262 but that PCRE cannot COMPILE — an unbounded lookbehind. That is a
+     * property of the document, not of the value, and it keeps the meaning it had before the engine's
+     * run-time failures were made to refuse: a failed branch under `anyOf` / `oneOf`, a schema that did
+     * not match under `not` and `if`. 2.15.129 swept it in with the engine giving up, so a sibling branch
+     * that plainly matched no longer saved the value, and the interpreter modes and runtime disagreed on
+     * `anyOf`. A plain `pattern` that cannot compile refuses every value, before and after.
+     *
+     * @param array<string, mixed> $propertySchema
+     * @param array{valid: bool, invalid: bool} $expected
+     */
+    #[DataProvider('uncompilablePatternProvider')]
+    public function testAPatternPcreCannotCompileIsAFailedBranchNotARefusal(
+        array $propertySchema,
+        string $validJson,
+        string $invalidJson,
+        array $expected,
+    ): void {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $key = 'uncompilable pattern ' . md5((string)json_encode([$propertySchema, $validJson, $invalidJson]));
+
+        $this->assertEveryModeYields(
+            expected: $expected,
+            observe: fn(GenerationMode $mode): array => $this->verdict(
+                mode: $mode,
+                spec: self::probeSpec($propertySchema),
+                key: $key,
+                validJson: $validJson,
+                invalidJson: $invalidJson,
+            ),
+            context: $key,
+        );
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>, string, string, array{valid: bool, invalid: bool}}>
+     */
+    public static function uncompilablePatternProvider(): iterable
+    {
+        $lookbehind = ['type' => 'string', 'pattern' => '(?<=a+)b'];
+        $short = ['type' => 'string', 'maxLength' => 5];
+        $decided = ['valid' => true, 'invalid' => false];
+
+        yield 'anyOf: the sibling takes the value' => [
+            ['anyOf' => [$lookbehind, $short]],
+            '{"f":"xyz"}',
+            '{"f":"abcdefgh"}',
+            $decided,
+        ];
+        yield 'anyOf over items: the sibling takes each value' => [
+            ['type' => 'array', 'items' => ['anyOf' => [$lookbehind, $short]]],
+            '{"f":["xyz","ab"]}',
+            '{"f":["xyz","abcdefgh"]}',
+            $decided,
+        ];
+        yield 'oneOf: the sibling is the one match' => [
+            ['oneOf' => [$lookbehind, $short]],
+            '{"f":"xyz"}',
+            '{"f":"abcdefgh"}',
+            $decided,
+        ];
+        yield 'not: the pattern matches nothing' => [
+            ['type' => 'string', 'not' => ['pattern' => '(?<=a+)b']],
+            '{"f":"xyz"}',
+            '{"f":7}',
+            $decided,
+        ];
+        yield 'if: the condition does not hold, else applies' => [
+            ['type' => 'string', 'if' => ['pattern' => '(?<=a+)b'], 'then' => ['maxLength' => 0], 'else' => ['maxLength' => 5]],
+            '{"f":"xyz"}',
+            '{"f":"abcdefgh"}',
+            $decided,
+        ];
+        yield 'plain pattern: no value can pass' => [
+            $lookbehind,
+            '{"f":"xyz"}',
+            '{"f":"ab"}',
+            ['valid' => false, 'invalid' => false],
+        ];
+    }
+
+    /**
      * The usual verdict, plus whether the invalid payload was answered within the budget. The classes
      * are generated and loaded by a warm-up run first, so the clock measures the request alone.
      *

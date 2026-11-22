@@ -6,6 +6,7 @@ namespace OpenapiPhpDtoGenerator\Tests\LaravelData;
 
 use DateTimeImmutable;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -344,6 +345,78 @@ final class EmissionEdgeCasesTest extends TestCase
             actual: array_values(array_filter($laravelData, static fn(string $file): bool => str_contains($file, 'FormRequest'))),
             message: 'laravel-data mode must emit no FormRequest',
         );
+    }
+
+    /**
+     * A map key with a `.` in it is ONE key on the wire. Laravel's `getData()` holds such a key with a
+     * random `__dot__…` placeholder in place of the dot, and the interpreter read the payload without
+     * undoing it — so once member patterns moved into the interpreter (2.15.129) a failure under
+     * `{"x.y": …}` was reported at `m.x__dot__1V1aqZ8ic9lpMPPTy`, different on every request. Laravel mode
+     * undoes the placeholders before the interpreter runs; this mode must as well. A dotted key cannot
+     * be told from a deeper path in an error key, so that failure is filed under the property with the
+     * real path in its message — where Laravel mode files it too.
+     *
+     * The neighbours: a key without a dot, a dotted key that passes, a map of `$ref` objects keyed the
+     * same way, and the verdicts themselves, which were right all along.
+     *
+     * @param array<string, array<int, string>>|null $expected null when the payload is accepted
+     */
+    #[DataProvider('dottedMapKeyProvider')]
+    public function testAMemberFailureUnderADottedMapKeyIsReportedAtTheRealKey(string $json, ?array $expected): void
+    {
+        $namespace = $this->generate([
+            'Shape' => [
+                'type' => 'object',
+                'required' => ['name'],
+                'properties' => ['name' => ['type' => 'string', 'pattern' => '^[a-z]+$']],
+            ],
+            'Probe' => [
+                'type' => 'object',
+                'properties' => [
+                    'm' => ['type' => 'object', 'additionalProperties' => ['type' => 'string', 'pattern' => '^[a-z]+$']],
+                    'w' => ['type' => 'object', 'additionalProperties' => ['$ref' => '#/components/schemas/Shape']],
+                ],
+            ],
+        ]);
+        /** @var class-string $fqcn */
+        $fqcn = $namespace . '\Probe';
+
+        $errors = LaravelDataContainer::withRequest(
+            json: $json,
+            work: static function (Request $request) use ($fqcn): ?array {
+                try {
+                    $fqcn::from($request);
+
+                    return null;
+                } catch (ValidationException $exception) {
+                    return $exception->errors();
+                }
+            },
+        );
+
+        $this->assertSame(expected: $expected, actual: $errors);
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: array<string, array<int, string>>|null}>
+     */
+    public static function dottedMapKeyProvider(): array
+    {
+        return [
+            'a dotted key fails its pattern' => [
+                '{"m":{"a.b":"ok","x.y":"BAD"}}',
+                ['m' => ['m.x.y must match pattern ^[a-z]+$.']],
+            ],
+            'a plain key fails its pattern' => [
+                '{"m":{"a.b":"ok","xy":"BAD"}}',
+                ['m.xy' => ['m.xy must match pattern ^[a-z]+$.']],
+            ],
+            'a dotted key passes' => ['{"m":{"a.b":"ok","x.y":"good"}}', null],
+            'a dotted key of a $ref map fails a property pattern' => [
+                '{"w":{"r.s":{"name":"BAD"}}}',
+                ['w' => ['w.r.s.name must match pattern ^[a-z]+$.']],
+            ],
+        ];
     }
 
     /**

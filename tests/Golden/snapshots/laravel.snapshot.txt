@@ -1,4 +1,4 @@
-# laravel mode — 106 files, 30054 lines
+# laravel mode — 106 files, 30093 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -10623,12 +10623,12 @@ final class ApplicatorRefs implements JsonSerializable
             }
         }
 
-        if (is_array($schema['not'] ?? null) && self::matchesOpenApiNode($value, $schema['not'], $depth + 1)) {
+        if (is_array($schema['not'] ?? null) && self::matchesOpenApiNode($value, $schema['not'], $path, $depth + 1)) {
             $errors[] = sprintf('%s must not match the \'not\' schema', $path);
         }
 
         if (is_array($schema['if'] ?? null)) {
-            if (self::matchesOpenApiNode($value, $schema['if'], $depth + 1)) {
+            if (self::matchesOpenApiNode($value, $schema['if'], $path, $depth + 1)) {
                 if (is_array($schema['then'] ?? null)) {
                     $errors = [...$errors, ...self::validateOpenApiNode($value, $schema['then'], $path, $depth + 1)];
                 }
@@ -10680,7 +10680,7 @@ final class ApplicatorRefs implements JsonSerializable
         if ($listValue && is_array($schema['contains'] ?? null)) {
             $matchCount = 0;
             foreach ($value as $index => $itemValue) {
-                if (self::matchesOpenApiNode($itemValue, $schema['contains'], $depth + 1)) {
+                if (self::matchesOpenApiNode($itemValue, $schema['contains'], $path . '[' . $index . ']', $depth + 1)) {
                     $matchCount++;
                     $evaluatedItemIndices[$index] = true;
                 }
@@ -10721,11 +10721,15 @@ final class ApplicatorRefs implements JsonSerializable
     }
 
     /**
+     * Whether a subschema matches; its errors are thrown away. The path is not: an unfinished check —
+     * the depth limit, a pattern the engine gave up on — is thrown out of here with it, and is the
+     * refusal the caller ends up reporting, so it has to name the value it could not finish.
+     *
      * @param array<string, mixed> $schema
      */
-    private static function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    private static function matchesOpenApiNode(mixed $value, array $schema, string $path, int $depth): bool
     {
-        return self::validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+        return self::validateOpenApiNode($value, $schema, $path, $depth) === [];
     }
 
     private static function matchesOpenApiCallbackType(mixed $value, mixed $type): bool
@@ -11446,7 +11450,7 @@ final class ApplicatorRefsConditional implements JsonSerializable
         }
 
         if (is_array($schema['if'] ?? null)) {
-            if (self::matchesOpenApiNode($value, $schema['if'], $depth + 1)) {
+            if (self::matchesOpenApiNode($value, $schema['if'], $path, $depth + 1)) {
                 if (is_array($schema['then'] ?? null)) {
                     $errors = [...$errors, ...self::validateOpenApiNode($value, $schema['then'], $path, $depth + 1)];
                 }
@@ -11459,11 +11463,15 @@ final class ApplicatorRefsConditional implements JsonSerializable
     }
 
     /**
+     * Whether a subschema matches; its errors are thrown away. The path is not: an unfinished check —
+     * the depth limit, a pattern the engine gave up on — is thrown out of here with it, and is the
+     * refusal the caller ends up reporting, so it has to name the value it could not finish.
+     *
      * @param array<string, mixed> $schema
      */
-    private static function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    private static function matchesOpenApiNode(mixed $value, array $schema, string $path, int $depth): bool
     {
-        return self::validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+        return self::validateOpenApiNode($value, $schema, $path, $depth) === [];
     }
 
     private static function matchesOpenApiCallbackType(mixed $value, mixed $type): bool
@@ -12527,7 +12535,7 @@ final class ApplicatorRefsPoisonedKey implements JsonSerializable
             }
         }
 
-        if (is_array($schema['not'] ?? null) && self::matchesOpenApiNode($value, $schema['not'], $depth + 1)) {
+        if (is_array($schema['not'] ?? null) && self::matchesOpenApiNode($value, $schema['not'], $path, $depth + 1)) {
             $errors[] = sprintf('%s must not match the \'not\' schema', $path);
         }
 
@@ -12535,11 +12543,15 @@ final class ApplicatorRefsPoisonedKey implements JsonSerializable
     }
 
     /**
+     * Whether a subschema matches; its errors are thrown away. The path is not: an unfinished check —
+     * the depth limit, a pattern the engine gave up on — is thrown out of here with it, and is the
+     * refusal the caller ends up reporting, so it has to name the value it could not finish.
+     *
      * @param array<string, mixed> $schema
      */
-    private static function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    private static function matchesOpenApiNode(mixed $value, array $schema, string $path, int $depth): bool
     {
-        return self::validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+        return self::validateOpenApiNode($value, $schema, $path, $depth) === [];
     }
 
     private static function normalizeOpenApiStructuralValue(mixed $value): mixed
@@ -16626,7 +16638,7 @@ final class Containers implements JsonSerializable
         }
 
         if (is_array($schema['if'] ?? null)) {
-            if (self::matchesOpenApiNode($value, $schema['if'], $depth + 1)) {
+            if (self::matchesOpenApiNode($value, $schema['if'], $path, $depth + 1)) {
                 if (is_array($schema['then'] ?? null)) {
                     $errors = [...$errors, ...self::validateOpenApiNode($value, $schema['then'], $path, $depth + 1)];
                 }
@@ -16690,11 +16702,15 @@ final class Containers implements JsonSerializable
     }
 
     /**
+     * Whether a subschema matches; its errors are thrown away. The path is not: an unfinished check —
+     * the depth limit, a pattern the engine gave up on — is thrown out of here with it, and is the
+     * refusal the caller ends up reporting, so it has to name the value it could not finish.
+     *
      * @param array<string, mixed> $schema
      */
-    private static function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    private static function matchesOpenApiNode(mixed $value, array $schema, string $path, int $depth): bool
     {
-        return self::validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+        return self::validateOpenApiNode($value, $schema, $path, $depth) === [];
     }
 
     private static function matchesOpenApiCallbackType(mixed $value, mixed $type): bool
@@ -19139,14 +19155,13 @@ final class ItemBounds implements JsonSerializable
                     restore_error_handler();
                 }
 
-                if ($match === false) {
-                    throw new OverflowException(match (true) {
-                        preg_last_error() === PREG_BAD_UTF8_ERROR => sprintf('%s contains invalid UTF-8 characters', $path),
-                        preg_last_error() === PREG_INTERNAL_ERROR => sprintf('%s has invalid regex pattern in schema: %s', $path, $pattern),
-                        default => sprintf('%s could not be checked: the regex engine gave up on pattern %s', $path, $pattern),
-                    });
-                }
-                if ($match !== 1) {
+                if ($match === false && preg_last_error() === PREG_INTERNAL_ERROR) {
+                    $errors[] = sprintf('%s has invalid regex pattern in schema: %s', $path, $pattern);
+                } elseif ($match === false) {
+                    throw new OverflowException(preg_last_error() === PREG_BAD_UTF8_ERROR
+                        ? sprintf('%s contains invalid UTF-8 characters', $path)
+                        : sprintf('%s could not be checked: the regex engine gave up on pattern %s', $path, $pattern));
+                } elseif ($match !== 1) {
                     $errors[] = sprintf('%s must match pattern %s', $path, $pattern);
                 }
             }
@@ -21146,12 +21161,12 @@ final class ObjectWideRules implements JsonSerializable
             }
         }
 
-        if (is_array($schema['not'] ?? null) && self::matchesOpenApiNode($value, $schema['not'], $depth + 1)) {
+        if (is_array($schema['not'] ?? null) && self::matchesOpenApiNode($value, $schema['not'], $path, $depth + 1)) {
             $errors[] = sprintf('%s must not match the \'not\' schema', $path);
         }
 
         if (is_array($schema['if'] ?? null)) {
-            if (self::matchesOpenApiNode($value, $schema['if'], $depth + 1)) {
+            if (self::matchesOpenApiNode($value, $schema['if'], $path, $depth + 1)) {
                 if (is_array($schema['then'] ?? null)) {
                     $errors = [...$errors, ...self::validateOpenApiNode($value, $schema['then'], $path, $depth + 1)];
                 }
@@ -21164,11 +21179,15 @@ final class ObjectWideRules implements JsonSerializable
     }
 
     /**
+     * Whether a subschema matches; its errors are thrown away. The path is not: an unfinished check —
+     * the depth limit, a pattern the engine gave up on — is thrown out of here with it, and is the
+     * refusal the caller ends up reporting, so it has to name the value it could not finish.
+     *
      * @param array<string, mixed> $schema
      */
-    private static function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    private static function matchesOpenApiNode(mixed $value, array $schema, string $path, int $depth): bool
     {
-        return self::validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+        return self::validateOpenApiNode($value, $schema, $path, $depth) === [];
     }
 
     private static function matchesOpenApiCallbackType(mixed $value, mixed $type): bool
@@ -24130,11 +24149,15 @@ final class Test2 implements JsonSerializable
     }
 
     /**
+     * Whether a subschema matches; its errors are thrown away. The path is not: an unfinished check —
+     * the depth limit, a pattern the engine gave up on — is thrown out of here with it, and is the
+     * refusal the caller ends up reporting, so it has to name the value it could not finish.
+     *
      * @param array<string, mixed> $schema
      */
-    private static function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    private static function matchesOpenApiNode(mixed $value, array $schema, string $path, int $depth): bool
     {
-        return self::validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+        return self::validateOpenApiNode($value, $schema, $path, $depth) === [];
     }
 
     /**
@@ -25602,11 +25625,15 @@ final class TestPostRequest implements JsonSerializable
     }
 
     /**
+     * Whether a subschema matches; its errors are thrown away. The path is not: an unfinished check —
+     * the depth limit, a pattern the engine gave up on — is thrown out of here with it, and is the
+     * refusal the caller ends up reporting, so it has to name the value it could not finish.
+     *
      * @param array<string, mixed> $schema
      */
-    private static function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    private static function matchesOpenApiNode(mixed $value, array $schema, string $path, int $depth): bool
     {
-        return self::validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+        return self::validateOpenApiNode($value, $schema, $path, $depth) === [];
     }
 
     /**
@@ -26613,11 +26640,15 @@ final class TreeNode implements JsonSerializable
     }
 
     /**
+     * Whether a subschema matches; its errors are thrown away. The path is not: an unfinished check —
+     * the depth limit, a pattern the engine gave up on — is thrown out of here with it, and is the
+     * refusal the caller ends up reporting, so it has to name the value it could not finish.
+     *
      * @param array<string, mixed> $schema
      */
-    private static function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    private static function matchesOpenApiNode(mixed $value, array $schema, string $path, int $depth): bool
     {
-        return self::validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+        return self::validateOpenApiNode($value, $schema, $path, $depth) === [];
     }
 
     /**
@@ -27769,11 +27800,15 @@ final class UnionUnderContainer implements JsonSerializable
     }
 
     /**
+     * Whether a subschema matches; its errors are thrown away. The path is not: an unfinished check —
+     * the depth limit, a pattern the engine gave up on — is thrown out of here with it, and is the
+     * refusal the caller ends up reporting, so it has to name the value it could not finish.
+     *
      * @param array<string, mixed> $schema
      */
-    private static function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    private static function matchesOpenApiNode(mixed $value, array $schema, string $path, int $depth): bool
     {
-        return self::validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+        return self::validateOpenApiNode($value, $schema, $path, $depth) === [];
     }
 
     /**
@@ -29110,11 +29145,15 @@ final class User implements JsonSerializable
     }
 
     /**
+     * Whether a subschema matches; its errors are thrown away. The path is not: an unfinished check —
+     * the depth limit, a pattern the engine gave up on — is thrown out of here with it, and is the
+     * refusal the caller ends up reporting, so it has to name the value it could not finish.
+     *
      * @param array<string, mixed> $schema
      */
-    private static function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    private static function matchesOpenApiNode(mixed $value, array $schema, string $path, int $depth): bool
     {
-        return self::validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+        return self::validateOpenApiNode($value, $schema, $path, $depth) === [];
     }
 
     /**

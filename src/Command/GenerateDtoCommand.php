@@ -119,6 +119,25 @@ final class GenerateDtoCommand extends Command
     private array $requestBodyMediaTypes = [];
 
     /**
+     * Request bodies that name no class of their own — a `$ref`, or any schema that is not an inline
+     * `type: object` — with the media type each is declared under. Which class such a body arrives
+     * as is only known once aliases are redirected, so they are attributed then; see
+     * `attributeReferencedRequestBodies()`.
+     *
+     * @var list<array{schema: array<mixed>, mediaType: string}>
+     */
+    private array $referencedRequestBodies = [];
+
+    /**
+     * The root document's `components.schemas`, as written — what a body's local `$ref` is resolved
+     * against when it is attributed. Kept because a root component that only points into another
+     * file is never registered under its own name.
+     *
+     * @var array<mixed>
+     */
+    private array $requestBodyComponents = [];
+
+    /**
      * The subset of {@see $requestPayloadClasses} built from an operation's PARAMETERS. Their values come
      * from the path, query, headers and cookies — never from the JSON body — so nothing read off the raw
      * body may be checked against them.
@@ -138,13 +157,6 @@ final class GenerateDtoCommand extends Command
 
     /** How many nodes each byte of YAML text may expand to through aliases — see `parseSpecFile()`. */
     private const int DOCUMENT_NODES_PER_BYTE = 4;
-
-    /**
-     * The deepest flow nesting a YAML document may have — see `YamlFlowDepth`. symfony/yaml refuses
-     * anything past 128 levels on its own; this is the guard for the depth at which its lexer crashes
-     * before it can, set well above the first and far below the second.
-     */
-    private const int MAX_YAML_FLOW_DEPTH = 512;
 
     /** Generation mode emitting Symfony Validator/Serializer attributes (no library runtime). */
     public const string ATTRIBUTE_MODE_SYMFONY = 'symfony';
@@ -1035,14 +1047,15 @@ final class GenerateDtoCommand extends Command
             }
         }
 
-        // Measured on the text, before the parser sees it: past a few thousand levels it is the parser's
-        // recursion that kills the process, and a dead process reports nothing at all.
+        // Tried in a child process first, where it can: deep flow nesting makes the parser's recursion
+        // kill the process, and a dead process reports nothing at all.
         $text = @file_get_contents($filePath);
-        if (is_string($text) && YamlFlowDepth::measure(yaml: $text, limit: self::MAX_YAML_FLOW_DEPTH) > self::MAX_YAML_FLOW_DEPTH) {
+        $crashStatus = is_string($text) ? (new YamlParserProbe())->crashStatus(filePath: $filePath, text: $text) : null;
+        if ($crashStatus !== null) {
             throw new RuntimeException(message: sprintf(
-                '%s nests flow collections ([ ] or { }) more than %d levels deep; the YAML parser would crash on it. Nothing was generated.',
+                '%s crashed the YAML parser (status %d), as a document that nests flow collections ([ ] or { }) thousands of levels deep does. Nothing was generated.',
                 $filePath,
-                self::MAX_YAML_FLOW_DEPTH,
+                $crashStatus,
             ));
         }
 
@@ -1441,12 +1454,24 @@ final class GenerateDtoCommand extends Command
             return $map[$canonical];
         }
 
+        // `realpath()` keeps the case it was given, so on a filesystem that folds case `../SHARED/x.yaml`
+        // reaches the mapped `shared` under letters no key starts with. A key is judged by the file or
+        // directory it names, by inode, the way `assertReferenceReadable()` judges the root tree: a
+        // comparison of letters refused the read, and before that guard put the class below
+        // `--directory`, in a namespace spelled after the reference.
+        $publisher = new GeneratedFilePublisher();
+        foreach ($map as $key => $value) {
+            if (!$this->isRefMask($key) && is_file($key) && $this->isSameFile(path: $canonical, other: $key)) {
+                return $value;
+            }
+        }
+
         $deepest = null;
         foreach ($map as $key => $value) {
             if (
                 !$this->isRefMask($key)
                 && is_dir($key)
-                && str_starts_with($canonical, $key . DIRECTORY_SEPARATOR)
+                && $publisher->isWithin(path: $canonical, directory: $key)
                 && ($deepest === null || strlen($key) > strlen($deepest))
             ) {
                 $deepest = $key;
@@ -1472,6 +1497,21 @@ final class GenerateDtoCommand extends Command
         }
 
         return $matched === [] ? null : reset($matched);
+    }
+
+    /**
+     * Whether two paths name one file: by device and inode, or — where the filesystem reports no
+     * inode — by the path itself.
+     */
+    private function isSameFile(string $path, string $other): bool
+    {
+        $pathStat = @stat($path);
+        $otherStat = @stat($other);
+        if ($pathStat === false || $otherStat === false || $pathStat['ino'] === 0) {
+            return $path === $other;
+        }
+
+        return $pathStat['dev'] === $otherStat['dev'] && $pathStat['ino'] === $otherStat['ino'];
     }
 
     /**
@@ -1680,6 +1720,8 @@ final class GenerateDtoCommand extends Command
         $this->generationWarnings = [];
         $this->requestPayloadClasses = [];
         $this->requestBodyMediaTypes = [];
+        $this->referencedRequestBodies = [];
+        $this->requestBodyComponents = [];
         $this->parameterPayloadClasses = [];
         $this->parentClasses = [];
         $this->unionInterfacesByClass = [];
@@ -2026,6 +2068,7 @@ final class GenerateDtoCommand extends Command
     private function finalizeGeneration(): int
     {
         $this->redirectPureAliasReferences();
+        $this->attributeReferencedRequestBodies();
         $this->expandNestedSchemas();
         $this->inlineNullSchemaReferences();
         $this->resolvePendingAllOfDiscriminators();
@@ -9247,6 +9290,7 @@ final class GenerateDtoCommand extends Command
 
         $inlineSchemas = [];
         $inlineOwners = [];
+        $this->requestBodyComponents = $this->extractSchemas($openApi);
 
         foreach ($paths as $path => $pathItem) {
             foreach ($pathItem as $method => $operation) {
@@ -9286,12 +9330,18 @@ final class GenerateDtoCommand extends Command
                         $referencedSchema = $this->externalPointerSchemaName($bodyRef);
                         if ($referencedSchema !== null) {
                             $this->requestPayloadClasses[$this->schemaClassName($referencedSchema)] = true;
-                            $this->recordRequestBodyMediaType(className: $this->schemaClassName($referencedSchema), mediaType: $mediaType);
                         }
-                        continue;
                     }
 
-                    if (($schema['type'] ?? null) !== 'object') {
+                    // The class such a body arrives as is not the name it spells: an alias component
+                    // is redirected to what it names, a single-reference `allOf` gets no class at
+                    // all. Recording its media type under the spelled name put a form type on a class
+                    // nobody generates and left the real one marked JSON-only — so it waits until
+                    // the aliases are known.
+                    if (is_string($bodyRef) || ($schema['type'] ?? null) !== 'object') {
+                        if (is_string($mediaType) && $mediaType !== '') {
+                            $this->referencedRequestBodies[] = ['schema' => $schema, 'mediaType' => $mediaType];
+                        }
                         continue;
                     }
 
@@ -9316,6 +9366,161 @@ final class GenerateDtoCommand extends Command
         }
 
         return $inlineSchemas;
+    }
+
+    /**
+     * Gives each request body that names no class of its own to the class actually generated for it:
+     * a `$ref` followed through alias components (a chain of them, one in another file, one that
+     * points back), and a single-reference `allOf` / `oneOf` / `anyOf` unwrapped.
+     *
+     * A body declared under a form or multipart type that cannot be pinned to ONE class — a union of
+     * several, a reference that leads nowhere generated — takes the JSON-only mark off every class it
+     * may arrive as, and when even those are unknown, off every class: wrongly refusing a request the
+     * document allows breaks valid traffic, while a missing mark only keeps the permissive lookup every
+     * class had before the mark existed. A JSON body needs no such care: it adds only a JSON type,
+     * which cannot make a class look JSON-only that is not.
+     */
+    private function attributeReferencedRequestBodies(): void
+    {
+        $uncertain = [];
+        foreach ($this->referencedRequestBodies as $body) {
+            $mediaType = $body['mediaType'];
+            $wrapped = $this->singleReferenceOfBody($body['schema']);
+            $className = $wrapped === null ? null : $this->requestBodyTargetClass($wrapped);
+            if ($className !== null) {
+                $this->recordRequestBodyMediaType(className: $className, mediaType: $mediaType);
+                continue;
+            }
+            if ($this->isJsonMediaTypeName($mediaType)) {
+                continue;
+            }
+            foreach ($this->composedReferencesOfBody($body['schema']) as $reference) {
+                $candidate = $this->requestBodyTargetClass($reference);
+                if ($candidate === null) {
+                    $this->requestBodyMediaTypes = [];
+
+                    return;
+                }
+                $uncertain[$candidate] = true;
+            }
+        }
+
+        $attributed = [];
+        foreach ($this->requestBodyMediaTypes as $className => $mediaTypes) {
+            if (!array_key_exists($className, $uncertain)) {
+                $attributed[$className] = $mediaTypes;
+            }
+        }
+        $this->requestBodyMediaTypes = $attributed;
+    }
+
+    /**
+     * The one `$ref` a body consists of: plain (whatever stands beside it, the class is still the one
+     * it names), or wrapped in a single-member `allOf` / `oneOf` / `anyOf` with nothing but annotations
+     * beside the wrapper. Null for any other shape.
+     *
+     * @param array<mixed> $schema
+     */
+    private function singleReferenceOfBody(array $schema): ?string
+    {
+        $ref = $schema['$ref'] ?? null;
+        if (is_string($ref)) {
+            return $ref;
+        }
+
+        $wrapper = null;
+        foreach (array_keys($schema) as $keyword) {
+            if (in_array($keyword, ['allOf', 'oneOf', 'anyOf'], true) && $wrapper === null) {
+                $wrapper = $keyword;
+                continue;
+            }
+            if (!in_array($keyword, self::ALIAS_ANNOTATION_KEYWORDS, true) && !str_starts_with((string)$keyword, 'x-')) {
+                return null;
+            }
+        }
+        $members = $wrapper === null ? null : $schema[$wrapper];
+        if (!is_array($members) || count($members) !== 1 || !is_array($members[0] ?? null)) {
+            return null;
+        }
+
+        return $this->singleReferenceOfBody($members[0]);
+    }
+
+    /**
+     * Every `$ref` a body may arrive as: its own, and those of its `allOf` / `oneOf` / `anyOf` members
+     * at any depth. A reference under a property names a nested value, not the body's class.
+     *
+     * @param array<mixed> $schema
+     * @return list<string>
+     */
+    private function composedReferencesOfBody(array $schema): array
+    {
+        $references = [];
+        $ref = $schema['$ref'] ?? null;
+        if (is_string($ref)) {
+            $references[] = $ref;
+        }
+        foreach (['allOf', 'oneOf', 'anyOf'] as $keyword) {
+            $members = $schema[$keyword] ?? null;
+            if (!is_array($members)) {
+                continue;
+            }
+            foreach ($members as $member) {
+                if (is_array($member)) {
+                    $references = [...$references, ...$this->composedReferencesOfBody($member)];
+                }
+            }
+        }
+
+        return $references;
+    }
+
+    /**
+     * The generated class a body `$ref` of the root document arrives as, followed through every alias
+     * that gets no class of its own: a local one (`redirectPureAliasReferences()`) and one that only
+     * points into another file. Null when the chain ends anywhere but at a registered component.
+     */
+    private function requestBodyTargetClass(string $ref): ?string
+    {
+        $sourceFile = $this->rootSpecFile;
+        $prefix = '#/components/schemas/';
+        // Bounded: a chain of aliases that loops back on itself names no class.
+        for ($hop = 0; $hop < 64; ++$hop) {
+            $ref = $this->stripDocumentSelfPrefix($ref);
+            if (!str_starts_with($ref, $prefix)) {
+                $resolved = $this->resolveExternalSchemaPointer(ref: $ref, currentSourceFile: $sourceFile);
+                if ($resolved === null) {
+                    return null;
+                }
+                [$sourceFile, $ref] = $resolved;
+            }
+            $schemaName = $this->externalPointerSchemaName($ref);
+            if ($schemaName === null) {
+                return null;
+            }
+            $definition = $sourceFile === null || $sourceFile === $this->rootSpecFile
+                ? ($this->requestBodyComponents[$schemaName] ?? null)
+                : ($this->externalSchemasOf($sourceFile)[$schemaName] ?? null);
+            if (!is_array($definition)) {
+                return null;
+            }
+
+            $className = $this->schemaClassName($schemaName);
+            $next = null;
+            if ($this->isPureExternalSchemaAlias($definition)) {
+                $next = $definition['$ref'];
+            } elseif (array_key_exists($className, $this->pureAliasClasses)) {
+                $next = $this->pureAliasTarget($definition);
+            }
+            if (!is_string($next)) {
+                return array_key_exists($className, $this->dtoSchemas) || array_key_exists($className, $this->enumSchemas)
+                    ? $className
+                    : null;
+            }
+            $ref = $next;
+        }
+
+        return null;
     }
 
     private function recordRequestBodyMediaType(string $className, mixed $mediaType): void
@@ -10985,7 +11190,7 @@ final class GenerateDtoCommand extends Command
 
     /**
      * Resolves the OpenAPI `explode` flag. The spec default is `true` only when the
-     * style is `form`, and `false` for every other style.
+     * style is `form` or OAS 3.2's `cookie`, and `false` for every other style.
      *
      * @param array<string, mixed> $parameter
      */
@@ -11002,7 +11207,7 @@ final class GenerateDtoCommand extends Command
             return $this->toBoolean($parameter['explode']);
         }
 
-        return $style === 'form';
+        return $style === 'form' || $style === 'cookie';
     }
 
     private function toBoolean(mixed $value): bool

@@ -2325,17 +2325,21 @@ final class DtoValidatorTest extends TestCase
         $this->assertSame([], $this->validator->validate('f', 'b', ['not' => ['pattern' => '^(a+)+$']]));
     }
 
-    public function testNotPatternRefusesAnUnreadableSubjectAndABrokenPattern(): void
+    public function testNotPatternRefusesAnUnreadableSubjectButNotABrokenPattern(): void
     {
-        // The other two ways `preg_match()` answers false: neither says the value is outside the
-        // `not` schema, so neither may pass it.
+        // A subject the match never ran on says nothing about the `not` schema, so it may not pass.
         $this->assertSame(
             expected: ['f contains invalid UTF-8 characters.'],
             actual: $this->validator->validate('f', "\xFF\xFE", ['not' => ['pattern' => '^[0-9]+$']]),
         );
+        // A pattern PCRE cannot compile is the document's, the same for every value: it matches
+        // nothing, so `not` holds, as it did before run-time failures refused. Refusing it turned a
+        // valid ECMA-262 pattern PCRE lacks (an unbounded lookbehind) into a refusal of every string.
+        $this->assertSame([], $this->validator->validate('f', 'abc', ['not' => ['pattern' => '(']]));
+        $this->assertSame([], $this->validator->validate('f', 'xyz', ['not' => ['pattern' => '(?<=a+)b']]));
         $this->assertSame(
             expected: ['f has invalid regex pattern in schema: (.'],
-            actual: $this->validator->validate('f', 'abc', ['not' => ['pattern' => '(']]),
+            actual: $this->validator->validate('f', 'abc', ['pattern' => '(']),
         );
     }
 

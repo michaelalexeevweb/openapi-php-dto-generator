@@ -460,6 +460,127 @@ final class HostileRequestTest extends TestCase
         $this->assertSame('{"name":"ab"}', $dto->toJson());
     }
 
+    #[DataProvider('formBodySpellingProvider')]
+    public function testFormBodyInAnySpellingIsStillFilledFromFormFields(string $class, string $contentType): void
+    {
+        $namespace = $this->generateBodiesInManySpellings();
+
+        $form = Request::create(
+            uri: '/any',
+            method: 'POST',
+            parameters: ['name' => 'ab', 'shape' => 'round'],
+            server: ['CONTENT_TYPE' => $contentType],
+            content: 'name=ab&shape=round',
+        );
+        $dto = (new DtoDeserializer())->deserialize($form, $namespace . '\\' . $class);
+        $this->assertSame(expected: '{"name":"ab","shape":"round"}', actual: $dto->toJson(), message: $class);
+
+        $json = Request::create(
+            uri: '/any',
+            method: 'POST',
+            server: ['CONTENT_TYPE' => 'application/json'],
+            content: '{"name":"ab"}',
+        );
+        $this->assertSame(expected: '{"name":"ab"}', actual: (new DtoDeserializer())->deserialize($json, $namespace . '\\' . $class)->toJson(), message: $class);
+    }
+
+    /**
+     * A form body may name its class in any spelling that collapses into the class a JSON body names
+     * directly: an alias component, a chain of them, a single-reference `allOf` / `oneOf` / `anyOf`, a
+     * `$ref` with a `description` beside it, a pointer into another file. Whatever the spelling, the
+     * class generated for that body is one the document also lets arrive as form fields, so the form
+     * fields keep filling it — and the JSON body keeps filling it too.
+     *
+     * @return iterable<string, array{string, string}>
+     */
+    public static function formBodySpellingProvider(): iterable
+    {
+        yield 'direct $ref' => ['Sprocket', 'application/x-www-form-urlencoded'];
+        yield 'alias component' => ['Alpha', 'application/x-www-form-urlencoded'];
+        yield 'alias chain' => ['Beta', 'application/x-www-form-urlencoded'];
+        yield 'allOf wrapper' => ['Gamma', 'application/x-www-form-urlencoded'];
+        yield 'oneOf wrapper' => ['Delta', 'application/x-www-form-urlencoded'];
+        yield 'anyOf wrapper' => ['Epsilon', 'application/x-www-form-urlencoded'];
+        yield '$ref with a description' => ['Zeta', 'application/x-www-form-urlencoded'];
+        yield 'external alias back into the root document' => ['Eta', 'application/x-www-form-urlencoded'];
+        yield 'external component through its own alias' => ['Theta', 'application/x-www-form-urlencoded'];
+        yield 'multipart through an alias' => ['Iota', 'multipart/form-data; boundary=x'];
+        yield 'form beside json on one operation' => ['Kappa', 'application/x-www-form-urlencoded'];
+        yield 'one of several form branches' => ['Mu', 'application/x-www-form-urlencoded'];
+        yield 'the other form branch' => ['Nu', 'application/x-www-form-urlencoded'];
+    }
+
+    #[DataProvider('jsonOnlySpellingProvider')]
+    public function testClassReachedOnlyByJsonBodiesStillRefusesQueryAndFormFields(string $class): void
+    {
+        $namespace = $this->generateBodiesInManySpellings();
+
+        $query = Request::create(uri: '/any?name=ab&shape=round', method: 'POST');
+        $this->assertRefused(request: $query, class: $namespace . '\\' . $class, message: 'Required parameter "name" not found');
+
+        foreach (['application/x-www-form-urlencoded', 'multipart/form-data; boundary=x'] as $contentType) {
+            $form = Request::create(
+                uri: '/any',
+                method: 'POST',
+                parameters: ['name' => 'ab', 'shape' => 'round'],
+                server: ['CONTENT_TYPE' => $contentType],
+                content: 'name=ab&shape=round',
+            );
+            $this->assertRefused(request: $form, class: $namespace . '\\' . $class, message: 'Required parameter "name" not found');
+        }
+
+        $json = Request::create(
+            uri: '/any?shape=square',
+            method: 'POST',
+            server: ['CONTENT_TYPE' => 'application/json'],
+            content: '{"name":"ab"}',
+        );
+        $this->assertSame(expected: '{"name":"ab"}', actual: (new DtoDeserializer())->deserialize($json, $namespace . '\\' . $class)->toJson(), message: $class);
+    }
+
+    /**
+     * The other half: a class every operation names under a JSON type only — directly, through an
+     * alias, through a single-reference wrapper or through another file — still refuses the query
+     * string and the form fields, while its JSON body is read as before. A component of another file
+     * is attributed like a local one: before, a pointer into another file recorded nothing, so its
+     * class took form fields no operation declared.
+     *
+     * @return iterable<string, array{string}>
+     */
+    public static function jsonOnlySpellingProvider(): iterable
+    {
+        yield 'local component' => ['Lambda'];
+        yield 'component of another file' => ['Omicron'];
+    }
+
+    /**
+     * A form body whose class cannot be found — here a pointer INTO a component, which generates no
+     * class of its own — might arrive as any class, so none is marked JSON-only: refusing a form the
+     * document allows breaks valid traffic, and the unmarked class keeps the lookup it always had.
+     */
+    public function testUnattributableFormBodyLeavesEveryClassPermissive(): void
+    {
+        $inner = ['type' => 'object', 'properties' => ['name' => ['type' => 'string']]];
+        $namespace = $this->generate(openApi: [
+            'paths' => [
+                '/widgets' => ['post' => [
+                    'requestBody' => ['content' => ['application/json' => ['schema' => ['$ref' => '#/components/schemas/Widget']]]],
+                    'responses' => ['200' => ['description' => 'ok']],
+                ]],
+                '/widgets/inner' => ['post' => [
+                    'requestBody' => ['content' => ['application/x-www-form-urlencoded' => ['schema' => ['$ref' => '#/components/schemas/Widget/properties/inner']]]],
+                    'responses' => ['200' => ['description' => 'ok']],
+                ]],
+            ],
+            'components' => ['schemas' => [
+                'Widget' => ['type' => 'object', 'required' => ['name'], 'properties' => ['name' => ['type' => 'string'], 'inner' => $inner]],
+            ]],
+        ]);
+
+        $dto = $this->deserializeForm(class: $namespace . '\Widget', body: 'name=ab', fields: ['name' => 'ab']);
+        $this->assertSame(expected: '{"name":"ab"}', actual: $dto->toJson());
+    }
+
     // --- a pattern the regex engine gives up on, inside the objects of a list ------------------
 
     /**
@@ -808,6 +929,109 @@ final class HostileRequestTest extends TestCase
                 'Loose' => $fields,
             ]],
         ]);
+    }
+
+    /**
+     * Each class from Alpha to Nu is named by one JSON body directly and by one form body in another
+     * spelling; Lambda and Omicron are named by JSON bodies only, in every spelling. Written to files,
+     * because a pointer into another document is one of the spellings.
+     */
+    private function generateBodiesInManySpellings(): string
+    {
+        $fields = ['type' => 'object', 'required' => ['name'], 'properties' => ['name' => ['type' => 'string'], 'shape' => ['type' => 'string']]];
+        $form = 'application/x-www-form-urlencoded';
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $post = static fn(array $content): array => ['post' => [
+            'requestBody' => ['content' => $content],
+            'responses' => ['200' => ['description' => 'ok']],
+        ]];
+
+        $directory = $this->root . '/spec' . bin2hex(random_bytes(4));
+        mkdir($directory);
+        file_put_contents($directory . '/other.json', (string)json_encode([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'Other', 'version' => '1.0.0'],
+            'paths' => [],
+            'components' => ['schemas' => [
+                'Etaalias' => ['$ref' => 'main.json#/components/schemas/Eta'],
+                'Theta' => $fields,
+                'Thetaalias' => $ref('Theta'),
+                'Omicron' => $fields,
+                'Omicronalias' => $ref('Omicron'),
+            ]],
+        ]));
+        file_put_contents($directory . '/main.json', (string)json_encode([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'Spellings', 'version' => '1.0.0'],
+            'paths' => [
+                '/sprockets' => $post(['application/json' => ['schema' => $ref('Sprocket')]]),
+                '/sprockets/form' => $post([$form => ['schema' => $ref('Sprocket')]]),
+                '/alpha' => $post(['application/json' => ['schema' => $ref('Alpha')]]),
+                '/alpha/form' => $post([$form => ['schema' => $ref('AlphaAlias')]]),
+                '/beta' => $post(['application/json' => ['schema' => $ref('Beta')]]),
+                '/beta/form' => $post([$form => ['schema' => $ref('BetaOuter')]]),
+                '/gamma' => $post(['application/json' => ['schema' => $ref('Gamma')]]),
+                '/gamma/form' => $post([$form => ['schema' => ['allOf' => [$ref('Gamma')]]]]),
+                '/delta' => $post(['application/json' => ['schema' => $ref('Delta')]]),
+                '/delta/form' => $post([$form => ['schema' => ['oneOf' => [$ref('Delta')]]]]),
+                '/epsilon' => $post(['application/json' => ['schema' => $ref('Epsilon')]]),
+                '/epsilon/form' => $post([$form => ['schema' => ['anyOf' => [$ref('Epsilon')], 'description' => 'One epsilon.']]]),
+                '/zeta' => $post(['application/json' => ['schema' => $ref('Zeta')]]),
+                '/zeta/form' => $post([$form => ['schema' => [...$ref('Zeta'), 'description' => 'One zeta.']]]),
+                '/eta' => $post(['application/json' => ['schema' => $ref('Eta')]]),
+                '/eta/form' => $post([$form => ['schema' => ['$ref' => 'other.json#/components/schemas/Etaalias']]]),
+                '/theta' => $post(['application/json' => ['schema' => ['$ref' => 'other.json#/components/schemas/Theta']]]),
+                '/theta/form' => $post([$form => ['schema' => ['$ref' => 'other.json#/components/schemas/Thetaalias']]]),
+                '/iota' => $post(['application/json' => ['schema' => $ref('Iota')]]),
+                '/iota/form' => $post(['multipart/form-data' => ['schema' => $ref('IotaAlias')]]),
+                '/kappa' => $post(['application/json' => ['schema' => $ref('Kappa')], $form => ['schema' => $ref('KappaAlias')]]),
+                '/mu' => $post(['application/json' => ['schema' => $ref('Mu')]]),
+                '/nu' => $post(['application/json' => ['schema' => $ref('Nu')]]),
+                '/either/form' => $post([$form => ['schema' => ['oneOf' => [$ref('Mu'), $ref('Nu')]]]]),
+                '/lambda' => $post(['application/json' => ['schema' => $ref('Lambda')]]),
+                '/lambda/alias' => $post(['application/merge-patch+json' => ['schema' => $ref('LambdaAlias')]]),
+                '/lambda/wrapped' => $post(['application/json' => ['schema' => ['allOf' => [$ref('LambdaAlias')]]]]),
+                '/omicron' => $post(['application/json' => ['schema' => ['$ref' => 'other.json#/components/schemas/Omicron']]]),
+                '/omicron/alias' => $post(['application/json' => ['schema' => ['$ref' => 'other.json#/components/schemas/Omicronalias']]]),
+            ],
+            'components' => ['schemas' => [
+                'Sprocket' => $fields,
+                'Alpha' => $fields,
+                'AlphaAlias' => $ref('Alpha'),
+                'Beta' => $fields,
+                'BetaInner' => $ref('Beta'),
+                'BetaOuter' => $ref('BetaInner'),
+                'Gamma' => $fields,
+                'Delta' => $fields,
+                'Epsilon' => $fields,
+                'Zeta' => $fields,
+                'Eta' => $fields,
+                'Iota' => $fields,
+                'IotaAlias' => $ref('Iota'),
+                'Kappa' => $fields,
+                'KappaAlias' => $ref('Kappa'),
+                'Mu' => $fields,
+                'Nu' => $fields,
+                'Lambda' => $fields,
+                'LambdaAlias' => $ref('Lambda'),
+            ]],
+        ]));
+
+        $namespace = 'Hostile' . bin2hex(random_bytes(8));
+        $output = $this->root . '/' . $namespace;
+        (new GenerateDtoCommand())->generateFromFile(
+            filePath: $directory . '/main.json',
+            outputDirectory: $output,
+            namespace: $namespace,
+        );
+        spl_autoload_register(static function (string $class) use ($namespace, $output): void {
+            $file = $output . '/' . str_replace('\\', '/', substr($class, strlen($namespace) + 1)) . '.php';
+            if (str_starts_with($class, $namespace . '\\') && is_file($file)) {
+                require_once $file;
+            }
+        });
+
+        return $namespace;
     }
 
     /**

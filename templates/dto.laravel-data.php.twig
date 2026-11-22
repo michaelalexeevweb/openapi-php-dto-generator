@@ -477,8 +477,11 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
     {
         $validator->after(static function ({{ validatorRef }} $validator): void {
 {% if interpreterMethodsBlock is not empty %}
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema and the
+            // client name them literally, and an error under a dotted map key was reported at a random
+            // `__dot__…` path. Laravel mode undoes them the same way.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {

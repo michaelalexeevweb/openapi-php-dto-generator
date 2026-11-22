@@ -1160,7 +1160,7 @@ PHP;
 
         // anyOf — the value must satisfy at least one branch.
         $anyOf = $constraints['anyOf'] ?? null;
-        if (is_array($anyOf) && count($anyOf) >= 2) {
+        if (is_array($anyOf) && count($anyOf) >= 2 && !$this->anyOfBranchCarriesPattern($anyOf)) {
             $branches = [];
             $allBranchesValidatable = true;
             foreach ($anyOf as $branch) {
@@ -1707,6 +1707,9 @@ PHP;
         if (is_array($constraints['oneOf'] ?? null)) {
             return true;
         }
+        if (is_array($constraints['anyOf'] ?? null) && $this->anyOfBranchCarriesPattern($constraints['anyOf'])) {
+            return true;
+        }
 
         if (
             is_string($constraints['contentEncoding'] ?? null)
@@ -1735,6 +1738,26 @@ PHP;
         return is_string($constraints['pattern'] ?? null)
             && $constraints['pattern'] !== ''
             && !$this->patternCompiles($constraints['pattern']);
+    }
+
+    /**
+     * Whether a property-level `anyOf` has a branch with a document `pattern`. Such an `anyOf` is the
+     * callback's, not `Assert\AtLeastOneOf`'s: Symfony's `Regex` reads a pattern the engine gave up on
+     * as a plain mismatch and moves on to the next branch, so a value that could not be checked was
+     * accepted by a sibling — where every other mode refuses it, and where the interpreter tells an
+     * engine failure (refused) from a pattern PCRE cannot compile (a failed branch, as before).
+     *
+     * @param array<mixed> $branches
+     */
+    private function anyOfBranchCarriesPattern(array $branches): bool
+    {
+        foreach ($branches as $branch) {
+            if (is_array($branch) && is_string($branch['pattern'] ?? null) && $branch['pattern'] !== '') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

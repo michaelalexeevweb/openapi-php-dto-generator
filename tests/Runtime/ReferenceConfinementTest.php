@@ -174,6 +174,99 @@ final class ReferenceConfinementTest extends TestCase
     }
 
     /**
+     * The same for a directory the user mapped: `../SHARED/tints.yaml` reaches the mapped `shared` on a
+     * filesystem that folds case, so it is read — and placed where the mapping says, not below
+     * `--directory` under a namespace made up from the letters of the reference.
+     */
+    #[DataProvider('modes')]
+    public function testMappedDirectorySpelledInAnotherCaseIsReadAndPlacedByTheMapping(GenerationMode $mode): void
+    {
+        $this->writeDocument(path: 'shared/tints.yaml', schemas: ['Tint' => ['type' => 'object', 'properties' => ['hue' => ['type' => 'string']]]]);
+        $this->writeDocument(path: 'spec/zzz.yaml', schemas: ['Holder' => $this->holderOf('../SHARED/tints.yaml#/components/schemas/Tint')]);
+        $foldsCase = file_exists($this->root . '/SHARED/tints.yaml');
+        $namespace = 'Widgets' . $mode->tag();
+
+        $generator = new GenerateDtoCommand();
+        $generator->setExternalRefMappings(
+            refDirectoryPairs: [$this->root . '/shared=' . $this->root . '/gen/Shared=' . $namespace . '\Shared'],
+            refNamespacePairs: [],
+        );
+        try {
+            $generator->generateFromFile(
+                filePath: $this->root . '/spec/zzz.yaml',
+                outputDirectory: $this->root . '/out',
+                namespace: $namespace,
+                mode: $mode->value,
+            );
+            $this->assertTrue($foldsCase, 'Without case folding the reference names no file.');
+        } catch (RuntimeException $exception) {
+            $this->assertFalse($foldsCase, $exception->getMessage());
+            $this->assertStringContainsString(needle: 'Referenced OpenAPI file not found', haystack: $exception->getMessage());
+
+            return;
+        }
+
+        $this->assertSame(expected: ['.', '..', 'Tint.php'], actual: scandir($this->root . '/gen/Shared'));
+        $this->assertStringContainsString(
+            needle: 'namespace ' . $namespace . '\Shared;',
+            haystack: (string)file_get_contents($this->root . '/gen/Shared/Tint.php'),
+        );
+        $this->assertSame(expected: ['.', '..', 'Holder.php'], actual: scandir($this->root . '/out'));
+    }
+
+    /**
+     * A `--ref` key that names one FILE is matched the same way: by the file it names, not its letters.
+     */
+    public function testMappedFileSpelledInAnotherCaseIsPlacedByTheMapping(): void
+    {
+        $this->writeDocument(path: 'shared/tints.yaml', schemas: ['Tint' => ['type' => 'object', 'properties' => ['hue' => ['type' => 'string']]]]);
+        $this->writeDocument(path: 'spec/zzz.yaml', schemas: ['Holder' => $this->holderOf('../shared/TINTS.yaml#/components/schemas/Tint')]);
+        if (!file_exists($this->root . '/shared/TINTS.yaml')) {
+            $this->markTestSkipped('The filesystem does not fold case.');
+        }
+
+        $generator = new GenerateDtoCommand();
+        $generator->setExternalRefMappings(
+            refDirectoryPairs: [$this->root . '/shared/tints.yaml=' . $this->root . '/gen/Tints=Widgets\Tints'],
+            refNamespacePairs: [],
+        );
+        $generator->generateFromFile($this->root . '/spec/zzz.yaml', $this->root . '/out', 'Widgets');
+
+        $this->assertSame(expected: ['.', '..', 'Tint.php'], actual: scandir($this->root . '/gen/Tints'));
+        $this->assertSame(expected: ['.', '..', 'Holder.php'], actual: scandir($this->root . '/out'));
+    }
+
+    /**
+     * Folding case lets a mapped directory in under another spelling, not an unmapped one: `../SECRET`
+     * is still outside, whatever `--ref` maps beside it.
+     */
+    public function testUnmappedDirectorySpelledInAnotherCaseIsStillRefused(): void
+    {
+        $this->writeDecoy();
+        $this->writeDocument(path: 'shared/tints.yaml', schemas: ['Tint' => ['type' => 'object', 'properties' => ['hue' => ['type' => 'string']]]]);
+        $this->writeDocument(path: 'spec/zzz.yaml', schemas: ['Holder' => $this->holderOf('../SECRET/creds.yaml#/components/schemas/Leak')]);
+        $foldsCase = file_exists($this->root . '/SECRET/creds.yaml');
+
+        $generator = new GenerateDtoCommand();
+        $generator->setExternalRefMappings(
+            refDirectoryPairs: [$this->root . '/shared=' . $this->root . '/gen/Shared=Widgets\Shared'],
+            refNamespacePairs: [],
+        );
+        try {
+            $generator->generateFromFile($this->root . '/spec/zzz.yaml', $this->root . '/out', 'Widgets');
+            $this->fail('An unmapped directory must stay refused in any spelling.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString(
+                needle: $foldsCase ? '$ref "../SECRET/creds.yaml#/components/schemas/Leak" leaves' : 'Referenced OpenAPI file not found',
+                haystack: $exception->getMessage(),
+            );
+            $this->assertStringNotContainsString(needle: self::DECOY_TOKEN, haystack: $exception->getMessage());
+        }
+        $this->assertDirectoryDoesNotExist($this->root . '/out');
+        $this->assertDirectoryDoesNotExist($this->root . '/gen');
+    }
+
+    /**
      * The `common` convention swaps the output segment named after the root document for `Common`. The
      * document's file name chose WHICH segment: `api.yaml` against `src/Api/Generated/Petstore` rebased
      * `Api`, two levels above `--directory`, and silently replaced another tree's generated `Money`.

@@ -1,4 +1,4 @@
-# laravel-data mode — 80 files, 21912 lines
+# laravel-data mode — 80 files, 22008 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -5680,8 +5680,11 @@ final class ApplicatorRefs extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema and the
+            // client name them literally, and an error under a dotted map key was reported at a random
+            // `__dot__…` path. Laravel mode undoes them the same way.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -5954,12 +5957,12 @@ final class ApplicatorRefs extends Data
             }
         }
 
-        if (is_array($schema['not'] ?? null) && self::matchesOpenApiNode($value, $schema['not'], $depth + 1)) {
+        if (is_array($schema['not'] ?? null) && self::matchesOpenApiNode($value, $schema['not'], $path, $depth + 1)) {
             $errors[] = sprintf('%s must not match the \'not\' schema', $path);
         }
 
         if (is_array($schema['if'] ?? null)) {
-            if (self::matchesOpenApiNode($value, $schema['if'], $depth + 1)) {
+            if (self::matchesOpenApiNode($value, $schema['if'], $path, $depth + 1)) {
                 if (is_array($schema['then'] ?? null)) {
                     $errors = [...$errors, ...self::validateOpenApiNode($value, $schema['then'], $path, $depth + 1)];
                 }
@@ -6011,7 +6014,7 @@ final class ApplicatorRefs extends Data
         if ($listValue && is_array($schema['contains'] ?? null)) {
             $matchCount = 0;
             foreach ($value as $index => $itemValue) {
-                if (self::matchesOpenApiNode($itemValue, $schema['contains'], $depth + 1)) {
+                if (self::matchesOpenApiNode($itemValue, $schema['contains'], $path . '[' . $index . ']', $depth + 1)) {
                     $matchCount++;
                     $evaluatedItemIndices[$index] = true;
                 }
@@ -6052,11 +6055,15 @@ final class ApplicatorRefs extends Data
     }
 
     /**
+     * Whether a subschema matches; its errors are thrown away. The path is not: an unfinished check —
+     * the depth limit, a pattern the engine gave up on — is thrown out of here with it, and is the
+     * refusal the caller ends up reporting, so it has to name the value it could not finish.
+     *
      * @param array<string, mixed> $schema
      */
-    private static function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    private static function matchesOpenApiNode(mixed $value, array $schema, string $path, int $depth): bool
     {
-        return self::validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+        return self::validateOpenApiNode($value, $schema, $path, $depth) === [];
     }
 
     private static function matchesOpenApiCallbackType(mixed $value, mixed $type): bool
@@ -6412,8 +6419,11 @@ final class ApplicatorRefsConditional extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema and the
+            // client name them literally, and an error under a dotted map key was reported at a random
+            // `__dot__…` path. Laravel mode undoes them the same way.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -6592,7 +6602,7 @@ final class ApplicatorRefsConditional extends Data
         }
 
         if (is_array($schema['if'] ?? null)) {
-            if (self::matchesOpenApiNode($value, $schema['if'], $depth + 1)) {
+            if (self::matchesOpenApiNode($value, $schema['if'], $path, $depth + 1)) {
                 if (is_array($schema['then'] ?? null)) {
                     $errors = [...$errors, ...self::validateOpenApiNode($value, $schema['then'], $path, $depth + 1)];
                 }
@@ -6605,11 +6615,15 @@ final class ApplicatorRefsConditional extends Data
     }
 
     /**
+     * Whether a subschema matches; its errors are thrown away. The path is not: an unfinished check —
+     * the depth limit, a pattern the engine gave up on — is thrown out of here with it, and is the
+     * refusal the caller ends up reporting, so it has to name the value it could not finish.
+     *
      * @param array<string, mixed> $schema
      */
-    private static function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    private static function matchesOpenApiNode(mixed $value, array $schema, string $path, int $depth): bool
     {
-        return self::validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+        return self::validateOpenApiNode($value, $schema, $path, $depth) === [];
     }
 
     private static function matchesOpenApiCallbackType(mixed $value, mixed $type): bool
@@ -6891,8 +6905,11 @@ final class ApplicatorRefsKeyed extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema and the
+            // client name them literally, and an error under a dotted map key was reported at a random
+            // `__dot__…` path. Laravel mode undoes them the same way.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -7349,8 +7366,11 @@ final class ApplicatorRefsPoisonedKey extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema and the
+            // client name them literally, and an error under a dotted map key was reported at a random
+            // `__dot__…` path. Laravel mode undoes them the same way.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -7495,7 +7515,7 @@ final class ApplicatorRefsPoisonedKey extends Data
             }
         }
 
-        if (is_array($schema['not'] ?? null) && self::matchesOpenApiNode($value, $schema['not'], $depth + 1)) {
+        if (is_array($schema['not'] ?? null) && self::matchesOpenApiNode($value, $schema['not'], $path, $depth + 1)) {
             $errors[] = sprintf('%s must not match the \'not\' schema', $path);
         }
 
@@ -7503,11 +7523,15 @@ final class ApplicatorRefsPoisonedKey extends Data
     }
 
     /**
+     * Whether a subschema matches; its errors are thrown away. The path is not: an unfinished check —
+     * the depth limit, a pattern the engine gave up on — is thrown out of here with it, and is the
+     * refusal the caller ends up reporting, so it has to name the value it could not finish.
+     *
      * @param array<string, mixed> $schema
      */
-    private static function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    private static function matchesOpenApiNode(mixed $value, array $schema, string $path, int $depth): bool
     {
-        return self::validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+        return self::validateOpenApiNode($value, $schema, $path, $depth) === [];
     }
 
     private static function normalizeOpenApiStructuralValue(mixed $value): mixed
@@ -8547,8 +8571,11 @@ final class ChainLink extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema and the
+            // client name them literally, and an error under a dotted map key was reported at a random
+            // `__dot__…` path. Laravel mode undoes them the same way.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -9057,8 +9084,11 @@ final class ChainMiddle extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema and the
+            // client name them literally, and an error under a dotted map key was reported at a random
+            // `__dot__…` path. Laravel mode undoes them the same way.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -10455,8 +10485,11 @@ final class Containers extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema and the
+            // client name them literally, and an error under a dotted map key was reported at a random
+            // `__dot__…` path. Laravel mode undoes them the same way.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -10909,11 +10942,15 @@ final class Containers extends Data
     }
 
     /**
+     * Whether a subschema matches; its errors are thrown away. The path is not: an unfinished check —
+     * the depth limit, a pattern the engine gave up on — is thrown out of here with it, and is the
+     * refusal the caller ends up reporting, so it has to name the value it could not finish.
+     *
      * @param array<string, mixed> $schema
      */
-    private static function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    private static function matchesOpenApiNode(mixed $value, array $schema, string $path, int $depth): bool
     {
-        return self::validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+        return self::validateOpenApiNode($value, $schema, $path, $depth) === [];
     }
 
     /**
@@ -11087,8 +11124,11 @@ final class CountMap extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema and the
+            // client name them literally, and an error under a dotted map key was reported at a random
+            // `__dot__…` path. Laravel mode undoes them the same way.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -12574,8 +12614,11 @@ final class ItemBounds extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema and the
+            // client name them literally, and an error under a dotted map key was reported at a random
+            // `__dot__…` path. Laravel mode undoes them the same way.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -12858,14 +12901,13 @@ final class ItemBounds extends Data
                     restore_error_handler();
                 }
 
-                if ($match === false) {
-                    throw new OverflowException(match (true) {
-                        preg_last_error() === PREG_BAD_UTF8_ERROR => sprintf('%s contains invalid UTF-8 characters', $path),
-                        preg_last_error() === PREG_INTERNAL_ERROR => sprintf('%s has invalid regex pattern in schema: %s', $path, $pattern),
-                        default => sprintf('%s could not be checked: the regex engine gave up on pattern %s', $path, $pattern),
-                    });
-                }
-                if ($match !== 1) {
+                if ($match === false && preg_last_error() === PREG_INTERNAL_ERROR) {
+                    $errors[] = sprintf('%s has invalid regex pattern in schema: %s', $path, $pattern);
+                } elseif ($match === false) {
+                    throw new OverflowException(preg_last_error() === PREG_BAD_UTF8_ERROR
+                        ? sprintf('%s contains invalid UTF-8 characters', $path)
+                        : sprintf('%s could not be checked: the regex engine gave up on pattern %s', $path, $pattern));
+                } elseif ($match !== 1) {
                     $errors[] = sprintf('%s must match pattern %s', $path, $pattern);
                 }
             }
@@ -13263,8 +13305,11 @@ final class NestedContainers extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema and the
+            // client name them literally, and an error under a dotted map key was reported at a random
+            // `__dot__…` path. Laravel mode undoes them the same way.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -14210,8 +14255,11 @@ final class ObjectWideRules extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema and the
+            // client name them literally, and an error under a dotted map key was reported at a random
+            // `__dot__…` path. Laravel mode undoes them the same way.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -14445,12 +14493,12 @@ final class ObjectWideRules extends Data
             }
         }
 
-        if (is_array($schema['not'] ?? null) && self::matchesOpenApiNode($value, $schema['not'], $depth + 1)) {
+        if (is_array($schema['not'] ?? null) && self::matchesOpenApiNode($value, $schema['not'], $path, $depth + 1)) {
             $errors[] = sprintf('%s must not match the \'not\' schema', $path);
         }
 
         if (is_array($schema['if'] ?? null)) {
-            if (self::matchesOpenApiNode($value, $schema['if'], $depth + 1)) {
+            if (self::matchesOpenApiNode($value, $schema['if'], $path, $depth + 1)) {
                 if (is_array($schema['then'] ?? null)) {
                     $errors = [...$errors, ...self::validateOpenApiNode($value, $schema['then'], $path, $depth + 1)];
                 }
@@ -14463,11 +14511,15 @@ final class ObjectWideRules extends Data
     }
 
     /**
+     * Whether a subschema matches; its errors are thrown away. The path is not: an unfinished check —
+     * the depth limit, a pattern the engine gave up on — is thrown out of here with it, and is the
+     * refusal the caller ends up reporting, so it has to name the value it could not finish.
+     *
      * @param array<string, mixed> $schema
      */
-    private static function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    private static function matchesOpenApiNode(mixed $value, array $schema, string $path, int $depth): bool
     {
-        return self::validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+        return self::validateOpenApiNode($value, $schema, $path, $depth) === [];
     }
 
     private static function matchesOpenApiCallbackType(mixed $value, mixed $type): bool
@@ -14854,8 +14906,11 @@ final class ReadOnlyFields extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema and the
+            // client name them literally, and an error under a dotted map key was reported at a random
+            // `__dot__…` path. Laravel mode undoes them the same way.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -16438,8 +16493,11 @@ final class Test2 extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema and the
+            // client name them literally, and an error under a dotted map key was reported at a random
+            // `__dot__…` path. Laravel mode undoes them the same way.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -16815,11 +16873,15 @@ final class Test2 extends Data
     }
 
     /**
+     * Whether a subschema matches; its errors are thrown away. The path is not: an unfinished check —
+     * the depth limit, a pattern the engine gave up on — is thrown out of here with it, and is the
+     * refusal the caller ends up reporting, so it has to name the value it could not finish.
+     *
      * @param array<string, mixed> $schema
      */
-    private static function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    private static function matchesOpenApiNode(mixed $value, array $schema, string $path, int $depth): bool
     {
-        return self::validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+        return self::validateOpenApiNode($value, $schema, $path, $depth) === [];
     }
 
     /**
@@ -17580,8 +17642,11 @@ final class TestPostRequest extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema and the
+            // client name them literally, and an error under a dotted map key was reported at a random
+            // `__dot__…` path. Laravel mode undoes them the same way.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -17919,11 +17984,15 @@ final class TestPostRequest extends Data
     }
 
     /**
+     * Whether a subschema matches; its errors are thrown away. The path is not: an unfinished check —
+     * the depth limit, a pattern the engine gave up on — is thrown out of here with it, and is the
+     * refusal the caller ends up reporting, so it has to name the value it could not finish.
+     *
      * @param array<string, mixed> $schema
      */
-    private static function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    private static function matchesOpenApiNode(mixed $value, array $schema, string $path, int $depth): bool
     {
-        return self::validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+        return self::validateOpenApiNode($value, $schema, $path, $depth) === [];
     }
 
     /**
@@ -18425,8 +18494,11 @@ final class TreeNode extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema and the
+            // client name them literally, and an error under a dotted map key was reported at a random
+            // `__dot__…` path. Laravel mode undoes them the same way.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -18805,11 +18877,15 @@ final class TreeNode extends Data
     }
 
     /**
+     * Whether a subschema matches; its errors are thrown away. The path is not: an unfinished check —
+     * the depth limit, a pattern the engine gave up on — is thrown out of here with it, and is the
+     * refusal the caller ends up reporting, so it has to name the value it could not finish.
+     *
      * @param array<string, mixed> $schema
      */
-    private static function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    private static function matchesOpenApiNode(mixed $value, array $schema, string $path, int $depth): bool
     {
-        return self::validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+        return self::validateOpenApiNode($value, $schema, $path, $depth) === [];
     }
 
     /**
@@ -19426,8 +19502,11 @@ final class UnionUnderContainer extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema and the
+            // client name them literally, and an error under a dotted map key was reported at a random
+            // `__dot__…` path. Laravel mode undoes them the same way.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -19872,11 +19951,15 @@ final class UnionUnderContainer extends Data
     }
 
     /**
+     * Whether a subschema matches; its errors are thrown away. The path is not: an unfinished check —
+     * the depth limit, a pattern the engine gave up on — is thrown out of here with it, and is the
+     * refusal the caller ends up reporting, so it has to name the value it could not finish.
+     *
      * @param array<string, mixed> $schema
      */
-    private static function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    private static function matchesOpenApiNode(mixed $value, array $schema, string $path, int $depth): bool
     {
-        return self::validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+        return self::validateOpenApiNode($value, $schema, $path, $depth) === [];
     }
 
     /**
@@ -20159,8 +20242,11 @@ final class UniqueScalars extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema and the
+            // client name them literally, and an error under a dotted map key was reported at a random
+            // `__dot__…` path. Laravel mode undoes them the same way.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -20762,8 +20848,11 @@ final class User extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema and the
+            // client name them literally, and an error under a dotted map key was reported at a random
+            // `__dot__…` path. Laravel mode undoes them the same way.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -21122,11 +21211,15 @@ final class User extends Data
     }
 
     /**
+     * Whether a subschema matches; its errors are thrown away. The path is not: an unfinished check —
+     * the depth limit, a pattern the engine gave up on — is thrown out of here with it, and is the
+     * refusal the caller ends up reporting, so it has to name the value it could not finish.
+     *
      * @param array<string, mixed> $schema
      */
-    private static function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    private static function matchesOpenApiNode(mixed $value, array $schema, string $path, int $depth): bool
     {
-        return self::validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+        return self::validateOpenApiNode($value, $schema, $path, $depth) === [];
     }
 
     /**
@@ -21472,8 +21565,11 @@ final class User2 extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema and the
+            // client name them literally, and an error under a dotted map key was reported at a random
+            // `__dot__…` path. Laravel mode undoes them the same way.
             /** @var array<string, mixed> $payload */
-            $payload = $validator->getData();
+            $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {

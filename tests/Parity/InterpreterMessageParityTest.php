@@ -427,6 +427,97 @@ final class InterpreterMessageParityTest extends TestCase
     }
 
     /**
+     * The engine giving up inside `not`, `if` or `contains` names the member it gave up on. `not`, `if`
+     * and `contains` ask the interpreter "does this match?" and had no path to pass down, so the failure
+     * carried the placeholder `payload` up to the refusal: `payload could not be checked: …` named
+     * neither `f` nor its index, where a direct `pattern` on the same member says `f[0]`. The refusal
+     * itself was right; the sentence pointed nowhere.
+     *
+     * Every mode must name the member — each in its own spelling of a path — and no mode may say
+     * `payload`. The direct-pattern neighbour pins the wording the others are measured against.
+     *
+     * @param array<string, mixed> $propertySchema
+     */
+    #[DataProvider('engineFailureInAMatchProvider')]
+    public function testAnEngineFailureInsideAMatchNamesTheMember(array $propertySchema, string $json, string $member): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Probe' => ['type' => 'object', 'required' => ['f'], 'properties' => ['f' => $propertySchema]],
+                ],
+            ],
+        ];
+        $key = 'engine failure path ' . md5((string)json_encode([$propertySchema, $json]));
+
+        foreach (GenerationMode::cases() as $mode) {
+            $messages = $this->messages($mode, $spec, $key, $json);
+            $gaveUp = array_values(array: array_filter(
+                array: $messages,
+                callback: static fn(string $message): bool => str_contains($message, 'the regex engine gave up on pattern'),
+            ));
+
+            $this->assertCount(
+                expectedCount: 1,
+                haystack: $gaveUp,
+                message: sprintf("%s mode:\n %s", $mode->value, implode("\n ", $messages)),
+            );
+            $this->assertStringNotContainsString(needle: 'payload', haystack: $gaveUp[0], message: $mode->value);
+            $this->assertMatchesRegularExpression(
+                pattern: $member,
+                string: $gaveUp[0],
+                message: sprintf('%s mode must name the member it gave up on', $mode->value),
+            );
+        }
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>, string, string}>
+     */
+    public static function engineFailureInAMatchProvider(): iterable
+    {
+        $words = '^([a-zA-Z0-9]+\s?)*$';
+        $burning = str_repeat('a', 26) . '!';
+        $list = (string)json_encode(['f' => [$burning, $burning]]);
+        // `f[0]` (interpreter), `"f".0` (runtime): the first member, whichever way the mode spells it.
+        $firstMember = '/\bf"?(\[0\]|\.0)(?![0-9])/';
+        // The property itself, not one of its members.
+        $property = '/(^|[ "])f"? could not be checked/';
+
+        yield 'items: direct pattern' => [
+            ['type' => 'array', 'items' => ['type' => 'string', 'pattern' => $words]],
+            $list,
+            $firstMember,
+        ];
+        yield 'items: not pattern' => [
+            ['type' => 'array', 'items' => ['type' => 'string', 'not' => ['pattern' => $words]]],
+            $list,
+            $firstMember,
+        ];
+        yield 'items: if pattern' => [
+            ['type' => 'array', 'items' => ['type' => 'string', 'if' => ['pattern' => $words], 'then' => ['maxLength' => 0]]],
+            $list,
+            $firstMember,
+        ];
+        yield 'contains pattern' => [
+            ['type' => 'array', 'contains' => ['type' => 'string', 'pattern' => $words]],
+            $list,
+            $firstMember,
+        ];
+        yield 'property: not pattern' => [
+            ['type' => 'string', 'not' => ['pattern' => $words]],
+            (string)json_encode(['f' => $burning]),
+            $property,
+        ];
+    }
+
+    /**
      * A property-level `allOf` reports each violation ONCE, in every mode.
      *
      * 2.15.11 taught the emitted interpreter the keyword — it had none, so an `allOf` that could not be

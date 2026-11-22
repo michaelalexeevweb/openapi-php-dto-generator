@@ -240,9 +240,47 @@ final class HostileDocumentTest extends TestCase
 
         [$exitCode, $output] = $this->runConsole(file: $this->root . '/api.yaml');
 
+        // Where this PHP crashes on the depth (pcov's observer puts the recursion on the C stack), the
+        // child-process probe reports the crash; where it survives, symfony/yaml refuses past 128 levels.
+        // Either way a clean error, exit 1, nothing written — never the dead process of before.
         $this->assertSame(expected: 1, actual: $exitCode, message: $output);
-        $this->assertStringContainsString(needle: 'nests flow collections', haystack: $output);
+        $this->assertMatchesRegularExpression(pattern: '/nests flow collections|Maximum nesting depth of \d+ exceeded/', string: $output);
         $this->assertDirectoryDoesNotExist($this->root . '/out');
+    }
+
+    /**
+     * Spellings of deep flow nesting a scan of the text missed while the parser still read them as
+     * flow values — a `#` inside a plain key (only ` #` starts a comment), and a key on the line after
+     * `- key: |`, which ends that block scalar rather than continuing it. Each ends in a clean error:
+     * the crash, where this PHP has one, reported — and where its parser survives the depth, the
+     * parser's own refusal. Run as a subprocess, because on the old code it is the PROCESS that dies.
+     */
+    #[DataProvider('deepFlowSpellingProvider')]
+    public function testDeepFlowNestingInAnySpellingEndsInACleanError(string $extension): void
+    {
+        file_put_contents(
+            filename: $this->root . '/api.yaml',
+            data: "openapi: 3.0.3\ninfo: {title: t, version: '1'}\npaths: {}\n" . $extension
+            . "components:\n  schemas:\n    Widget: {type: object, properties: {name: {type: string}}}\n",
+        );
+
+        [$exitCode, $output] = $this->runConsole(file: $this->root . '/api.yaml');
+
+        $this->assertSame(expected: 1, actual: $exitCode, message: $output);
+        $this->assertMatchesRegularExpression(pattern: '/nests flow collections|Maximum nesting depth of \d+ exceeded/', string: $output);
+        $this->assertDirectoryDoesNotExist($this->root . '/out');
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function deepFlowSpellingProvider(): iterable
+    {
+        $deep = str_repeat('[', 100000) . str_repeat(']', 100000);
+        yield 'a # inside a plain key' => ['x-a#b: ' . $deep . "\n"];
+        yield 'a key after a block scalar opened behind a dash' => ["x-list:\n  - key: |\n    other: " . $deep . "\n"];
+        yield 'a mapping' => ['x-deep: ' . str_repeat('{a: ', 50000) . 'b' . str_repeat('}', 50000) . "\n"];
+        yield 'a flow value on a continuation line' => ["x-deep:\n  " . $deep . "\n"];
     }
 
     #[DataProvider('bracketsThatAreNotNestingProvider')]
@@ -260,9 +298,10 @@ final class HostileDocumentTest extends TestCase
     }
 
     /**
-     * What the depth scan must NOT count: brackets inside quoted strings, in block scalars, in comments
-     * and in plain text (`[0, 1)` is a range, not a sequence), and an honest flow nesting a few levels
-     * deep. Each is far past the limit if counted, and each document generates.
+     * What the depth guard must NOT refuse: brackets inside quoted strings, in block scalars, in
+     * comments and in plain text (`[0, 1)` is a range, not a sequence, also on a continuation line),
+     * keys a `#` or a block scalar sits beside, and an honest flow nesting a few levels deep. Each
+     * document generates.
      *
      * @return iterable<string, array{string}>
      */
@@ -282,6 +321,60 @@ final class HostileDocumentTest extends TestCase
             ),
         )];
         yield 'honest flow nesting' => ['x-matrix: ' . str_repeat('[', 40) . 'a' . str_repeat(']', 40) . "\n"];
+        yield 'a plain scalar continued on a line that starts with [' => [
+            "x-note: every ratio below lies in the half-open interval\n  [0, 1) unless noted.\n"
+            . implode(
+                separator: '',
+                array: array_map(
+                    callback: static fn(int $index): string => sprintf("x-ratio%d: share of channel %d, in [0, 1)\n", $index, $index),
+                    array: range(1, 600),
+                ),
+            ),
+        ];
+        yield 'a # inside a plain key' => ["x-a#b: [[1, 2], [3]]\n"];
+        yield 'a key after a block scalar opened behind a dash' => ["x-list:\n  - key: |\n    other: [[a]]\n"];
+    }
+
+    /**
+     * The guard must cost an ordinary document nothing but time: the reported shape — a description
+     * continued on a line that starts with `[0, 1)`, then hundreds of properties whose text holds an
+     * unclosed `[` each — and a large document written in flow style throughout both generate.
+     */
+    #[DataProvider('validYamlWithManyBracketsProvider')]
+    public function testValidYamlWithManyBracketsGenerates(string $schemas, string $expectedFile): void
+    {
+        file_put_contents(
+            filename: $this->root . '/api.yaml',
+            data: "openapi: 3.0.3\ninfo: {title: t, version: '1'}\npaths: {}\ncomponents:\n  schemas:\n" . $schemas,
+        );
+
+        [$exitCode, $output] = $this->runConsole(file: $this->root . '/api.yaml');
+
+        $this->assertSame(expected: 0, actual: $exitCode, message: $output);
+        $this->assertContains(needle: $expectedFile, haystack: (array)scandir($this->root . '/out'));
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function validYamlWithManyBracketsProvider(): iterable
+    {
+        $reading = "    Reading:\n      type: object\n"
+            . "      description: A sensor reading; every ratio below lies in the half-open interval\n"
+            . "        [0, 1) unless noted.\n      properties:\n";
+        foreach (range(0, 519) as $index) {
+            $reading .= sprintf("        ratio%d:\n          type: number\n          description: Share of channel %d, in [0, 1)\n", $index, $index);
+        }
+        yield 'continuation line starting with [' => [$reading, 'Reading.php'];
+
+        $flow = '';
+        foreach (range(1, 300) as $index) {
+            $flow .= sprintf(
+                "    Widget%d: {type: object, required: [name, colors], properties: {name: {type: string}, colors: {type: array, items: {type: string, enum: [crimson, azure, amber]}}}}\n",
+                $index,
+            );
+        }
+        yield 'flow style throughout' => [$flow, 'Widget300.php'];
     }
 
     /**

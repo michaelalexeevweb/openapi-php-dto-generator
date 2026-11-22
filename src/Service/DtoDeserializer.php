@@ -780,6 +780,23 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 );
             }
 
+            // OAS 3.2 `style: cookie` sends a value as RFC 6265 spells it — never percent-encoded — and
+            // an exploded list by repeating the name: `ids=1; ids=2`. `$_COOKIE`, and Symfony's cookie
+            // bag with it, decodes every value and keeps only the first repeat, so both are read back
+            // from the `Cookie` header itself. A request without the header — one built from a cookie
+            // bag — has only the bag's value to offer.
+            if ($request !== null && $rawWasProvided && $rawSource === 'cookie' && $paramMeta['parameterStyle'] === 'cookie') {
+                $headerValues = $this->findRawCookieValues(request: $request, name: $requestFieldName);
+                if ($paramMeta['arrayItemType'] !== null && !$paramMeta['allowsAssociativeArray'] && $paramMeta['parameterExplode'] === true) {
+                    $rawValue = $headerValues !== [] ? $headerValues : (is_string($rawValue) ? [$rawValue] : $rawValue);
+                    if ($rawValue === ['']) {
+                        $rawValue = [];
+                    }
+                } elseif ($headerValues !== []) {
+                    $rawValue = $headerValues[0];
+                }
+            }
+
             // OpenAPI's DEFAULT array serialization is `style: form, explode: true` — the key
             // REPEATED: `?ids=1&ids=2` in a query string, `tags=a&tags=b` in a form body. PHP does
             // not keep the repeats. `$_GET` and `$_POST` — and Symfony's `$request->query` and
@@ -1570,8 +1587,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
             'spaceDelimited' => ' ',
             'pipeDelimited' => '|',
             // form with explode=true arrives as repeated keys (Symfony already
-            // arrayifies); only the non-exploded form uses comma separation.
-            'form' => $explode === true ? null : ',',
+            // arrayifies); only the non-exploded form uses comma separation. OAS 3.2 `cookie` is
+            // form spelled as a `Cookie` header, so it splits the same way.
+            'form', 'cookie' => $explode === true ? null : ',',
             // deepObject and unknown styles: no scalar splitting.
             default => null,
         };
@@ -1597,8 +1615,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
         // alternates key and value, exploded `simple` spells pairs `role=admin,name=Rex`. Left to the
         // array delimiter below, a map became the list of its tokens and a DTO did not hydrate.
         // Exploded `form` spreads the keys over the query itself, so there is no value to parse here.
+        // OAS 3.2 `cookie` is `form` spelled as a `Cookie` header, and its object reads the same way.
         if (
-            ($parameterStyle === 'simple' || ($parameterStyle === 'form' && $parameterExplode !== true))
+            ($parameterStyle === 'simple' || (in_array($parameterStyle, ['form', 'cookie'], true) && $parameterExplode !== true))
             && $this->parameterExpectsAssociativeValue($paramMeta)
         ) {
             return $this->parseDelimitedObjectValue(rawValue: $rawValue, keyValuePairs: $parameterStyle === 'simple' && $parameterExplode === true)
@@ -2371,6 +2390,25 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         return null;
+    }
+
+    /**
+     * Every value of one cookie as the `Cookie` header carries it — OAS 3.2 `style: cookie`, where
+     * neither the name nor the value is percent-encoded — in the order sent.
+     *
+     * @return list<string>
+     */
+    private function findRawCookieValues(Request $request, string $name): array
+    {
+        $values = [];
+        foreach (explode(';', (string)$request->headers->get('cookie', '')) as $pair) {
+            $eqPos = strpos($pair, '=');
+            if ($eqPos !== false && trim(substr($pair, 0, $eqPos)) === $name) {
+                $values[] = trim(substr($pair, $eqPos + 1));
+            }
+        }
+
+        return $values;
     }
 
     /**

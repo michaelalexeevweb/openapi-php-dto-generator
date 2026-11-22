@@ -797,10 +797,14 @@ PHP;
             // A value already too long is refused, and the length was the cheap question: running the
             // pattern over it as well let a long value buy a full backtrack-limit burn.
             $withinMaxLength = $hasMaxLength ? '($maxLength === null || $length <= $maxLength) && ' : '';
-            // A pattern `preg_match()` could not run has no verdict, so it is thrown like the depth
+            // A pattern `preg_match()` could not RUN has no verdict, so it is thrown like the depth
             // limit: `not`, `if` and `contains` read errors as "did not match" and passed a value the
             // engine gave up on, and the throw also ends the walk — the next item of a long list would
-            // burn the whole backtrack limit again.
+            // burn the whole backtrack limit again. Invalid UTF-8 in the value is thrown with it.
+            // A pattern PCRE cannot COMPILE (`PREG_INTERNAL_ERROR`: valid ECMA-262 such as an
+            // unbounded lookbehind) is a fact about the document, not an unfinished check: it stays
+            // an ordinary error, so a branch carrying it fails and a sibling still decides, as it did
+            // before run-time failures refused — the runtime validator draws the same line.
             $patternCheck = $hasPattern ? <<<PHP
             if ({$withinMaxLength}is_string(\$pattern = \$schema['pattern'] ?? null) && \$pattern !== '') {
                 \$regex = \$this->delimitOpenApiPattern(\$pattern);
@@ -811,14 +815,13 @@ PHP;
                     restore_error_handler();
                 }
 
-                if (\$match === false) {
-                    throw new \\OverflowException(match (true) {
-                        preg_last_error() === PREG_BAD_UTF8_ERROR => sprintf('%s contains invalid UTF-8 characters', \$path),
-                        preg_last_error() === PREG_INTERNAL_ERROR => sprintf('%s has invalid regex pattern in schema: %s', \$path, \$pattern),
-                        default => sprintf('%s could not be checked: the regex engine gave up on pattern %s', \$path, \$pattern),
-                    });
-                }
-                if (\$match !== 1) {
+                if (\$match === false && preg_last_error() === PREG_INTERNAL_ERROR) {
+                    \$errors[] = sprintf('%s has invalid regex pattern in schema: %s', \$path, \$pattern);
+                } elseif (\$match === false) {
+                    throw new \\OverflowException(preg_last_error() === PREG_BAD_UTF8_ERROR
+                        ? sprintf('%s contains invalid UTF-8 characters', \$path)
+                        : sprintf('%s could not be checked: the regex engine gave up on pattern %s', \$path, \$pattern));
+                } elseif (\$match !== 1) {
                     \$errors[] = sprintf('%s must match pattern %s', \$path, \$pattern);
                 }
             }
@@ -1054,7 +1057,7 @@ PHP;
 
         if ($hasNot) {
             $sections[] = <<<'PHP'
-        if (is_array($schema['not'] ?? null) && $this->matchesOpenApiNode($value, $schema['not'], $depth + 1)) {
+        if (is_array($schema['not'] ?? null) && $this->matchesOpenApiNode($value, $schema['not'], $path, $depth + 1)) {
             $errors[] = sprintf('%s must not match the \'not\' schema', $path);
         }
 PHP;
@@ -1063,7 +1066,7 @@ PHP;
         if ($hasIf) {
             $sections[] = <<<'PHP'
         if (is_array($schema['if'] ?? null)) {
-            if ($this->matchesOpenApiNode($value, $schema['if'], $depth + 1)) {
+            if ($this->matchesOpenApiNode($value, $schema['if'], $path, $depth + 1)) {
                 if (is_array($schema['then'] ?? null)) {
                     $errors = [...$errors, ...$this->validateOpenApiNode($value, $schema['then'], $path, $depth + 1)];
                 }
@@ -1144,7 +1147,6 @@ PHP;
             $trackContainsIndex = $needsItemIndexTracking
                 ? "                    \$evaluatedItemIndices[\$index] = true;\n"
                 : '';
-            $containsIndexVariable = $needsItemIndexTracking ? '$index' : '$_index';
             // `contains` defaults to "at least one match"; the bounds only need reading when the
             // schema actually carries them.
             $minContainsExpression = $hasMinContains
@@ -1162,8 +1164,8 @@ PHP
             $sections[] = <<<PHP
         if (\$listValue && is_array(\$schema['contains'] ?? null)) {
             \$matchCount = 0;
-            foreach (\$value as {$containsIndexVariable} => \$itemValue) {
-                if (\$this->matchesOpenApiNode(\$itemValue, \$schema['contains'], \$depth + 1)) {
+            foreach (\$value as \$index => \$itemValue) {
+                if (\$this->matchesOpenApiNode(\$itemValue, \$schema['contains'], \$path . '[' . \$index . ']', \$depth + 1)) {
                     \$matchCount++;
 {$trackContainsIndex}                }
             }
@@ -1210,6 +1212,23 @@ PHP;
 
 PHP
                 : '';
+            // A branch naming a generated class (Symfony mode only) is "is that class": the class checked
+            // itself. Without this arm the branch had no keyword to fail and matched every value, so it
+            // took the scalar branches beside it along. A raw array or object nothing turned into the
+            // class cannot be told from it and is not judged — the runtime validator's rule.
+            $anyOfClassBranch = $this->schemaUsesKeyword($constraints, 'x-php-instanceof')
+                ? <<<'PHP'
+                if (is_string($branchClass = $branch['x-php-instanceof'] ?? null) && $branchClass !== '') {
+                    $branchFqcn = __NAMESPACE__ . '\\' . ltrim($branchClass, '\\');
+                    if (is_array($value) || $value instanceof \stdClass || (is_object($value) && $value instanceof $branchFqcn)) {
+                        $anyOfMatched = true;
+                        break;
+                    }
+                    continue;
+                }
+
+PHP
+                : '';
             $sections[] = <<<PHP
         if (is_array(\$schema['anyOf'] ?? null)) {
             \$anyOfMatched = false;
@@ -1219,7 +1238,7 @@ PHP
                     continue;
                 }
 
-{$anyOfTypeGate}                \$errorsForBranch = \$this->validateOpenApiNode(\$value, \$branch, \$path, \$depth + 1);
+{$anyOfClassBranch}{$anyOfTypeGate}                \$errorsForBranch = \$this->validateOpenApiNode(\$value, \$branch, \$path, \$depth + 1);
                 if (\$errorsForBranch === []) {
                     \$anyOfMatched = true;
                     break;
@@ -1362,11 +1381,15 @@ PHP;
             $sections[] = <<<'PHP'
 
     /**
+     * Whether a subschema matches; its errors are thrown away. The path is not: an unfinished check —
+     * the depth limit, a pattern the engine gave up on — is thrown out of here with it, and is the
+     * refusal the caller ends up reporting, so it has to name the value it could not finish.
+     *
      * @param array<string, mixed> $schema
      */
-    private function matchesOpenApiNode(mixed $value, array $schema, int $depth): bool
+    private function matchesOpenApiNode(mixed $value, array $schema, string $path, int $depth): bool
     {
-        return $this->validateOpenApiNode($value, $schema, 'payload', $depth) === [];
+        return $this->validateOpenApiNode($value, $schema, $path, $depth) === [];
     }
 PHP;
         }
