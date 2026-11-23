@@ -1886,6 +1886,7 @@ final class GenerateDtoCommand extends Command
                 continue;
             }
             $propertySchema = $this->canonicalNullableRefContainers($propertySchema);
+            $propertySchema = $this->nullableScalarAliasUnion(schema: $propertySchema, sourceFile: $sourceFile);
             $ref = $propertySchema['$ref'] ?? null;
             // A `$ref` to a component that is itself `nullable: true` (3.0) admits null like the
             // component does; the flag lived on the target, where the property never looked.
@@ -1979,6 +1980,49 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * `anyOf` / `oneOf` of a scalar alias and `{type: null}` — the OpenAPI 3.1 spelling of "this alias,
+     * or null" — rewritten to `{$ref: Alias, nullable: true}`, the reference every reader below knows.
+     * Left a union, a property was typed by the alias's class, which is never written (a value has no
+     * class), and a component became an empty union interface: the runtime refused every string with
+     * `Unsupported type`, laravel could not hydrate it, and laravel-data died on the constructor.
+     * A union around an OBJECT is left alone: it is typed `?Obj` already.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<string, mixed>
+     */
+    private function nullableScalarAliasUnion(array $schema, ?string $sourceFile): array
+    {
+        if (array_key_exists('$ref', $schema)) {
+            return $schema;
+        }
+        foreach (['anyOf', 'oneOf'] as $unionKey) {
+            $branches = $schema[$unionKey] ?? null;
+            if (!is_array($branches) || count($branches) !== 2) {
+                continue;
+            }
+            $refs = array_values(array_filter($branches, static fn(mixed $b): bool => is_array($b) && array_keys($b) === ['$ref'] && is_string($b['$ref'])));
+            $nulls = array_values(array_filter($branches, static fn(mixed $b): bool => is_array($b) && array_keys($b) === ['type'] && $b['type'] === 'null'));
+            if (count($refs) !== 1 || count($nulls) !== 1) {
+                continue;
+            }
+            $ref = $refs[0]['$ref'];
+            if ($this->scalarAliasDefinition($ref, $sourceFile) === null) {
+                continue;
+            }
+            $rest = [];
+            foreach ($schema as $keyword => $value) {
+                if ($keyword !== $unionKey) {
+                    $rest[$keyword] = $value;
+                }
+            }
+
+            return ['$ref' => $ref, 'nullable' => true] + $rest;
+        }
+
+        return $schema;
+    }
+
+    /**
      * Keywords that describe a schema without constraining it, so a component carrying only these
      * next to its `$ref` is still nothing but that reference.
      */
@@ -2009,6 +2053,10 @@ final class GenerateDtoCommand extends Command
             if (!is_array($definition)) {
                 continue;
             }
+            $definition = $this->nullableScalarAliasUnion(
+                schema: $definition,
+                sourceFile: $this->getSchemaSourceFile($className),
+            );
             $target = $this->pureAliasTarget($definition);
             if ($target !== null && str_starts_with($target, $prefix)) {
                 $targets[$className] = [
@@ -2081,6 +2129,7 @@ final class GenerateDtoCommand extends Command
             if (
                 $keyword !== $spelling
                 && !in_array($keyword, self::ALIAS_ANNOTATION_KEYWORDS, true)
+                && !in_array($keyword, self::RESOURCE_KEYWORDS, true)
                 && !str_starts_with($keyword, 'x-')
             ) {
                 return null;
@@ -2089,6 +2138,14 @@ final class GenerateDtoCommand extends Command
 
         return $ref;
     }
+
+    /**
+     * The keywords that make a schema a resource or a container of definitions without asserting
+     * anything of a value. `{$id: …, $defs: {inner: …}, $ref: '#/$defs/inner'}` — how a document that is
+     * one schema names its entry point — only names `inner`; read as more than an alias, it became an
+     * empty class that validated nothing, and yii3 died calling a method that class did not have.
+     */
+    private const array RESOURCE_KEYWORDS = ['$id', '$anchor', '$schema', '$comment', '$defs'];
 
     /**
      * Whether a component is generated as an object DTO: not a scalar, enum or array alias.

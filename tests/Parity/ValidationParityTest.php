@@ -1867,6 +1867,64 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * A component that only names another — beside a `$comment`, an `$id`, its own `$defs` — is that
+     * other schema. Read as more than an alias it became an empty class that validated nothing (and
+     * yii3 died calling a method that class did not have): `{"bar": 1}` passed a `type: string`.
+     */
+    #[DataProvider('everyMode')]
+    public function testAnAliasBesideResourceKeywordsIsTheSchemaItNames(GenerationMode $mode): void
+    {
+        $spec = self::probeSpec(['$ref' => '#/components/schemas/Entry']);
+        $spec['components']['schemas']['Entry'] = ['$comment' => 'the entry point', '$ref' => '#/components/schemas/Inner'];
+        $spec['components']['schemas']['Inner'] = ['type' => 'object', 'properties' => ['bar' => ['type' => 'string']]];
+
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => false],
+            actual: $this->verdict($mode, $spec, 'alias-beside-resource-keywords', '{"f":{"bar":"a"}}', '{"f":{"bar":1}}'),
+        );
+    }
+
+    /**
+     * "A scalar alias, or null" in the OpenAPI 3.1 spelling — `anyOf` / `oneOf` of the `$ref` and
+     * `{type: null}`, inline or as a component of its own — is the alias, nullable. Inline, the property
+     * was typed by the alias's class, which is never written; as a component it became an empty union
+     * interface, and the runtime refused every string with `Unsupported type`, laravel could not hydrate
+     * it and laravel-data died on the constructor. The alias's own keywords still apply.
+     *
+     * @param array<string, mixed> $property
+     */
+    #[DataProvider('nullableScalarAliasCases')]
+    public function testANullableScalarAliasUnionIsTheAliasOrNull(GenerationMode $mode, string $key, array $property): void
+    {
+        $spec = self::probeSpec($property);
+        $spec['components']['schemas']['Code'] = ['type' => 'string', 'minLength' => 2];
+        $spec['components']['schemas']['CodeOrNull'] = ['anyOf' => [['type' => 'null'], ['$ref' => '#/components/schemas/Code']]];
+
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => false],
+            actual: $this->verdict($mode, $spec, 'nullable-alias-' . $key, '{"f":"ab"}', '{"f":"a"}'),
+        );
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => false],
+            actual: $this->verdict($mode, $spec, 'nullable-alias-null-' . $key, '{"f":null}', '{"f":5}'),
+        );
+    }
+
+    public static function nullableScalarAliasCases(): iterable
+    {
+        $cases = [
+            'component' => ['$ref' => '#/components/schemas/CodeOrNull'],
+            'inline-anyof' => ['anyOf' => [['type' => 'null'], ['$ref' => '#/components/schemas/Code']]],
+            'inline-oneof' => ['oneOf' => [['$ref' => '#/components/schemas/Code'], ['type' => 'null']]],
+        ];
+        foreach (GenerationMode::cases() as $mode) {
+            foreach ($cases as $key => $property) {
+                yield $mode->value . ' ' . $key => [$mode, $key, $property];
+            }
+        }
+    }
+
+    /**
      * A list whose `items` name a scalar alias (`Num: {type: integer}`) checks each item's type. The
      * reference was left to the PHP type, and Symfony 7's serializer does not type-check inside a
      * collection: `["a"]` passed. Symfony 8 refuses it on its own, which is how it surfaced — the same

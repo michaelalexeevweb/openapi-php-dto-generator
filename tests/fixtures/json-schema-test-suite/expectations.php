@@ -422,29 +422,6 @@ return [
             ],
         ],
     ],
-    'refRemote.json' => [
-        'root ref in remote ref' => [
-            'string is valid' => [
-                'runtime' => ['diverges', 'refuses data the suite accepts (untriaged)'],
-                'symfony' => ['diverges', 'refuses data the suite accepts (untriaged)'],
-                'laravel' => ['crashes', 'RuntimeException: Property "name" is typed as OrNull, a union with no discriminator: the document does not say which member a payload is, so it cannot be hydrated. Add a discr...'],
-                'laravel-data' => ['crashes', 'TypeError: ProbeF::__construct(): Argument #1 ($name) must be of type OrNull|Spatie\LaravelData\Optional|null, string given, called in vendor/spatie/laravel-data/src/Re...'],
-                'yii3' => ['diverges', 'refuses data the suite accepts (untriaged)'],
-            ],
-        ],
-        'remote ref with ref to defs' => [
-            'invalid' => [
-                'runtime' => ['diverges', 'accepts data the suite rejects (untriaged)'],
-                'symfony' => ['diverges', 'accepts data the suite rejects (untriaged)'],
-                'laravel' => ['diverges', 'accepts data the suite rejects (untriaged)'],
-                'laravel-data' => ['diverges', 'accepts data the suite rejects (untriaged)'],
-                'yii3' => ['crashes', 'Error: Call to undefined method Remote1::toOpenApiValidationPayload()'],
-            ],
-            'valid' => [
-                'yii3' => ['crashes', 'Error: Call to undefined method Remote1::toOpenApiValidationPayload()'],
-            ],
-        ],
-    ],
     'required.json' => [
         'required validation' => [
             'ignores arrays' => [

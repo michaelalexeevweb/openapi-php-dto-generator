@@ -3,6 +3,25 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.139 — 2026-11-23
+
+- nullable scalar alias unions typed
+- aliases beside $id/$defs resolved
+
+JSON-Schema-Test-Suite burn-down: eleven entries fewer (303 → 292), every one of them from the remotes added in
+2.15.137.
+
+**Regenerate after upgrading.**
+
+- "a scalar alias, or null" in the OpenAPI 3.1 spelling — `anyOf` / `oneOf` of a `$ref` to a scalar alias and
+  `{type: null}` — is the alias, nullable. Inline, the property was typed by the alias's class, which is never
+  written; as a component of its own it became an empty union interface: the runtime refused every string
+  with `Unsupported type`, laravel could not hydrate it, and laravel-data died on the constructor. Every mode
+  was affected;
+- a component that only names another one beside `$id`, `$anchor`, `$schema`, `$comment` or its own `$defs` —
+  how a document that is one schema names its entry point — is that other schema. It became an empty class
+  that validated nothing, and yii3 died calling a method that class did not have.
+
 ## 2.15.138 — 2026-11-23
 
 - lists of scalar aliases check items
