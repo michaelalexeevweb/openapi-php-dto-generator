@@ -3,6 +3,21 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.138 — 2026-11-23
+
+- lists of scalar aliases check items
+- CI green on Symfony 8 again
+
+symfony, yii3: a list whose `items` name a scalar alias (`items: {$ref: Num}`, `Num: {type: integer}`)
+checks each item. The reference was left to the PHP type, and Symfony 7's serializer does not type-check
+inside a collection: `["a"]` passed, and the yii3 hydrator likewise. The alias's keywords are carried into the
+validation now, its bounds with them.
+
+2.15.137 was released with its PHP 8.4 / Symfony 8 job red: two suite cases of exactly this shape were listed
+as divergences that Symfony 8's own type check had already closed there. With the items checked by the
+generated code they agree on every Symfony version, and the list is the same everywhere. The release itself
+was sound — the failure was in the test's expectations, not in generated code.
+
 ## 2.15.137 — 2026-11-23
 
 - runtime: a `data` property no longer crashes

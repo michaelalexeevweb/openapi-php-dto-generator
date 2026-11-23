@@ -423,18 +423,6 @@ return [
         ],
     ],
     'refRemote.json' => [
-        'base URI change - change folder' => [
-            'string is invalid' => [
-                'symfony' => ['diverges', 'accepts data the suite rejects (untriaged)'],
-                'yii3' => ['diverges', 'accepts data the suite rejects (untriaged)'],
-            ],
-        ],
-        'base URI change - change folder in subschema' => [
-            'string is invalid' => [
-                'symfony' => ['diverges', 'accepts data the suite rejects (untriaged)'],
-                'yii3' => ['diverges', 'accepts data the suite rejects (untriaged)'],
-            ],
-        ],
         'root ref in remote ref' => [
             'string is valid' => [
                 'runtime' => ['diverges', 'refuses data the suite accepts (untriaged)'],

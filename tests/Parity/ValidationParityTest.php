@@ -1867,6 +1867,28 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * A list whose `items` name a scalar alias (`Num: {type: integer}`) checks each item's type. The
+     * reference was left to the PHP type, and Symfony 7's serializer does not type-check inside a
+     * collection: `["a"]` passed. Symfony 8 refuses it on its own, which is how it surfaced — the same
+     * suite case answered differently on the two.
+     */
+    #[DataProvider('everyMode')]
+    public function testAListOfAScalarAliasChecksItsItems(GenerationMode $mode): void
+    {
+        $spec = self::probeSpec(['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Num']]);
+        $spec['components']['schemas']['Num'] = ['type' => 'integer', 'minimum' => 0];
+
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => false],
+            actual: $this->verdict($mode, $spec, 'list-of-scalar-alias', '{"f":[1,2]}', '{"f":["a"]}'),
+        );
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => false],
+            actual: $this->verdict($mode, $spec, 'list-of-scalar-alias-bound', '{"f":[0]}', '{"f":[-1]}'),
+        );
+    }
+
+    /**
      * An alias of a value that refers to another alias of a value — `F: {$ref: Pair, maxItems: 2}`,
      * `Pair: {prefixItems: […]}` — is a value too. One level was inlined and the inner `$ref` left in
      * place: the property was typed by the class of `Pair`, a class that is never written, and the

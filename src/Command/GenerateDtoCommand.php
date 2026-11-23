@@ -7449,12 +7449,15 @@ final class GenerateDtoCommand extends Command
         $ref = $this->referenceOrSingleRefAllOf($schema);
         $definition = $ref === null ? null : ($this->arrayAliasDefinition($ref) ?? $this->mapComponentDefinition($ref));
         if ($definition === null && $ref !== null) {
-            // An alias of a value — `{prefixItems: […]}`, `{$ref: Pair, maxItems: 2}` — is typed `mixed`,
-            // so no class checks it either: its keywords are carried here, the whole alias chain with
-            // them. One level was, and the bound kept while the tuple behind it was dropped.
+            // An alias of a value — `{type: integer}`, `{prefixItems: […]}`, `{$ref: Pair, maxItems: 2}` —
+            // is no class, so no class checks it: its keywords are carried here, the whole alias chain
+            // with them. One level was, and the bound kept while the tuple behind it was dropped; and as
+            // a list's `items`, an `int` alias left the item type to the serializer, which Symfony 7
+            // does not check inside a collection: `["a"]` passed for a list of `$ref: Num`. A keyword the
+            // PHP type already enforces is pruned later, as for any inline schema.
             $sourceFile = $this->constraintSourceFile ?? $this->rootSpecFile;
             $alias = $this->scalarAliasDefinition($ref, $sourceFile);
-            if ($alias !== null && $this->isUntypedValueSchema($alias)) {
+            if ($alias !== null) {
                 if (array_key_exists('$ref', $schema)) {
                     unset($schema['$ref']);
                 } else {
