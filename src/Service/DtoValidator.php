@@ -196,6 +196,29 @@ final class DtoValidator implements DtoValidatorInterface
     private array $unfinishedChecks = [];
 
     /**
+     * Whether an empty PHP array is the JSON array `[]` — see {@see readingEmptyArraysAsJsonArrays()}.
+     */
+    private bool $emptyArrayIsJsonArray = false;
+
+    /**
+     * This validator for values whose JSON objects are still `stdClass`, so that an empty PHP array
+     * can only have been `[]`: it no longer satisfies `type: object`, and an object keyword
+     * (`required`, `minProperties`, …) leaves it alone, as JSON Schema says of any array. Where `type`
+     * pins `object` it is still the empty object a hydrated map holds.
+     *
+     * The default reads an empty array as `{}`, because a caller that decoded the payload
+     * associatively hands `{}` over exactly that way. {@see DtoDeserializer} asks for this reading
+     * only for a body it decoded itself.
+     */
+    public function readingEmptyArraysAsJsonArrays(): self
+    {
+        $reading = clone $this;
+        $reading->emptyArrayIsJsonArray = true;
+
+        return $reading;
+    }
+
+    /**
      * Delimit a schema pattern without escaping an already escaped delimiter twice, and keep the
      * ECMA-262 ASCII meaning of `\d` `\w` `\b` under the Unicode modifier.
      */
@@ -771,7 +794,7 @@ final class DtoValidator implements DtoValidatorInterface
         // something for an array or a generated DTO (`generatedDtoPayload()` returns null for
         // anything else), so a scalar paid ten key lookups and a method call to learn nothing.
         if (
-            (($isArray && ($value === [] || !array_is_list($value))) || is_object($value))
+            (($isArray && (($value === [] && !$this->emptyArrayIsJsonArray) || !array_is_list($value))) || is_object($value))
                 && (array_key_exists('minProperties', $constraints)
                 || array_key_exists('maxProperties', $constraints)
                 || array_key_exists('properties', $constraints)
@@ -1091,7 +1114,8 @@ final class DtoValidator implements DtoValidatorInterface
             // — PHP cannot tell the two apart — so any array satisfies `object`. The wire shape IS
             // checked, where it is still knowable: DtoDeserializer refuses a JSON array for a
             // `type: object` property before it ever becomes a PHP value.
-            'object' => is_array($value) || is_object($value),
+            // An empty array is `[]` and no object where the JSON objects kept their `stdClass`.
+            'object' => (is_array($value) && !($value === [] && $this->emptyArrayIsJsonArray)) || is_object($value),
             'null' => $value === null,
             default => true,
         };

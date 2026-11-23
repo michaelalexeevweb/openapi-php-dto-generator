@@ -18,30 +18,13 @@ return [
             ],
         ],
     ],
-    'anyOf.json' => [
-        'anyOf with base schema' => [
-            'mismatch base schema' => [
-                'symfony' => ['diverges', 'accepts data the suite rejects (untriaged)'],
-            ],
-        ],
-        'anyOf complex types' => [
-            'neither anyOf valid (complex)' => [
-                'symfony' => ['diverges', 'accepts data the suite rejects (untriaged)'],
-            ],
-        ],
-        'nested anyOf, to check validation semantics' => [
-            'anything non-null is invalid' => [
-                'symfony' => ['diverges', 'accepts data the suite rejects (untriaged)'],
-            ],
-        ],
-    ],
     'contains.json' => [
         'contains keyword validation' => [
             'not array is valid' => [
-                'symfony' => ['diverges', 'generator: a type-specific keyword without `type` is applied to values of other types'],
-                'laravel' => ['diverges', 'generator: a type-specific keyword without `type` is applied to values of other types'],
-                'laravel-data' => ['diverges', 'generator: a type-specific keyword without `type` is applied to values of other types'],
-                'yii3' => ['diverges', 'generator: a type-specific keyword without `type` is applied to values of other types'],
+                'symfony' => ['diverges', 'documented: the data is {}, which the framework hands over as an empty list (README.support-matrix, empty JSON array row)'],
+                'laravel' => ['diverges', 'documented: the data is {}, which the framework hands over as an empty list (README.support-matrix, empty JSON array row)'],
+                'laravel-data' => ['diverges', 'documented: the data is {}, which the framework hands over as an empty list (README.support-matrix, empty JSON array row)'],
+                'yii3' => ['diverges', 'documented: the data is {}, which the framework hands over as an empty list (README.support-matrix, empty JSON array row)'],
             ],
         ],
     ],
@@ -115,13 +98,6 @@ return [
                 'laravel' => ['diverges', 'deliberate: contentEncoding/contentMediaType/contentSchema are asserted (README.support-matrix); the suite treats them as annotations'],
                 'laravel-data' => ['diverges', 'deliberate: contentEncoding/contentMediaType/contentSchema are asserted (README.support-matrix); the suite treats them as annotations'],
                 'yii3' => ['diverges', 'deliberate: contentEncoding/contentMediaType/contentSchema are asserted (README.support-matrix); the suite treats them as annotations'],
-            ],
-        ],
-    ],
-    'default.json' => [
-        'the default keyword does not do anything if the property is missing' => [
-            'missing properties are not filled in with the default' => [
-                'symfony' => ['diverges', 'refuses data the suite accepts (untriaged)'],
             ],
         ],
     ],
@@ -202,16 +178,12 @@ return [
     'enum.json' => [
         'enum with 0 does not match false' => [
             'float zero is valid' => [
-                'runtime' => ['diverges', 'an untyped all-integer enum is int-backed, as a typed one is, and the int backing refuses the integral float JSON Schema calls an integer (same for type: integer)'],
-                'symfony' => ['diverges', 'an untyped all-integer enum is int-backed, as a typed one is, and the int backing refuses the integral float JSON Schema calls an integer (same for type: integer)'],
-                'yii3' => ['diverges', 'an untyped all-integer enum is int-backed, as a typed one is, and the int backing refuses the integral float JSON Schema calls an integer (same for type: integer)'],
+                'symfony' => ['diverges', 'documented: the Symfony serializer refuses a float for an int-backed enum, as for an int property (README.support-matrix, 42.0 row)'],
             ],
         ],
         'enum with 1 does not match true' => [
             'float one is valid' => [
-                'runtime' => ['diverges', 'an untyped all-integer enum is int-backed, as a typed one is, and the int backing refuses the integral float JSON Schema calls an integer (same for type: integer)'],
-                'symfony' => ['diverges', 'an untyped all-integer enum is int-backed, as a typed one is, and the int backing refuses the integral float JSON Schema calls an integer (same for type: integer)'],
-                'yii3' => ['diverges', 'an untyped all-integer enum is int-backed, as a typed one is, and the int backing refuses the integral float JSON Schema calls an integer (same for type: integer)'],
+                'symfony' => ['diverges', 'documented: the Symfony serializer refuses a float for an int-backed enum, as for an int property (README.support-matrix, 42.0 row)'],
             ],
         ],
     ],
@@ -364,18 +336,17 @@ return [
     'items.json' => [
         'nested items' => [
             'nested array with invalid type' => [
-                'laravel-data' => ['diverges', 'accepts data the suite rejects (untriaged)'],
+                'laravel-data' => ['diverges', 'documented: lenient scalar types in this mode — the numeric string "1" four lists down (README.support-matrix)'],
             ],
         ],
     ],
     'minProperties.json' => [
         'minProperties validation' => [
             'ignores arrays' => [
-                'runtime' => ['diverges', 'an empty [] / {} is ambiguous once decoded; documented for symfony/yii3 only (README.support-matrix)'],
-                'symfony' => ['diverges', 'an empty [] / {} is ambiguous once decoded; documented for symfony/yii3 only (README.support-matrix)'],
-                'laravel' => ['diverges', 'an empty [] / {} is ambiguous once decoded; documented for symfony/yii3 only (README.support-matrix)'],
-                'laravel-data' => ['diverges', 'an empty [] / {} is ambiguous once decoded; documented for symfony/yii3 only (README.support-matrix)'],
-                'yii3' => ['diverges', 'an empty [] / {} is ambiguous once decoded; documented for symfony/yii3 only (README.support-matrix)'],
+                'symfony' => ['diverges', 'documented: the framework hands the body over decoded, [] and {} one empty array (README.support-matrix, empty JSON array row)'],
+                'laravel' => ['diverges', 'documented: the framework hands the body over decoded, [] and {} one empty array (README.support-matrix, empty JSON array row)'],
+                'laravel-data' => ['diverges', 'documented: the framework hands the body over decoded, [] and {} one empty array (README.support-matrix, empty JSON array row)'],
+                'yii3' => ['diverges', 'documented: the framework hands the body over decoded, [] and {} one empty array (README.support-matrix, empty JSON array row)'],
             ],
         ],
     ],
@@ -610,20 +581,18 @@ return [
     'required.json' => [
         'required validation' => [
             'ignores arrays' => [
-                'runtime' => ['diverges', 'an empty [] / {} is ambiguous once decoded; documented for symfony/yii3 only (README.support-matrix)'],
-                'symfony' => ['diverges', 'an empty [] / {} is ambiguous once decoded; documented for symfony/yii3 only (README.support-matrix)'],
-                'laravel' => ['diverges', 'an empty [] / {} is ambiguous once decoded; documented for symfony/yii3 only (README.support-matrix)'],
-                'laravel-data' => ['diverges', 'an empty [] / {} is ambiguous once decoded; documented for symfony/yii3 only (README.support-matrix)'],
-                'yii3' => ['diverges', 'an empty [] / {} is ambiguous once decoded; documented for symfony/yii3 only (README.support-matrix)'],
+                'symfony' => ['diverges', 'documented: the framework hands the body over decoded, [] and {} one empty array (README.support-matrix, empty JSON array row)'],
+                'laravel' => ['diverges', 'documented: the framework hands the body over decoded, [] and {} one empty array (README.support-matrix, empty JSON array row)'],
+                'laravel-data' => ['diverges', 'documented: the framework hands the body over decoded, [] and {} one empty array (README.support-matrix, empty JSON array row)'],
+                'yii3' => ['diverges', 'documented: the framework hands the body over decoded, [] and {} one empty array (README.support-matrix, empty JSON array row)'],
             ],
         ],
         'required properties whose names are Javascript object property names' => [
             'ignores arrays' => [
-                'runtime' => ['diverges', 'an empty [] / {} is ambiguous once decoded; documented for symfony/yii3 only (README.support-matrix)'],
-                'symfony' => ['diverges', 'an empty [] / {} is ambiguous once decoded; documented for symfony/yii3 only (README.support-matrix)'],
-                'laravel' => ['diverges', 'an empty [] / {} is ambiguous once decoded; documented for symfony/yii3 only (README.support-matrix)'],
-                'laravel-data' => ['diverges', 'an empty [] / {} is ambiguous once decoded; documented for symfony/yii3 only (README.support-matrix)'],
-                'yii3' => ['diverges', 'an empty [] / {} is ambiguous once decoded; documented for symfony/yii3 only (README.support-matrix)'],
+                'symfony' => ['diverges', 'documented: the framework hands the body over decoded, [] and {} one empty array (README.support-matrix, empty JSON array row)'],
+                'laravel' => ['diverges', 'documented: the framework hands the body over decoded, [] and {} one empty array (README.support-matrix, empty JSON array row)'],
+                'laravel-data' => ['diverges', 'documented: the framework hands the body over decoded, [] and {} one empty array (README.support-matrix, empty JSON array row)'],
+                'yii3' => ['diverges', 'documented: the framework hands the body over decoded, [] and {} one empty array (README.support-matrix, empty JSON array row)'],
             ],
         ],
     ],
@@ -645,19 +614,18 @@ return [
         ],
         'object type matches objects' => [
             'an array is not an object' => [
-                'runtime' => ['diverges', 'an empty [] / {} is ambiguous once decoded; documented for symfony/yii3 only (README.support-matrix)'],
-                'symfony' => ['diverges', 'an empty [] / {} is ambiguous once decoded; documented for symfony/yii3 only (README.support-matrix)'],
-                'laravel' => ['diverges', 'an empty [] / {} is ambiguous once decoded; documented for symfony/yii3 only (README.support-matrix)'],
-                'laravel-data' => ['diverges', 'an empty [] / {} is ambiguous once decoded; documented for symfony/yii3 only (README.support-matrix)'],
-                'yii3' => ['diverges', 'an empty [] / {} is ambiguous once decoded; documented for symfony/yii3 only (README.support-matrix)'],
+                'symfony' => ['diverges', 'documented: the framework hands the body over decoded, [] and {} one empty array (README.support-matrix, empty JSON array row)'],
+                'laravel' => ['diverges', 'documented: the framework hands the body over decoded, [] and {} one empty array (README.support-matrix, empty JSON array row)'],
+                'laravel-data' => ['diverges', 'documented: the framework hands the body over decoded, [] and {} one empty array (README.support-matrix, empty JSON array row)'],
+                'yii3' => ['diverges', 'documented: the framework hands the body over decoded, [] and {} one empty array (README.support-matrix, empty JSON array row)'],
             ],
         ],
         'array type matches arrays' => [
             'an object is not an array' => [
-                'symfony' => ['diverges', 'an empty [] / {} is ambiguous once decoded; documented for symfony/yii3 only (README.support-matrix)'],
-                'laravel' => ['diverges', 'an empty [] / {} is ambiguous once decoded; documented for symfony/yii3 only (README.support-matrix)'],
-                'laravel-data' => ['diverges', 'an empty [] / {} is ambiguous once decoded; documented for symfony/yii3 only (README.support-matrix)'],
-                'yii3' => ['diverges', 'an empty [] / {} is ambiguous once decoded; documented for symfony/yii3 only (README.support-matrix)'],
+                'symfony' => ['diverges', 'documented: the framework hands the body over decoded, [] and {} one empty array (README.support-matrix, empty JSON array row)'],
+                'laravel' => ['diverges', 'documented: the framework hands the body over decoded, [] and {} one empty array (README.support-matrix, empty JSON array row)'],
+                'laravel-data' => ['diverges', 'documented: the framework hands the body over decoded, [] and {} one empty array (README.support-matrix, empty JSON array row)'],
+                'yii3' => ['diverges', 'documented: the framework hands the body over decoded, [] and {} one empty array (README.support-matrix, empty JSON array row)'],
             ],
         ],
         'boolean type matches booleans' => [
@@ -670,22 +638,8 @@ return [
                 'yii3' => ['diverges', 'documented: lenient scalar types in this mode (README.support-matrix)'],
             ],
         ],
-        'type: array or object' => [
-            'number is invalid' => [
-                'symfony' => ['diverges', 'generator: a type list of array/object (and null) is not enforced in this mode'],
-            ],
-            'string is invalid' => [
-                'symfony' => ['diverges', 'generator: a type list of array/object (and null) is not enforced in this mode'],
-            ],
-        ],
         'type: array, object or null' => [
             'null is valid' => [
-                'symfony' => ['diverges', 'generator: a type list of array/object (and null) is not enforced in this mode'],
-            ],
-            'number is invalid' => [
-                'symfony' => ['diverges', 'generator: a type list of array/object (and null) is not enforced in this mode'],
-            ],
-            'string is invalid' => [
                 'symfony' => ['diverges', 'generator: a type list of array/object (and null) is not enforced in this mode'],
             ],
         ],

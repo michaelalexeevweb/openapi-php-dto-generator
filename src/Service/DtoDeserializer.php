@@ -281,6 +281,20 @@ final class DtoDeserializer implements DtoDeserializerInterface
      */
     private array $unionTrialPath = [];
 
+    /**
+     * Whether the values being cast come from a body this class decoded itself. It decodes with every
+     * JSON object kept a `stdClass`, so an empty PHP array there can only be the JSON array `[]`:
+     * refused where an object is asked for, and no object to the object keywords. A value handed in
+     * already decoded ({@see deserializeValue()}) may be `{}` decoded associatively, and keeps the
+     * old reading. Saved and restored around each body, so a nested call leaves it as it was.
+     */
+    private bool $jsonShapesKnown = false;
+
+    /**
+     * {@see $constraintValidator} reading an empty array as `[]`, built on first use.
+     */
+    private ?DtoValidator $jsonShapesValidator = null;
+
     public function __construct(
         ?DtoValidatorInterface $constraintValidator = null,
     ) {
@@ -307,16 +321,24 @@ final class DtoDeserializer implements DtoDeserializerInterface
         };
 
         // Pre-fetch the remaining request data sources once — avoids N per-parameter allocations.
-        /** @var T $dto */
-        $dto = $this->deserializeInternal(
-            dtoClass: $dtoClass,
-            bodyData: $this->getBodyData($request),
-            queryData: $request->query->all(),
-            rawQueryProvider: $rawQueryProvider,
-            formData: $request->request->all(),
-            request: $request,
-            bodySource: 'json',
-        );
+        // The body is decoded here, its JSON objects kept as `stdClass`: an empty array in it can only
+        // be `[]` — see `$jsonShapesKnown`.
+        $outerShapesKnown = $this->jsonShapesKnown;
+        $this->jsonShapesKnown = true;
+        try {
+            /** @var T $dto */
+            $dto = $this->deserializeInternal(
+                dtoClass: $dtoClass,
+                bodyData: $this->getBodyData($request),
+                queryData: $request->query->all(),
+                rawQueryProvider: $rawQueryProvider,
+                formData: $request->request->all(),
+                request: $request,
+                bodySource: 'json',
+            );
+        } finally {
+            $this->jsonShapesKnown = $outerShapesKnown;
+        }
 
         return $dto;
     }
@@ -427,29 +449,36 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
         $result = [];
         $errors = [];
-        foreach ($decoded as $index => $element) {
-            $gaveUpBefore = $this->engineGaveUpCount;
-            try {
-                // Reuse the array-item caster so scalars, enums, datetimes and DTOs
-                // (with discriminator support) all behave like nested array elements.
-                $result[] = $this->castArrayItemValue(
-                    itemValue: $element,
-                    arrayItemType: $itemType,
-                    itemPath: (string)$index,
-                    source: 'json',
-                    itemsNullable: $itemsNullable,
-                    arrayItemTemporalFormat: $itemTemporalFormat,
-                );
-            } catch (RuntimeException $e) {
-                foreach (explode("\n", $e->getMessage()) as $message) {
-                    $errors[] = sprintf('element %d: %s', $index, $message);
-                }
-                // The stop {@see castArrayItems()} makes, for the same reason: the body is refused
-                // either way, and each further element would burn the backtrack limit again.
-                if ($this->engineGaveUpCount > $gaveUpBefore) {
-                    break;
+        // Decoded here, so an empty array in it is `[]` — see `$jsonShapesKnown`.
+        $outerShapesKnown = $this->jsonShapesKnown;
+        $this->jsonShapesKnown = true;
+        try {
+            foreach ($decoded as $index => $element) {
+                $gaveUpBefore = $this->engineGaveUpCount;
+                try {
+                    // Reuse the array-item caster so scalars, enums, datetimes and DTOs
+                    // (with discriminator support) all behave like nested array elements.
+                    $result[] = $this->castArrayItemValue(
+                        itemValue: $element,
+                        arrayItemType: $itemType,
+                        itemPath: (string)$index,
+                        source: 'json',
+                        itemsNullable: $itemsNullable,
+                        arrayItemTemporalFormat: $itemTemporalFormat,
+                    );
+                } catch (RuntimeException $e) {
+                    foreach (explode("\n", $e->getMessage()) as $message) {
+                        $errors[] = sprintf('element %d: %s', $index, $message);
+                    }
+                    // The stop {@see castArrayItems()} makes, for the same reason: the body is refused
+                    // either way, and each further element would burn the backtrack limit again.
+                    if ($this->engineGaveUpCount > $gaveUpBefore) {
+                        break;
+                    }
                 }
             }
+        } finally {
+            $this->jsonShapesKnown = $outerShapesKnown;
         }
 
         if ($errors !== []) {
@@ -466,6 +495,10 @@ final class DtoDeserializer implements DtoDeserializerInterface
      * $data is a value produced by json_decode($json, false) — stdClass for an object, a
      * list for an array, a scalar otherwise — and $type may be a scalar keyword, an enum
      * class, a DTO class (discriminator aware) or DateTimeImmutable.
+     *
+     * An empty PHP array is read as the empty OBJECT here: a caller that decoded associatively
+     * hands `{}` over that way, and nothing tells it from `[]`. A body {@see deserialize()} or
+     * {@see deserializeCollection()} decodes itself refuses `[]` where an object is asked for.
      *
      * {@see deserializeCollection()} aggregates every element error into one exception, so
      * a single bad element fails the whole body. A batch endpoint that must accept the good
@@ -2906,8 +2939,14 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 // The mirror case: `type: object` means a JSON OBJECT, and a JSON array decoded into a
                 // list would silently become a map keyed 0..n-1. Here — unlike after hydration — the two
                 // are still distinguishable, so the wire shape is checked at the source. An empty array
-                // is left alone: a pre-decoded body reports `{}` exactly that way.
-                if ($allowsAssociativeArray && !$cameInAsJsonObject && $value !== [] && array_is_list($value)) {
+                // is refused only in a body decoded here, where `{}` would have stayed a `stdClass`;
+                // a pre-decoded value reports `{}` exactly that way.
+                if (
+                    $allowsAssociativeArray
+                    && !$cameInAsJsonObject
+                    && array_is_list($value)
+                    && ($value !== [] || $this->jsonShapesKnown)
+                ) {
                     throw new RuntimeException(
                         message: $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'object', value: 'array'),
                     );
@@ -3052,11 +3091,11 @@ final class DtoDeserializer implements DtoDeserializerInterface
             $decodedObject = $value instanceof stdClass ? $value : null;
             if ($value instanceof stdClass) {
                 $value = $this->stdClassToArray($value);
-            } elseif (is_array($value) && $value !== [] && array_is_list($value)) {
+            } elseif (is_array($value) && ($value !== [] || ($source === 'json' && $this->jsonShapesKnown)) && array_is_list($value)) {
                 // Same rule as a map: a nested object is a JSON OBJECT, and a JSON array reaching here
                 // used to be deserialized as one — every key missing, so a schema with no required
-                // property accepted `[1,2]` as an object. `[]` is left alone: it is also how `{}` arrives
-                // from a pre-decoded body.
+                // property accepted `[1,2]` as an object. `[]` is left alone only where it may be `{}`:
+                // in a pre-decoded value, not in a body decoded here — see `$jsonShapesKnown`.
                 throw new RuntimeException(
                     message: $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'object', value: 'array'),
                 );
@@ -3246,10 +3285,10 @@ final class DtoDeserializer implements DtoDeserializerInterface
             $decodedObject = $itemValue instanceof stdClass ? $itemValue : null;
             if ($itemValue instanceof stdClass) {
                 $itemValue = $this->stdClassToArray($itemValue);
-            } elseif (is_array($itemValue) && $itemValue !== [] && array_is_list($itemValue)) {
+            } elseif (is_array($itemValue) && ($itemValue !== [] || ($source === 'json' && $this->jsonShapesKnown)) && array_is_list($itemValue)) {
                 // The rule the single nested DTO already follows: a JSON array is not an object. Items
                 // and `deserializeValue()` took `[1,2]` as an empty DTO and dropped the numbers. `[]`
-                // stays allowed — it is also how `{}` arrives from a pre-decoded body.
+                // stays allowed where it may be `{}` — a pre-decoded value, not a body decoded here.
                 throw new RuntimeException(
                     message: $this->expectsTypeMessage(paramPath: $itemPath, expectedType: 'object', value: 'array'),
                 );
@@ -3912,6 +3951,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 if ($case->value === $value) {
                     return $case;
                 }
+                // JSON has one number type: `1.0` is the integer 1 (JSON Schema 2020-12 §6.1.1), and
+                // PHP decodes it to a float that never strict-equals the int case. A real fraction and
+                // an out-of-range magnitude still match nothing.
+                if (is_int($case->value) && is_float($value) && $this->isStrictIntValue($value) && (int)$value === $case->value) {
+                    return $case;
+                }
                 // Non-JSON sources (query/path/form) deliver every value as a string, so an
                 // int-backed enum case (value 1) never strict-equals the incoming "1". Allow a
                 // string<->scalar match for those sources; JSON stays strict.
@@ -4170,7 +4215,11 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return $this->constraintValidator->validate($subject, $value, $constraints);
         }
 
-        $verdict = $this->constraintValidator->validateReportingEngine(subject: $subject, value: $value, constraints: $constraints);
+        $validator = $this->constraintValidator;
+        if ($this->jsonShapesKnown) {
+            $validator = $this->jsonShapesValidator ??= $validator->readingEmptyArraysAsJsonArrays();
+        }
+        $verdict = $validator->validateReportingEngine(subject: $subject, value: $value, constraints: $constraints);
         if ($verdict['engineGaveUp']) {
             $this->engineGaveUpCount++;
         }

@@ -1867,6 +1867,62 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * A `default` is not validated: with the key absent, `{maximum: 3, default: 5}` holds nothing to
+     * check. Symfony's attribute checked the property, which held the default, and refused `{}`. A
+     * value SENT is checked as ever, the default's own value included.
+     */
+    #[DataProvider('everyMode')]
+    public function testADefaultIsNotValidatedWhenTheKeyIsAbsent(GenerationMode $mode): void
+    {
+        $spec = self::probeSpec(['type' => 'number', 'maximum' => 3, 'default' => 5]);
+        $spec['components']['schemas']['Probe']['required'] = [];
+
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => false],
+            actual: $this->verdict($mode, $spec, 'unvalidated-default', '{}', '{"f":5}'),
+        );
+    }
+
+    /**
+     * JSON has one number type: `1.0` is the integer 1, so it matches `type: integer` and an integer
+     * `enum`, typed or not. PHP decodes it to a float, which never strict-equals the int a backed enum
+     * case holds: the runtime and yii3 refused it for an enum, and laravel-data let `1.5` through as
+     * the case 1. A real fraction is still no integer.
+     *
+     * Symfony's serializer reads a number by the PHP type and refuses a float for an `int` and an
+     * int-backed enum alike — a documented limitation (README.support-matrix), pinned here so a change
+     * in Symfony is noticed: it refuses the valid `1.0`, never accepts the invalid `1.5`.
+     *
+     * @param array<string, mixed> $property
+     */
+    #[DataProvider('integralFloatCases')]
+    public function testAnIntegralFloatIsTheInteger(GenerationMode $mode, string $key, array $property): void
+    {
+        $spec = self::probeSpec($property);
+        $spec['components']['schemas']['Level'] = ['type' => 'integer', 'enum' => [1, 2, 3]];
+
+        $this->assertSame(
+            expected: ['valid' => $mode !== GenerationMode::Symfony, 'invalid' => false],
+            actual: $this->verdict($mode, $spec, 'integral-float-' . $key, '{"f":1.0}', '{"f":1.5}'),
+        );
+    }
+
+    public static function integralFloatCases(): iterable
+    {
+        $cases = [
+            'integer' => ['type' => 'integer'],
+            'typed-enum' => ['type' => 'integer', 'enum' => [1, 2, 3]],
+            'untyped-enum' => ['enum' => [1, 2, 3]],
+            'enum-component' => ['$ref' => '#/components/schemas/Level'],
+        ];
+        foreach (GenerationMode::cases() as $mode) {
+            foreach ($cases as $key => $property) {
+                yield $mode->value . ' ' . $key => [$mode, $key, $property];
+            }
+        }
+    }
+
+    /**
      * `null` for an object the schema does not let be null is refused, sent or not required alike.
      * Symfony's serializer denormalized the `null` into an empty object — `new Inner()` — and the
      * setter took it, so `{"f": null}` passed wherever `Inner` required nothing; it failed only by

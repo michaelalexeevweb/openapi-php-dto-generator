@@ -8,6 +8,7 @@ use DateTimeImmutable;
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
+use stdClass;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 use Symfony\Component\HttpFoundation\Request;
 
@@ -1198,8 +1199,9 @@ final class DtoDeserializerTest extends TestCase
 
     public function testDeserializeValidatesMinMaxPropertiesViaValidator(): void
     {
+        // `{}`, the empty OBJECT: an empty PHP array would encode to `[]`, which is no object at all.
         $request = new Request([], [], [], [], [], [], json_encode([
-            'meta' => [],
+            'meta' => new stdClass(),
         ]));
         $request->headers->set('Content-Type', 'application/json');
 

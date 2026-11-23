@@ -313,6 +313,9 @@ trait RendersLaravelValidation
             // The facade is spelled out too, for the same reason one level up: a document may own a
             // `Rule` class in this namespace. The emitted file imports it as `Rule`, or under an alias
             // when that short name is taken.
+            if ($this->laravelEnumIsIntBacked($enumClass)) {
+                $rules[] = "'integer'";
+            }
             $rules[] = sprintf('\Illuminate\Validation\Rule::enum(\%s::class)', $this->laravelEnumFqcn($enumClass));
 
             return ['rules' => $rules, 'consumed' => [...$consumed, 'type', 'enum']];
@@ -607,10 +610,12 @@ trait RendersLaravelValidation
                 // by an int-backed enum that lists 2.
                 $enumRule = sprintf('\Illuminate\Validation\Rule::enum(\%s::class)', $this->laravelEnumFqcn($itemClass));
 
+                $itemRules = $this->laravelEnumIsIntBacked($itemClass) ? ["'integer'", $enumRule] : [$enumRule];
+
                 return [
                     $this->laravelPathSegment($property['openApiName']) . '.*' => $this->laravelItemsNullable($property)
-                        ? ["'nullable'", $enumRule]
-                        : [$enumRule],
+                        ? ["'nullable'", ...$itemRules]
+                        : $itemRules,
                 ];
             }
 
@@ -917,6 +922,16 @@ trait RendersLaravelValidation
         }
 
         return false;
+    }
+
+    /**
+     * Whether a generated enum is int-backed. `Rule::enum()` alone asks `tryFrom()`, which PHP feeds a
+     * float by truncating it: `1.5` passed as the case 1 and was hydrated as 1. `integer` beside it
+     * accepts `1.0` — the integer 1 in JSON — and refuses a real fraction.
+     */
+    private function laravelEnumIsIntBacked(string $enumClass): bool
+    {
+        return ($this->enumSchemas[$this->shortClassName($enumClass)]['type'] ?? null) === 'int';
     }
 
     /**

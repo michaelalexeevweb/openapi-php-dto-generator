@@ -3,6 +3,49 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.135 — 2026-11-23
+
+- runtime tells [] from {}
+- 1.0 matches integer enums
+- laravel-data refuses 1.5 enum
+- symfony checks mixed anyOf
+- symfony skips unsent defaults
+
+JSON-Schema-Test-Suite burn-down: sixteen entries fewer in `expectations.php` (406 → 390).
+
+**Runtime with `--dto-generator-directory`: regenerate after upgrading.** The deserializer, the normalizer
+and the validator changed.
+
+Runtime:
+
+- an empty JSON array `[]` is no object any more. The runtime decodes the body itself and keeps every JSON
+  object a `stdClass`, so it still knows which of the two arrived: `[]` is refused for a `type: object`
+  property, a map and a generated class, and `required` / `minProperties` leave an array alone, as JSON
+  Schema says. A value handed to `deserializeValue()` already decoded keeps reading `[]` as `{}`, and so
+  does `DtoValidator` by default; `DtoValidator::readingEmptyArraysAsJsonArrays()` gives the strict reading;
+- the normalizer judges a field as it will be written: an untyped empty array goes out as `[]`, and is
+  checked as one.
+
+The framework modes receive the body already decoded, with the difference gone: README.support-matrix
+lists it.
+
+Integers:
+
+- `1.0` matches an int-backed enum — typed, untyped or a component — in runtime and yii3, as it already
+  matched `type: integer`. A real fraction matches no case;
+- laravel, laravel-data: an int-backed enum gets `integer` beside `Rule::enum()`. `Rule::enum()` alone asks
+  `tryFrom()`, which PHP feeds a float by truncating it: laravel-data took `1.5` as the case 1;
+- symfony refuses `1.0` for an int-backed enum as it does for an `int` property: its serializer reads a
+  number by the PHP type. Documented, and pinned by a test.
+
+Symfony:
+
+- a `mixed` property's `anyOf` and type list (`[array, object, null]`) are checked by the validation
+  callback. `Assert\Length` inside `AtLeastOneOf` passed the integer 3 for `{type: string, anyOf: …}`; an
+  `anyOf` of object branches or of `{type: null}`, and a type list, were checked by nothing;
+- a `default` that breaks the property's own keywords (`{maximum: 3, default: 5}`) no longer refuses a
+  payload that leaves the key out: those keywords go to the callback, which checks only what was sent.
+
 ## 2.15.134 — 2026-11-23
 
 - symfony refuses null for objects

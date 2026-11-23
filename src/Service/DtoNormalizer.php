@@ -85,6 +85,15 @@ final class DtoNormalizer implements DtoNormalizerInterface
     private DtoValidatorInterface $constraintValidator;
 
     /**
+     * The validator a FIELD is checked with: an empty array there is written as the JSON array `[]`,
+     * so it is judged as one — no object, and no object keyword applies to it. A JSON object a field
+     * holds untyped is the `stdClass` the deserializer kept, and a typed map's empty array is still an
+     * object where `type` pins it. Built on first use; another validator than this package's is used
+     * as it is.
+     */
+    private ?DtoValidatorInterface $fieldValidator = null;
+
+    /**
      * @var array<class-string, array{
      *   getters: list<array{
      *     methodName: string,
@@ -123,6 +132,13 @@ final class DtoNormalizer implements DtoNormalizerInterface
         ?DtoValidatorInterface $constraintValidator = null,
     ) {
         $this->constraintValidator = $constraintValidator ?? new DtoValidator();
+    }
+
+    private function fieldValidator(): DtoValidatorInterface
+    {
+        return $this->fieldValidator ??= $this->constraintValidator instanceof DtoValidator
+            ? $this->constraintValidator->readingEmptyArraysAsJsonArrays()
+            : $this->constraintValidator;
     }
 
     /**
@@ -426,7 +442,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
                 if (is_array($constraints) && $constraints !== []) {
                     array_push(
                         $errors,
-                        ...$this->constraintValidator->validate(
+                        ...$this->fieldValidator()->validate(
                             subject: sprintf('field "%s"', $scopedFieldName),
                             value: $value,
                             constraints: $constraints,

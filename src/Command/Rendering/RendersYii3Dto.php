@@ -1007,11 +1007,7 @@ trait RendersYii3Dto
         // Strict in a body, which is JSON and says `1`; a parameter arrives as text and says `"1"`.
         $enum = $this->enumSchemas[ltrim($property['type'], '?')] ?? null;
         if ($enum !== null) {
-            $values = array_map(
-                callback: static fn(string|int $value): string => var_export($value, true),
-                array: $enum['values'],
-            );
-            $arguments = ['[' . implode(', ', $values) . ']'];
+            $arguments = ['[' . implode(', ', $this->yii3EnumInValues(values: $enum['values'], strict: !$isParameter)) . ']'];
             if (!$isParameter) {
                 $arguments[] = 'strict: true';
             }
@@ -1227,10 +1223,7 @@ trait RendersYii3Dto
             if ($enum !== null) {
                 $inFqcn = $this->yii3RuleClass('In');
                 $ruleImports[] = $inFqcn;
-                $values = array_map(
-                    callback: static fn(string|int $value): string => var_export($value, true),
-                    array: $enum['values'],
-                );
+                $values = $this->yii3EnumInValues(values: $enum['values'], strict: true);
                 $members[sprintf('new %s([%s], strict: true)', $this->yii3Lib('In', $inFqcn), implode(', ', $values))] = 'one of ' . $member;
                 continue;
             }
@@ -2703,6 +2696,31 @@ PHP;
             'cast' => 'static fn(mixed $item): mixed => ' . $cast,
             'held' => $readAs . '|string' . ($nullableItem ? '|null' : ''),
         ];
+    }
+
+    /**
+     * The values an `In` lists for an enum. A strict comparison holds `1` and `1.0` apart, yet JSON has
+     * one number type and `1.0` IS the integer 1, decoded to a float: an int member is listed as both.
+     * A lenient one (a parameter, sent as text) compares loosely and needs only the member.
+     *
+     * @param array<int, int|string> $values
+     * @return list<string>
+     */
+    private function yii3EnumInValues(array $values, bool $strict): array
+    {
+        $listed = [];
+        foreach ($values as $value) {
+            $listed[] = var_export($value, true);
+        }
+        if ($strict) {
+            foreach ($values as $value) {
+                if (is_int($value)) {
+                    $listed[] = var_export((float)$value, true);
+                }
+            }
+        }
+
+        return $listed;
     }
 
     private function isGeneratedDtoType(string $type): bool

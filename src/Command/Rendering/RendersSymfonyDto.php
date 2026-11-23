@@ -1210,8 +1210,9 @@ PHP;
         }
 
         // anyOf — the value must satisfy at least one branch.
+        // Not on a `mixed` property: the callback owns its `anyOf` — see `shouldForceRootCallbackForProperty()`.
         $anyOf = $constraints['anyOf'] ?? null;
-        if (is_array($anyOf) && count($anyOf) >= 2 && !$this->anyOfBranchCarriesPattern($anyOf)) {
+        if (is_array($anyOf) && count($anyOf) >= 2 && !$this->anyOfBranchCarriesPattern($anyOf) && $property['type'] !== 'mixed') {
             $branches = [];
             $allBranchesValidatable = true;
             foreach ($anyOf as $branch) {
@@ -1292,6 +1293,10 @@ PHP;
      */
     private function shouldSkipSymfonyScalarAttributesForProperty(array $property): bool
     {
+        // The callback took them: an attribute would check the default the property holds.
+        if ($this->symfonyDefaultBreaksItsKeywords($property)) {
+            return true;
+        }
         if (preg_match('/[|&]/', $property['type']) === 1) {
             return false;
         }
@@ -1798,6 +1803,26 @@ PHP;
     }
 
     /**
+     * Whether an optional property's `default` breaks the property's own keywords. A default is not
+     * validated (JSON Schema 2020-12 §9.2), yet an attribute checks the property, which holds it — so
+     * `{maximum: 3, default: 5}` refused `{}`. Such a property's keywords go to the callback, which
+     * checks only what was sent. Answered with the runtime validator, the reference reading of the
+     * keywords.
+     *
+     * @param SchemaProperty $property
+     */
+    private function symfonyDefaultBreaksItsKeywords(array $property): bool
+    {
+        $default = $property['default'] ?? null;
+        if ($default === null || $this->propertyIsRequiredOnInput($property)) {
+            return false;
+        }
+        $constraints = is_array($property['constraints'] ?? null) ? $property['constraints'] : [];
+
+        return (new DtoValidator())->validate('default', $default, $constraints) !== [];
+    }
+
+    /**
      * @param SchemaProperty $property
      */
     private function shouldForceRootCallbackForProperty(array $property): bool
@@ -1807,6 +1832,13 @@ PHP;
         }
 
         $constraints = is_array($property['constraints'] ?? null) ? $property['constraints'] : [];
+        // A `default` is not validated (JSON Schema 2020-12 §9.2): `{maximum: 3, default: 5}` with the
+        // key absent is a valid payload. An attribute checks the property, which holds that default,
+        // and refused `{}`; the callback checks only what was sent. So where the default breaks the
+        // property's own keywords, they go to the callback.
+        if ($this->symfonyDefaultBreaksItsKeywords($property)) {
+            return true;
+        }
         // `pattern` beside no `type`, `minimum` beside `type: [string, integer]`: no attribute says
         // "only if the value is a string", so `resolveSymfonyAttributes()` emits none and the callback,
         // which applies each keyword to its own type, takes them — `Assert\Regex` refused `true`.
@@ -1825,6 +1857,17 @@ PHP;
             return true;
         }
         if (is_array($constraints['oneOf'] ?? null)) {
+            return true;
+        }
+        // On a `mixed` property no attribute can say "only if the value is a string": `Assert\Length`
+        // inside `AtLeastOneOf` passed the integer 3 for `{type: string, anyOf: [...]}`; an `anyOf` of
+        // object branches or of `{type: null}` had no `Assert\*` spelling and was checked by nothing;
+        // a type LIST (`[array, object, null]`) had no attribute at all and took any value. The
+        // callback reads each keyword for its own type.
+        if (
+            $property['type'] === 'mixed'
+            && (is_array($constraints['anyOf'] ?? null) || is_array($constraints['type'] ?? null))
+        ) {
             return true;
         }
         if (is_array($constraints['anyOf'] ?? null) && $this->anyOfBranchCarriesPattern($constraints['anyOf'])) {
