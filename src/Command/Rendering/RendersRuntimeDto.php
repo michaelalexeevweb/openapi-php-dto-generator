@@ -1048,7 +1048,7 @@ trait RendersRuntimeDto
      * @param array<int, SchemaProperty> $properties
      * @param array<int, array<string, mixed>> $constructorParams in the order the constructor declares them
      * @param array{propertyName: string, mapping: array<string, string>}|null $discriminator
-     * @return array<int, array{name: string, wireName: string, required: bool, flag: string}>|null
+     * @return array<int, array{name: string, value: string, given: string, wireName: string, required: bool, declaredType: string, flag: string}>|null
      */
     private function resolveFastHydratorPlan(
         array $properties,
@@ -1104,8 +1104,15 @@ trait RendersRuntimeDto
                 return null;
             }
 
+            // The method's locals are named apart from its parameters (`$data`, `$cast`, `$errors`) and
+            // from each other: named after the property itself, a property `data` overwrote the input
+            // array, and every key read after it came from null — a TypeError, a 500, for any request
+            // DTO with a `data` field that is not its last. Property names are already distinct
+            // without regard to case, so the prefixed ones are too.
             $plan[] = [
                 'name' => $property['name'],
+                'value' => 'valueOf' . ucfirst($property['name']),
+                'given' => 'given' . ucfirst($property['name']),
                 'wireName' => $property['openApiName'],
                 'required' => $property['required'],
                 'declaredType' => $declaredTypes[$property['name']],

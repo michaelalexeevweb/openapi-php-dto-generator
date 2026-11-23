@@ -7,9 +7,11 @@
 - Copied files: `tests/draft2020-12/*.json` (the required tests only — `optional/` is not included)
   and the suite's `LICENSE` (MIT), unchanged.
 
-The suite's `remotes/` directory is NOT copied: its schemas are served from
-`http://localhost:1234/…` and referenced by URL, which the generator does not resolve offline.
-Groups that need them are recorded as `skipped` in `expectations.php`.
+`remotes/draft2020-12/` is copied too (2026-11-23, same tag, unchanged): the schemas the suite serves
+from `http://localhost:1234/draft2020-12/…`. The generator fetches nothing, so the harness preloads
+them, as a validator registers the remotes before a run: each one a referenced document needs is
+embedded in the wrapped OpenAPI document as a component whose `$id` is its URL. The other drafts'
+remotes are not copied. A reference to a json-schema.org metaschema stays `skipped`.
 
 `expectations.php` is ours, not the suite's: the per-mode list of tests that do not yet agree
 with the suite, read by `tests/Parity/JsonSchemaTestSuiteTest.php`. Re-record it with

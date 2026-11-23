@@ -687,13 +687,13 @@ interface {{ className }}
     public static function hydrateFast(array $data, {{ closureRef }} $cast, array &$errors): self
     {
 {% for p in fastHydrator %}
-        ${{ p.name }}Given = array_key_exists('{{ p.wireName|php_string }}', $data);
+        ${{ p.given }} = array_key_exists('{{ p.wireName|php_string }}', $data);
 {% if p.required %}
-        if (!${{ p.name }}Given) {
+        if (!${{ p.given }}) {
             $errors[] = 'Required parameter "{{ p.wireName|php_string }}" not found in request.';
         }
 {% endif %}
-        ${{ p.name }} = ${{ p.name }}Given ? $cast('{{ p.wireName|php_string }}', $data['{{ p.wireName|php_string }}'], $errors) : null;
+        ${{ p.value }} = ${{ p.given }} ? $cast('{{ p.wireName|php_string }}', $data['{{ p.wireName|php_string }}'], $errors) : null;
 {% endfor %}
 
         if ($errors !== []) {
@@ -702,15 +702,15 @@ interface {{ className }}
 
 {% for p in fastHydrator %}
 {% if p.required %}
-        /** @var {{ p.declaredType }} ${{ p.name }} */
+        /** @var {{ p.declaredType }} ${{ p.value }} */
 {% endif %}
 {% endfor %}
         $dto = new self(
 {% for p in fastHydrator %}
 {% if p.required %}
-            {{ p.name }}: ${{ p.name }},
+            {{ p.name }}: ${{ p.value }},
 {% else %}
-            {{ p.name }}: ${{ p.name }}Given ? ${{ p.name }} : {{ unsetValueRef }}::UNSET,
+            {{ p.name }}: ${{ p.given }} ? ${{ p.value }} : {{ unsetValueRef }}::UNSET,
 {% endif %}
 {% endfor %}
         );

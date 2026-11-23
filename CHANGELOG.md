@@ -3,6 +3,24 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.137 — 2026-11-23
+
+- runtime: a `data` property no longer crashes
+- suite remotes now tested
+
+**Runtime: regenerate after upgrading.** A request DTO with a property named `data`, `cast`, `errors` or
+`dto`, or a property `x` beside one named `xGiven`, answered every request with a 500.
+
+- the generated `hydrateFast()` named its locals after the properties, beside its own parameters `$data`,
+  `$cast` and `$errors`. A property `data` overwrote the input array, and every property read after it came
+  from null — `array_key_exists(): Argument #2 ($array) must be of type array, null given`. The locals are
+  `$valueOf…` and `$given…` now, apart from the parameters and from each other.
+
+JSON-Schema-Test-Suite: the suite's `remotes/draft2020-12/` is copied into the fixtures and preloaded by the
+harness, each remote embedded as a resource whose `$id` is the URL the suite serves it at. A hundred
+`skipped` entries became real checks in all five modes; most pass, and the ones that do not are listed
+(`expectations.php`: 384 → 307). The crash above is what one of them found.
+
 ## 2.15.136 — 2026-11-23
 
 - alias chains no longer type phantom classes

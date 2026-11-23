@@ -305,19 +305,19 @@ final class Animal2AnyOf4 implements Animal2, GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $test2Given = array_key_exists('test2', $data);
-        if (!$test2Given) {
+        $givenTest2 = array_key_exists('test2', $data);
+        if (!$givenTest2) {
             $errors[] = 'Required parameter "test2" not found in request.';
         }
-        $test2 = $test2Given ? $cast('test2', $data['test2'], $errors) : null;
+        $valueOfTest2 = $givenTest2 ? $cast('test2', $data['test2'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var string $test2 */
+        /** @var string $valueOfTest2 */
         $dto = new self(
-            test2: $test2,
+            test2: $valueOfTest2,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -516,19 +516,19 @@ final class AnimalOneOf3 implements Animal, GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $testGiven = array_key_exists('test', $data);
-        if (!$testGiven) {
+        $givenTest = array_key_exists('test', $data);
+        if (!$givenTest) {
             $errors[] = 'Required parameter "test" not found in request.';
         }
-        $test = $testGiven ? $cast('test', $data['test'], $errors) : null;
+        $valueOfTest = $givenTest ? $cast('test', $data['test'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var string $test */
+        /** @var string $valueOfTest */
         $dto = new self(
-            test: $test,
+            test: $valueOfTest,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -972,26 +972,26 @@ final class ApiTest2PatchRequest implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $idPatchTest2Given = array_key_exists('idPatchTest2', $data);
-        if (!$idPatchTest2Given) {
+        $givenIdPatchTest2 = array_key_exists('idPatchTest2', $data);
+        if (!$givenIdPatchTest2) {
             $errors[] = 'Required parameter "idPatchTest2" not found in request.';
         }
-        $idPatchTest2 = $idPatchTest2Given ? $cast('idPatchTest2', $data['idPatchTest2'], $errors) : null;
-        $namePatchTest2Given = array_key_exists('namePatchTest2', $data);
-        if (!$namePatchTest2Given) {
+        $valueOfIdPatchTest2 = $givenIdPatchTest2 ? $cast('idPatchTest2', $data['idPatchTest2'], $errors) : null;
+        $givenNamePatchTest2 = array_key_exists('namePatchTest2', $data);
+        if (!$givenNamePatchTest2) {
             $errors[] = 'Required parameter "namePatchTest2" not found in request.';
         }
-        $namePatchTest2 = $namePatchTest2Given ? $cast('namePatchTest2', $data['namePatchTest2'], $errors) : null;
+        $valueOfNamePatchTest2 = $givenNamePatchTest2 ? $cast('namePatchTest2', $data['namePatchTest2'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var int $idPatchTest2 */
-        /** @var string $namePatchTest2 */
+        /** @var int $valueOfIdPatchTest2 */
+        /** @var string $valueOfNamePatchTest2 */
         $dto = new self(
-            idPatchTest2: $idPatchTest2,
-            namePatchTest2: $namePatchTest2,
+            idPatchTest2: $valueOfIdPatchTest2,
+            namePatchTest2: $valueOfNamePatchTest2,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -1333,33 +1333,33 @@ final class ApiTest2PostRequest implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $idPostTest2Given = array_key_exists('idPostTest2', $data);
-        if (!$idPostTest2Given) {
+        $givenIdPostTest2 = array_key_exists('idPostTest2', $data);
+        if (!$givenIdPostTest2) {
             $errors[] = 'Required parameter "idPostTest2" not found in request.';
         }
-        $idPostTest2 = $idPostTest2Given ? $cast('idPostTest2', $data['idPostTest2'], $errors) : null;
-        $namePostTest2Given = array_key_exists('namePostTest2', $data);
-        if (!$namePostTest2Given) {
+        $valueOfIdPostTest2 = $givenIdPostTest2 ? $cast('idPostTest2', $data['idPostTest2'], $errors) : null;
+        $givenNamePostTest2 = array_key_exists('namePostTest2', $data);
+        if (!$givenNamePostTest2) {
             $errors[] = 'Required parameter "namePostTest2" not found in request.';
         }
-        $namePostTest2 = $namePostTest2Given ? $cast('namePostTest2', $data['namePostTest2'], $errors) : null;
-        $surnamePostTest2Given = array_key_exists('surnamePostTest2', $data);
-        if (!$surnamePostTest2Given) {
+        $valueOfNamePostTest2 = $givenNamePostTest2 ? $cast('namePostTest2', $data['namePostTest2'], $errors) : null;
+        $givenSurnamePostTest2 = array_key_exists('surnamePostTest2', $data);
+        if (!$givenSurnamePostTest2) {
             $errors[] = 'Required parameter "surnamePostTest2" not found in request.';
         }
-        $surnamePostTest2 = $surnamePostTest2Given ? $cast('surnamePostTest2', $data['surnamePostTest2'], $errors) : null;
+        $valueOfSurnamePostTest2 = $givenSurnamePostTest2 ? $cast('surnamePostTest2', $data['surnamePostTest2'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var int $idPostTest2 */
-        /** @var string $namePostTest2 */
-        /** @var string $surnamePostTest2 */
+        /** @var int $valueOfIdPostTest2 */
+        /** @var string $valueOfNamePostTest2 */
+        /** @var string $valueOfSurnamePostTest2 */
         $dto = new self(
-            idPostTest2: $idPostTest2,
-            namePostTest2: $namePostTest2,
-            surnamePostTest2: $surnamePostTest2,
+            idPostTest2: $valueOfIdPostTest2,
+            namePostTest2: $valueOfNamePostTest2,
+            surnamePostTest2: $valueOfSurnamePostTest2,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -3734,19 +3734,19 @@ final class ApiTestFilePostRequest implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $fileGiven = array_key_exists('file', $data);
-        if (!$fileGiven) {
+        $givenFile = array_key_exists('file', $data);
+        if (!$givenFile) {
             $errors[] = 'Required parameter "file" not found in request.';
         }
-        $file = $fileGiven ? $cast('file', $data['file'], $errors) : null;
+        $valueOfFile = $givenFile ? $cast('file', $data['file'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var UploadedFile $file */
+        /** @var UploadedFile $valueOfFile */
         $dto = new self(
-            file: $file,
+            file: $valueOfFile,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -3947,19 +3947,19 @@ final class ApiTestJobs200 implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $acceptedGiven = array_key_exists('accepted', $data);
-        if (!$acceptedGiven) {
+        $givenAccepted = array_key_exists('accepted', $data);
+        if (!$givenAccepted) {
             $errors[] = 'Required parameter "accepted" not found in request.';
         }
-        $accepted = $acceptedGiven ? $cast('accepted', $data['accepted'], $errors) : null;
+        $valueOfAccepted = $givenAccepted ? $cast('accepted', $data['accepted'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var bool $accepted */
+        /** @var bool $valueOfAccepted */
         $dto = new self(
-            accepted: $accepted,
+            accepted: $valueOfAccepted,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -4160,19 +4160,19 @@ final class ApiTestJobs404 implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $reasonGiven = array_key_exists('reason', $data);
-        if (!$reasonGiven) {
+        $givenReason = array_key_exists('reason', $data);
+        if (!$givenReason) {
             $errors[] = 'Required parameter "reason" not found in request.';
         }
-        $reason = $reasonGiven ? $cast('reason', $data['reason'], $errors) : null;
+        $valueOfReason = $givenReason ? $cast('reason', $data['reason'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var string $reason */
+        /** @var string $valueOfReason */
         $dto = new self(
-            reason: $reason,
+            reason: $valueOfReason,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -4373,19 +4373,19 @@ final class ApiTestJobsDefault implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $messageGiven = array_key_exists('message', $data);
-        if (!$messageGiven) {
+        $givenMessage = array_key_exists('message', $data);
+        if (!$givenMessage) {
             $errors[] = 'Required parameter "message" not found in request.';
         }
-        $message = $messageGiven ? $cast('message', $data['message'], $errors) : null;
+        $valueOfMessage = $givenMessage ? $cast('message', $data['message'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var string $message */
+        /** @var string $valueOfMessage */
         $dto = new self(
-            message: $message,
+            message: $valueOfMessage,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -4601,19 +4601,19 @@ final class ApiTestJobsPostRequest implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $callbackUrlGiven = array_key_exists('callbackUrl', $data);
-        if (!$callbackUrlGiven) {
+        $givenCallbackUrl = array_key_exists('callbackUrl', $data);
+        if (!$givenCallbackUrl) {
             $errors[] = 'Required parameter "callbackUrl" not found in request.';
         }
-        $callbackUrl = $callbackUrlGiven ? $cast('callbackUrl', $data['callbackUrl'], $errors) : null;
+        $valueOfCallbackUrl = $givenCallbackUrl ? $cast('callbackUrl', $data['callbackUrl'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var string $callbackUrl */
+        /** @var string $valueOfCallbackUrl */
         $dto = new self(
-            callbackUrl: $callbackUrl,
+            callbackUrl: $valueOfCallbackUrl,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -4816,19 +4816,19 @@ final class ApiTestLegacy200 implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $okGiven = array_key_exists('ok', $data);
-        if (!$okGiven) {
+        $givenOk = array_key_exists('ok', $data);
+        if (!$givenOk) {
             $errors[] = 'Required parameter "ok" not found in request.';
         }
-        $ok = $okGiven ? $cast('ok', $data['ok'], $errors) : null;
+        $valueOfOk = $givenOk ? $cast('ok', $data['ok'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var bool $ok */
+        /** @var bool $valueOfOk */
         $dto = new self(
-            ok: $ok,
+            ok: $valueOfOk,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -5243,19 +5243,19 @@ final class ApiTestLegacyPostRequest implements GeneratedDtoInterface, Stringabl
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $payloadGiven = array_key_exists('payload', $data);
-        if (!$payloadGiven) {
+        $givenPayload = array_key_exists('payload', $data);
+        if (!$givenPayload) {
             $errors[] = 'Required parameter "payload" not found in request.';
         }
-        $payload = $payloadGiven ? $cast('payload', $data['payload'], $errors) : null;
+        $valueOfPayload = $givenPayload ? $cast('payload', $data['payload'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var string $payload */
+        /** @var string $valueOfPayload */
         $dto = new self(
-            payload: $payload,
+            payload: $valueOfPayload,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -5456,19 +5456,19 @@ final class ApiTestRepresentations200 implements GeneratedDtoInterface, Stringab
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $okGiven = array_key_exists('ok', $data);
-        if (!$okGiven) {
+        $givenOk = array_key_exists('ok', $data);
+        if (!$givenOk) {
             $errors[] = 'Required parameter "ok" not found in request.';
         }
-        $ok = $okGiven ? $cast('ok', $data['ok'], $errors) : null;
+        $valueOfOk = $givenOk ? $cast('ok', $data['ok'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var bool $ok */
+        /** @var bool $valueOfOk */
         $dto = new self(
-            ok: $ok,
+            ok: $valueOfOk,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -5669,19 +5669,19 @@ final class ApiTestRepresentations200Csv implements GeneratedDtoInterface, Strin
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $rowGiven = array_key_exists('row', $data);
-        if (!$rowGiven) {
+        $givenRow = array_key_exists('row', $data);
+        if (!$givenRow) {
             $errors[] = 'Required parameter "row" not found in request.';
         }
-        $row = $rowGiven ? $cast('row', $data['row'], $errors) : null;
+        $valueOfRow = $givenRow ? $cast('row', $data['row'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var string $row */
+        /** @var string $valueOfRow */
         $dto = new self(
-            row: $row,
+            row: $valueOfRow,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -5897,19 +5897,19 @@ final class ApiTestRepresentationsPostRequest implements GeneratedDtoInterface, 
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $payloadGiven = array_key_exists('payload', $data);
-        if (!$payloadGiven) {
+        $givenPayload = array_key_exists('payload', $data);
+        if (!$givenPayload) {
             $errors[] = 'Required parameter "payload" not found in request.';
         }
-        $payload = $payloadGiven ? $cast('payload', $data['payload'], $errors) : null;
+        $valueOfPayload = $givenPayload ? $cast('payload', $data['payload'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var string $payload */
+        /** @var string $valueOfPayload */
         $dto = new self(
-            payload: $payload,
+            payload: $valueOfPayload,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -6125,19 +6125,19 @@ final class ApiTestRepresentationsPostRequestForm implements GeneratedDtoInterfa
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $fieldGiven = array_key_exists('field', $data);
-        if (!$fieldGiven) {
+        $givenField = array_key_exists('field', $data);
+        if (!$givenField) {
             $errors[] = 'Required parameter "field" not found in request.';
         }
-        $field = $fieldGiven ? $cast('field', $data['field'], $errors) : null;
+        $valueOfField = $givenField ? $cast('field', $data['field'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var string $field */
+        /** @var string $valueOfField */
         $dto = new self(
-            field: $field,
+            field: $valueOfField,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -6353,19 +6353,19 @@ final class ApiTestRepresentationsPostRequestXml implements GeneratedDtoInterfac
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $elementGiven = array_key_exists('element', $data);
-        if (!$elementGiven) {
+        $givenElement = array_key_exists('element', $data);
+        if (!$givenElement) {
             $errors[] = 'Required parameter "element" not found in request.';
         }
-        $element = $elementGiven ? $cast('element', $data['element'], $errors) : null;
+        $valueOfElement = $givenElement ? $cast('element', $data['element'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var string $element */
+        /** @var string $valueOfElement */
         $dto = new self(
-            element: $element,
+            element: $valueOfElement,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -7887,15 +7887,15 @@ final class ApiTestSerializationGetQueryParamsFilter implements GeneratedDtoInte
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $sinceGiven = array_key_exists('since', $data);
-        $since = $sinceGiven ? $cast('since', $data['since'], $errors) : null;
+        $givenSince = array_key_exists('since', $data);
+        $valueOfSince = $givenSince ? $cast('since', $data['since'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
         $dto = new self(
-            since: $sinceGiven ? $since : UnsetValue::UNSET,
+            since: $givenSince ? $valueOfSince : UnsetValue::UNSET,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -9946,58 +9946,58 @@ final class ApplicatorRefs implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $mustContainGiven = array_key_exists('mustContain', $data);
-        if (!$mustContainGiven) {
+        $givenMustContain = array_key_exists('mustContain', $data);
+        if (!$givenMustContain) {
             $errors[] = 'Required parameter "mustContain" not found in request.';
         }
-        $mustContain = $mustContainGiven ? $cast('mustContain', $data['mustContain'], $errors) : null;
-        $positionsGiven = array_key_exists('positions', $data);
-        $positions = $positionsGiven ? $cast('positions', $data['positions'], $errors) : null;
-        $restGiven = array_key_exists('rest', $data);
-        $rest = $restGiven ? $cast('rest', $data['rest'], $errors) : null;
-        $closedPairGiven = array_key_exists('closedPair', $data);
-        $closedPair = $closedPairGiven ? $cast('closedPair', $data['closedPair'], $errors) : null;
-        $impossibleGiven = array_key_exists('impossible', $data);
-        $impossible = $impossibleGiven ? $cast('impossible', $data['impossible'], $errors) : null;
-        $vacuousGiven = array_key_exists('vacuous', $data);
-        $vacuous = $vacuousGiven ? $cast('vacuous', $data['vacuous'], $errors) : null;
-        $имяGiven = array_key_exists('имя', $data);
-        $имя = $имяGiven ? $cast('имя', $data['имя'], $errors) : null;
-        $名前Given = array_key_exists('名前', $data);
-        $名前 = $名前Given ? $cast('名前', $data['名前'], $errors) : null;
-        $forbiddenKeyGiven = array_key_exists('forbiddenKey', $data);
-        $forbiddenKey = $forbiddenKeyGiven ? $cast('forbiddenKey', $data['forbiddenKey'], $errors) : null;
-        $neverMatchesGiven = array_key_exists('neverMatches', $data);
-        $neverMatches = $neverMatchesGiven ? $cast('neverMatches', $data['neverMatches'], $errors) : null;
-        $closedFirstSlotGiven = array_key_exists('closedFirstSlot', $data);
-        $closedFirstSlot = $closedFirstSlotGiven ? $cast('closedFirstSlot', $data['closedFirstSlot'], $errors) : null;
-        $poisonedKeyGiven = array_key_exists('poisonedKey', $data);
-        $poisonedKey = $poisonedKeyGiven ? $cast('poisonedKey', $data['poisonedKey'], $errors) : null;
-        $conditionalGiven = array_key_exists('conditional', $data);
-        $conditional = $conditionalGiven ? $cast('conditional', $data['conditional'], $errors) : null;
-        $keyedGiven = array_key_exists('keyed', $data);
-        $keyed = $keyedGiven ? $cast('keyed', $data['keyed'], $errors) : null;
+        $valueOfMustContain = $givenMustContain ? $cast('mustContain', $data['mustContain'], $errors) : null;
+        $givenPositions = array_key_exists('positions', $data);
+        $valueOfPositions = $givenPositions ? $cast('positions', $data['positions'], $errors) : null;
+        $givenRest = array_key_exists('rest', $data);
+        $valueOfRest = $givenRest ? $cast('rest', $data['rest'], $errors) : null;
+        $givenClosedPair = array_key_exists('closedPair', $data);
+        $valueOfClosedPair = $givenClosedPair ? $cast('closedPair', $data['closedPair'], $errors) : null;
+        $givenImpossible = array_key_exists('impossible', $data);
+        $valueOfImpossible = $givenImpossible ? $cast('impossible', $data['impossible'], $errors) : null;
+        $givenVacuous = array_key_exists('vacuous', $data);
+        $valueOfVacuous = $givenVacuous ? $cast('vacuous', $data['vacuous'], $errors) : null;
+        $givenимя = array_key_exists('имя', $data);
+        $valueOfимя = $givenимя ? $cast('имя', $data['имя'], $errors) : null;
+        $given名前 = array_key_exists('名前', $data);
+        $valueOf名前 = $given名前 ? $cast('名前', $data['名前'], $errors) : null;
+        $givenForbiddenKey = array_key_exists('forbiddenKey', $data);
+        $valueOfForbiddenKey = $givenForbiddenKey ? $cast('forbiddenKey', $data['forbiddenKey'], $errors) : null;
+        $givenNeverMatches = array_key_exists('neverMatches', $data);
+        $valueOfNeverMatches = $givenNeverMatches ? $cast('neverMatches', $data['neverMatches'], $errors) : null;
+        $givenClosedFirstSlot = array_key_exists('closedFirstSlot', $data);
+        $valueOfClosedFirstSlot = $givenClosedFirstSlot ? $cast('closedFirstSlot', $data['closedFirstSlot'], $errors) : null;
+        $givenPoisonedKey = array_key_exists('poisonedKey', $data);
+        $valueOfPoisonedKey = $givenPoisonedKey ? $cast('poisonedKey', $data['poisonedKey'], $errors) : null;
+        $givenConditional = array_key_exists('conditional', $data);
+        $valueOfConditional = $givenConditional ? $cast('conditional', $data['conditional'], $errors) : null;
+        $givenKeyed = array_key_exists('keyed', $data);
+        $valueOfKeyed = $givenKeyed ? $cast('keyed', $data['keyed'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var array $mustContain */
+        /** @var array $valueOfMustContain */
         $dto = new self(
-            mustContain: $mustContain,
-            positions: $positionsGiven ? $positions : UnsetValue::UNSET,
-            rest: $restGiven ? $rest : UnsetValue::UNSET,
-            closedPair: $closedPairGiven ? $closedPair : UnsetValue::UNSET,
-            impossible: $impossibleGiven ? $impossible : UnsetValue::UNSET,
-            vacuous: $vacuousGiven ? $vacuous : UnsetValue::UNSET,
-            имя: $имяGiven ? $имя : UnsetValue::UNSET,
-            名前: $名前Given ? $名前 : UnsetValue::UNSET,
-            forbiddenKey: $forbiddenKeyGiven ? $forbiddenKey : UnsetValue::UNSET,
-            neverMatches: $neverMatchesGiven ? $neverMatches : UnsetValue::UNSET,
-            closedFirstSlot: $closedFirstSlotGiven ? $closedFirstSlot : UnsetValue::UNSET,
-            poisonedKey: $poisonedKeyGiven ? $poisonedKey : UnsetValue::UNSET,
-            conditional: $conditionalGiven ? $conditional : UnsetValue::UNSET,
-            keyed: $keyedGiven ? $keyed : UnsetValue::UNSET,
+            mustContain: $valueOfMustContain,
+            positions: $givenPositions ? $valueOfPositions : UnsetValue::UNSET,
+            rest: $givenRest ? $valueOfRest : UnsetValue::UNSET,
+            closedPair: $givenClosedPair ? $valueOfClosedPair : UnsetValue::UNSET,
+            impossible: $givenImpossible ? $valueOfImpossible : UnsetValue::UNSET,
+            vacuous: $givenVacuous ? $valueOfVacuous : UnsetValue::UNSET,
+            имя: $givenимя ? $valueOfимя : UnsetValue::UNSET,
+            名前: $given名前 ? $valueOf名前 : UnsetValue::UNSET,
+            forbiddenKey: $givenForbiddenKey ? $valueOfForbiddenKey : UnsetValue::UNSET,
+            neverMatches: $givenNeverMatches ? $valueOfNeverMatches : UnsetValue::UNSET,
+            closedFirstSlot: $givenClosedFirstSlot ? $valueOfClosedFirstSlot : UnsetValue::UNSET,
+            poisonedKey: $givenPoisonedKey ? $valueOfPoisonedKey : UnsetValue::UNSET,
+            conditional: $givenConditional ? $valueOfConditional : UnsetValue::UNSET,
+            keyed: $givenKeyed ? $valueOfKeyed : UnsetValue::UNSET,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -10219,15 +10219,15 @@ final class ApplicatorRefsConditional implements GeneratedDtoInterface, Stringab
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $labelGiven = array_key_exists('label', $data);
-        $label = $labelGiven ? $cast('label', $data['label'], $errors) : null;
+        $givenLabel = array_key_exists('label', $data);
+        $valueOfLabel = $givenLabel ? $cast('label', $data['label'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
         $dto = new self(
-            label: $labelGiven ? $label : UnsetValue::UNSET,
+            label: $givenLabel ? $valueOfLabel : UnsetValue::UNSET,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -10448,15 +10448,15 @@ final class ApplicatorRefsKeyed implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $triggerGiven = array_key_exists('trigger', $data);
-        $trigger = $triggerGiven ? $cast('trigger', $data['trigger'], $errors) : null;
+        $givenTrigger = array_key_exists('trigger', $data);
+        $valueOfTrigger = $givenTrigger ? $cast('trigger', $data['trigger'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
         $dto = new self(
-            trigger: $triggerGiven ? $trigger : UnsetValue::UNSET,
+            trigger: $givenTrigger ? $valueOfTrigger : UnsetValue::UNSET,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -10677,15 +10677,15 @@ final class ApplicatorRefsPoisonedKey implements GeneratedDtoInterface, Stringab
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $triggerGiven = array_key_exists('trigger', $data);
-        $trigger = $triggerGiven ? $cast('trigger', $data['trigger'], $errors) : null;
+        $givenTrigger = array_key_exists('trigger', $data);
+        $valueOfTrigger = $givenTrigger ? $cast('trigger', $data['trigger'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
         $dto = new self(
-            trigger: $triggerGiven ? $trigger : UnsetValue::UNSET,
+            trigger: $givenTrigger ? $valueOfTrigger : UnsetValue::UNSET,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -11187,32 +11187,32 @@ final class AwkwardNames implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $plainGiven = array_key_exists('plain', $data);
-        if (!$plainGiven) {
+        $givenPlain = array_key_exists('plain', $data);
+        if (!$givenPlain) {
             $errors[] = 'Required parameter "plain" not found in request.';
         }
-        $plain = $plainGiven ? $cast('plain', $data['plain'], $errors) : null;
-        $itSGiven = array_key_exists('it\'s', $data);
-        if (!$itSGiven) {
+        $valueOfPlain = $givenPlain ? $cast('plain', $data['plain'], $errors) : null;
+        $givenItS = array_key_exists('it\'s', $data);
+        if (!$givenItS) {
             $errors[] = 'Required parameter "it\'s" not found in request.';
         }
-        $itS = $itSGiven ? $cast('it\'s', $data['it\'s'], $errors) : null;
-        $backSlashGiven = array_key_exists('back\slash', $data);
-        $backSlash = $backSlashGiven ? $cast('back\slash', $data['back\slash'], $errors) : null;
-        $bothSGiven = array_key_exists('both\\\'s', $data);
-        $bothS = $bothSGiven ? $cast('both\\\'s', $data['both\\\'s'], $errors) : null;
+        $valueOfItS = $givenItS ? $cast('it\'s', $data['it\'s'], $errors) : null;
+        $givenBackSlash = array_key_exists('back\slash', $data);
+        $valueOfBackSlash = $givenBackSlash ? $cast('back\slash', $data['back\slash'], $errors) : null;
+        $givenBothS = array_key_exists('both\\\'s', $data);
+        $valueOfBothS = $givenBothS ? $cast('both\\\'s', $data['both\\\'s'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var string $plain */
-        /** @var string $itS */
+        /** @var string $valueOfPlain */
+        /** @var string $valueOfItS */
         $dto = new self(
-            plain: $plain,
-            itS: $itS,
-            backSlash: $backSlashGiven ? $backSlash : UnsetValue::UNSET,
-            bothS: $bothSGiven ? $bothS : UnsetValue::UNSET,
+            plain: $valueOfPlain,
+            itS: $valueOfItS,
+            backSlash: $givenBackSlash ? $valueOfBackSlash : UnsetValue::UNSET,
+            bothS: $givenBothS ? $valueOfBothS : UnsetValue::UNSET,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -11428,19 +11428,19 @@ final class CallbackJobDonePostRequest implements GeneratedDtoInterface, Stringa
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $stateGiven = array_key_exists('state', $data);
-        if (!$stateGiven) {
+        $givenState = array_key_exists('state', $data);
+        if (!$givenState) {
             $errors[] = 'Required parameter "state" not found in request.';
         }
-        $state = $stateGiven ? $cast('state', $data['state'], $errors) : null;
+        $valueOfState = $givenState ? $cast('state', $data['state'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var string $state */
+        /** @var string $valueOfState */
         $dto = new self(
-            state: $state,
+            state: $valueOfState,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -11656,19 +11656,19 @@ final class CallbackJobFailedPostRequest implements GeneratedDtoInterface, Strin
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $failureGiven = array_key_exists('failure', $data);
-        if (!$failureGiven) {
+        $givenFailure = array_key_exists('failure', $data);
+        if (!$givenFailure) {
             $errors[] = 'Required parameter "failure" not found in request.';
         }
-        $failure = $failureGiven ? $cast('failure', $data['failure'], $errors) : null;
+        $valueOfFailure = $givenFailure ? $cast('failure', $data['failure'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var string $failure */
+        /** @var string $valueOfFailure */
         $dto = new self(
-            failure: $failure,
+            failure: $valueOfFailure,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -12171,22 +12171,22 @@ final class ChainLink implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $codeGiven = array_key_exists('code', $data);
-        if (!$codeGiven) {
+        $givenCode = array_key_exists('code', $data);
+        if (!$givenCode) {
             $errors[] = 'Required parameter "code" not found in request.';
         }
-        $code = $codeGiven ? $cast('code', $data['code'], $errors) : null;
-        $tagsGiven = array_key_exists('tags', $data);
-        $tags = $tagsGiven ? $cast('tags', $data['tags'], $errors) : null;
+        $valueOfCode = $givenCode ? $cast('code', $data['code'], $errors) : null;
+        $givenTags = array_key_exists('tags', $data);
+        $valueOfTags = $givenTags ? $cast('tags', $data['tags'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var string $code */
+        /** @var string $valueOfCode */
         $dto = new self(
-            code: $code,
-            tags: $tagsGiven ? $tags : UnsetValue::UNSET,
+            code: $valueOfCode,
+            tags: $givenTags ? $valueOfTags : UnsetValue::UNSET,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -12402,19 +12402,19 @@ final class ChainMiddle implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $linksGiven = array_key_exists('links', $data);
-        if (!$linksGiven) {
+        $givenLinks = array_key_exists('links', $data);
+        if (!$givenLinks) {
             $errors[] = 'Required parameter "links" not found in request.';
         }
-        $links = $linksGiven ? $cast('links', $data['links'], $errors) : null;
+        $valueOfLinks = $givenLinks ? $cast('links', $data['links'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var array $links */
+        /** @var array $valueOfLinks */
         $dto = new self(
-            links: $links,
+            links: $valueOfLinks,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -12617,19 +12617,19 @@ final class ChainTag implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $labelGiven = array_key_exists('label', $data);
-        if (!$labelGiven) {
+        $givenLabel = array_key_exists('label', $data);
+        if (!$givenLabel) {
             $errors[] = 'Required parameter "label" not found in request.';
         }
-        $label = $labelGiven ? $cast('label', $data['label'], $errors) : null;
+        $valueOfLabel = $givenLabel ? $cast('label', $data['label'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var string $label */
+        /** @var string $valueOfLabel */
         $dto = new self(
-            label: $label,
+            label: $valueOfLabel,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -13380,28 +13380,28 @@ final class ContainerAliases implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $listOfListsGiven = array_key_exists('listOfLists', $data);
-        if (!$listOfListsGiven) {
+        $givenListOfLists = array_key_exists('listOfLists', $data);
+        if (!$givenListOfLists) {
             $errors[] = 'Required parameter "listOfLists" not found in request.';
         }
-        $listOfLists = $listOfListsGiven ? $cast('listOfLists', $data['listOfLists'], $errors) : null;
-        $listOfMapsGiven = array_key_exists('listOfMaps', $data);
-        $listOfMaps = $listOfMapsGiven ? $cast('listOfMaps', $data['listOfMaps'], $errors) : null;
-        $mapOfListsGiven = array_key_exists('mapOfLists', $data);
-        $mapOfLists = $mapOfListsGiven ? $cast('mapOfLists', $data['mapOfLists'], $errors) : null;
-        $plainGiven = array_key_exists('plain', $data);
-        $plain = $plainGiven ? $cast('plain', $data['plain'], $errors) : null;
+        $valueOfListOfLists = $givenListOfLists ? $cast('listOfLists', $data['listOfLists'], $errors) : null;
+        $givenListOfMaps = array_key_exists('listOfMaps', $data);
+        $valueOfListOfMaps = $givenListOfMaps ? $cast('listOfMaps', $data['listOfMaps'], $errors) : null;
+        $givenMapOfLists = array_key_exists('mapOfLists', $data);
+        $valueOfMapOfLists = $givenMapOfLists ? $cast('mapOfLists', $data['mapOfLists'], $errors) : null;
+        $givenPlain = array_key_exists('plain', $data);
+        $valueOfPlain = $givenPlain ? $cast('plain', $data['plain'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var array $listOfLists */
+        /** @var array $valueOfListOfLists */
         $dto = new self(
-            listOfLists: $listOfLists,
-            listOfMaps: $listOfMapsGiven ? $listOfMaps : UnsetValue::UNSET,
-            mapOfLists: $mapOfListsGiven ? $mapOfLists : UnsetValue::UNSET,
-            plain: $plainGiven ? $plain : UnsetValue::UNSET,
+            listOfLists: $valueOfListOfLists,
+            listOfMaps: $givenListOfMaps ? $valueOfListOfMaps : UnsetValue::UNSET,
+            mapOfLists: $givenMapOfLists ? $valueOfMapOfLists : UnsetValue::UNSET,
+            plain: $givenPlain ? $valueOfPlain : UnsetValue::UNSET,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -14008,35 +14008,35 @@ final class Containers implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $datesGiven = array_key_exists('dates', $data);
-        if (!$datesGiven) {
+        $givenDates = array_key_exists('dates', $data);
+        if (!$givenDates) {
             $errors[] = 'Required parameter "dates" not found in request.';
         }
-        $dates = $datesGiven ? $cast('dates', $data['dates'], $errors) : null;
-        $shapesGiven = array_key_exists('shapes', $data);
-        if (!$shapesGiven) {
+        $valueOfDates = $givenDates ? $cast('dates', $data['dates'], $errors) : null;
+        $givenShapes = array_key_exists('shapes', $data);
+        if (!$givenShapes) {
             $errors[] = 'Required parameter "shapes" not found in request.';
         }
-        $shapes = $shapesGiven ? $cast('shapes', $data['shapes'], $errors) : null;
-        $datesByDayGiven = array_key_exists('datesByDay', $data);
-        $datesByDay = $datesByDayGiven ? $cast('datesByDay', $data['datesByDay'], $errors) : null;
-        $timestampsGiven = array_key_exists('timestamps', $data);
-        $timestamps = $timestampsGiven ? $cast('timestamps', $data['timestamps'], $errors) : null;
-        $tagsByKeyGiven = array_key_exists('tagsByKey', $data);
-        $tagsByKey = $tagsByKeyGiven ? $cast('tagsByKey', $data['tagsByKey'], $errors) : null;
+        $valueOfShapes = $givenShapes ? $cast('shapes', $data['shapes'], $errors) : null;
+        $givenDatesByDay = array_key_exists('datesByDay', $data);
+        $valueOfDatesByDay = $givenDatesByDay ? $cast('datesByDay', $data['datesByDay'], $errors) : null;
+        $givenTimestamps = array_key_exists('timestamps', $data);
+        $valueOfTimestamps = $givenTimestamps ? $cast('timestamps', $data['timestamps'], $errors) : null;
+        $givenTagsByKey = array_key_exists('tagsByKey', $data);
+        $valueOfTagsByKey = $givenTagsByKey ? $cast('tagsByKey', $data['tagsByKey'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var array $dates */
-        /** @var array $shapes */
+        /** @var array $valueOfDates */
+        /** @var array $valueOfShapes */
         $dto = new self(
-            dates: $dates,
-            shapes: $shapes,
-            datesByDay: $datesByDayGiven ? $datesByDay : UnsetValue::UNSET,
-            timestamps: $timestampsGiven ? $timestamps : UnsetValue::UNSET,
-            tagsByKey: $tagsByKeyGiven ? $tagsByKey : UnsetValue::UNSET,
+            dates: $valueOfDates,
+            shapes: $valueOfShapes,
+            datesByDay: $givenDatesByDay ? $valueOfDatesByDay : UnsetValue::UNSET,
+            timestamps: $givenTimestamps ? $valueOfTimestamps : UnsetValue::UNSET,
+            tagsByKey: $givenTagsByKey ? $valueOfTagsByKey : UnsetValue::UNSET,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -15814,33 +15814,33 @@ final class FileRequest implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $fileGiven = array_key_exists('file', $data);
-        if (!$fileGiven) {
+        $givenFile = array_key_exists('file', $data);
+        if (!$givenFile) {
             $errors[] = 'Required parameter "file" not found in request.';
         }
-        $file = $fileGiven ? $cast('file', $data['file'], $errors) : null;
-        $nameGiven = array_key_exists('name', $data);
-        if (!$nameGiven) {
+        $valueOfFile = $givenFile ? $cast('file', $data['file'], $errors) : null;
+        $givenName = array_key_exists('name', $data);
+        if (!$givenName) {
             $errors[] = 'Required parameter "name" not found in request.';
         }
-        $name = $nameGiven ? $cast('name', $data['name'], $errors) : null;
-        $surnameGiven = array_key_exists('surname', $data);
-        if (!$surnameGiven) {
+        $valueOfName = $givenName ? $cast('name', $data['name'], $errors) : null;
+        $givenSurname = array_key_exists('surname', $data);
+        if (!$givenSurname) {
             $errors[] = 'Required parameter "surname" not found in request.';
         }
-        $surname = $surnameGiven ? $cast('surname', $data['surname'], $errors) : null;
+        $valueOfSurname = $givenSurname ? $cast('surname', $data['surname'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var UploadedFile $file */
-        /** @var string $name */
-        /** @var string $surname */
+        /** @var UploadedFile $valueOfFile */
+        /** @var string $valueOfName */
+        /** @var string $valueOfSurname */
         $dto = new self(
-            file: $file,
-            name: $name,
-            surname: $surname,
+            file: $valueOfFile,
+            name: $valueOfName,
+            surname: $valueOfSurname,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -16231,25 +16231,25 @@ final class ItemBounds implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $scoresGiven = array_key_exists('scores', $data);
-        if (!$scoresGiven) {
+        $givenScores = array_key_exists('scores', $data);
+        if (!$givenScores) {
             $errors[] = 'Required parameter "scores" not found in request.';
         }
-        $scores = $scoresGiven ? $cast('scores', $data['scores'], $errors) : null;
-        $scoresByKeyGiven = array_key_exists('scoresByKey', $data);
-        $scoresByKey = $scoresByKeyGiven ? $cast('scoresByKey', $data['scoresByKey'], $errors) : null;
-        $codesGiven = array_key_exists('codes', $data);
-        $codes = $codesGiven ? $cast('codes', $data['codes'], $errors) : null;
+        $valueOfScores = $givenScores ? $cast('scores', $data['scores'], $errors) : null;
+        $givenScoresByKey = array_key_exists('scoresByKey', $data);
+        $valueOfScoresByKey = $givenScoresByKey ? $cast('scoresByKey', $data['scoresByKey'], $errors) : null;
+        $givenCodes = array_key_exists('codes', $data);
+        $valueOfCodes = $givenCodes ? $cast('codes', $data['codes'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var array $scores */
+        /** @var array $valueOfScores */
         $dto = new self(
-            scores: $scores,
-            scoresByKey: $scoresByKeyGiven ? $scoresByKey : UnsetValue::UNSET,
-            codes: $codesGiven ? $codes : UnsetValue::UNSET,
+            scores: $valueOfScores,
+            scoresByKey: $givenScoresByKey ? $valueOfScoresByKey : UnsetValue::UNSET,
+            codes: $givenCodes ? $valueOfCodes : UnsetValue::UNSET,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -17066,44 +17066,44 @@ final class NestedContainers implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $matrixGiven = array_key_exists('matrix', $data);
-        if (!$matrixGiven) {
+        $givenMatrix = array_key_exists('matrix', $data);
+        if (!$givenMatrix) {
             $errors[] = 'Required parameter "matrix" not found in request.';
         }
-        $matrix = $matrixGiven ? $cast('matrix', $data['matrix'], $errors) : null;
-        $rowsOfMapsGiven = array_key_exists('rowsOfMaps', $data);
-        if (!$rowsOfMapsGiven) {
+        $valueOfMatrix = $givenMatrix ? $cast('matrix', $data['matrix'], $errors) : null;
+        $givenRowsOfMaps = array_key_exists('rowsOfMaps', $data);
+        if (!$givenRowsOfMaps) {
             $errors[] = 'Required parameter "rowsOfMaps" not found in request.';
         }
-        $rowsOfMaps = $rowsOfMapsGiven ? $cast('rowsOfMaps', $data['rowsOfMaps'], $errors) : null;
-        $listsByKeyGiven = array_key_exists('listsByKey', $data);
-        $listsByKey = $listsByKeyGiven ? $cast('listsByKey', $data['listsByKey'], $errors) : null;
-        $mapsByKeyGiven = array_key_exists('mapsByKey', $data);
-        $mapsByKey = $mapsByKeyGiven ? $cast('mapsByKey', $data['mapsByKey'], $errors) : null;
-        $dateRowsGiven = array_key_exists('dateRows', $data);
-        $dateRows = $dateRowsGiven ? $cast('dateRows', $data['dateRows'], $errors) : null;
-        $numRowsGiven = array_key_exists('numRows', $data);
-        $numRows = $numRowsGiven ? $cast('numRows', $data['numRows'], $errors) : null;
-        $enumRowsGiven = array_key_exists('enumRows', $data);
-        $enumRows = $enumRowsGiven ? $cast('enumRows', $data['enumRows'], $errors) : null;
-        $tagRowsGiven = array_key_exists('tagRows', $data);
-        $tagRows = $tagRowsGiven ? $cast('tagRows', $data['tagRows'], $errors) : null;
+        $valueOfRowsOfMaps = $givenRowsOfMaps ? $cast('rowsOfMaps', $data['rowsOfMaps'], $errors) : null;
+        $givenListsByKey = array_key_exists('listsByKey', $data);
+        $valueOfListsByKey = $givenListsByKey ? $cast('listsByKey', $data['listsByKey'], $errors) : null;
+        $givenMapsByKey = array_key_exists('mapsByKey', $data);
+        $valueOfMapsByKey = $givenMapsByKey ? $cast('mapsByKey', $data['mapsByKey'], $errors) : null;
+        $givenDateRows = array_key_exists('dateRows', $data);
+        $valueOfDateRows = $givenDateRows ? $cast('dateRows', $data['dateRows'], $errors) : null;
+        $givenNumRows = array_key_exists('numRows', $data);
+        $valueOfNumRows = $givenNumRows ? $cast('numRows', $data['numRows'], $errors) : null;
+        $givenEnumRows = array_key_exists('enumRows', $data);
+        $valueOfEnumRows = $givenEnumRows ? $cast('enumRows', $data['enumRows'], $errors) : null;
+        $givenTagRows = array_key_exists('tagRows', $data);
+        $valueOfTagRows = $givenTagRows ? $cast('tagRows', $data['tagRows'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var array $matrix */
-        /** @var array $rowsOfMaps */
+        /** @var array $valueOfMatrix */
+        /** @var array $valueOfRowsOfMaps */
         $dto = new self(
-            matrix: $matrix,
-            rowsOfMaps: $rowsOfMaps,
-            listsByKey: $listsByKeyGiven ? $listsByKey : UnsetValue::UNSET,
-            mapsByKey: $mapsByKeyGiven ? $mapsByKey : UnsetValue::UNSET,
-            dateRows: $dateRowsGiven ? $dateRows : UnsetValue::UNSET,
-            numRows: $numRowsGiven ? $numRows : UnsetValue::UNSET,
-            enumRows: $enumRowsGiven ? $enumRows : UnsetValue::UNSET,
-            tagRows: $tagRowsGiven ? $tagRows : UnsetValue::UNSET,
+            matrix: $valueOfMatrix,
+            rowsOfMaps: $valueOfRowsOfMaps,
+            listsByKey: $givenListsByKey ? $valueOfListsByKey : UnsetValue::UNSET,
+            mapsByKey: $givenMapsByKey ? $valueOfMapsByKey : UnsetValue::UNSET,
+            dateRows: $givenDateRows ? $valueOfDateRows : UnsetValue::UNSET,
+            numRows: $givenNumRows ? $valueOfNumRows : UnsetValue::UNSET,
+            enumRows: $givenEnumRows ? $valueOfEnumRows : UnsetValue::UNSET,
+            tagRows: $givenTagRows ? $valueOfTagRows : UnsetValue::UNSET,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -17593,28 +17593,28 @@ final class NullableContainerValues implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $listOfNullableGiven = array_key_exists('listOfNullable', $data);
-        if (!$listOfNullableGiven) {
+        $givenListOfNullable = array_key_exists('listOfNullable', $data);
+        if (!$givenListOfNullable) {
             $errors[] = 'Required parameter "listOfNullable" not found in request.';
         }
-        $listOfNullable = $listOfNullableGiven ? $cast('listOfNullable', $data['listOfNullable'], $errors) : null;
-        $mapOfNullableGiven = array_key_exists('mapOfNullable', $data);
-        $mapOfNullable = $mapOfNullableGiven ? $cast('mapOfNullable', $data['mapOfNullable'], $errors) : null;
-        $listOfNullable31Given = array_key_exists('listOfNullable31', $data);
-        $listOfNullable31 = $listOfNullable31Given ? $cast('listOfNullable31', $data['listOfNullable31'], $errors) : null;
-        $mapOfNullable31Given = array_key_exists('mapOfNullable31', $data);
-        $mapOfNullable31 = $mapOfNullable31Given ? $cast('mapOfNullable31', $data['mapOfNullable31'], $errors) : null;
+        $valueOfListOfNullable = $givenListOfNullable ? $cast('listOfNullable', $data['listOfNullable'], $errors) : null;
+        $givenMapOfNullable = array_key_exists('mapOfNullable', $data);
+        $valueOfMapOfNullable = $givenMapOfNullable ? $cast('mapOfNullable', $data['mapOfNullable'], $errors) : null;
+        $givenListOfNullable31 = array_key_exists('listOfNullable31', $data);
+        $valueOfListOfNullable31 = $givenListOfNullable31 ? $cast('listOfNullable31', $data['listOfNullable31'], $errors) : null;
+        $givenMapOfNullable31 = array_key_exists('mapOfNullable31', $data);
+        $valueOfMapOfNullable31 = $givenMapOfNullable31 ? $cast('mapOfNullable31', $data['mapOfNullable31'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var array $listOfNullable */
+        /** @var array $valueOfListOfNullable */
         $dto = new self(
-            listOfNullable: $listOfNullable,
-            mapOfNullable: $mapOfNullableGiven ? $mapOfNullable : UnsetValue::UNSET,
-            listOfNullable31: $listOfNullable31Given ? $listOfNullable31 : UnsetValue::UNSET,
-            mapOfNullable31: $mapOfNullable31Given ? $mapOfNullable31 : UnsetValue::UNSET,
+            listOfNullable: $valueOfListOfNullable,
+            mapOfNullable: $givenMapOfNullable ? $valueOfMapOfNullable : UnsetValue::UNSET,
+            listOfNullable31: $givenListOfNullable31 ? $valueOfListOfNullable31 : UnsetValue::UNSET,
+            mapOfNullable31: $givenMapOfNullable31 ? $valueOfMapOfNullable31 : UnsetValue::UNSET,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -17966,25 +17966,25 @@ final class ObjectWideRules implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $kindGiven = array_key_exists('kind', $data);
-        if (!$kindGiven) {
+        $givenKind = array_key_exists('kind', $data);
+        if (!$givenKind) {
             $errors[] = 'Required parameter "kind" not found in request.';
         }
-        $kind = $kindGiven ? $cast('kind', $data['kind'], $errors) : null;
-        $codeGiven = array_key_exists('code', $data);
-        $code = $codeGiven ? $cast('code', $data['code'], $errors) : null;
-        $extraGiven = array_key_exists('extra', $data);
-        $extra = $extraGiven ? $cast('extra', $data['extra'], $errors) : null;
+        $valueOfKind = $givenKind ? $cast('kind', $data['kind'], $errors) : null;
+        $givenCode = array_key_exists('code', $data);
+        $valueOfCode = $givenCode ? $cast('code', $data['code'], $errors) : null;
+        $givenExtra = array_key_exists('extra', $data);
+        $valueOfExtra = $givenExtra ? $cast('extra', $data['extra'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var string $kind */
+        /** @var string $valueOfKind */
         $dto = new self(
-            kind: $kind,
-            code: $codeGiven ? $code : UnsetValue::UNSET,
-            extra: $extraGiven ? $extra : UnsetValue::UNSET,
+            kind: $valueOfKind,
+            code: $givenCode ? $valueOfCode : UnsetValue::UNSET,
+            extra: $givenExtra ? $valueOfExtra : UnsetValue::UNSET,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -18183,19 +18183,19 @@ class Pet implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $nameGiven = array_key_exists('name', $data);
-        if (!$nameGiven) {
+        $givenName = array_key_exists('name', $data);
+        if (!$givenName) {
             $errors[] = 'Required parameter "name" not found in request.';
         }
-        $name = $nameGiven ? $cast('name', $data['name'], $errors) : null;
+        $valueOfName = $givenName ? $cast('name', $data['name'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var string $name */
+        /** @var string $valueOfName */
         $dto = new self(
-            name: $name,
+            name: $valueOfName,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -18826,19 +18826,19 @@ final class RetiredShape implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $legacyIdGiven = array_key_exists('legacyId', $data);
-        if (!$legacyIdGiven) {
+        $givenLegacyId = array_key_exists('legacyId', $data);
+        if (!$givenLegacyId) {
             $errors[] = 'Required parameter "legacyId" not found in request.';
         }
-        $legacyId = $legacyIdGiven ? $cast('legacyId', $data['legacyId'], $errors) : null;
+        $valueOfLegacyId = $givenLegacyId ? $cast('legacyId', $data['legacyId'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var int $legacyId */
+        /** @var int $valueOfLegacyId */
         $dto = new self(
-            legacyId: $legacyId,
+            legacyId: $valueOfLegacyId,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -19525,26 +19525,26 @@ final class Tag implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $idGiven = array_key_exists('id', $data);
-        if (!$idGiven) {
+        $givenId = array_key_exists('id', $data);
+        if (!$givenId) {
             $errors[] = 'Required parameter "id" not found in request.';
         }
-        $id = $idGiven ? $cast('id', $data['id'], $errors) : null;
-        $nameGiven = array_key_exists('name', $data);
-        if (!$nameGiven) {
+        $valueOfId = $givenId ? $cast('id', $data['id'], $errors) : null;
+        $givenName = array_key_exists('name', $data);
+        if (!$givenName) {
             $errors[] = 'Required parameter "name" not found in request.';
         }
-        $name = $nameGiven ? $cast('name', $data['name'], $errors) : null;
+        $valueOfName = $givenName ? $cast('name', $data['name'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var int $id */
-        /** @var string $name */
+        /** @var int $valueOfId */
+        /** @var string $valueOfName */
         $dto = new self(
-            id: $id,
-            name: $name,
+            id: $valueOfId,
+            name: $valueOfName,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -19743,19 +19743,19 @@ final class Test implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $idGiven = array_key_exists('id', $data);
-        if (!$idGiven) {
+        $givenId = array_key_exists('id', $data);
+        if (!$givenId) {
             $errors[] = 'Required parameter "id" not found in request.';
         }
-        $id = $idGiven ? $cast('id', $data['id'], $errors) : null;
+        $valueOfId = $givenId ? $cast('id', $data['id'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var int $id */
+        /** @var int $valueOfId */
         $dto = new self(
-            id: $id,
+            id: $valueOfId,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -20567,15 +20567,15 @@ final class Test2UserType implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $regionGiven = array_key_exists('region', $data);
-        $region = $regionGiven ? $cast('region', $data['region'], $errors) : null;
+        $givenRegion = array_key_exists('region', $data);
+        $valueOfRegion = $givenRegion ? $cast('region', $data['region'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
         $dto = new self(
-            region: $regionGiven ? $region : UnsetValue::UNSET,
+            region: $givenRegion ? $valueOfRegion : UnsetValue::UNSET,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -20915,33 +20915,33 @@ final class TestPatchRequest implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $idGiven = array_key_exists('id', $data);
-        if (!$idGiven) {
+        $givenId = array_key_exists('id', $data);
+        if (!$givenId) {
             $errors[] = 'Required parameter "id" not found in request.';
         }
-        $id = $idGiven ? $cast('id', $data['id'], $errors) : null;
-        $nameGiven = array_key_exists('name', $data);
-        if (!$nameGiven) {
+        $valueOfId = $givenId ? $cast('id', $data['id'], $errors) : null;
+        $givenName = array_key_exists('name', $data);
+        if (!$givenName) {
             $errors[] = 'Required parameter "name" not found in request.';
         }
-        $name = $nameGiven ? $cast('name', $data['name'], $errors) : null;
-        $surnameGiven = array_key_exists('surname', $data);
-        if (!$surnameGiven) {
+        $valueOfName = $givenName ? $cast('name', $data['name'], $errors) : null;
+        $givenSurname = array_key_exists('surname', $data);
+        if (!$givenSurname) {
             $errors[] = 'Required parameter "surname" not found in request.';
         }
-        $surname = $surnameGiven ? $cast('surname', $data['surname'], $errors) : null;
+        $valueOfSurname = $givenSurname ? $cast('surname', $data['surname'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var int $id */
-        /** @var string $name */
-        /** @var string $surname */
+        /** @var int $valueOfId */
+        /** @var string $valueOfName */
+        /** @var string $valueOfSurname */
         $dto = new self(
-            id: $id,
-            name: $name,
-            surname: $surname,
+            id: $valueOfId,
+            name: $valueOfName,
+            surname: $valueOfSurname,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -21422,39 +21422,39 @@ final class TestPostRequest implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $idGiven = array_key_exists('id', $data);
-        if (!$idGiven) {
+        $givenId = array_key_exists('id', $data);
+        if (!$givenId) {
             $errors[] = 'Required parameter "id" not found in request.';
         }
-        $id = $idGiven ? $cast('id', $data['id'], $errors) : null;
-        $nameGiven = array_key_exists('name', $data);
-        if (!$nameGiven) {
+        $valueOfId = $givenId ? $cast('id', $data['id'], $errors) : null;
+        $givenName = array_key_exists('name', $data);
+        if (!$givenName) {
             $errors[] = 'Required parameter "name" not found in request.';
         }
-        $name = $nameGiven ? $cast('name', $data['name'], $errors) : null;
-        $codeGiven = array_key_exists('code', $data);
-        if (!$codeGiven) {
+        $valueOfName = $givenName ? $cast('name', $data['name'], $errors) : null;
+        $givenCode = array_key_exists('code', $data);
+        if (!$givenCode) {
             $errors[] = 'Required parameter "code" not found in request.';
         }
-        $code = $codeGiven ? $cast('code', $data['code'], $errors) : null;
-        $homepageGiven = array_key_exists('homepage', $data);
-        $homepage = $homepageGiven ? $cast('homepage', $data['homepage'], $errors) : null;
-        $endpointGiven = array_key_exists('endpoint', $data);
-        $endpoint = $endpointGiven ? $cast('endpoint', $data['endpoint'], $errors) : null;
+        $valueOfCode = $givenCode ? $cast('code', $data['code'], $errors) : null;
+        $givenHomepage = array_key_exists('homepage', $data);
+        $valueOfHomepage = $givenHomepage ? $cast('homepage', $data['homepage'], $errors) : null;
+        $givenEndpoint = array_key_exists('endpoint', $data);
+        $valueOfEndpoint = $givenEndpoint ? $cast('endpoint', $data['endpoint'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var int $id */
-        /** @var string $name */
-        /** @var int|string $code */
+        /** @var int $valueOfId */
+        /** @var string $valueOfName */
+        /** @var int|string $valueOfCode */
         $dto = new self(
-            id: $id,
-            name: $name,
-            code: $code,
-            homepage: $homepageGiven ? $homepage : UnsetValue::UNSET,
-            endpoint: $endpointGiven ? $endpoint : UnsetValue::UNSET,
+            id: $valueOfId,
+            name: $valueOfName,
+            code: $valueOfCode,
+            homepage: $givenHomepage ? $valueOfHomepage : UnsetValue::UNSET,
+            endpoint: $givenEndpoint ? $valueOfEndpoint : UnsetValue::UNSET,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -21734,26 +21734,26 @@ final class TreeNode implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $labelGiven = array_key_exists('label', $data);
-        if (!$labelGiven) {
+        $givenLabel = array_key_exists('label', $data);
+        if (!$givenLabel) {
             $errors[] = 'Required parameter "label" not found in request.';
         }
-        $label = $labelGiven ? $cast('label', $data['label'], $errors) : null;
-        $childrenGiven = array_key_exists('children', $data);
-        if (!$childrenGiven) {
+        $valueOfLabel = $givenLabel ? $cast('label', $data['label'], $errors) : null;
+        $givenChildren = array_key_exists('children', $data);
+        if (!$givenChildren) {
             $errors[] = 'Required parameter "children" not found in request.';
         }
-        $children = $childrenGiven ? $cast('children', $data['children'], $errors) : null;
+        $valueOfChildren = $givenChildren ? $cast('children', $data['children'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var string $label */
-        /** @var array $children */
+        /** @var string $valueOfLabel */
+        /** @var array $valueOfChildren */
         $dto = new self(
-            label: $label,
-            children: $children,
+            label: $valueOfLabel,
+            children: $valueOfChildren,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -22289,28 +22289,28 @@ final class UnionUnderContainer implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $treeGiven = array_key_exists('tree', $data);
-        if (!$treeGiven) {
+        $givenTree = array_key_exists('tree', $data);
+        if (!$givenTree) {
             $errors[] = 'Required parameter "tree" not found in request.';
         }
-        $tree = $treeGiven ? $cast('tree', $data['tree'], $errors) : null;
-        $chainGiven = array_key_exists('chain', $data);
-        $chain = $chainGiven ? $cast('chain', $data['chain'], $errors) : null;
-        $chainAllOfGiven = array_key_exists('chainAllOf', $data);
-        $chainAllOf = $chainAllOfGiven ? $cast('chainAllOf', $data['chainAllOf'], $errors) : null;
-        $listOfUnionsGiven = array_key_exists('listOfUnions', $data);
-        $listOfUnions = $listOfUnionsGiven ? $cast('listOfUnions', $data['listOfUnions'], $errors) : null;
+        $valueOfTree = $givenTree ? $cast('tree', $data['tree'], $errors) : null;
+        $givenChain = array_key_exists('chain', $data);
+        $valueOfChain = $givenChain ? $cast('chain', $data['chain'], $errors) : null;
+        $givenChainAllOf = array_key_exists('chainAllOf', $data);
+        $valueOfChainAllOf = $givenChainAllOf ? $cast('chainAllOf', $data['chainAllOf'], $errors) : null;
+        $givenListOfUnions = array_key_exists('listOfUnions', $data);
+        $valueOfListOfUnions = $givenListOfUnions ? $cast('listOfUnions', $data['listOfUnions'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var TreeNode $tree */
+        /** @var TreeNode $valueOfTree */
         $dto = new self(
-            tree: $tree,
-            chain: $chainGiven ? $chain : UnsetValue::UNSET,
-            chainAllOf: $chainAllOfGiven ? $chainAllOf : UnsetValue::UNSET,
-            listOfUnions: $listOfUnionsGiven ? $listOfUnions : UnsetValue::UNSET,
+            tree: $valueOfTree,
+            chain: $givenChain ? $valueOfChain : UnsetValue::UNSET,
+            chainAllOf: $givenChainAllOf ? $valueOfChainAllOf : UnsetValue::UNSET,
+            listOfUnions: $givenListOfUnions ? $valueOfListOfUnions : UnsetValue::UNSET,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -22529,19 +22529,19 @@ final class UniqueScalars implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $tagsGiven = array_key_exists('tags', $data);
-        if (!$tagsGiven) {
+        $givenTags = array_key_exists('tags', $data);
+        if (!$givenTags) {
             $errors[] = 'Required parameter "tags" not found in request.';
         }
-        $tags = $tagsGiven ? $cast('tags', $data['tags'], $errors) : null;
+        $valueOfTags = $givenTags ? $cast('tags', $data['tags'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var array $tags */
+        /** @var array $valueOfTags */
         $dto = new self(
-            tags: $tags,
+            tags: $valueOfTags,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -22944,40 +22944,40 @@ final class User implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $idGiven = array_key_exists('id', $data);
-        if (!$idGiven) {
+        $givenId = array_key_exists('id', $data);
+        if (!$givenId) {
             $errors[] = 'Required parameter "id" not found in request.';
         }
-        $id = $idGiven ? $cast('id', $data['id'], $errors) : null;
-        $nameGiven = array_key_exists('name', $data);
-        if (!$nameGiven) {
+        $valueOfId = $givenId ? $cast('id', $data['id'], $errors) : null;
+        $givenName = array_key_exists('name', $data);
+        if (!$givenName) {
             $errors[] = 'Required parameter "name" not found in request.';
         }
-        $name = $nameGiven ? $cast('name', $data['name'], $errors) : null;
-        $petGiven = array_key_exists('pet', $data);
-        if (!$petGiven) {
+        $valueOfName = $givenName ? $cast('name', $data['name'], $errors) : null;
+        $givenPet = array_key_exists('pet', $data);
+        if (!$givenPet) {
             $errors[] = 'Required parameter "pet" not found in request.';
         }
-        $pet = $petGiven ? $cast('pet', $data['pet'], $errors) : null;
-        $createdAtGiven = array_key_exists('createdAt', $data);
-        if (!$createdAtGiven) {
+        $valueOfPet = $givenPet ? $cast('pet', $data['pet'], $errors) : null;
+        $givenCreatedAt = array_key_exists('createdAt', $data);
+        if (!$givenCreatedAt) {
             $errors[] = 'Required parameter "createdAt" not found in request.';
         }
-        $createdAt = $createdAtGiven ? $cast('createdAt', $data['createdAt'], $errors) : null;
+        $valueOfCreatedAt = $givenCreatedAt ? $cast('createdAt', $data['createdAt'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var int $id */
-        /** @var string $name */
-        /** @var ?Animal2 $pet */
-        /** @var DateTimeImmutable $createdAt */
+        /** @var int $valueOfId */
+        /** @var string $valueOfName */
+        /** @var ?Animal2 $valueOfPet */
+        /** @var DateTimeImmutable $valueOfCreatedAt */
         $dto = new self(
-            id: $id,
-            name: $name,
-            pet: $pet,
-            createdAt: $createdAt,
+            id: $valueOfId,
+            name: $valueOfName,
+            pet: $valueOfPet,
+            createdAt: $valueOfCreatedAt,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -23378,40 +23378,40 @@ final class User2 implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $idGiven = array_key_exists('id', $data);
-        if (!$idGiven) {
+        $givenId = array_key_exists('id', $data);
+        if (!$givenId) {
             $errors[] = 'Required parameter "id" not found in request.';
         }
-        $id = $idGiven ? $cast('id', $data['id'], $errors) : null;
-        $nameGiven = array_key_exists('name', $data);
-        if (!$nameGiven) {
+        $valueOfId = $givenId ? $cast('id', $data['id'], $errors) : null;
+        $givenName = array_key_exists('name', $data);
+        if (!$givenName) {
             $errors[] = 'Required parameter "name" not found in request.';
         }
-        $name = $nameGiven ? $cast('name', $data['name'], $errors) : null;
-        $petGiven = array_key_exists('pet', $data);
-        if (!$petGiven) {
+        $valueOfName = $givenName ? $cast('name', $data['name'], $errors) : null;
+        $givenPet = array_key_exists('pet', $data);
+        if (!$givenPet) {
             $errors[] = 'Required parameter "pet" not found in request.';
         }
-        $pet = $petGiven ? $cast('pet', $data['pet'], $errors) : null;
-        $createdAtGiven = array_key_exists('createdAt', $data);
-        if (!$createdAtGiven) {
+        $valueOfPet = $givenPet ? $cast('pet', $data['pet'], $errors) : null;
+        $givenCreatedAt = array_key_exists('createdAt', $data);
+        if (!$givenCreatedAt) {
             $errors[] = 'Required parameter "createdAt" not found in request.';
         }
-        $createdAt = $createdAtGiven ? $cast('createdAt', $data['createdAt'], $errors) : null;
+        $valueOfCreatedAt = $givenCreatedAt ? $cast('createdAt', $data['createdAt'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var int $id */
-        /** @var string $name */
-        /** @var ?User2Pet $pet */
-        /** @var DateTimeImmutable $createdAt */
+        /** @var int $valueOfId */
+        /** @var string $valueOfName */
+        /** @var ?User2Pet $valueOfPet */
+        /** @var DateTimeImmutable $valueOfCreatedAt */
         $dto = new self(
-            id: $id,
-            name: $name,
-            pet: $pet,
-            createdAt: $createdAt,
+            id: $valueOfId,
+            name: $valueOfName,
+            pet: $valueOfPet,
+            createdAt: $valueOfCreatedAt,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -23801,40 +23801,40 @@ final class User2Pet implements GeneratedDtoInterface, Stringable
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $nameGiven = array_key_exists('name', $data);
-        if (!$nameGiven) {
+        $givenName = array_key_exists('name', $data);
+        if (!$givenName) {
             $errors[] = 'Required parameter "name" not found in request.';
         }
-        $name = $nameGiven ? $cast('name', $data['name'], $errors) : null;
-        $meowGiven = array_key_exists('meow', $data);
-        if (!$meowGiven) {
+        $valueOfName = $givenName ? $cast('name', $data['name'], $errors) : null;
+        $givenMeow = array_key_exists('meow', $data);
+        if (!$givenMeow) {
             $errors[] = 'Required parameter "meow" not found in request.';
         }
-        $meow = $meowGiven ? $cast('meow', $data['meow'], $errors) : null;
-        $barkGiven = array_key_exists('bark', $data);
-        if (!$barkGiven) {
+        $valueOfMeow = $givenMeow ? $cast('meow', $data['meow'], $errors) : null;
+        $givenBark = array_key_exists('bark', $data);
+        if (!$givenBark) {
             $errors[] = 'Required parameter "bark" not found in request.';
         }
-        $bark = $barkGiven ? $cast('bark', $data['bark'], $errors) : null;
-        $testGiven = array_key_exists('test', $data);
-        if (!$testGiven) {
+        $valueOfBark = $givenBark ? $cast('bark', $data['bark'], $errors) : null;
+        $givenTest = array_key_exists('test', $data);
+        if (!$givenTest) {
             $errors[] = 'Required parameter "test" not found in request.';
         }
-        $test = $testGiven ? $cast('test', $data['test'], $errors) : null;
+        $valueOfTest = $givenTest ? $cast('test', $data['test'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var string $name */
-        /** @var string $meow */
-        /** @var string $bark */
-        /** @var string $test */
+        /** @var string $valueOfName */
+        /** @var string $valueOfMeow */
+        /** @var string $valueOfBark */
+        /** @var string $valueOfTest */
         $dto = new self(
-            name: $name,
-            meow: $meow,
-            bark: $bark,
-            test: $test,
+            name: $valueOfName,
+            meow: $valueOfMeow,
+            bark: $valueOfBark,
+            test: $valueOfTest,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its
@@ -24050,19 +24050,19 @@ final class WebhookOrderPlacedPostRequest implements GeneratedDtoInterface, Stri
      */
     public static function hydrateFast(array $data, Closure $cast, array &$errors): self
     {
-        $orderIdGiven = array_key_exists('orderId', $data);
-        if (!$orderIdGiven) {
+        $givenOrderId = array_key_exists('orderId', $data);
+        if (!$givenOrderId) {
             $errors[] = 'Required parameter "orderId" not found in request.';
         }
-        $orderId = $orderIdGiven ? $cast('orderId', $data['orderId'], $errors) : null;
+        $valueOfOrderId = $givenOrderId ? $cast('orderId', $data['orderId'], $errors) : null;
 
         if ($errors !== []) {
             throw new RuntimeException(implode("\n", array_unique(array_filter($errors))));
         }
 
-        /** @var string $orderId */
+        /** @var string $valueOfOrderId */
         $dto = new self(
-            orderId: $orderId,
+            orderId: $valueOfOrderId,
         );
 
         // No presence flags to raise here: the constructor already derives each one from whether its

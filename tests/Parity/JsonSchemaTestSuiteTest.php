@@ -65,6 +65,9 @@ final class JsonSchemaTestSuiteTest extends TestCase
     private const string COMPONENT_POINTER = '#/components/schemas/' . self::COMPONENT;
     private const string DIALECT = 'https://json-schema.org/draft/2020-12/schema';
 
+    /** Where the suite serves its `remotes/`; the copied ones sit under `FIXTURE_DIRECTORY/remotes/`. */
+    private const string REMOTE_BASE = 'http://localhost:1234/';
+
     /**
      * Keywords whose value is DATA, not a schema: a `{"$ref": …}` inside an `enum` is a value to
      * compare against, and rewriting or resolving it would change the test.
@@ -573,6 +576,7 @@ final class JsonSchemaTestSuiteTest extends TestCase
         $needsComponent = false;
         $hoistDefinitions = false;
         $keepRootIdentifier = false;
+        $remotes = [];
         foreach ($references as [$keyword, $reference, $base, $embedded]) {
             if (str_starts_with($reference, '#')) {
                 $isPointer = $reference === '#' || str_starts_with($reference, '#/');
@@ -591,6 +595,14 @@ final class JsonSchemaTestSuiteTest extends TestCase
             $document = $target === null ? null : explode('#', $target, 2)[0];
             if ($document !== null && in_array($document, $identifiers, true)) {
                 $keepRootIdentifier = true;
+
+                continue;
+            }
+            // A document of the suite's remotes is preloaded — see `remoteComponents()`. A relative
+            // reference reached it through the root's own `$id`, which therefore stays.
+            if ($document !== null && self::remoteFile($document) !== null) {
+                $remotes[$document] = true;
+                $keepRootIdentifier = $keepRootIdentifier || $base !== null;
 
                 continue;
             }
@@ -641,8 +653,100 @@ final class JsonSchemaTestSuiteTest extends TestCase
             $components[self::COMPONENT] = $root;
             $root = ['$ref' => self::COMPONENT_POINTER];
         }
+        if ($remotes !== []) {
+            $loaded = self::remoteComponents(array_keys($remotes));
+            if (is_string($loaded)) {
+                return ['status' => self::STATUS_SKIPPED, 'reason' => $loaded];
+            }
+            $components = [...$components, ...$loaded];
+        }
 
         return ['spec' => self::document(property: $root, components: $components)];
+    }
+
+    /**
+     * The file a URL of the suite's remotes names, or null when it is not one of the copied remotes.
+     */
+    private static function remoteFile(string $document): ?string
+    {
+        if (!str_starts_with($document, self::REMOTE_BASE)) {
+            return null;
+        }
+        $relative = substr($document, strlen(self::REMOTE_BASE));
+        if ($relative === '' || str_contains($relative, '..')) {
+            return null;
+        }
+        $file = self::FIXTURE_DIRECTORY . '/remotes/' . $relative;
+
+        return is_file($file) ? $file : null;
+    }
+
+    /**
+     * The remote documents, and every remote document they reference in turn, as components the
+     * wrapped document carries: each one is a resource whose `$id` is the URL the suite serves it at,
+     * which is how a validator registers the remotes before a run. A document that declares an `$id`
+     * of its own keeps it under a resource named by its URL. A string is the reason one cannot be
+     * preloaded.
+     *
+     * @param list<string> $documents
+     * @return array<string, mixed>|string
+     */
+    private static function remoteComponents(array $documents): array|string
+    {
+        $components = [];
+        $pending = $documents;
+        $seen = [];
+        while ($pending !== []) {
+            $document = array_shift($pending);
+            if (array_key_exists($document, $seen)) {
+                continue;
+            }
+            $seen[$document] = true;
+            $file = self::remoteFile($document);
+            if ($file === null) {
+                return sprintf('remote "%s" is not among the copied remotes', $document);
+            }
+            $content = json_decode((string)file_get_contents($file), true);
+            if (!is_array($content)) {
+                return sprintf('remote "%s" is not a schema object', $document);
+            }
+            $dialect = $content['$schema'] ?? null;
+            if (is_string($dialect) && $dialect !== self::DIALECT) {
+                return sprintf('remote "%s" declares the metaschema %s', $document, $dialect);
+            }
+
+            $identifiers = [];
+            $references = [];
+            self::collect(node: $content, base: $document, embedded: false, root: true, identifiers: $identifiers, references: $references);
+            foreach ($references as [, $reference, $base]) {
+                $target = self::resolveUri(base: $base, reference: $reference);
+                $referenced = $target === null ? null : explode('#', $target, 2)[0];
+                if ($referenced === null || in_array($referenced, $identifiers, true) || $referenced === $document) {
+                    continue;
+                }
+                if (str_contains($referenced, 'json-schema.org/')) {
+                    return sprintf('remote "%s" needs the json-schema.org metaschema, not resolvable offline', $document);
+                }
+                $pending[] = $referenced;
+            }
+
+            $ownIdentifier = $content['$id'] ?? null;
+            $resolvedOwn = is_string($ownIdentifier) ? self::resolveUri(base: $document, reference: $ownIdentifier) : null;
+            if ($resolvedOwn === null || explode('#', $resolvedOwn, 2)[0] === $document) {
+                $content['$id'] = $document;
+                $components['Remote' . (count($components) + 1)] = $content;
+
+                continue;
+            }
+            // Served at one URL, identified by another: the URL names a resource that IS the document.
+            $components['Remote' . (count($components) + 1)] = [
+                '$id' => $document,
+                '$ref' => $resolvedOwn,
+                '$defs' => ['document' => $content],
+            ];
+        }
+
+        return $components;
     }
 
     /**

@@ -130,48 +130,29 @@ return [
             ],
         ],
         'strict-tree schema, guards against misspelled properties' => [
-            '*' => [
-                'runtime' => ['skipped', '$ref "tree.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'symfony' => ['skipped', '$ref "tree.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel' => ['skipped', '$ref "tree.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel-data' => ['skipped', '$ref "tree.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'yii3' => ['skipped', '$ref "tree.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
+            'instance with misspelled field' => [
+                'symfony' => ['diverges', 'documented: a closed object is not enforceable once hydrated (README.support-matrix, closed DTO-shaped schema)'],
+                'yii3' => ['diverges', 'documented: a closed object is not enforceable once hydrated (README.support-matrix, closed DTO-shaped schema)'],
+            ],
+            'instance with correct field' => [
+                'runtime' => ['diverges', 'generator: $dynamicRef resolves statically, so the properties the outermost dynamic anchor evaluates are never seen'],
+                'laravel' => ['diverges', 'generator: $dynamicRef resolves statically, so the properties the outermost dynamic anchor evaluates are never seen'],
+                'laravel-data' => ['diverges', 'generator: $dynamicRef resolves statically, so the properties the outermost dynamic anchor evaluates are never seen'],
             ],
         ],
         'tests for implementation dynamic anchor and reference link' => [
-            '*' => [
-                'runtime' => ['skipped', '$ref "extendible-dynamic-ref.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'symfony' => ['skipped', '$ref "extendible-dynamic-ref.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel' => ['skipped', '$ref "extendible-dynamic-ref.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel-data' => ['skipped', '$ref "extendible-dynamic-ref.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'yii3' => ['skipped', '$ref "extendible-dynamic-ref.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
+            'incorrect extended schema' => [
+                'symfony' => ['diverges', 'accepts data the suite rejects (untriaged)'],
             ],
         ],
         '$ref and $dynamicAnchor are independent of order - $defs first' => [
-            '*' => [
-                'runtime' => ['skipped', '$ref "extendible-dynamic-ref.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'symfony' => ['skipped', '$ref "extendible-dynamic-ref.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel' => ['skipped', '$ref "extendible-dynamic-ref.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel-data' => ['skipped', '$ref "extendible-dynamic-ref.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'yii3' => ['skipped', '$ref "extendible-dynamic-ref.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
+            'incorrect extended schema' => [
+                'symfony' => ['diverges', 'accepts data the suite rejects (untriaged)'],
             ],
         ],
         '$ref and $dynamicAnchor are independent of order - $ref first' => [
-            '*' => [
-                'runtime' => ['skipped', '$ref "extendible-dynamic-ref.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'symfony' => ['skipped', '$ref "extendible-dynamic-ref.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel' => ['skipped', '$ref "extendible-dynamic-ref.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel-data' => ['skipped', '$ref "extendible-dynamic-ref.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'yii3' => ['skipped', '$ref "extendible-dynamic-ref.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-            ],
-        ],
-        '$ref to $dynamicRef finds detached $dynamicAnchor' => [
-            '*' => [
-                'runtime' => ['skipped', '$ref "http://localhost:1234/draft2020-12/detached-dynamicref.json#/$defs/foo" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'symfony' => ['skipped', '$ref "http://localhost:1234/draft2020-12/detached-dynamicref.json#/$defs/foo" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel' => ['skipped', '$ref "http://localhost:1234/draft2020-12/detached-dynamicref.json#/$defs/foo" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel-data' => ['skipped', '$ref "http://localhost:1234/draft2020-12/detached-dynamicref.json#/$defs/foo" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'yii3' => ['skipped', '$ref "http://localhost:1234/draft2020-12/detached-dynamicref.json#/$defs/foo" needs the suite remotes/ (localhost:1234), not resolvable offline'],
+            'incorrect extended schema' => [
+                'symfony' => ['diverges', 'accepts data the suite rejects (untriaged)'],
             ],
         ],
     ],
@@ -442,139 +423,37 @@ return [
         ],
     ],
     'refRemote.json' => [
-        'remote ref' => [
-            '*' => [
-                'runtime' => ['skipped', '$ref "http://localhost:1234/draft2020-12/integer.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'symfony' => ['skipped', '$ref "http://localhost:1234/draft2020-12/integer.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel' => ['skipped', '$ref "http://localhost:1234/draft2020-12/integer.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel-data' => ['skipped', '$ref "http://localhost:1234/draft2020-12/integer.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'yii3' => ['skipped', '$ref "http://localhost:1234/draft2020-12/integer.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-            ],
-        ],
-        'fragment within remote ref' => [
-            '*' => [
-                'runtime' => ['skipped', '$ref "http://localhost:1234/draft2020-12/subSchemas.json#/$defs/integer" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'symfony' => ['skipped', '$ref "http://localhost:1234/draft2020-12/subSchemas.json#/$defs/integer" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel' => ['skipped', '$ref "http://localhost:1234/draft2020-12/subSchemas.json#/$defs/integer" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel-data' => ['skipped', '$ref "http://localhost:1234/draft2020-12/subSchemas.json#/$defs/integer" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'yii3' => ['skipped', '$ref "http://localhost:1234/draft2020-12/subSchemas.json#/$defs/integer" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-            ],
-        ],
-        'anchor within remote ref' => [
-            '*' => [
-                'runtime' => ['skipped', '$ref "http://localhost:1234/draft2020-12/locationIndependentIdentifier.json#foo" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'symfony' => ['skipped', '$ref "http://localhost:1234/draft2020-12/locationIndependentIdentifier.json#foo" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel' => ['skipped', '$ref "http://localhost:1234/draft2020-12/locationIndependentIdentifier.json#foo" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel-data' => ['skipped', '$ref "http://localhost:1234/draft2020-12/locationIndependentIdentifier.json#foo" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'yii3' => ['skipped', '$ref "http://localhost:1234/draft2020-12/locationIndependentIdentifier.json#foo" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-            ],
-        ],
-        'ref within remote ref' => [
-            '*' => [
-                'runtime' => ['skipped', '$ref "http://localhost:1234/draft2020-12/subSchemas.json#/$defs/refToInteger" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'symfony' => ['skipped', '$ref "http://localhost:1234/draft2020-12/subSchemas.json#/$defs/refToInteger" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel' => ['skipped', '$ref "http://localhost:1234/draft2020-12/subSchemas.json#/$defs/refToInteger" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel-data' => ['skipped', '$ref "http://localhost:1234/draft2020-12/subSchemas.json#/$defs/refToInteger" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'yii3' => ['skipped', '$ref "http://localhost:1234/draft2020-12/subSchemas.json#/$defs/refToInteger" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-            ],
-        ],
-        'base URI change' => [
-            '*' => [
-                'runtime' => ['skipped', '$ref "folderInteger.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'symfony' => ['skipped', '$ref "folderInteger.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel' => ['skipped', '$ref "folderInteger.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel-data' => ['skipped', '$ref "folderInteger.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'yii3' => ['skipped', '$ref "folderInteger.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-            ],
-        ],
         'base URI change - change folder' => [
-            '*' => [
-                'runtime' => ['skipped', '$ref "folderInteger.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'symfony' => ['skipped', '$ref "folderInteger.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel' => ['skipped', '$ref "folderInteger.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel-data' => ['skipped', '$ref "folderInteger.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'yii3' => ['skipped', '$ref "folderInteger.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
+            'string is invalid' => [
+                'symfony' => ['diverges', 'accepts data the suite rejects (untriaged)'],
+                'yii3' => ['diverges', 'accepts data the suite rejects (untriaged)'],
             ],
         ],
         'base URI change - change folder in subschema' => [
-            '*' => [
-                'runtime' => ['skipped', '$ref "folderInteger.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'symfony' => ['skipped', '$ref "folderInteger.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel' => ['skipped', '$ref "folderInteger.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel-data' => ['skipped', '$ref "folderInteger.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'yii3' => ['skipped', '$ref "folderInteger.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
+            'string is invalid' => [
+                'symfony' => ['diverges', 'accepts data the suite rejects (untriaged)'],
+                'yii3' => ['diverges', 'accepts data the suite rejects (untriaged)'],
             ],
         ],
         'root ref in remote ref' => [
-            '*' => [
-                'runtime' => ['skipped', '$ref "name-defs.json#/$defs/orNull" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'symfony' => ['skipped', '$ref "name-defs.json#/$defs/orNull" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel' => ['skipped', '$ref "name-defs.json#/$defs/orNull" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel-data' => ['skipped', '$ref "name-defs.json#/$defs/orNull" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'yii3' => ['skipped', '$ref "name-defs.json#/$defs/orNull" needs the suite remotes/ (localhost:1234), not resolvable offline'],
+            'string is valid' => [
+                'runtime' => ['diverges', 'refuses data the suite accepts (untriaged)'],
+                'symfony' => ['diverges', 'refuses data the suite accepts (untriaged)'],
+                'laravel' => ['crashes', 'RuntimeException: Property "name" is typed as OrNull, a union with no discriminator: the document does not say which member a payload is, so it cannot be hydrated. Add a discr...'],
+                'laravel-data' => ['crashes', 'TypeError: ProbeF::__construct(): Argument #1 ($name) must be of type OrNull|Spatie\LaravelData\Optional|null, string given, called in vendor/spatie/laravel-data/src/Re...'],
+                'yii3' => ['diverges', 'refuses data the suite accepts (untriaged)'],
             ],
         ],
         'remote ref with ref to defs' => [
-            '*' => [
-                'runtime' => ['skipped', '$ref "ref-and-defs.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'symfony' => ['skipped', '$ref "ref-and-defs.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel' => ['skipped', '$ref "ref-and-defs.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel-data' => ['skipped', '$ref "ref-and-defs.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'yii3' => ['skipped', '$ref "ref-and-defs.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
+            'invalid' => [
+                'runtime' => ['diverges', 'accepts data the suite rejects (untriaged)'],
+                'symfony' => ['diverges', 'accepts data the suite rejects (untriaged)'],
+                'laravel' => ['diverges', 'accepts data the suite rejects (untriaged)'],
+                'laravel-data' => ['diverges', 'accepts data the suite rejects (untriaged)'],
+                'yii3' => ['crashes', 'Error: Call to undefined method Remote1::toOpenApiValidationPayload()'],
             ],
-        ],
-        'Location-independent identifier in remote ref' => [
-            '*' => [
-                'runtime' => ['skipped', '$ref "http://localhost:1234/draft2020-12/locationIndependentIdentifier.json#/$defs/refToInteger" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'symfony' => ['skipped', '$ref "http://localhost:1234/draft2020-12/locationIndependentIdentifier.json#/$defs/refToInteger" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel' => ['skipped', '$ref "http://localhost:1234/draft2020-12/locationIndependentIdentifier.json#/$defs/refToInteger" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel-data' => ['skipped', '$ref "http://localhost:1234/draft2020-12/locationIndependentIdentifier.json#/$defs/refToInteger" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'yii3' => ['skipped', '$ref "http://localhost:1234/draft2020-12/locationIndependentIdentifier.json#/$defs/refToInteger" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-            ],
-        ],
-        'retrieved nested refs resolve relative to their URI not $id' => [
-            '*' => [
-                'runtime' => ['skipped', '$ref "nested/foo-ref-string.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'symfony' => ['skipped', '$ref "nested/foo-ref-string.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel' => ['skipped', '$ref "nested/foo-ref-string.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel-data' => ['skipped', '$ref "nested/foo-ref-string.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'yii3' => ['skipped', '$ref "nested/foo-ref-string.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-            ],
-        ],
-        'remote HTTP ref with different $id' => [
-            '*' => [
-                'runtime' => ['skipped', '$ref "http://localhost:1234/draft2020-12/different-id-ref-string.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'symfony' => ['skipped', '$ref "http://localhost:1234/draft2020-12/different-id-ref-string.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel' => ['skipped', '$ref "http://localhost:1234/draft2020-12/different-id-ref-string.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel-data' => ['skipped', '$ref "http://localhost:1234/draft2020-12/different-id-ref-string.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'yii3' => ['skipped', '$ref "http://localhost:1234/draft2020-12/different-id-ref-string.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-            ],
-        ],
-        'remote HTTP ref with different URN $id' => [
-            '*' => [
-                'runtime' => ['skipped', '$ref "http://localhost:1234/draft2020-12/urn-ref-string.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'symfony' => ['skipped', '$ref "http://localhost:1234/draft2020-12/urn-ref-string.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel' => ['skipped', '$ref "http://localhost:1234/draft2020-12/urn-ref-string.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel-data' => ['skipped', '$ref "http://localhost:1234/draft2020-12/urn-ref-string.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'yii3' => ['skipped', '$ref "http://localhost:1234/draft2020-12/urn-ref-string.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-            ],
-        ],
-        'remote HTTP ref with nested absolute ref' => [
-            '*' => [
-                'runtime' => ['skipped', '$ref "http://localhost:1234/draft2020-12/nested-absolute-ref-to-string.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'symfony' => ['skipped', '$ref "http://localhost:1234/draft2020-12/nested-absolute-ref-to-string.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel' => ['skipped', '$ref "http://localhost:1234/draft2020-12/nested-absolute-ref-to-string.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel-data' => ['skipped', '$ref "http://localhost:1234/draft2020-12/nested-absolute-ref-to-string.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'yii3' => ['skipped', '$ref "http://localhost:1234/draft2020-12/nested-absolute-ref-to-string.json" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-            ],
-        ],
-        '$ref to $ref finds detached $anchor' => [
-            '*' => [
-                'runtime' => ['skipped', '$ref "http://localhost:1234/draft2020-12/detached-ref.json#/$defs/foo" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'symfony' => ['skipped', '$ref "http://localhost:1234/draft2020-12/detached-ref.json#/$defs/foo" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel' => ['skipped', '$ref "http://localhost:1234/draft2020-12/detached-ref.json#/$defs/foo" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'laravel-data' => ['skipped', '$ref "http://localhost:1234/draft2020-12/detached-ref.json#/$defs/foo" needs the suite remotes/ (localhost:1234), not resolvable offline'],
-                'yii3' => ['skipped', '$ref "http://localhost:1234/draft2020-12/detached-ref.json#/$defs/foo" needs the suite remotes/ (localhost:1234), not resolvable offline'],
+            'valid' => [
+                'yii3' => ['crashes', 'Error: Call to undefined method Remote1::toOpenApiValidationPayload()'],
             ],
         ],
     ],
