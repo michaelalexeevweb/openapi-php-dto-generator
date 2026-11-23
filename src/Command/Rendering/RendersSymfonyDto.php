@@ -184,6 +184,20 @@ trait RendersSymfonyDto
             constraints: $this->pruneConstraintsCoveredByPhpType($validationConstraints, $params),
             className: $className,
         );
+        // The null an optional object setter now admits — see `resolveSymfonyParam()` — is refused
+        // here, at the field's path: `type: object` passes the nested DTO and nothing else.
+        foreach ($params as $param) {
+            if (!$param['nullRefusedByCallback']) {
+                continue;
+            }
+            $openApiName = $param['serializedName'] ?? $param['name'];
+            $existing = is_array($validationConstraints['properties'][$openApiName] ?? null)
+                ? $validationConstraints['properties'][$openApiName]
+                : [];
+            if (!array_key_exists('type', $existing)) {
+                $validationConstraints['properties'][$openApiName] = ['type' => 'object'] + $existing;
+            }
+        }
         if (self::constraintsAreInert($validationConstraints)) {
             $validationConstraints = [];
         }
@@ -745,6 +759,7 @@ PHP;
      *     factoryDocType: ?string,
      *     temporalFormatter: ?string,
      *     inputType: string,
+     *     nullRefusedByCallback: bool,
      *     constructorType: string,
      *     constructorDocType: ?string,
      *     queryReader: ?string,
@@ -829,6 +844,28 @@ PHP;
         // turns an empty query value into null for a nullable type). A non-nullable setter makes the
         // serializer refuse both at the field's path.
         $inputType = $this->composePhpTypeHint($phpType, $schemaNullable);
+        // A generated object class is the exception: given `null` for it, the serializer does not
+        // refuse — it denormalizes the null into an EMPTY object, `new Inner()`, and the typed
+        // parameter takes it, so `{"inner": null}` passed as `{"inner": {}}` (refused only by accident,
+        // where the class requires a property). The parameter admits the null instead, so it arrives
+        // as itself: an optional setter stores it, and the interpreter refuses it at the field's path
+        // (`nullRefusedByCallback`); a required constructor parameter is untyped — a nullable type
+        // would turn a missing key into null — and assigning null to the property refuses it.
+        // Only a class whose schema PINS `object`: an untyped one (`{properties: …}` with no `type`)
+        // admits every value, null included, and keeps the old reading.
+        $nullRefusedByCallback = false;
+        $untypedRequiredObject = false;
+        $targetType = $this->dtoSchemas[ltrim($property['type'], '?\\')]['type'] ?? null;
+        $targetPinsObject = $targetType === 'object'
+            || (is_array($targetType) && in_array('object', $targetType, true) && !in_array('null', $targetType, true));
+        if (!$schemaNullable && $targetPinsObject) {
+            if ($required) {
+                $untypedRequiredObject = true;
+            } elseif ($defaultLiteral === ' = null') {
+                $inputType = $this->composePhpTypeHint($phpType, true);
+                $nullRefusedByCallback = true;
+            }
+        }
         $queryReader = null;
         $inputDocType = $docType !== null ? $this->composePhpTypeHint($docType, $schemaNullable) : null;
         $factoryDocType = $docType !== null ? $this->composePhpTypeHint($docType, $required ? $declaredNullable : true) : null;
@@ -855,8 +892,8 @@ PHP;
         // admits a type the property does not. So a query list is a constructor parameter of
         // `array|string`, optional ones included, and the DTO splits the string itself.
         $queryList = $schemaNullable ? null : $this->symfonyQueryList($property, $namespace);
-        $constructorType = $required && $schemaNullable ? '' : $declaredType;
-        $constructorDocType = $required && $schemaNullable ? ($inputDocType ?? $declaredType) : $inputDocType;
+        $constructorType = ($required && $schemaNullable) || $untypedRequiredObject ? '' : $declaredType;
+        $constructorDocType = ($required && $schemaNullable) || $untypedRequiredObject ? ($inputDocType ?? $declaredType) : $inputDocType;
         $constructorValue = $assignedValue;
         if ($queryList !== null) {
             $constructorType = $required ? 'array|string' : 'array|string|null';
@@ -891,6 +928,7 @@ PHP;
             'temporalFormatter' => $this->symfonyTemporalFormatter($property),
             'temporalDefault' => $temporalDefault,
             'inputType' => $required ? $declaredType : $inputType,
+            'nullRefusedByCallback' => $nullRefusedByCallback,
             // A required property that may be null takes an UNTYPED constructor parameter. For a typed
             // nullable one the serializer passes null when the key is missing, so `{}` came in as
             // `{"score": null}`; without a type it reports the key missing at its path instead, and still

@@ -1867,6 +1867,52 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * `null` for an object the schema does not let be null is refused, sent or not required alike.
+     * Symfony's serializer denormalized the `null` into an empty object — `new Inner()` — and the
+     * setter took it, so `{"f": null}` passed wherever `Inner` required nothing; it failed only by
+     * accident, on the constructor, where `Inner` did. Where the schema admits null, null passes.
+     *
+     * @param array<string, mixed> $property
+     */
+    #[DataProvider('nullForAnObjectCases')]
+    public function testNullForAnObjectIsJudgedByTheSchema(GenerationMode $mode, string $key, string $version, array $property, bool $required, bool $nullAccepted): void
+    {
+        $spec = self::probeSpec($property);
+        $spec['openapi'] = $version;
+        $spec['components']['schemas']['Probe']['required'] = $required ? ['f'] : [];
+        $spec['components']['schemas']['Inner'] = ['type' => 'object', 'properties' => ['a' => ['type' => 'integer']]];
+
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => $nullAccepted],
+            actual: $this->verdict($mode, $spec, 'null-object-' . $key, '{"f":{"a":1}}', '{"f":null}'),
+        );
+    }
+
+    public static function nullForAnObjectCases(): iterable
+    {
+        $inline = ['type' => 'object', 'properties' => ['a' => ['type' => 'integer']]];
+        $reference = ['$ref' => '#/components/schemas/Inner'];
+        $cases = [];
+        foreach (['30' => '3.0.3', '31' => '3.1.0'] as $short => $version) {
+            foreach (['optional' => false, 'required' => true] as $presence => $required) {
+                $cases['inline-' . $presence . '-' . $short] = [$version, $inline, $required, false];
+                $cases['ref-' . $presence . '-' . $short] = [$version, $reference, $required, false];
+            }
+        }
+        // The neighbours: the same object where null IS admitted.
+        $cases['inline-nullable-30'] = ['3.0.3', $inline + ['nullable' => true], false, true];
+        $cases['ref-nullable-allof-30'] = ['3.0.3', ['nullable' => true, 'allOf' => [$reference]], false, true];
+        $cases['inline-type-null-31'] = ['3.1.0', ['type' => ['object', 'null'], 'properties' => ['a' => ['type' => 'integer']]], true, true];
+        $cases['ref-oneof-null-31'] = ['3.1.0', ['oneOf' => [$reference, ['type' => 'null']]], true, true];
+
+        foreach (GenerationMode::cases() as $mode) {
+            foreach ($cases as $key => [$version, $property, $required, $nullAccepted]) {
+                yield $mode->value . ' ' . $key => [$mode, $key, $version, $property, $required, $nullAccepted];
+            }
+        }
+    }
+
+    /**
      * A reference by `$anchor`, by an `$id` (relative to the resource it sits in, absolute, or a URN),
      * a JSON pointer INTO an embedded `$id` resource and a `$dynamicRef` all name a schema the
      * document declares, so each must constrain the value like a `#/components/schemas/…` pointer

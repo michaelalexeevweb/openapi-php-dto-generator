@@ -181,6 +181,44 @@ final class SymfonySerializerContractTest extends TestCase
         ];
     }
 
+    /**
+     * `null` for an object the schema does not let be null: the serializer turned it into an empty
+     * object and the request went through. Through the real resolver it is a 422 now, required or
+     * optional, and a missing required object is still reported as missing.
+     */
+    public function testNullForAnObjectIsA422ThroughTheResolver(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Order' => [
+                        'type' => 'object',
+                        'required' => ['ship'],
+                        'properties' => [
+                            'ship' => ['$ref' => '#/components/schemas/Address'],
+                            'bill' => ['$ref' => '#/components/schemas/Address'],
+                        ],
+                    ],
+                    'Address' => ['type' => 'object', 'properties' => ['city' => ['type' => 'string']]],
+                ],
+            ],
+        ];
+        $status = fn(string $json): ?int => $this->resolvePayload(
+            namespace: 'ContractNullObject',
+            json: $json,
+            serializationContext: [],
+            spec: $spec,
+        );
+
+        $this->assertNull($status('{"ship":{"city":"a"}}'));
+        $this->assertNull($status('{"ship":{},"bill":{"city":"b"}}'));
+        $this->assertSame(422, $status('{"ship":null}'));
+        $this->assertSame(422, $status('{"ship":{"city":"a"},"bill":null}'));
+        $this->assertSame(422, $status('{"bill":{"city":"b"}}'));
+    }
+
     public function testStrictExtraAttributesEscapesAsAServerError(): void
     {
         // Documented sharp edge: ExtraAttributesException is neither PartialDenormalizationException
@@ -290,10 +328,11 @@ final class SymfonySerializerContractTest extends TestCase
      * null when the argument resolved cleanly.
      *
      * @param array<string, mixed> $serializationContext
+     * @param array<string, mixed>|null $spec the document; null for `orderSpec()`
      */
-    private function resolvePayload(string $namespace, string $json, array $serializationContext): ?int
+    private function resolvePayload(string $namespace, string $json, array $serializationContext, ?array $spec = null): ?int
     {
-        $fqcn = $this->generate(self::orderSpec(), $namespace);
+        $fqcn = $this->generate($spec ?? self::orderSpec(), $namespace);
         $resolver = new RequestPayloadValueResolver(
             serializer: $this->serializer(),
             validator: Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator(),

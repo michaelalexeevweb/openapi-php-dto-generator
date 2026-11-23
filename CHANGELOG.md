@@ -3,6 +3,28 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.134 — 2026-11-23
+
+- symfony refuses null for objects
+- CI runs on macOS too
+
+symfony: `null` for an object property whose schema does not admit null (`{"inner": null}` where
+`inner: {$ref: Inner}` and `Inner` is `type: object`) is refused, as in every other mode. The serializer turned
+the null into an empty object — `new Inner()` — and the typed setter took it, so the payload passed as
+`{"inner": {}}`; it failed only by accident, where `Inner` required a property.
+
+- an optional object property's setter takes `?Inner`; a null it is given is refused by the validation
+  callback at the field's path. **Regenerate after upgrading**: a DTO with such a property now carries the
+  callback;
+- a required object property's constructor parameter is untyped (`@param Inner`), so a missing key is still
+  reported as missing, and a null is refused when it is assigned. Through `#[MapRequestPayload]` both are a
+  422 reading `This value should be of type unknown.` — Symfony named the class for a missing object before;
+  the null is reported at the enclosing object;
+- an object schema without `type` admits every value, null included, and is read as before.
+
+CI: a macOS job runs the suite on a filesystem that folds case, where the tests about `SPECS/` versus
+`specs/` run instead of skipping; every job lists what it skipped.
+
 ## 2.15.133 — 2026-11-23
 
 - yii3 query int-enum lists read

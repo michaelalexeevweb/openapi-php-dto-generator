@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   tests:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
@@ -24,19 +24,29 @@ jobs:
           - '7'
         dependencies:
           - 'highest'
+        os:
+          - 'ubuntu-latest'
         include:
           # `config.platform.php` pins resolution to 8.3, which keeps Symfony on 7.x everywhere.
           # Symfony 8 needs PHP >= 8.4.1, so it is exercised by lifting the pin on this job only.
           - php-version: '8.4'
             symfony: '8'
             dependencies: 'highest'
+            os: 'ubuntu-latest'
           # The declared FLOORS, installed for real: a constraint nobody resolves is a guess. This
           # found `list` missing from Laravel 11.0 and dates hydrating wrong on serializer 7.4.0-7.4.5.
           - php-version: '8.3'
             symfony: '7'
             dependencies: 'lowest'
+            os: 'ubuntu-latest'
+          # A filesystem that folds case, as macOS and Windows have by default: the tests that a
+          # `SPECS/` must be the `specs/` directory skip themselves on Linux, and run here.
+          - php-version: '8.4'
+            symfony: '7'
+            dependencies: 'highest'
+            os: 'macos-latest'
 
-    name: tests (PHP ${{ matrix.php-version }}, Symfony ${{ matrix.symfony }}, ${{ matrix.dependencies }})
+    name: tests (PHP ${{ matrix.php-version }}, Symfony ${{ matrix.symfony }}, ${{ matrix.dependencies }}, ${{ matrix.os }})
 
     steps:
       - name: Checkout
@@ -80,5 +90,5 @@ jobs:
         run: composer cs-fixer
 
       - name: Run PHPUnit
-        run: vendor/bin/phpunit --no-coverage
+        run: vendor/bin/phpunit --no-coverage --display-skipped
 

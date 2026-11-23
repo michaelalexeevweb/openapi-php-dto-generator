@@ -827,7 +827,10 @@ final class GenerateSymfonyDtoTest extends TestCase
                     'Nested' => ['type' => 'object', 'properties' => ['a' => ['type' => 'string']]],
                     'Plain' => [
                         'type' => 'object',
-                        'required' => ['id', 'name', 'createdAt'],
+                        // `nested` is required: an OPTIONAL object does need the callback — its setter
+                        // admits the null the serializer would otherwise turn into an empty object,
+                        // and the callback is what refuses it.
+                        'required' => ['id', 'name', 'createdAt', 'nested'],
                         'properties' => [
                             'id' => ['type' => 'integer'],
                             'name' => ['type' => 'string'],
