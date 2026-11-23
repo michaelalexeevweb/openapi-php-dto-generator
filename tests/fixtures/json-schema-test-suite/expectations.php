@@ -644,22 +644,6 @@ return [
             ],
         ],
     ],
-    'unevaluatedItems.json' => [
-        'unevaluatedItems with $ref' => [
-            'with no unevaluated items' => [
-                'runtime' => ['diverges', 'generator: an untyped schema with array keywords (an untyped allOf, or a $ref to an untyped $defs entry) becomes an object DTO, so the list is refused before unevaluatedItems is asked'],
-                'laravel' => ['diverges', 'generator: an untyped schema with array keywords (an untyped allOf, or a $ref to an untyped $defs entry) becomes an object DTO, so the list is refused before unevaluatedItems is asked'],
-                'laravel-data' => ['diverges', 'generator: an untyped schema with array keywords (an untyped allOf, or a $ref to an untyped $defs entry) becomes an object DTO, so the list is refused before unevaluatedItems is asked'],
-            ],
-        ],
-        'unevaluatedItems before $ref' => [
-            'with no unevaluated items' => [
-                'runtime' => ['diverges', 'generator: an untyped schema with array keywords (an untyped allOf, or a $ref to an untyped $defs entry) becomes an object DTO, so the list is refused before unevaluatedItems is asked'],
-                'laravel' => ['diverges', 'generator: an untyped schema with array keywords (an untyped allOf, or a $ref to an untyped $defs entry) becomes an object DTO, so the list is refused before unevaluatedItems is asked'],
-                'laravel-data' => ['diverges', 'generator: an untyped schema with array keywords (an untyped allOf, or a $ref to an untyped $defs entry) becomes an object DTO, so the list is refused before unevaluatedItems is asked'],
-            ],
-        ],
-    ],
     'unevaluatedProperties.json' => [
         'unevaluatedProperties with nested properties' => [
             'with additional properties' => [

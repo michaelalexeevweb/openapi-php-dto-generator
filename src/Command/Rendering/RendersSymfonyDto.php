@@ -1861,12 +1861,17 @@ PHP;
         }
         // On a `mixed` property no attribute can say "only if the value is a string": `Assert\Length`
         // inside `AtLeastOneOf` passed the integer 3 for `{type: string, anyOf: [...]}`; an `anyOf` of
-        // object branches or of `{type: null}` had no `Assert\*` spelling and was checked by nothing;
+        // object branches or of `{type: null}` had no `Assert\*` spelling and was checked by nothing, and
+        // neither was a `prefixItems` inside an `allOf` branch;
         // a type LIST (`[array, object, null]`) had no attribute at all and took any value. The
         // callback reads each keyword for its own type.
         if (
             $property['type'] === 'mixed'
-            && (is_array($constraints['anyOf'] ?? null) || is_array($constraints['type'] ?? null))
+            && (
+                is_array($constraints['anyOf'] ?? null)
+                || is_array($constraints['allOf'] ?? null)
+                || is_array($constraints['type'] ?? null)
+            )
         ) {
             return true;
         }

@@ -1867,6 +1867,29 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * An alias of a value that refers to another alias of a value — `F: {$ref: Pair, maxItems: 2}`,
+     * `Pair: {prefixItems: […]}` — is a value too. One level was inlined and the inner `$ref` left in
+     * place: the property was typed by the class of `Pair`, a class that is never written, and the
+     * DTO could not be loaded. Both schemas apply, the tuple and the bound.
+     */
+    #[DataProvider('everyMode')]
+    public function testAnAliasOfAnAliasIsAValue(GenerationMode $mode): void
+    {
+        $spec = self::probeSpec(['$ref' => '#/components/schemas/Bounded']);
+        $spec['components']['schemas']['Bounded'] = ['$ref' => '#/components/schemas/Pair', 'maxItems' => 2];
+        $spec['components']['schemas']['Pair'] = ['prefixItems' => [['type' => 'string'], ['type' => 'integer']]];
+
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => false],
+            actual: $this->verdict($mode, $spec, 'alias-of-alias', '{"f":["a",1]}', '{"f":["a","b"]}'),
+        );
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => false],
+            actual: $this->verdict($mode, $spec, 'alias-of-alias-bound', '{"f":"any value"}', '{"f":["a",1,true]}'),
+        );
+    }
+
+    /**
      * A `default` is not validated: with the key absent, `{maximum: 3, default: 5}` holds nothing to
      * check. Symfony's attribute checked the property, which held the default, and refused `{}`. A
      * value SENT is checked as ever, the default's own value included.

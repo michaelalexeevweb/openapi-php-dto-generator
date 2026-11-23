@@ -6598,7 +6598,82 @@ final class GenerateDtoCommand extends Command
 
         unset($propertySchema['$ref']);
 
-        return $propertySchema + $definition;
+        return $this->besideReferencedSchema(
+            own: $propertySchema,
+            target: $this->aliasChainInlined(definition: $definition, sourceFile: $sourceFile, depth: 0),
+        );
+    }
+
+    /**
+     * A `$ref`'s target together with the keywords written beside the `$ref` — both apply (JSON Schema
+     * 2020-12 §8.2.3.1). Merged key by key, a keyword on both sides kept one and lost the other:
+     * `{$ref: Bar, prefixItems: [A]}` over `Bar: {prefixItems: [B, C]}` checked one tuple, and the
+     * `unevaluatedItems: false` beside it then refused the item the other one evaluates. So where the
+     * two share an asserting keyword, or the referring side carries an `unevaluated*`, the asserting
+     * keywords of each become a branch of an `allOf`; the annotations and the `unevaluated*` stay on
+     * top, where they see what both branches evaluate. Otherwise the plain merge stands — it is the
+     * same schema, and the generated code does not change.
+     *
+     * @param array<string, mixed> $own the referring schema, its `$ref` removed
+     * @param array<string, mixed> $target
+     * @return array<string, mixed>
+     */
+    private function besideReferencedSchema(array $own, array $target): array
+    {
+        $top = [];
+        $ownAsserting = [];
+        foreach ($own as $keyword => $value) {
+            if (
+                in_array($keyword, ['unevaluatedItems', 'unevaluatedProperties'], true)
+                || in_array($keyword, self::ALIAS_ANNOTATION_KEYWORDS, true)
+                || in_array($keyword, self::NON_ASSERTING_KEYWORDS, true)
+                || str_starts_with($keyword, 'x-')
+            ) {
+                $top[$keyword] = $value;
+                continue;
+            }
+            $ownAsserting[$keyword] = $value;
+        }
+
+        $sharesAKeyword = array_intersect_key($ownAsserting, $target) !== [];
+        $seesThrough = array_key_exists('unevaluatedItems', $own) || array_key_exists('unevaluatedProperties', $own);
+        if ((!$sharesAKeyword && !$seesThrough) || $ownAsserting === []) {
+            return $own + $target;
+        }
+
+        return $top + ['allOf' => [$ownAsserting, $target]];
+    }
+
+    /**
+     * An alias definition whose own `$ref` names another alias, with that one inlined too. One level
+     * left the inner `$ref` in place, and the property was typed by the class of an alias — a class
+     * that is never written. The two apply together, as a `$ref` beside other keywords does in JSON
+     * Schema 2020-12: merged key by key, `{$ref: Bar, prefixItems: [A]}` over `Bar: {prefixItems: [B, C]}`
+     * would keep one `prefixItems` and lose the other, so they become two `allOf` branches.
+     *
+     * @param array<string, mixed> $definition
+     * @return array<string, mixed>
+     */
+    private function aliasChainInlined(array $definition, ?string $sourceFile, int $depth): array
+    {
+        $ref = $definition['$ref'] ?? null;
+        if (!is_string($ref) || $depth >= self::SHAPE_PROBE_DEPTH) {
+            return $definition;
+        }
+        $inner = $this->scalarAliasDefinition($ref, $sourceFile);
+        if ($inner === null) {
+            return $definition;
+        }
+
+        $own = [];
+        foreach ($definition as $keyword => $value) {
+            if ($keyword !== '$ref') {
+                $own[$keyword] = $value;
+            }
+        }
+        $innerInlined = $this->aliasChainInlined(definition: $inner, sourceFile: $sourceFile, depth: $depth + 1);
+
+        return $this->besideReferencedSchema(own: $own, target: $innerInlined);
     }
 
     /**
@@ -7373,6 +7448,25 @@ final class GenerateDtoCommand extends Command
     {
         $ref = $this->referenceOrSingleRefAllOf($schema);
         $definition = $ref === null ? null : ($this->arrayAliasDefinition($ref) ?? $this->mapComponentDefinition($ref));
+        if ($definition === null && $ref !== null) {
+            // An alias of a value — `{prefixItems: […]}`, `{$ref: Pair, maxItems: 2}` — is typed `mixed`,
+            // so no class checks it either: its keywords are carried here, the whole alias chain with
+            // them. One level was, and the bound kept while the tuple behind it was dropped.
+            $sourceFile = $this->constraintSourceFile ?? $this->rootSpecFile;
+            $alias = $this->scalarAliasDefinition($ref, $sourceFile);
+            if ($alias !== null && $this->isUntypedValueSchema($alias)) {
+                if (array_key_exists('$ref', $schema)) {
+                    unset($schema['$ref']);
+                } else {
+                    unset($schema['allOf']);
+                }
+
+                return $this->besideReferencedSchema(
+                    own: $schema,
+                    target: $this->aliasChainInlined(definition: $alias, sourceFile: $sourceFile, depth: 0),
+                );
+            }
+        }
         if ($definition === null) {
             return $schema;
         }

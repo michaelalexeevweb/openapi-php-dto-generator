@@ -3,6 +3,30 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.136 — 2026-11-23
+
+- alias chains no longer type phantom classes
+- $ref siblings keep their checks
+- symfony checks mixed allOf
+
+JSON-Schema-Test-Suite burn-down: six entries fewer in `expectations.php` (390 → 384).
+
+Generation:
+
+- an alias of a value that refers to another alias of a value — `F: {$ref: Pair, maxItems: 2}`, `Pair:
+  {prefixItems: […]}` — is a value too. One level was inlined and the inner `$ref` left in place: the property
+  was typed by `Pair`'s class, which is never written, and the DTO could not be loaded. The whole chain is
+  inlined now, in the property type and in the constraints of every mode;
+- a `$ref` and the keywords written beside it both apply. Merged key by key, a keyword on both sides kept one
+  and lost the other: `{$ref: Bar, prefixItems: [A], unevaluatedItems: false}` over `Bar: {prefixItems: [B,
+  C]}` checked one tuple and refused the item the other evaluates. Where the two share a keyword, or the
+  referring side carries an `unevaluated*`, they become two `allOf` branches, with the `unevaluated*` on top.
+
+Symfony:
+
+- an `allOf` on a `mixed` property is checked by the validation callback, as an `anyOf` already is since
+  2.15.135: a `prefixItems` inside a branch was checked by nothing.
+
 ## 2.15.135 — 2026-11-23
 
 - runtime tells [] from {}
