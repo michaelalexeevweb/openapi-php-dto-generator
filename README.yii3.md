@@ -203,6 +203,7 @@ use Yiisoft\Hydrator\TypeCaster\HydratorTypeCaster;
 use Yiisoft\Hydrator\TypeCaster\TypeCastContext;
 use Yiisoft\Hydrator\TypeCaster\TypeCasterInterface;
 use Yiisoft\Hydrator\Validator\Attribute\ValidateResolver;
+use Yiisoft\Validator\Error;
 use Yiisoft\Validator\Result as ValidationResult;
 
 final class NestedPathTypeCaster implements TypeCasterInterface
@@ -256,7 +257,14 @@ final class NestedPathTypeCaster implements TypeCasterInterface
         } finally {
             $this->collectInto($outer);
             foreach ($inner->getErrors() as $error) {
-                $outer->addError($error->getMessage(), $error->getParameters(), [...$path, ...$error->getValuePath()]);
+                // Re-added the way it was added: a final sentence (MESSAGE_NONE) is not run through the
+                // translator again, where a `{` in it would read as a placeholder.
+                $valuePath = [...$path, ...$error->getValuePath()];
+                match ($error->getMessageProcessing()) {
+                    Error::MESSAGE_NONE => $outer->addErrorWithoutPostProcessing($error->getMessage(), $error->getParameters(), $valuePath),
+                    Error::MESSAGE_FORMAT => $outer->addErrorWithFormatOnly($error->getMessage(), $error->getParameters(), $valuePath),
+                    default => $outer->addError($error->getMessage(), $error->getParameters(), $valuePath),
+                };
             }
         }
     }

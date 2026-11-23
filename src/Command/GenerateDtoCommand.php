@@ -255,6 +255,51 @@ final class GenerateDtoCommand extends Command
     ];
 
     /**
+     * Keywords whose value is data, never a schema — see `rewriteDefsRefs()`.
+     *
+     * @var list<string>
+     */
+    private const array DATA_VALUED_KEYWORDS = ['enum', 'const', 'default', 'example', 'examples'];
+
+    /**
+     * Keywords (and OpenAPI containers) whose value maps NAMES to schemas or objects — see
+     * `rewriteDefsRefs()`. `responses` is among them for its `default` response.
+     *
+     * @var list<string>
+     */
+    private const array NAME_KEYED_KEYWORDS = ['properties', 'patternProperties', 'dependentSchemas', '$defs', 'definitions', 'schemas', 'responses'];
+
+    /**
+     * Keywords that describe an object's KEYS. Beside them an untyped schema is still generated as an
+     * object DTO — the OpenAPI convention `shapesAnObject()` keeps.
+     *
+     * @var list<string>
+     */
+    private const array KEY_DESCRIBING_KEYWORDS = [
+        'properties',
+        'patternProperties',
+        'additionalProperties',
+        'unevaluatedProperties',
+        'propertyNames',
+        'required',
+        'minProperties',
+        'maxProperties',
+        'dependentRequired',
+        'dependentSchemas',
+        'discriminator',
+    ];
+
+    /**
+     * Keywords that assert nothing about a value beyond the annotations an alias may carry.
+     *
+     * @var list<string>
+     */
+    private const array NON_ASSERTING_KEYWORDS = ['default', 'readOnly', 'writeOnly', '$comment', '$id', '$anchor', '$schema'];
+
+    /** How many `$ref`/applicator hops `shapesAnObject()` follows before it keeps the class. */
+    private const int SHAPE_PROBE_DEPTH = 16;
+
+    /**
      * The subset of `OBJECT_SHAPING_KEYWORDS` that constrains WHICH KEYS a payload may or must carry
      * without declaring a schema for any of them. On an object with no `properties` these do not shape
      * anything a DTO could hold, and materializing one produced a class with no properties that
@@ -474,6 +519,12 @@ final class GenerateDtoCommand extends Command
      * means the next call is the outermost one and owns the `$ref` inlining.
      */
     private int $constraintExtractionDepth = 0;
+
+    /**
+     * Whether the property whose constraints are being extracted is typed `mixed` — nothing is
+     * materialized below it, so the outermost extraction inlines every `$ref` it can resolve there.
+     */
+    private bool $constraintRootUnmaterialized = false;
     public string $baseOutputDirectory = '';
     public string $baseNamespace = '';
 
@@ -1005,12 +1056,15 @@ final class GenerateDtoCommand extends Command
             // `Generated 0 DTO class(es)`, which is a success message for a file nobody could read.
             throw new RuntimeException('OpenAPI root must be an object/array.');
         }
-        $data = $this->foldJsonSchemaDefs($data);
 
         $realFilePath = realpath($filePath);
         if ($realFilePath === false) {
             throw new RuntimeException(sprintf('Cannot resolve real path for file: %s', $filePath));
         }
+        // Before the `$defs` fold: it rewrites pointers by their text, and an anchor or an `$id`
+        // reference has to be resolved against the document as written.
+        $data = (new SchemaResourceResolver())->resolve(document: $data, documentBase: $this->fileUri($realFilePath));
+        $data = $this->foldJsonSchemaDefs($data);
 
         $this->initializeGeneration(
             outputDirectory: $outputDirectory,
@@ -1161,6 +1215,17 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * The URI a document read from disk is retrieved by — the base its relative `$id`s resolve
+     * against when it declares no `$self`.
+     */
+    private function fileUri(string $realPath): string
+    {
+        $path = str_replace(DIRECTORY_SEPARATOR, '/', $realPath);
+
+        return 'file://' . (str_starts_with($path, '/') ? '' : '/') . implode('/', array_map(rawurlencode(...), explode('/', $path)));
+    }
+
+    /**
      * A `$ref` fragment is a URI fragment, so its JSON pointer arrives percent-encoded (RFC 6901 §6):
      * `#/components/schemas/Big%20Cat` names `Big Cat`. Read as written, it named nothing.
      */
@@ -1179,8 +1244,13 @@ final class GenerateDtoCommand extends Command
      * external-file) to the `#/components/schemas/` form. Subschema-local `$defs`
      * pointers (`.../Foo/$defs/Bar`, no leading `#/`) are intentionally left untouched.
      * Other keys/values are returned unchanged.
+     *
+     * The value of `enum`, `const`, `default`, `example` and `examples` is DATA: a `{"$ref": …}` in
+     * it is a value a payload must equal, and rewritten it named a pointer no payload ever sends —
+     * `enum: [{$ref: '#/$defs/a'}]` refused the very object it lists. Below a map of NAMES
+     * (`properties`, `$defs`, …) a key spelled `enum` is a property name, and its value a schema.
      */
-    private function rewriteDefsRefs(mixed $node): mixed
+    private function rewriteDefsRefs(mixed $node, bool $namesKeys = false): mixed
     {
         if (!is_array($node)) {
             return $node;
@@ -1188,14 +1258,21 @@ final class GenerateDtoCommand extends Command
 
         $result = [];
         foreach ($node as $key => $value) {
-            if ($key === '$ref' && is_string($value)) {
+            if (!$namesKeys && in_array($key, self::DATA_VALUED_KEYWORDS, true)) {
+                $result[$key] = $value;
+                continue;
+            }
+            if (!$namesKeys && $key === '$ref' && is_string($value)) {
                 $value = $this->decodeRefFragment($value);
                 $result[$key] = str_contains($value, '#/$defs/')
                     ? str_replace('#/$defs/', '#/components/schemas/', $value)
                     : $value;
                 continue;
             }
-            $result[$key] = $this->rewriteDefsRefs($value);
+            $result[$key] = $this->rewriteDefsRefs(
+                node: $value,
+                namesKeys: !$namesKeys && in_array($key, self::NAME_KEYED_KEYWORDS, true),
+            );
         }
 
         return $result;
@@ -1210,6 +1287,7 @@ final class GenerateDtoCommand extends Command
         $this->setAttributeMode($mode);
         $this->initializeGeneration(outputDirectory: $outputDirectory, namespace: $namespace, rootSpecFile: null);
         $this->readDocumentLevelFields($openApi);
+        $openApi = (new SchemaResourceResolver())->resolve(document: $openApi, documentBase: SchemaResourceResolver::ARRAY_DOCUMENT_BASE);
         $openApi = $this->foldJsonSchemaDefs($openApi);
         $schemas = $this->extractSchemas($openApi);
         foreach ($this->extractInlineResponseSchemas($openApi) as $name => $schema) {
@@ -3059,6 +3137,8 @@ final class GenerateDtoCommand extends Command
         if (!is_array($data)) {
             throw new RuntimeException(sprintf('OpenAPI root must be an object/array in %s.', $filePath));
         }
+        // Its anchor and `$id` references resolve against the file itself, as its pointers do.
+        $data = (new SchemaResourceResolver())->resolve(document: $data, documentBase: $this->fileUri($filePath));
         // Fold this external document's own `$defs` into its components.schemas (and rewrite
         // its internal `#/$defs/` pointers) so cross-file `file#/$defs/X` references resolve.
         $data = $this->foldJsonSchemaDefs($data);
@@ -3552,13 +3632,15 @@ final class GenerateDtoCommand extends Command
         while (true) {
             $unprocessed = array_diff(array_keys($this->dtoSchemas), array_keys($processed));
             if ($unprocessed === []) {
+                $this->assertUnionMembersImplementInterfaces();
+
                 return;
             }
 
             foreach ($unprocessed as $schemaName) {
                 $processed[$schemaName] = true;
                 $schemaDefinition = $this->dtoSchemas[$schemaName];
-                if (!array_key_exists('oneOf', $schemaDefinition) && !array_key_exists('anyOf', $schemaDefinition)) {
+                if (!$this->rendersAsUnion($schemaDefinition)) {
                     continue;
                 }
 
@@ -3591,6 +3673,57 @@ final class GenerateDtoCommand extends Command
                 }
             }
         }
+    }
+
+    /**
+     * Every `implements` the members will be emitted with names a union INTERFACE.
+     *
+     * A member that implements a class is not a validation gap but a file PHP refuses to link: `X cannot
+     * implement Y - it is not an interface` is a fatal error at class load, which no `catch` in the
+     * application sees and which takes the request down with it. rendersAsUnion() is what keeps that
+     * from happening; this is the net under it, so a shape it does not foresee stops generation with a
+     * sentence instead of writing classes that cannot load.
+     */
+    private function assertUnionMembersImplementInterfaces(): void
+    {
+        foreach ($this->unionInterfacesByClass as $memberClass => $interfaces) {
+            foreach ($interfaces as $interface) {
+                $schema = $this->dtoSchemas[$interface] ?? null;
+                if (is_array($schema) && $this->rendersAsUnion($schema) && !array_key_exists($interface, $this->discriminatorSchemas)) {
+                    continue;
+                }
+
+                throw new RuntimeException(sprintf(
+                    'Union member %s would implement %s, which is not generated as an interface: the classes '
+                    . 'could not be loaded. Give the union a schema of its own and reference it.',
+                    $memberClass,
+                    $interface,
+                ));
+            }
+        }
+    }
+
+    /**
+     * Whether a registered schema becomes a union INTERFACE rather than a class — the one answer
+     * analyzeSchema() gives, asked before it runs.
+     *
+     * An `allOf` beside the `oneOf`/`anyOf` makes the schema a CLASS: analyzeSchema() merges the allOf
+     * branches into properties and never reaches the union arms. Linking the union members anyway made
+     * each of them `implements` that class — `X cannot implement Y - it is not an interface`, a fatal on
+     * load that no `catch` sees — and laravel mode, asking the same question its own way, wrote a
+     * "union with no discriminator" throw for a class that hydrates itself. The union stays what it is
+     * for a class: a validation constraint (see extractValidationConstraints()).
+     *
+     * @param array<mixed> $schemaDefinition
+     */
+    private function rendersAsUnion(array $schemaDefinition): bool
+    {
+        if (array_key_exists('allOf', $schemaDefinition) && is_array($schemaDefinition['allOf'])) {
+            return false;
+        }
+
+        return (array_key_exists('oneOf', $schemaDefinition) && is_array($schemaDefinition['oneOf']))
+            || (array_key_exists('anyOf', $schemaDefinition) && is_array($schemaDefinition['anyOf']));
     }
 
     /**
@@ -3726,6 +3859,19 @@ final class GenerateDtoCommand extends Command
                 foreach (
                     $this->extractProperties(
                         schemaDefinition: $allOfItem,
+                        ownerClassName: $className,
+                        siblingProperties: $this->allOfBranchProperties($schemaDefinition, $className),
+                    ) as $property
+                ) {
+                    $allProperties[] = $property;
+                }
+            }
+
+            // The `properties` beside the `allOf` are the class's own as well — see `getSchemaProperties()`.
+            if (is_array($schemaDefinition['properties'] ?? null) && $schemaDefinition['properties'] !== []) {
+                foreach (
+                    $this->extractProperties(
+                        schemaDefinition: $schemaDefinition,
                         ownerClassName: $className,
                         siblingProperties: $this->allOfBranchProperties($schemaDefinition, $className),
                     ) as $property
@@ -4054,10 +4200,12 @@ final class GenerateDtoCommand extends Command
             // inline object has no file of its own and keeps the one it was found in.
             $sourceFileBefore = $this->constraintSourceFile;
             $this->constraintSourceFile = $this->getSchemaSourceFile($ownerClassName) ?? $sourceFileBefore;
+            $this->constraintRootUnmaterialized = ltrim($type, '?') === 'mixed';
             try {
                 $constraints = $this->extractValidationConstraints($propertySchema);
             } finally {
                 $this->constraintSourceFile = $sourceFileBefore;
+                $this->constraintRootUnmaterialized = false;
             }
 
             $paramIn = $propertySchema['x-parameter-in'] ?? null;
@@ -4470,6 +4618,15 @@ final class GenerateDtoCommand extends Command
      */
     private function extractValidationConstraintsFrom(array $propertySchema, bool $mayInline): array
     {
+        // `enum: []` lists no member, so no value is one: the schema is `false`, whatever stands beside
+        // it. Every reader below skips an empty `enum` as "no enum", which made it admit EVERY value.
+        // Spelled as `not: true` — the array form of `false` every mode already enforces. The 3.0
+        // `nullable: true` keeps its documented meaning (README.validation: it admits null even where
+        // the enum does not list it), so beside it the one member left is null.
+        if (($propertySchema['enum'] ?? null) === []) {
+            return ($propertySchema['nullable'] ?? null) === true ? ['enum' => [null]] : ['not' => true];
+        }
+
         $propertySchema = $this->normalizeNullableBranchInAllOf($propertySchema);
         // Applied HERE rather than where the property schemas are prepared, because that is not the
         // only entrance: Symfony, Laravel and Yii3 modes extract the constraints of a whole CLASS
@@ -4477,7 +4634,10 @@ final class GenerateDtoCommand extends Command
         // invisible to four modes out of five. Runtime mode alone saw it, which is exactly how the
         // hole looked when measured.
         if ($mayInline) {
-            $propertySchema = $this->inlineNestedContainerValidation($propertySchema);
+            $propertySchema = $this->inlineNestedContainerValidation(
+                schema: $propertySchema,
+                belowMaterialization: $this->constraintRootUnmaterialized,
+            );
             // On the inlined but not yet normalized schema: `nullable` here is still the KEYWORD, and a
             // 3.1 `type: [x, "null"]` is still a type list, so the two stay apart.
             $propertySchema = $this->withNestedNullableEnumRelaxed($propertySchema, isRoot: true);
@@ -4611,6 +4771,14 @@ final class GenerateDtoCommand extends Command
                 // The always-true branch COUNTS: in `oneOf` it matches alongside any other branch.
                 if ($this->isVacuousSubschema($variant)) {
                     $branchConstraints[] = true;
+
+                    continue;
+                }
+                // The never-true branch counts as well, by matching nothing. Skipped with the non-arrays,
+                // `anyOf: [false, false]` lost every branch, the keyword went with them, and a schema that
+                // admits no value admitted every one.
+                if ($variant === false) {
+                    $branchConstraints[] = false;
 
                     continue;
                 }
@@ -4924,6 +5092,31 @@ final class GenerateDtoCommand extends Command
         // was left for the scrubber to drop and the values under it went unchecked again.
         $belowMaterialization = $belowMaterialization || $depth >= 2;
 
+        // A `$ref` is an in-place applicator like an `allOf` branch: what its target evaluates counts for
+        // an `unevaluated*` written beside it. The reference itself is the PHP type — a class or a list
+        // — and no constraint, so the extraction dropped it and the keyword beside it saw none of the
+        // target's keys: `{$ref: Pair, prefixItems: [{…}], unevaluatedItems: false}` refused the second
+        // item Pair evaluates. Beside such a keyword the target is carried as one more `allOf` branch,
+        // inlined as a schema nothing materializes, on this path's budget and cycle count.
+        $ref = $schema['$ref'] ?? null;
+        if (
+            is_string($ref)
+            && (array_key_exists('unevaluatedProperties', $schema) || array_key_exists('unevaluatedItems', $schema))
+            && $refInlineBudget > 0
+            && ($seenRefs[$ref] ?? 0) < self::REF_REPEAT_LIMIT
+        ) {
+            $target = $this->inlineNestedContainerValidation(
+                schema: ['$ref' => $ref],
+                depth: $depth,
+                belowMaterialization: true,
+                refInlineBudget: $refInlineBudget,
+                seenRefs: $seenRefs,
+            );
+            if (!array_key_exists('$ref', $target)) {
+                $schema['allOf'] = [...(is_array($schema['allOf'] ?? null) ? $schema['allOf'] : []), $target];
+            }
+        }
+
         // A `$ref` to a `type: array` component is inlined at EVERY level, materialized or not: such a
         // reference is typed as the aliased list and never becomes a class, so no class validates it
         // either. Left as a bare `$ref` it was scrubbed, and the property, list item or map value lost
@@ -5041,6 +5234,12 @@ final class GenerateDtoCommand extends Command
         // constraints were `['type' => 'array']` and nothing else — `required`, bounds and every level
         // below them silently gone. The guard is `$belowMaterialization`, which is false on a property,
         // so inheritance is untouched; a branch is walked only where nothing materializes to carry it.
+        //
+        // An `unevaluated*` in the tree is the other reason: it reads what every branch EVALUATED, and
+        // a `$ref` branch left for the class it names is a branch it cannot read — `allOf: [{$ref: A}],
+        // unevaluatedProperties: false` refused the keys A declares.
+        $evaluatesInPlace = $this->inPlaceTreeUses(schema: $schema, keyword: 'unevaluatedProperties')
+            || $this->inPlaceTreeUses(schema: $schema, keyword: 'unevaluatedItems');
         foreach (['oneOf', 'anyOf', 'allOf'] as $unionKey) {
             if (!is_array($schema[$unionKey] ?? null)) {
                 continue;
@@ -5051,7 +5250,7 @@ final class GenerateDtoCommand extends Command
                     $schema[$unionKey][$index] = $this->inlineNestedContainerValidation(
                         schema: $branch,
                         depth: $depth,
-                        belowMaterialization: $belowMaterialization || $depth >= 1,
+                        belowMaterialization: $belowMaterialization || $depth >= 1 || $evaluatesInPlace,
                         refInlineBudget: $refInlineBudget,
                         seenRefs: $seenRefs,
                     );
@@ -5130,14 +5329,16 @@ final class GenerateDtoCommand extends Command
 
         // A PROPERTY restarts the container count — it is a value of its own, and where an item DID
         // become a DTO that class runs this for itself. What it does not restart is
-        // `$belowMaterialization`: below the first level of items there is no class to run it.
+        // `$belowMaterialization`: below the first level of items there is no class to run it. Nor
+        // below a property typed `mixed`: a `$ref` under an untyped schema names a class nothing
+        // hydrates, and left for the scrubber it took its subschema with it.
         if (is_array($schema['properties'] ?? null)) {
             foreach ($schema['properties'] as $name => $propertySchema) {
                 if (is_array($propertySchema)) {
                     $schema['properties'][$name] = $this->inlineNestedContainerValidation(
                         schema: $propertySchema,
                         depth: 0,
-                        belowMaterialization: $belowMaterialization,
+                        belowMaterialization: $belowMaterialization || $this->staysUnmaterialized($propertySchema),
                         refInlineBudget: $refInlineBudget,
                         seenRefs: $seenRefs,
                     );
@@ -5230,7 +5431,7 @@ final class GenerateDtoCommand extends Command
     {
         $prefix = '#/components/schemas/';
         if (str_starts_with($ref, $prefix)) {
-            return $this->schemaClassName(substr($ref, strlen($prefix)));
+            return $this->schemaClassName($this->componentNameInPointer($ref));
         }
 
         $resolved = $this->resolveExternalSchemaPointer($ref, $currentSourceFile ?? $this->rootSpecFile);
@@ -5302,6 +5503,11 @@ final class GenerateDtoCommand extends Command
         $alias = $this->scalarAliasDefinition($ref, $currentSourceFile);
         if ($alias !== null) {
             return $alias;
+        }
+
+        $pointed = $this->schemaInsideComponent($ref);
+        if ($pointed !== null) {
+            return $pointed;
         }
 
         // An enum component in ANOTHER document counts too: only local pointers were looked up here, so
@@ -5650,6 +5856,14 @@ final class GenerateDtoCommand extends Command
                 }
             }
 
+            // Branches that describe no key — `allOf: [{maximum: 30}, {minimum: 20}]`, an `if` in one
+            // branch and its `then` in another — admit any value. Merged into a class, they refused
+            // the number they were written for with `Cannot deserialize nested DTO … from non-array
+            // value`; the value stays `mixed` and the `allOf` is checked as the constraint it is.
+            if (!$this->shapesAnObject($propertySchema)) {
+                return ['mixed', $nullable];
+            }
+
             $mergedClassName = $ownerClassName . $this->normalizeClassName($propertyName);
             $this->registerSchema(
                 className: $mergedClassName,
@@ -5676,6 +5890,23 @@ final class GenerateDtoCommand extends Command
                 ownerClassName: $ownerClassName,
                 propertyName: $propertyName,
             );
+        }
+
+        // `{$ref: Swatch, properties: {alpha}, unevaluatedProperties: false}` describes ONE object the
+        // reference and the keywords beside it share — the same object `allOf: [$ref Swatch]` with those
+        // keywords beside it describes. Typed as Swatch, the value lost every key Swatch does not
+        // declare on hydration: `alpha` went unchecked and an undeclared key could no longer be refused.
+        $sharedObject = $this->referencedObjectSharedWithSiblings($propertySchema, $ownerClassName);
+        if ($sharedObject !== null) {
+            $mergedClassName = $ownerClassName . $this->normalizeClassName($propertyName);
+            $this->registerSchema(
+                className: $mergedClassName,
+                schemaDefinition: $sharedObject,
+                sourceFile: $this->getSchemaSourceFile($ownerClassName),
+            );
+            $this->recordSynthesizedOrigin($mergedClassName, $ownerClassName, $propertyName);
+
+            return [$mergedClassName, $nullable];
         }
 
         if (array_key_exists('$ref', $propertySchema) && is_string($propertySchema['$ref'])) {
@@ -6085,6 +6316,45 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * The schema of one object a `$ref` to an object class and an `unevaluatedProperties` beside it
+     * describe together, written as the `allOf` this generator already merges — or null when the
+     * reference stands alone, names no object class, or nothing beside it reads its keys.
+     *
+     * @param array<string, mixed> $propertySchema
+     * @return array<string, mixed>|null
+     */
+    private function referencedObjectSharedWithSiblings(array $propertySchema, string $ownerClassName): ?array
+    {
+        $ref = $propertySchema['$ref'] ?? null;
+        if (!is_string($ref) || !array_key_exists('unevaluatedProperties', $propertySchema) || array_key_exists('allOf', $propertySchema)) {
+            return null;
+        }
+
+        $refClassName = $this->schemaRefToClassName(ref: $ref, currentSourceFile: $this->getSchemaSourceFile($ownerClassName));
+        $definition = $this->dtoSchemas[$refClassName] ?? null;
+        if (
+            !is_array($definition)
+            || !$this->isObjectDtoComponent($refClassName)
+            || array_key_exists('oneOf', $definition)
+            || array_key_exists('anyOf', $definition)
+        ) {
+            return null;
+        }
+
+        $shared = [];
+        foreach ($propertySchema as $keyword => $value) {
+            if ($keyword !== '$ref') {
+                $shared[$keyword] = $value;
+            }
+        }
+        // The target's schema itself rather than its reference: one `$ref` branch is how this generator
+        // spells inheritance, and the property's class has no business extending the component.
+        $shared['allOf'] = [$definition];
+
+        return $shared;
+    }
+
+    /**
      * @param array<string, mixed> $propertySchema
      * @return array<string, mixed>|null
      */
@@ -6093,6 +6363,17 @@ final class GenerateDtoCommand extends Command
         $allOf = $propertySchema['allOf'] ?? null;
         if (!is_array($allOf) || $allOf === []) {
             return null;
+        }
+
+        // `unevaluatedProperties` reads what each branch evaluated ON ITS OWN, so the branches cannot be
+        // poured into the one class schema the object path registers: last-wins turned
+        // `{unevaluatedProperties: false, allOf: [{unevaluatedProperties: true}]}` into one `false` and
+        // the class refused the keys the branch had let through. An array merges into nothing but its
+        // PHP type — its constraints keep the `allOf` — so `unevaluatedItems` needs no such care.
+        foreach ([$propertySchema, ...$allOf] as $part) {
+            if (is_array($part) && array_key_exists('unevaluatedProperties', $part)) {
+                return null;
+            }
         }
 
         $resolved = [];
@@ -6364,9 +6645,195 @@ final class GenerateDtoCommand extends Command
             }
         }
 
-        $definition = $this->dtoSchemas[$this->schemaClassName(substr($ref, strlen($prefix)))] ?? null;
+        $definition = $this->dtoSchemas[$this->schemaClassName($this->componentNameInPointer($ref))] ?? null;
 
         return is_array($definition) && $this->isScalarAliasSchema($definition) ? $definition : null;
+    }
+
+    /**
+     * The component a `#/components/schemas/…` pointer starts in, its segment unescaped (RFC 6901):
+     * `slash~1field` names `slash/field` and `tilde~0field` names `tilde~field`. Read as written,
+     * the reference named no schema, and the subschema under it was dropped unchecked. A pointer
+     * that goes on below the component keeps only its first segment here — see
+     * `schemaInsideComponent()`.
+     */
+    private function componentNameInPointer(string $ref): string
+    {
+        $path = substr($ref, strlen('#/components/schemas/'));
+        if (str_contains($path, '/')) {
+            return $path;
+        }
+
+        return str_replace(['~1', '~0'], ['/', '~'], $path);
+    }
+
+    /**
+     * The schema a pointer INTO a component names — `#/components/schemas/Pair/prefixItems/0`, the
+     * spelling a relative `#/prefixItems/0` takes once its root is a component. No class is ever
+     * generated for such a target, so it is only ever inlined; left unresolved, the subschema that
+     * held it extracted to nothing and its position went unchecked.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function schemaInsideComponent(string $ref): ?array
+    {
+        $prefix = '#/components/schemas/';
+        if (!str_starts_with($ref, $prefix)) {
+            return null;
+        }
+        $segments = array_map(
+            callback: static fn(string $segment): string => str_replace(['~1', '~0'], ['/', '~'], $segment),
+            array: explode('/', substr($ref, strlen($prefix))),
+        );
+        if (count($segments) < 2) {
+            return null;
+        }
+
+        $className = $this->schemaClassName(array_shift($segments));
+        $node = $this->rawSchemasByClass[$className] ?? $this->dtoSchemas[$className] ?? null;
+        foreach ($segments as $segment) {
+            if (!is_array($node) || !array_key_exists($segment, $node)) {
+                return null;
+            }
+            $node = $node[$segment];
+        }
+
+        return is_array($node) ? $node : null;
+    }
+
+    /**
+     * An untyped schema that says nothing about an object's keys — `{minimum: 5}`, `{if: …, then: …}`,
+     * `{allOf: [{maximum: 30}, {minimum: 20}]}`, `{prefixItems: […]}`. JSON Schema lets it hold ANY
+     * value, so it is an alias of `mixed`, exactly as `{type: string}` is an alias of a string: no class
+     * is written for it, a reference to it is replaced by the schema itself, and the property it types
+     * stays `mixed` and is checked by the validator or the emitted interpreter in every mode.
+     *
+     * Materialized as a class instead, as it was, a `$ref` to it refused every number with `Cannot
+     * deserialize nested DTO … from non-array value` and every list with `expects object`, and the
+     * keywords it carries were checked by nothing.
+     *
+     * Kept a class, as before: the schema that writes no keyword at all (`{}`, a bare `description`)
+     * — its class is how a document names a free-form value, and an application may reference it —
+     * a union, an enum, and anything `shapesAnObject()` recognises.
+     *
+     * @param array<string, mixed> $schema
+     */
+    private function isUntypedValueSchema(array $schema): bool
+    {
+        if (
+            array_key_exists('type', $schema)
+            || array_key_exists('enum', $schema)
+            || $this->rendersAsUnion($schema)
+            || $this->shapesAnObject($schema)
+        ) {
+            return false;
+        }
+
+        foreach (array_keys($schema) as $keyword) {
+            if (
+                !in_array($keyword, self::ALIAS_ANNOTATION_KEYWORDS, true)
+                && !in_array($keyword, self::NON_ASSERTING_KEYWORDS, true)
+                && !str_starts_with($keyword, 'x-')
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether a property with this schema is typed `mixed`, the answer `resolvePropertyType()` gives
+     * for an untyped schema: no class is written for it or for anything below it. A `type`, an enum
+     * and a union materialize; an `allOf` does when it shapes an object; a `$ref` unless it names an
+     * untyped value schema.
+     *
+     * @param array<string, mixed> $schema
+     */
+    private function staysUnmaterialized(array $schema): bool
+    {
+        if (
+            array_key_exists('type', $schema)
+            || array_key_exists('enum', $schema)
+            || array_key_exists('oneOf', $schema)
+            || array_key_exists('anyOf', $schema)
+        ) {
+            return false;
+        }
+
+        $ref = $schema['$ref'] ?? null;
+        if (is_string($ref)) {
+            $alias = $this->scalarAliasDefinition($ref, $this->constraintSourceFile ?? $this->rootSpecFile);
+
+            return $alias !== null && $this->isUntypedValueSchema($alias);
+        }
+
+        return !array_key_exists('allOf', $schema) || !$this->shapesAnObject($schema);
+    }
+
+    /**
+     * Whether a schema is generated as an OBJECT — a DTO class — although it may carry no `type`.
+     *
+     * JSON Schema answers "never without `type: object`": `properties` and its siblings ignore a value
+     * that is not an object, so `{properties: {a: …}}` admits `12` and `[]`. This generator keeps a
+     * narrower convention, because ordinary OpenAPI documents rely on it: a component or an `allOf`
+     * that describes KEYS (`properties`, `required`, `additionalProperties`, …, a `discriminator`) is
+     * an object, written with `type: object` or not — `Pet: {properties: …}` and `allOf: [{$ref:
+     * Base}, {properties: …}]` are classes, and turning every such class into `mixed` would take the
+     * typed DTO away from documents that never meant anything else. That part is a declared
+     * divergence from the suite (README.support-matrix).
+     *
+     * What the convention never covered is a schema that describes no key at all: an `allOf` of
+     * bounds, an `if`/`then`/`else`, a tuple. Those are values of any type and are not objects here.
+     * An `allOf`/`oneOf`/`anyOf` is an object when one of its branches is; a `$ref` when its target
+     * is; a reference this method cannot follow (another document, a cycle past the depth cap) keeps
+     * the class it always had.
+     */
+    private function shapesAnObject(mixed $schema, int $depth = 0): bool
+    {
+        if (!is_array($schema)) {
+            return false;
+        }
+        if ($depth > self::SHAPE_PROBE_DEPTH) {
+            return true;
+        }
+
+        $type = $schema['type'] ?? null;
+        if ($type !== null) {
+            $types = is_array($type) ? array_values(array_diff($type, ['null'])) : [$type];
+
+            return $types !== [] && array_diff($types, ['object']) === [];
+        }
+
+        foreach (self::KEY_DESCRIBING_KEYWORDS as $keyword) {
+            if (array_key_exists($keyword, $schema)) {
+                return true;
+            }
+        }
+
+        foreach (['allOf', 'oneOf', 'anyOf'] as $applicator) {
+            foreach (is_array($schema[$applicator] ?? null) ? $schema[$applicator] : [] as $branch) {
+                if ($this->shapesAnObject(schema: $branch, depth: $depth + 1)) {
+                    return true;
+                }
+            }
+        }
+
+        $ref = $schema['$ref'] ?? null;
+        if (!is_string($ref)) {
+            return false;
+        }
+        $prefix = '#/components/schemas/';
+        if (!str_starts_with($ref, $prefix)) {
+            return true;
+        }
+        $className = $this->schemaClassName(substr($ref, strlen($prefix)));
+        if (array_key_exists($className, $this->enumSchemas)) {
+            return false;
+        }
+        $target = $this->dtoSchemas[$className] ?? null;
+
+        return !is_array($target) || $this->shapesAnObject(schema: $target, depth: $depth + 1);
     }
 
     /**
@@ -6379,6 +6846,10 @@ final class GenerateDtoCommand extends Command
      */
     private function isScalarAliasSchema(array $schema): bool
     {
+        if ($this->isUntypedValueSchema($schema)) {
+            return true;
+        }
+
         // `null` is a scalar too: a component `{type: null}` was materialized as an empty DTO, and a
         // `$ref` to it then refused the one value the schema allows.
         $type = $schema['type'] ?? null;
@@ -7133,7 +7604,7 @@ final class GenerateDtoCommand extends Command
         $prefix = '#/components/schemas/';
 
         if (str_starts_with($ref, $prefix)) {
-            $schemaName = substr($ref, strlen($prefix));
+            $schemaName = $this->componentNameInPointer($ref);
             if ($schemaName === '') {
                 return 'mixed';
             }
@@ -7967,6 +8438,22 @@ final class GenerateDtoCommand extends Command
                 }
             }
 
+            // `properties` written BESIDE the `allOf` belong to the same object as the branches': the
+            // keyword sits in the same schema. Read only through the branches, they were dropped from
+            // the class — `{properties: {alpha}, allOf: [{properties: {beta}}]}` hydrated `beta` alone,
+            // `alpha` went unchecked, and a closed object refused the very key its document declared.
+            if (is_array($schemaDefinition['properties'] ?? null) && $schemaDefinition['properties'] !== []) {
+                foreach (
+                    $this->extractProperties(
+                        schemaDefinition: $schemaDefinition,
+                        ownerClassName: $className,
+                        siblingProperties: $this->allOfBranchProperties($schemaDefinition, $className),
+                    ) as $property
+                ) {
+                    $allProperties[] = $property;
+                }
+            }
+
             return $this->dedupeCaseInsensitivePropertyNames(properties: $this->mergeRestatedProperties(
                 properties: $this->withSiblingRequired($allProperties, $schemaDefinition),
                 className: $className,
@@ -8217,7 +8704,12 @@ final class GenerateDtoCommand extends Command
     private function allOfBranchProperties(array $schemaDefinition, string $className): array
     {
         $properties = [];
-        foreach (is_array($schemaDefinition['allOf'] ?? null) ? $schemaDefinition['allOf'] : [] as $branch) {
+        // The `properties` beside the `allOf` are one more branch for this purpose: the class declares them too.
+        $branches = [
+            ...(is_array($schemaDefinition['allOf'] ?? null) ? $schemaDefinition['allOf'] : []),
+            ['properties' => $schemaDefinition['properties'] ?? []],
+        ];
+        foreach ($branches as $branch) {
             if (!is_array($branch)) {
                 continue;
             }
@@ -8665,14 +9157,17 @@ final class GenerateDtoCommand extends Command
     /**
      * Whether a union's branches already have one that accepts null, so it is not added twice.
      *
-     * @param array<int, array<string, mixed>|true> $branches
+     * @param array<int, array<string, mixed>|bool> $branches
      */
     private function unionBranchesAcceptNull(array $branches): bool
     {
         foreach ($branches as $branch) {
-            // The always-true branch accepts null like everything else.
+            // The always-true branch accepts null like everything else; the never-true one accepts nothing.
             if ($branch === true) {
                 return true;
+            }
+            if ($branch === false) {
+                continue;
             }
             $type = $branch['type'] ?? null;
             if ($type === 'null' || (is_array($type) && in_array('null', $type, true))) {
@@ -8907,7 +9402,7 @@ final class GenerateDtoCommand extends Command
             }
 
             $schema = $this->dtoSchemas[$candidate] ?? null;
-            if (!is_array($schema)) {
+            if (!is_array($schema) || !$this->rendersAsUnion($schema)) {
                 continue;
             }
 
@@ -8936,7 +9431,7 @@ final class GenerateDtoCommand extends Command
         }
 
         $schema = $this->dtoSchemas[$class] ?? null;
-        if (!is_array($schema)) {
+        if (!is_array($schema) || !$this->rendersAsUnion($schema)) {
             return false;
         }
 
@@ -9952,7 +10447,11 @@ final class GenerateDtoCommand extends Command
             return false;
         }
 
-        return true;
+        // Without a `type`, the members ARE the type — and a backed enum has room for one kind only. `[1,
+        // "a"]` used to become a STRING-backed enum, which hydrates `1` as `"1"` and refuses the integer
+        // the document lists; with no shared kind there is no PHP enum to make, and the members stay an
+        // inline constraint compared as JSON values.
+        return $type !== null || $this->untypedEnumBackingType($enum) !== null;
     }
 
     /**
@@ -9960,9 +10459,38 @@ final class GenerateDtoCommand extends Command
      */
     private function resolveEnumBackingType(array $schema): string
     {
-        $type = $schema['type'] ?? 'string';
+        $type = $schema['type'] ?? null;
+        if ($type === null && is_array($schema['enum'] ?? null)) {
+            return $this->untypedEnumBackingType($schema['enum']) ?? 'string';
+        }
 
         return $type === 'integer' ? 'int' : 'string';
+    }
+
+    /**
+     * The backing type an enum with no `type` gets from its members: `int` when every member is an
+     * integer, `string` when every member is a string, otherwise none.
+     *
+     * An untyped all-integer enum was backed by STRING — `enum: [1, 2, 3]` became `case VALUE_1 = '1'`
+     * — so runtime refused `1` ("expects enum ProbeF, got 1") and laravel died in `ProbeF::from()` with a
+     * TypeError, string expected, int given. A component reads the same members the same way already
+     * (normalizeEnumSpelling()); a property now agrees with it.
+     *
+     * @param array<mixed> $members
+     */
+    private function untypedEnumBackingType(array $members): ?string
+    {
+        if ($members === []) {
+            return null;
+        }
+        if (array_filter($members, is_int(...)) === $members) {
+            return 'int';
+        }
+        if (array_filter($members, is_string(...)) === $members) {
+            return 'string';
+        }
+
+        return null;
     }
 
     /**

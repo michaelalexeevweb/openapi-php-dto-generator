@@ -3,6 +3,63 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.132 — 2026-11-23
+
+- JSON-Schema-Test-Suite in every mode
+- allOf beside anyOf loads
+- false branch refuses everything
+- untyped integer enums int-backed
+- type keywords ignore other types
+- long Unicode property names compile
+- $anchor, $dynamicRef, URN refs resolve
+- unevaluated* see in-place applicators
+- untyped schemas accept any value
+- braces in messages stay literal
+
+The official [JSON-Schema-Test-Suite](https://github.com/json-schema-org/JSON-Schema-Test-Suite) (draft 2020-12,
+46 files) now runs through all five modes as a parity test. This release fixes the generator bugs it found.
+The cases still open are listed in `tests/fixtures/json-schema-test-suite/expectations.php`, which the test
+burns down: a case that starts passing fails the run until the list is re-recorded.
+
+**Regenerate after upgrading.** The emitted interpreter, the runtime validator and the yii3 error handling
+changed.
+
+Generation:
+
+- a schema with `allOf` beside `anyOf` / `oneOf` is a class, and its members no longer `implements` it.
+  That fatal (`X cannot implement Y - it is not an interface`) ended the process when the class loaded;
+- an untyped enum whose members are all integers (`enum: [1, 2, 3]`) is backed by `int`, no longer by
+  `string`;
+- `properties` beside an `allOf` are kept, and an inherited property is not an extra one beside its parent;
+- an untyped component keeps its class only where it describes an object. Elsewhere the value is `mixed`
+  and its keywords are still checked;
+- references by `$anchor`, by `$id` (a URL or a URN, embedded or in another file) and by `$dynamicRef`
+  resolve. An embedded resource referenced twice is one class, and an unresolvable reference stops
+  generation with its name.
+
+Validation (every mode):
+
+- a `false` schema — a branch, an item, a property — refuses every value;
+- a type-specific keyword (`minLength`, `pattern`, `minimum`, `multipleOf`, `minItems`, `required`,
+  `minProperties`, a string or numeric `format`…) ignores values of other types when `type` does not pin it;
+- an object keyword reads a non-empty JSON list as a list, not as an object keyed by numbers, unless `type`
+  pins `object`. An empty `[]` still reads as `{}`, the PHP convention;
+- an integral float counts as the integer it spells: `minItems: 2.0` means 2;
+- `unevaluatedProperties` / `unevaluatedItems` see what `allOf`, `anyOf`, `oneOf`, `if`/`then`/`else`,
+  `dependentSchemas` and `$ref` evaluated, not only the schema's own keywords;
+- a pattern with a long Unicode property name (`\p{Letter}`, `\p{Script=Greek}`) compiles;
+- `idn-hostname` refuses a label that starts with a combining mark whichever IDN converter is installed.
+
+yii3:
+
+- a message that quotes the schema or the payload (`must equal {"a":1}`, `^a{2}$`) is added as final text.
+  The validator's formatters read every `{…}` as a placeholder, and the one picked without ext-intl threw
+  in the middle of validation. The `NestedPathTypeCaster` recipe in `README.yii3.md` re-adds an error the
+  way it was added.
+
+Deliberate deviations, marked so in `expectations.php`: `format` and `contentEncoding` /
+`contentMediaType` / `contentSchema` are asserted, not only annotated.
+
 ## 2.15.131 — 2026-11-22
 
 - shared classes stay permissive

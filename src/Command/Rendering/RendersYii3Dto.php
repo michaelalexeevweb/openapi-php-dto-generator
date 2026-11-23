@@ -265,13 +265,14 @@ trait RendersYii3Dto
                     ),
                 ),
                 allowScalarKeywords: true,
+                unmaterializedProperties: $this->mixedPropertyNames($properties),
             ),
             properties: $properties,
         );
 
         $interpreter = $this->renderYii3InterpreterBlock(
             constraints: $this->yii3PruneReadOnlyFromRequired(
-                constraints: $interpreterConstraints,
+                constraints: $this->withUnevaluatedPropertiesEvaluated(constraints: $interpreterConstraints, className: $className),
                 properties: $properties,
             ),
             phpToOpenApiNameMap: $phpToOpenApiNameMap,
@@ -808,7 +809,9 @@ trait RendersYii3Dto
         // The lookup is guarded rather than defaulted: a schema with no `type` at all gives null, and
         // a UNION type gives an array — both are legal OpenAPI and both are an illegal array offset
         // ("Using null as an array offset is deprecated" on every schema without a `type`).
-        $declaredType = $constraints['type'] ?? null;
+        // Read through the folded `allOf` too: `allOf: [{}, {type: number}]` types the property `float`
+        // exactly as `type: number` does, and without the rule the caster turned "foo" into 0.0.
+        $declaredType = $constraints['type'] ?? $this->foldScalarAllOfConstraints($constraints)['type'] ?? null;
         $typeRule = is_string($declaredType)
             ? (self::YII3_TYPE_RULES[$declaredType] ?? null)
             : null;
@@ -816,8 +819,13 @@ trait RendersYii3Dto
             $attributes[] = $this->yii3Rule($typeRule, [], $ruleImports);
         }
 
-        $min = $constraints['minLength'] ?? null;
-        $max = $constraints['maxLength'] ?? null;
+        // The length, bound, pattern, format and count rules refuse a value of any other type, where the
+        // keyword says nothing about it — `Length` refused `12` beside no `type`. Only what `type` pins
+        // gets a rule; `yii3NativelyCoveredKeywords()` reads the same view, so the rest stays with the
+        // interpreter, which applies each keyword to its own type.
+        $ruleConstraints = $this->withoutKeywordsTheTypeDoesNotPin(schema: $constraints, phpType: $property['type']);
+        $min = $ruleConstraints['minLength'] ?? null;
+        $max = $ruleConstraints['maxLength'] ?? null;
         if (($min !== null || $max !== null) && $this->yii3LimitsAreUsable($min, $max)) {
             $attributes[] = $this->yii3Rule('Length', $this->yii3LimitArguments($min, $max), $ruleImports);
         }
@@ -830,18 +838,18 @@ trait RendersYii3Dto
                 'exclusiveMaximum' => 'LessThan',
             ] as $keyword => $rule
         ) {
-            $bound = $constraints[$keyword] ?? null;
-            if (is_numeric($bound) && !$this->yii3BoundIsExclusiveByModifier($constraints, $keyword)) {
+            $bound = $ruleConstraints[$keyword] ?? null;
+            if (is_numeric($bound) && !$this->yii3BoundIsExclusiveByModifier($ruleConstraints, $keyword)) {
                 $attributes[] = $this->yii3Rule($rule, [$this->yii3NumberLiteral($bound), "type: 'original'"], $ruleImports);
             }
         }
 
-        $pattern = $constraints['pattern'] ?? null;
+        $pattern = $ruleConstraints['pattern'] ?? null;
         if (is_string($pattern) && $pattern !== '' && $this->patternCompiles($pattern)) {
             $attributes[] = $this->yii3Rule('Regex', [$this->yii3RegexLiteral($pattern)], $ruleImports);
         }
 
-        $format = $constraints['format'] ?? null;
+        $format = $ruleConstraints['format'] ?? null;
         if (
             is_string($format)
             && array_key_exists($format, self::YII3_FORMAT_RULES)
@@ -900,8 +908,8 @@ trait RendersYii3Dto
             }
         }
 
-        $minItems = $constraints['minItems'] ?? null;
-        $maxItems = $constraints['maxItems'] ?? null;
+        $minItems = $ruleConstraints['minItems'] ?? null;
+        $maxItems = $ruleConstraints['maxItems'] ?? null;
         if (($minItems !== null || $maxItems !== null) && $this->yii3LimitsAreUsable($minItems, $maxItems)) {
             $attributes[] = $this->yii3Rule('Count', $this->yii3LimitArguments($minItems, $maxItems), $ruleImports);
         }
@@ -1555,7 +1563,7 @@ trait RendersYii3Dto
      *
      *     Symfony   #[Assert\Callback]      $context->buildViolation($error)->addViolation()
      *     Laravel   withValidator(), static $validator->errors()->add(...)
-     *     Yii3      #[Callback(method:)]    $result->addError($error)
+     *     Yii3      #[Callback(method:)]    $result->addErrorWithoutPostProcessing($error)
      *
      * The interpreter itself is untouched: it yields error STRINGS, which is exactly the seam that
      * lets three packagings share one implementation.
@@ -1640,11 +1648,14 @@ PHP;
         foreach (\$this->validateOpenApiNode(\$this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as \$error) {
             \$path = self::openApiViolationPath(\$error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            \$result->addError(
-                str_ends_with(\$error, '.') ? \$error : \$error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            \$result->addErrorWithoutPostProcessing(
+                message: str_ends_with(\$error, '.') ? \$error : \$error . '.',
                 valuePath: \$path === null ? [] : array_map(
-                    static fn (string \$key): int|string => ctype_digit(\$key) ? (int)\$key : \$key,
-                    preg_split('/[.\\[\\]]+/', \$path, -1, \\PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string \$key): int|string => ctype_digit(\$key) ? (int)\$key : \$key,
+                    array: preg_split('/[.\\[\\]]+/', \$path, -1, \\PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -2043,7 +2054,9 @@ PHP;
      */
     private function yii3NativelyCoveredKeywords(array $property): array
     {
-        $schema = $property['constraints'] ?? [];
+        // The view `yii3ValidationAttributes()` builds its rules from: a keyword `type` does not pin got
+        // no rule, so it is not covered.
+        $schema = $this->withoutKeywordsTheTypeDoesNotPin(schema: $property['constraints'] ?? [], phpType: $property['type']);
         $covered = [];
 
         $unusableLimits = [];

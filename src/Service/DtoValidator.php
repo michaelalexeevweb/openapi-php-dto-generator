@@ -118,6 +118,63 @@ final class DtoValidator implements DtoValidatorInterface
     ];
 
     /**
+     * ECMA-262's General_Category values that PCRE does not know by that name — the long names and
+     * their aliases — mapped to the short name PCRE does know. ECMA-262 accepts both spellings under
+     * its `u` flag (`\p{Letter}` and `\p{L}`); PCRE only the short one, and a long name was a pattern
+     * that never compiled.
+     *
+     * `LC` goes to `L&`, the spelling every PCRE version reads; the short names map to themselves only
+     * where that is needed, so the rest pass through untouched.
+     *
+     * @var array<string, string>
+     */
+    public const array UNICODE_GENERAL_CATEGORIES = [
+        'Cased_Letter' => 'L&',
+        'LC' => 'L&',
+        'Close_Punctuation' => 'Pe',
+        'Connector_Punctuation' => 'Pc',
+        'Control' => 'Cc',
+        'cntrl' => 'Cc',
+        'Currency_Symbol' => 'Sc',
+        'Dash_Punctuation' => 'Pd',
+        'Decimal_Number' => 'Nd',
+        'digit' => 'Nd',
+        'Enclosing_Mark' => 'Me',
+        'Final_Punctuation' => 'Pf',
+        'Format' => 'Cf',
+        'Initial_Punctuation' => 'Pi',
+        'Letter' => 'L',
+        'Letter_Number' => 'Nl',
+        'Line_Separator' => 'Zl',
+        'Lowercase_Letter' => 'Ll',
+        'Mark' => 'M',
+        'Combining_Mark' => 'M',
+        'Math_Symbol' => 'Sm',
+        'Modifier_Letter' => 'Lm',
+        'Modifier_Symbol' => 'Sk',
+        'Nonspacing_Mark' => 'Mn',
+        'Number' => 'N',
+        'Open_Punctuation' => 'Ps',
+        'Other' => 'C',
+        'Other_Letter' => 'Lo',
+        'Other_Number' => 'No',
+        'Other_Punctuation' => 'Po',
+        'Other_Symbol' => 'So',
+        'Paragraph_Separator' => 'Zp',
+        'Private_Use' => 'Co',
+        'Punctuation' => 'P',
+        'punct' => 'P',
+        'Separator' => 'Z',
+        'Space_Separator' => 'Zs',
+        'Spacing_Mark' => 'Mc',
+        'Surrogate' => 'Cs',
+        'Symbol' => 'S',
+        'Titlecase_Letter' => 'Lt',
+        'Unassigned' => 'Cn',
+        'Uppercase_Letter' => 'Lu',
+    ];
+
+    /**
      * Delimited schema patterns, by pattern. Only patterns the DOCUMENT wrote come through here —
      * a finite set per process — never a value being validated, so the cache cannot grow with traffic.
      *
@@ -156,6 +213,13 @@ final class DtoValidator implements DtoValidatorInterface
                 if ($next === 'u' && preg_match('/\G(?:\{([0-9A-Fa-f]{1,6})\}|([0-9A-Fa-f]{4}))/', $pattern, $hex, 0, $i + 2) === 1) {
                     $delimited .= '\x{' . ($hex[1] !== '' ? $hex[1] : $hex[2]) . '}';
                     $i += 1 + strlen($hex[0]);
+                    continue;
+                }
+                // ECMA-262 `\p{…}` under the `u` flag names a property as PCRE does not: see
+                // `unicodePropertyName()`. Without the flag it is a plain `p`, as it always was here.
+                if ($unicode && ($next === 'p' || $next === 'P') && preg_match('/\G\{([A-Za-z0-9_]+(?:=[A-Za-z0-9_]+)?)\}/', $pattern, $property, 0, $i + 2) === 1) {
+                    $delimited .= '\\' . $next . '{' . self::unicodePropertyName($property[1]) . '}';
+                    $i += 1 + strlen($property[0]);
                     continue;
                 }
                 $i++;
@@ -209,6 +273,31 @@ final class DtoValidator implements DtoValidatorInterface
         // `D`: ECMA-262 `$` is the very end. PCRE's also matches before a final `\n`, and
         // `^[a-z]+$` let "abc\n" through to a log line or a header.
         return $delimited . ($unicode ? '#uD' : '#D');
+    }
+
+    /**
+     * The PCRE spelling of an ECMA-262 Unicode property name — the part between the braces of `\p{…}`.
+     *
+     * - a General_Category value, alone or as `General_Category=…` / `gc=…`: its short name
+     *   (`Letter` → `L`, `gc=Lu` → `Lu`);
+     * - `Script=…` / `sc=…`: the bare script name, which is how PCRE has always read a script
+     *   (`Script=Greek` → `Greek`);
+     * - anything else — a binary property (`Alphabetic`), `Script_Extensions=…` — as written: PCRE
+     *   reads those under the same names, and one it does not know stays a pattern that does not
+     *   compile, reported as such.
+     */
+    public static function unicodePropertyName(string $name): string
+    {
+        $parts = explode('=', $name, 2);
+        if (count($parts) === 1) {
+            return self::UNICODE_GENERAL_CATEGORIES[$name] ?? $name;
+        }
+
+        return match ($parts[0]) {
+            'General_Category', 'gc' => self::UNICODE_GENERAL_CATEGORIES[$parts[1]] ?? $parts[1],
+            'Script', 'sc' => $parts[1],
+            default => $name,
+        };
     }
 
     /**
@@ -401,6 +490,16 @@ final class DtoValidator implements DtoValidatorInterface
     }
 
     /**
+     * Whether a `type` admits an object and no array — the one case where a PHP list must be a map.
+     */
+    private function typePinsObject(mixed $type): bool
+    {
+        $types = is_string($type) ? [$type] : (is_array($type) ? $type : []);
+
+        return in_array('object', $types, true) && !in_array('array', $types, true);
+    }
+
+    /**
      * Recursion depth is threaded as a parameter (not stored on the instance) so a single
      * shared validator is safe under concurrency (Swoole/RoadRunner/FrankenPHP coroutines).
      *
@@ -433,6 +532,20 @@ final class DtoValidator implements DtoValidatorInterface
         }
 
         $errors = [];
+
+        // `[]` and `{}`, `[1]` and `{"0": 1}` are one PHP array once decoded, and which one a value
+        // was can only be said where the wire shape survived. It does where nothing hydrated the
+        // value: a JSON object stays the `stdClass` `json_decode()` made of it, so a non-empty PHP
+        // LIST there is a JSON array — and the object keywords ignore an array (`maxProperties: 2`
+        // accepts `[1, 2, 3]`, `required: [a]` accepts `[1]`). The EMPTY array stays an object: a
+        // caller validating an associatively decoded payload hands `{}` over exactly that way, as the
+        // emitted interpreter of the other modes reads it too. Where `type` pins `object`, the value is a
+        // hydrated map instead — the deserializer refused a non-empty JSON array for it on the way in,
+        // and lets `[]` stand for the empty object `json_encode([])` sends — so a list there is an
+        // object keyed 0..n-1 and is read as one, by every branch below.
+        if (is_array($value) && array_is_list($value) && $this->typePinsObject($constraints['type'] ?? null)) {
+            $value = (object)$value;
+        }
 
         // A backed enum case is its value to every string and number keyword, as it already is to
         // `type`: a case passed the string branch of `oneOf: [$ref Tint, {string, pattern}]` as a
@@ -658,7 +771,7 @@ final class DtoValidator implements DtoValidatorInterface
         // something for an array or a generated DTO (`generatedDtoPayload()` returns null for
         // anything else), so a scalar paid ten key lookups and a method call to learn nothing.
         if (
-            ($isArray || is_object($value))
+            (($isArray && ($value === [] || !array_is_list($value))) || is_object($value))
                 && (array_key_exists('minProperties', $constraints)
                 || array_key_exists('maxProperties', $constraints)
                 || array_key_exists('properties', $constraints)
@@ -2320,6 +2433,15 @@ final class DtoValidator implements DtoValidatorInterface
         // fall back to a pragmatic Unicode-aware label check (1-63 chars/label, no leading or
         // trailing hyphen, total ≤ 253, no whitespace/control/dots-in-label).
         if ($value === '' || strlen($value) > 253) {
+            return false;
+        }
+
+        // RFC 5891 §4.2.3.2: a label must not begin with a combining mark. ext-intl and a current
+        // symfony/polyfill-intl-idn refuse one inside idn_to_ascii(), but polyfill 1.15 — still
+        // allowed by the dependency ranges — converts it, and the fallback below allowed it too. So
+        // the rule is checked here, and the answer no longer depends on which converter is installed.
+        // The separators are the four UTS #46 maps to a dot.
+        if (preg_match('/(?:^|[.\x{3002}\x{FF0E}\x{FF61}])\p{M}/u', $value) === 1) {
             return false;
         }
 

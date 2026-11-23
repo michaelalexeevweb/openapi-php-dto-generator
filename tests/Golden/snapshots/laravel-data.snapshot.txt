@@ -1,4 +1,4 @@
-# laravel-data mode — 80 files, 22008 lines
+# laravel-data mode — 80 files, 22191 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -5290,6 +5290,7 @@ use function explode;
 use function floor;
 use function get_object_vars;
 use function implode;
+use function in_array;
 use function is_array;
 use function is_finite;
 use function is_float;
@@ -5387,6 +5388,13 @@ final class ApplicatorRefs extends Data
                     ],
                     [
                         'type' => 'integer',
+                    ],
+                ],
+            ],
+            'impossible' => [
+                'allOf' => [
+                    [
+                        'not' => [],
                     ],
                 ],
             ],
@@ -5904,6 +5912,14 @@ final class ApplicatorRefs extends Data
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = self::normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema) && !($value === null && ($schema['nullable'] ?? false) === true)) {
             $typeConstraint = $schema['type'];
@@ -6023,6 +6039,16 @@ final class ApplicatorRefs extends Data
             $minContains = 1;
             if ($matchCount < $minContains) {
                 $errors[] = sprintf('%s must contain at least %d item(s) matching the \'contains\' schema', $path, $minContains);
+            }
+        }
+
+        if (is_array($schema['allOf'] ?? null)) {
+            foreach ($schema['allOf'] as $branch) {
+                if (!is_array($branch)) {
+                    continue;
+                }
+
+                $errors = [...$errors, ...self::validateOpenApiNode($value, $branch, $path, $depth + 1)];
             }
         }
 
@@ -6213,6 +6239,7 @@ use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 
 use function array_column;
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function array_merge;
@@ -6558,6 +6585,14 @@ final class ApplicatorRefsConditional extends Data
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = self::normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -6702,6 +6737,7 @@ use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 
 use function array_column;
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function array_merge;
@@ -7044,6 +7080,14 @@ final class ApplicatorRefsKeyed extends Data
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = self::normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -7176,6 +7220,7 @@ use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 
 use function array_column;
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function array_merge;
@@ -7504,6 +7549,14 @@ final class ApplicatorRefsPoisonedKey extends Data
 
         $errors = [];
         $structuredValue = self::normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (is_array($schema['dependentSchemas'] ?? null) && is_array($structuredValue)) {
             foreach ($schema['dependentSchemas'] as $propertyName => $depSchema) {
@@ -8794,6 +8847,14 @@ final class ChainLink extends Data
         }
         $errors = [];
         $structuredValue = self::normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (is_array($structuredValue) && is_array($schema['required'] ?? null)) {
             foreach ($schema['required'] as $requiredProp) {
@@ -8875,6 +8936,7 @@ use function array_slice;
 use function explode;
 use function get_object_vars;
 use function implode;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -9307,6 +9369,14 @@ final class ChainMiddle extends Data
         }
         $errors = [];
         $structuredValue = self::normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (is_array($structuredValue) && is_array($schema['required'] ?? null)) {
             foreach ($schema['required'] as $requiredProp) {
@@ -10768,6 +10838,14 @@ final class Containers extends Data
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = self::normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (is_array($schema['oneOf'] ?? null)) {
             $matchingBranches = 0;
@@ -11052,6 +11130,7 @@ use function array_slice;
 use function floor;
 use function get_object_vars;
 use function implode;
+use function in_array;
 use function is_array;
 use function is_finite;
 use function is_float;
@@ -11263,6 +11342,14 @@ final class CountMap extends Data
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = self::normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -13061,6 +13148,7 @@ use function explode;
 use function floor;
 use function get_object_vars;
 use function implode;
+use function in_array;
 use function is_array;
 use function is_bool;
 use function is_finite;
@@ -13582,6 +13670,14 @@ final class NestedContainers extends Data
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = self::normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (is_array($schema['enum'] ?? null)) {
             $fingerprint = self::jsonValueFingerprint($normalizedValue);
@@ -14076,6 +14172,7 @@ use OverflowException;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function array_slice;
@@ -14083,6 +14180,7 @@ use function count;
 use function floor;
 use function get_object_vars;
 use function implode;
+use function in_array;
 use function is_array;
 use function is_float;
 use function is_int;
@@ -14394,6 +14492,14 @@ final class ObjectWideRules extends Data
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = self::normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -14417,27 +14523,36 @@ final class ObjectWideRules extends Data
             // Presence belongs to the payload view. Null remains a real list item/object value.
             $valueArray = is_array($structural) ? $structural : [];
             $count = count($valueArray);
+            // The item keywords speak about a LIST. A JSON object reaches this point as an array with
+            // its member names for keys, and `minItems` beside no `type` counted those members as
+            // items — refusing an object the keyword says nothing about.
+            $isList = is_array($value) && array_is_list($value);
             $minItems = self::toIntConstraint($schema['minItems'] ?? null);
-            if ($minItems !== null && is_array($value) && $count < $minItems) {
+            if ($minItems !== null && $isList && $count < $minItems) {
                 $errors[] = sprintf('%s must contain at least %d items', $path, $minItems);
             }
 
             $maxItems = self::toIntConstraint($schema['maxItems'] ?? null);
-            if ($maxItems !== null && is_array($value) && $count > $maxItems) {
+            if ($maxItems !== null && $isList && $count > $maxItems) {
                 $errors[] = sprintf('%s must contain at most %d items', $path, $maxItems);
             }
 
+            // A non-empty list has no properties to count, unless `type` pins `object` — see
+            // `$structuredValue`.
+            $countsProperties = !$isList
+                || $valueArray === []
+                || (in_array('object', (array)($schema['type'] ?? []), true) && !in_array('array', (array)($schema['type'] ?? []), true));
             $minProperties = self::toIntConstraint($schema['minProperties'] ?? null);
-            if ($minProperties !== null && $count < $minProperties) {
+            if ($minProperties !== null && $countsProperties && $count < $minProperties) {
                 $errors[] = sprintf('%s must have at least %d %s', $path, $minProperties, $minProperties === 1 ? 'property' : 'properties');
             }
 
             $maxProperties = self::toIntConstraint($schema['maxProperties'] ?? null);
-            if ($maxProperties !== null && $count > $maxProperties) {
+            if ($maxProperties !== null && $countsProperties && $count > $maxProperties) {
                 $errors[] = sprintf('%s must have at most %d %s', $path, $maxProperties, $maxProperties === 1 ? 'property' : 'properties');
             }
 
-            if (is_array($value) && ($schema['uniqueItems'] ?? false) === true) {
+            if ($isList && ($schema['uniqueItems'] ?? false) === true) {
                 $seen = [];
                 foreach ($valueArray as $item) {
                     $fingerprint = self::jsonValueFingerprint($item);
@@ -16776,6 +16891,14 @@ final class Test2 extends Data
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = self::normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema) && !($value === null && ($schema['nullable'] ?? false) === true)) {
             $typeConstraint = $schema['type'];
@@ -17863,6 +17986,14 @@ final class TestPostRequest extends Data
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = self::normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (is_array($schema['oneOf'] ?? null)) {
             $matchingBranches = 0;
@@ -18712,6 +18843,14 @@ final class TreeNode extends Data
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = self::normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (is_array($schema['oneOf'] ?? null)) {
             $matchingBranches = 0;
@@ -19726,6 +19865,14 @@ final class UnionUnderContainer extends Data
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = self::normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (is_array($schema['oneOf'] ?? null)) {
             $matchingBranches = 0;
@@ -20094,6 +20241,7 @@ use function count;
 use function floor;
 use function get_object_vars;
 use function implode;
+use function in_array;
 use function is_array;
 use function is_finite;
 use function is_float;
@@ -20355,33 +20503,50 @@ final class UniqueScalars extends Data
 
         $errors = [];
         $structuredValue = self::normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (is_array($value) || is_object($value)) {
             $structural = is_array($value) ? $value : self::normalizeOpenApiStructuralValue($value);
             // Presence belongs to the payload view. Null remains a real list item/object value.
             $valueArray = is_array($structural) ? $structural : [];
             $count = count($valueArray);
+            // The item keywords speak about a LIST. A JSON object reaches this point as an array with
+            // its member names for keys, and `minItems` beside no `type` counted those members as
+            // items — refusing an object the keyword says nothing about.
+            $isList = is_array($value) && array_is_list($value);
             $minItems = self::toIntConstraint($schema['minItems'] ?? null);
-            if ($minItems !== null && is_array($value) && $count < $minItems) {
+            if ($minItems !== null && $isList && $count < $minItems) {
                 $errors[] = sprintf('%s must contain at least %d items', $path, $minItems);
             }
 
             $maxItems = self::toIntConstraint($schema['maxItems'] ?? null);
-            if ($maxItems !== null && is_array($value) && $count > $maxItems) {
+            if ($maxItems !== null && $isList && $count > $maxItems) {
                 $errors[] = sprintf('%s must contain at most %d items', $path, $maxItems);
             }
 
+            // A non-empty list has no properties to count, unless `type` pins `object` — see
+            // `$structuredValue`.
+            $countsProperties = !$isList
+                || $valueArray === []
+                || (in_array('object', (array)($schema['type'] ?? []), true) && !in_array('array', (array)($schema['type'] ?? []), true));
             $minProperties = self::toIntConstraint($schema['minProperties'] ?? null);
-            if ($minProperties !== null && $count < $minProperties) {
+            if ($minProperties !== null && $countsProperties && $count < $minProperties) {
                 $errors[] = sprintf('%s must have at least %d %s', $path, $minProperties, $minProperties === 1 ? 'property' : 'properties');
             }
 
             $maxProperties = self::toIntConstraint($schema['maxProperties'] ?? null);
-            if ($maxProperties !== null && $count > $maxProperties) {
+            if ($maxProperties !== null && $countsProperties && $count > $maxProperties) {
                 $errors[] = sprintf('%s must have at most %d %s', $path, $maxProperties, $maxProperties === 1 ? 'property' : 'properties');
             }
 
-            if (is_array($value) && ($schema['uniqueItems'] ?? false) === true) {
+            if ($isList && ($schema['uniqueItems'] ?? false) === true) {
                 $seen = [];
                 foreach ($valueArray as $item) {
                     $fingerprint = self::jsonValueFingerprint($item);
@@ -21131,6 +21296,14 @@ final class User extends Data
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = self::normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -21329,6 +21502,7 @@ use stdClass;
 
 use function array_column;
 use function array_diff_key;
+use function array_is_list;
 use function array_key_exists;
 use function array_keys;
 use function array_map;
@@ -21338,6 +21512,7 @@ use function array_slice;
 use function explode;
 use function get_object_vars;
 use function implode;
+use function in_array;
 use function is_array;
 use function is_bool;
 use function is_object;
@@ -21847,6 +22022,14 @@ final class User2 extends Data
         }
         $errors = [];
         $structuredValue = self::normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (is_array($structuredValue) && is_array($schema['required'] ?? null)) {
             foreach ($schema['required'] as $requiredProp) {

@@ -18,6 +18,8 @@ use OpenapiPhpDtoGenerator\Tests\LaravelData\LaravelDataContainer;
 use OpenapiPhpDtoGenerator\Tests\Yii3\Yii3Container;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use ReflectionProperty;
+use stdClass;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\PropertyInfo\Extractor\PhpDocExtractor;
 use Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
@@ -252,6 +254,80 @@ final class ValidationParityTest extends TestCase
                 '{"f":{"a":"x"}}',
             ],
             'anyOf with a false branch' => [['anyOf' => [false, ['type' => 'string']]], '{"f":"s"}', '{"f":5}'],
+            'oneOf with a false branch' => [['oneOf' => [false, ['type' => 'string']]], '{"f":"s"}', '{"f":5}'],
+            // `enum: []` admits nothing (testAnUnsatisfiableSchemaRefusesEveryValue), except that the 3.0
+            // `nullable` keyword beside it still admits null, as it does beside any enum.
+            'empty enum beside nullable admits only null' => [['type' => 'string', 'nullable' => true, 'enum' => []], '{"f":null}', '{"f":"a"}'],
+            // A union beside an `allOf` is a constraint of the class the allOf makes, not an interface of
+            // the same name: emitted as both, the members `implements` a class and PHP refused to load
+            // them (see CompositionClassesLoadTest). Loaded, the class keeps checking its allOf; what the
+            // union's own branches declare is measured by the two cases after it.
+            'allOf beside anyOf checks the allOf' => [
+                [
+                    'allOf' => [['properties' => ['alpha' => ['type' => 'string']]]],
+                    'anyOf' => [['properties' => ['beta' => ['type' => 'integer']]]],
+                ],
+                '{"f":{"alpha":"a","beta":1}}',
+                '{"f":{"alpha":5,"beta":1}}',
+            ],
+            'allOf beside an anyOf of objects' => [
+                [
+                    'allOf' => [['properties' => ['alpha' => ['type' => 'string']]]],
+                    'anyOf' => [
+                        ['properties' => ['beta' => ['type' => 'integer']], 'required' => ['beta']],
+                        ['properties' => ['gamma' => ['type' => 'boolean']], 'required' => ['gamma']],
+                    ],
+                ],
+                '{"f":{"alpha":"a","beta":1}}',
+                '{"f":{"alpha":"a"}}',
+            ],
+            'allOf beside a oneOf of objects' => [
+                [
+                    'allOf' => [['properties' => ['alpha' => ['type' => 'string']]]],
+                    'oneOf' => [
+                        ['properties' => ['beta' => ['type' => 'integer']], 'required' => ['beta']],
+                        ['properties' => ['gamma' => ['type' => 'boolean']], 'required' => ['gamma']],
+                    ],
+                ],
+                '{"f":{"alpha":"a","gamma":true}}',
+                '{"f":{"alpha":"a","beta":1,"gamma":true}}',
+            ],
+            // A composition that admits NOTHING, one level down in every keyword that takes a subschema.
+            // Each of these is the false branch that symfony, laravel, laravel-data and yii3 dropped:
+            // the position below opened up, and the invalid payload was accepted there while runtime
+            // refused it.
+            'items with an unsatisfiable allOf' => [['type' => 'array', 'items' => ['allOf' => [true, false]]], '{"f":[]}', '{"f":["a"]}'],
+            'prefixItems with an unsatisfiable anyOf' => [['type' => 'array', 'prefixItems' => [['anyOf' => [false, false]]]], '{"f":[]}', '{"f":["a"]}'],
+            'contains with an unsatisfiable oneOf' => [['contains' => ['oneOf' => [false, false]]], '{"f":"s"}', '{"f":["a"]}'],
+            'properties with an unsatisfiable allOf' => [
+                ['type' => 'object', 'properties' => ['a' => ['allOf' => [true, false]], 'b' => ['type' => 'string']]],
+                '{"f":{"b":"y"}}',
+                '{"f":{"a":"x"}}',
+            ],
+            // No `properties` beside the map keywords: an object that declares some becomes a DTO, and a
+            // closed DTO is a documented boundary of symfony and yii3 (README.support-matrix), not this one.
+            'additionalProperties with an unsatisfiable anyOf' => [['type' => 'object', 'additionalProperties' => ['anyOf' => [false, false]]], '{"f":{}}', '{"f":{"c":1}}'],
+            'patternProperties with an unsatisfiable allOf' => [['type' => 'object', 'patternProperties' => ['^x' => ['allOf' => [false]]]], '{"f":{"b":"y"}}', '{"f":{"xa":1}}'],
+            'propertyNames with an unsatisfiable anyOf' => [['type' => 'object', 'propertyNames' => ['anyOf' => [false, false]]], '{"f":{}}', '{"f":{"k":"v"}}'],
+            'dependentSchemas with an unsatisfiable allOf' => [
+                [
+                    'type' => 'object',
+                    'properties' => ['a' => ['type' => 'string'], 'b' => ['type' => 'string']],
+                    'dependentSchemas' => ['a' => ['allOf' => [true, false]]],
+                ],
+                '{"f":{"b":"y"}}',
+                '{"f":{"a":"x"}}',
+            ],
+            'not of an unsatisfiable anyOf' => [['type' => 'string', 'not' => ['anyOf' => [false, false]]], '{"f":"a"}', '{"f":5}'],
+            'if with an unsatisfiable allOf' => [['if' => ['allOf' => [true, false]], 'then' => false, 'else' => ['type' => 'string']], '{"f":"a"}', '{"f":5}'],
+            'then with an unsatisfiable anyOf' => [['if' => ['type' => 'string'], 'then' => ['anyOf' => [false, false]]], '{"f":5}', '{"f":"s"}'],
+            'else with an unsatisfiable oneOf' => [['if' => ['const' => 'a'], 'else' => ['oneOf' => [false, false]]], '{"f":"a"}', '{"f":"b"}'],
+            'unevaluatedItems with an unsatisfiable anyOf' => [
+                ['type' => 'array', 'prefixItems' => [['type' => 'string']], 'unevaluatedItems' => ['anyOf' => [false, false]]],
+                '{"f":["a"]}',
+                '{"f":["a","b"]}',
+            ],
+            'unevaluatedProperties with an unsatisfiable allOf' => [['type' => 'object', 'unevaluatedProperties' => ['allOf' => [false]]], '{"f":{}}', '{"f":{"c":1}}'],
             'allOf with a true branch' => [['allOf' => [true, ['type' => 'string', 'minLength' => 3]]], '{"f":"abc"}', '{"f":"ab"}'],
             'anyOf' => [['anyOf' => [['type' => 'string', 'minLength' => 3], ['type' => 'integer']]], '{"f":5}', '{"f":"ab"}'],
             'oneOf scalar' => [['oneOf' => [['type' => 'string', 'minLength' => 5], ['type' => 'string', 'pattern' => '^a']]], '{"f":"ab"}', '{"f":"abcdef"}'],
@@ -468,6 +544,15 @@ final class ValidationParityTest extends TestCase
                 '{"f":"example.com"}',
                 '{"f":"not a host"}',
             ],
+            // RFC 5891 §4.2.3.2: a label must not BEGIN with a combining mark (U+302E here). ext-intl and
+            // a current symfony/polyfill-intl-idn refuse it inside idn_to_ascii(); polyfill 1.15 — what
+            // a prefer-lowest install resolves — does not, and accepted it. The valid side carries a
+            // mark INSIDE a label (a decomposed `é`), which the rule leaves alone.
+            'format idn-hostname refuses a label opening with a combining mark' => [
+                ['type' => 'string', 'format' => 'idn-hostname'],
+                '{"f":"e\u0301clair.\uc2e4\ub840.\ud14c\uc2a4\ud2b8"}',
+                '{"f":"\u302e\uc2e4\ub840.\ud14c\uc2a4\ud2b8"}',
+            ],
             'format relative-json-pointer' => [
                 ['type' => 'string', 'format' => 'relative-json-pointer'],
                 '{"f":"1/a"}',
@@ -491,6 +576,61 @@ final class ValidationParityTest extends TestCase
         }
 
         return $provided;
+    }
+
+    /**
+     * A schema that admits NO value refuses both payloads, in every mode.
+     *
+     * `false` is the subschema nothing satisfies, and an `allOf` holding one can never pass; an `anyOf`
+     * or `oneOf` whose every branch is `false` has nothing to match. README.validation promises boolean
+     * branches in every mode, and runtime kept the `allOf` one — symfony, laravel, laravel-data and yii3
+     * dropped it with the `true` beside it, and accepted `"alpha"` against `allOf: [true, false]`. An
+     * `enum: []` lists no member, so it is the same schema in another spelling.
+     *
+     * There is no valid payload to contrast with, so both slots of the verdict carry one the document
+     * refuses, and the expectation is that neither is accepted.
+     *
+     * @param array<string, mixed> $propertySchema
+     */
+    #[DataProvider('unsatisfiableSchemas')]
+    public function testAnUnsatisfiableSchemaRefusesEveryValue(string $key, array $propertySchema): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = self::probeSpec($propertySchema);
+
+        $this->assertEveryModeYields(
+            expected: ['valid' => false, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict($mode, $spec, 'unsatisfiable-' . $key, '{"f":"alpha"}', '{"f":5}'),
+            context: $key,
+        );
+    }
+
+    /**
+     * @return iterable<string, array{0: string, 1: array<string, mixed>}>
+     */
+    public static function unsatisfiableSchemas(): iterable
+    {
+        $cases = [
+            'allOf true and false' => ['allOf' => [true, false]],
+            'allOf false alone' => ['allOf' => [false]],
+            'allOf string and false' => ['allOf' => [['type' => 'string'], false]],
+            'allOf string and not everything' => ['allOf' => [['type' => 'string'], ['not' => []]]],
+            'anyOf all false' => ['anyOf' => [false, false]],
+            'anyOf false and not everything' => ['anyOf' => [false, ['not' => []]]],
+            'oneOf all false' => ['oneOf' => [false, false]],
+            'oneOf false alone' => ['oneOf' => [false]],
+            'empty enum' => ['enum' => []],
+            'empty enum beside a type' => ['type' => 'string', 'enum' => []],
+            // The neighbours that already held: the array spellings of `false` on their own.
+            'not everything' => ['not' => []],
+            'not true' => ['not' => true],
+        ];
+        foreach ($cases as $key => $schema) {
+            yield $key => [$key, $schema];
+        }
     }
 
     /**
@@ -598,12 +738,21 @@ final class ValidationParityTest extends TestCase
      * Symfony merged the inline branch into the class and counted every inherited key as an extra one.
      * The parent's own rules still apply to its keys.
      *
+     * An `unevaluatedProperties` INSIDE the branch is the exception JSON Schema 2020-12 makes: a branch
+     * reads only what it evaluated itself, never a sibling branch's keys (the suite's "can't see inside
+     * cousins"), so the parent's `id` is unevaluated there and has to be a string as well as an integer
+     * — no payload carrying it passes.
+     *
      * @param array<string, mixed> $closing
      * @param array<string, mixed> $branchClosing
      */
     #[DataProvider('closedCompositionSpellings')]
-    public function testInheritedPropertiesAreNotExtraOnesBesideAParent(string $key, array $closing, array $branchClosing): void
-    {
+    public function testInheritedPropertiesAreNotExtraOnesBesideAParent(
+        string $key,
+        array $closing,
+        array $branchClosing,
+        bool $validAccepted = true,
+    ): void {
         if (!class_exists(Validation::class)) {
             $this->markTestSkipped('symfony/validator not installed');
         }
@@ -622,7 +771,7 @@ final class ValidationParityTest extends TestCase
 
         foreach ([GenerationMode::Symfony, GenerationMode::Runtime] as $mode) {
             $this->assertSame(
-                expected: ['valid' => true, 'invalid' => false],
+                expected: ['valid' => $validAccepted, 'invalid' => false],
                 actual: $this->verdict($mode, $spec, $key, '{"id":5,"name":"n"}', '{"id":"x","name":"n"}'),
                 message: $mode->value . ' ' . $key,
             );
@@ -630,7 +779,7 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
-     * @return iterable<string, array{string, array<string, mixed>, array<string, mixed>}>
+     * @return iterable<string, array{0: string, 1: array<string, mixed>, 2: array<string, mixed>, 3?: bool}>
      */
     public static function closedCompositionSpellings(): iterable
     {
@@ -638,7 +787,7 @@ final class ValidationParityTest extends TestCase
         yield 'additionalProperties false on the class' => ['closed class additional', ['additionalProperties' => false], []];
         yield 'additionalProperties false on the branch' => ['closed branch additional', [], ['additionalProperties' => false]];
         yield 'additionalProperties schema on the branch' => ['schema branch additional', [], ['additionalProperties' => ['type' => 'string']]];
-        yield 'unevaluatedProperties schema on the branch' => ['schema branch unevaluated', [], ['unevaluatedProperties' => ['type' => 'string']]];
+        yield 'unevaluatedProperties schema on the branch' => ['schema branch unevaluated', [], ['unevaluatedProperties' => ['type' => 'string']], false];
     }
 
     /**
@@ -824,6 +973,26 @@ final class ValidationParityTest extends TestCase
             'array const' => [['type' => 'array', 'items' => ['type' => 'integer'], 'const' => [1, 2]], '[1,2]', '[2,1]'],
             'object const' => [['type' => 'object', 'const' => ['a' => 1, 'b' => 2]], '{"b":2,"a":1.0}', '{"a":1,"b":3}'],
             'mixed enum' => [['enum' => [1, false]], '1.0', '"1"'],
+            // An enum with no `type` is backed by what its members ARE. All integers made a STRING-backed
+            // PHP enum: runtime refused `1` ("expects enum ProbeF, got 1") and laravel died on
+            // `ProbeF::from(): Argument #1 must be of type string, int given`.
+            'untyped integer enum' => [['enum' => [1, 2, 3]], '2', '4'],
+            // Not `"1"`: symfony and laravel-data hand an int-backed enum a numeric string as its int,
+            // the typed `type: integer` enum included — a leniency of the int backing, not of this case.
+            'untyped integer enum refuses a string' => [['enum' => [1, 2, 3]], '1', '"alpha"'],
+            'untyped zero enum refuses false' => [['enum' => [0]], '0', 'false'],
+            'untyped one enum refuses true' => [['enum' => [1]], '1', 'true'],
+            'untyped integer enum in a list' => [['type' => 'array', 'items' => ['enum' => [1, 2]]], '[2]', '[3]'],
+            // Members of different kinds share no backing type, so there is no PHP enum to make: the
+            // members stay an inline constraint, compared as JSON values.
+            'untyped integer and string enum' => [['enum' => [1, 'alpha']], '1', '"1"'],
+            'untyped integer and string enum takes its string' => [['enum' => [1, 'alpha']], '"alpha"', '2'],
+            'untyped mixed enum' => [['enum' => [1, 'alpha', true]], 'true', 'false'],
+            'untyped null enum' => [['enum' => [null]], 'null', '0'],
+            'untyped float enum' => [['enum' => [1.5, 2]], '1.5', '1'],
+            // Neighbours that already held: one shared kind with a `type`, and strings without one.
+            'untyped string enum' => [['enum' => ['alpha', 'beta']], '"beta"', '"gamma"'],
+            'typed integer enum' => [['type' => 'integer', 'enum' => [1, 2]], '2', '3'],
             'structural enum' => [['enum' => [['a' => 1, 'b' => 2]]], '{"b":2,"a":1.0}', '{"a":1,"b":3}'],
             'unique numbers' => [['type' => 'array', 'items' => [], 'uniqueItems' => true], '[1,"1",true,null]', '[1,1.0]'],
             'unique negative zero' => [['type' => 'array', 'items' => [], 'uniqueItems' => true], '[0,false]', '[0,-0.0]'],
@@ -940,6 +1109,362 @@ final class ValidationParityTest extends TestCase
                 yield $key . ' / ' . $mode->value => [$mode, $key, $schema, json_encode(['f' => $valid], JSON_THROW_ON_ERROR), json_encode(['f' => $invalid], JSON_THROW_ON_ERROR)];
             }
         }
+    }
+
+    /**
+     * A keyword that speaks about ONE JSON type says nothing about a value of another: `pattern`
+     * ignores `true`, `minimum` ignores `"x"`, `minItems` ignores a string. The official
+     * JSON-Schema-Test-Suite found the framework modes applying their native rule to whatever the
+     * value was when `type` did not pin it — `Assert\Regex`, Laravel's `regex:` and `multiple_of:`,
+     * yii3's `Length` and `Count` — and refusing values the document allows. Each case pairs a value
+     * of another type, which must pass, with a value of the keyword's own type that breaks it, which
+     * must still be refused: the keyword moved to the interpreter, it did not disappear.
+     *
+     * @param array<string, mixed> $propertySchema
+     */
+    #[DataProvider('typeSpecificKeywordCases')]
+    public function testTypeSpecificKeywordIgnoresOtherTypes(string $key, array $propertySchema, string $validJson, string $invalidJson): void
+    {
+        $this->assertEveryModeYields(
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict($mode, self::probeSpec($propertySchema), 'type-specific-' . $key, $validJson, $invalidJson),
+            context: $key,
+        );
+    }
+
+    /**
+     * @return iterable<string, array{0: string, 1: array<string, mixed>, 2: string, 3: string}>
+     */
+    public static function typeSpecificKeywordCases(): iterable
+    {
+        // One or two values of another type per keyword, the suite's own among them: the generated
+        // classes stay loaded for the rest of the run, so the matrix is sampled rather than crossed.
+        // keyword schema, a value of another type it must pass, a value of its own type it refuses
+        $cases = [
+            'pattern ignores boolean' => [['pattern' => '^a*$'], true, 'abc'],
+            'pattern ignores null' => [['pattern' => '^a*$'], null, 'abc'],
+            'pattern ignores object' => [['pattern' => '^a*$'], ['b' => 1], 'abc'],
+            'minLength ignores integer' => [['minLength' => 2], 1, 'a'],
+            'maxLength ignores list' => [['maxLength' => 2], ['b', 'c', 'd'], 'abc'],
+            'minimum ignores string' => [['minimum' => 5], 'x', 3],
+            'maximum ignores boolean' => [['maximum' => 5], true, 7],
+            'exclusiveMinimum ignores object' => [['exclusiveMinimum' => 5], ['b' => 1], 5],
+            'exclusiveMaximum ignores string' => [['exclusiveMaximum' => 5], 'x', 5],
+            'multipleOf ignores null' => [['multipleOf' => 2], null, 3],
+            'multipleOf ignores string' => [['multipleOf' => 2], 'x', 3],
+            'minItems ignores string' => [['minItems' => 4], 'x', [1]],
+            'minItems ignores object' => [['minItems' => 4], ['b' => 1], [1]],
+            'maxItems ignores integer' => [['maxItems' => 1], 12, [1, 2]],
+            // Equal member values, so `uniqueItems` would have something to refuse were it applied.
+            'uniqueItems ignores object' => [['uniqueItems' => true], ['b' => 1, 'c' => 1], [1, 1]],
+            'contains ignores string' => [['contains' => ['const' => 1]], 'x', [2]],
+            'minProperties ignores string' => [['minProperties' => 4], 'x', ['a' => 1]],
+            'maxProperties ignores boolean' => [['maxProperties' => 1], true, ['a' => 1, 'b' => 2]],
+            'required ignores integer' => [['required' => ['a']], 12, ['b' => 1]],
+            'dependentRequired ignores string' => [['dependentRequired' => ['b' => ['a']]], 'x', ['b' => 1]],
+            // A `type` LIST pins nothing either: `regex:` on `type: [string, integer]` refused the integer.
+            'pattern beside a string-or-integer type' => [['type' => ['string', 'integer'], 'pattern' => '^a*$'], 5, 'abc'],
+            'minimum beside a string-or-integer type' => [['type' => ['string', 'integer'], 'minimum' => 5], 'x', 3],
+            'minItems beside a string-or-array type' => [['type' => ['string', 'array'], 'minItems' => 2], 'x', [1]],
+            // Where `type` DOES pin the value the native rules stay, and so does the verdict.
+            'pattern beside type string' => [['type' => 'string', 'pattern' => '^a*$'], 'aa', 'abc'],
+            'pattern beside a nullable string' => [['type' => ['string', 'null'], 'pattern' => '^a*$'], null, 'abc'],
+            'minLength beside type string' => [['type' => 'string', 'minLength' => 2], 'ab', 'a'],
+            'minimum beside type integer' => [['type' => 'integer', 'minimum' => 5], 5, 3],
+            'minItems beside type array' => [['type' => 'array', 'minItems' => 2], [1, 2], [1]],
+            'maxProperties beside type object' => [['type' => 'object', 'maxProperties' => 1], ['a' => 1], ['a' => 1, 'b' => 2]],
+            // And without `type`, a value of the keyword's own type that satisfies it still passes.
+            'pattern alone on a matching string' => [['pattern' => '^a*$'], 'aa', 'abc'],
+            'minItems alone on a long list' => [['minItems' => 2], [1, 2], [1]],
+        ];
+        foreach ($cases as $key => [$schema, $valid, $invalid]) {
+            yield $key => [$key, $schema, json_encode(['f' => $valid], JSON_THROW_ON_ERROR), json_encode(['f' => $invalid], JSON_THROW_ON_ERROR)];
+        }
+    }
+
+    /**
+     * A schema with no `type` that describes no object KEY admits any value, and the official
+     * JSON-Schema-Test-Suite found it generated as an object DTO: `allOf: [{maximum: 30}, {minimum:
+     * 20}]` refused 25 with "Cannot deserialize nested DTO … from non-array value", a `$ref` to
+     * `{maximum: 5}` refused every number, an untyped tuple refused every list. Below such a value
+     * nothing is materialized, and three more holes sat there: a `$ref` under it was dropped unchecked
+     * in every mode, its `properties` were checked by runtime alone, and Laravel's `field.*` rules hit
+     * the members of an object an untyped `items` says nothing about. The object keywords ignore a
+     * JSON LIST, which was counted as an object; a count written `2.0` is the integer 2. Each case
+     * pairs a value that must pass with one that must be refused, in every mode.
+     *
+     * @param array<string, mixed> $propertySchema
+     * @param array<string, mixed> $components
+     */
+    #[DataProvider('untypedSchemaCases')]
+    public function testUntypedSchemasHoldAnyValueAndStillConstrain(
+        string $key,
+        array $propertySchema,
+        array $components,
+        string $validJson,
+        string $invalidJson,
+    ): void {
+        $spec = self::probeSpec($propertySchema);
+        $spec['components']['schemas'] = [...$spec['components']['schemas'], ...$components];
+
+        $this->assertEveryModeYields(
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict($mode, $spec, 'untyped-' . $key, $validJson, $invalidJson),
+            context: $key,
+        );
+    }
+
+    /**
+     * @return iterable<string, array{0: string, 1: array<string, mixed>, 2: array<string, mixed>, 3: string, 4: string}>
+     */
+    public static function untypedSchemaCases(): iterable
+    {
+        $small = ['Small' => ['maximum' => 5]];
+        $pair = ['Pair' => ['prefixItems' => [['type' => 'integer'], ['$ref' => '#/components/schemas/Pair/prefixItems/0']]]];
+        // schema, extra components, a value it must pass, a value it must refuse
+        $cases = [
+            'allOf of bounds' => [['allOf' => [['maximum' => 30], ['minimum' => 20]]], [], 25, 35],
+            'allOf of bounds admits a string' => [['allOf' => [['maximum' => 30], ['minimum' => 20]]], [], 'x', 15],
+            'allOf with a conditional branch' => [['allOf' => [['if' => ['exclusiveMaximum' => 0], 'then' => ['minimum' => -10]]]], [], -5, -100],
+            'allOf with a tuple' => [['allOf' => [['prefixItems' => [['type' => 'integer']]]]], [], [1, 'x'], ['x']],
+            'nested allOf of null' => [['allOf' => [['allOf' => [['type' => 'null']]]]], [], null, 123],
+            'allOf of an empty branch and a number' => [['allOf' => [[], ['type' => 'number']]], [], 1, 'foo'],
+            'ref to an untyped component' => [['$ref' => '#/components/schemas/Small'], $small, 3, 7],
+            'ref to an untyped component admits a string' => [['$ref' => '#/components/schemas/Small'], $small, 'x', 9],
+            'ref to an untyped tuple component' => [['$ref' => '#/components/schemas/Pair'], $pair, [1, 2], [1, 'x']],
+            'properties without type' => [['properties' => ['alpha' => ['type' => 'integer']]], [], ['alpha' => 1], ['alpha' => []]],
+            'properties without type admit a number' => [['properties' => ['alpha' => ['type' => 'integer']]], [], 12, ['alpha' => 'x']],
+            'ref under properties without type' => [
+                ['properties' => ['alpha' => ['$ref' => '#/components/schemas/Whole']]],
+                ['Whole' => ['type' => 'integer']],
+                ['alpha' => 1],
+                ['alpha' => 'x'],
+            ],
+            'escaped pointer under properties without type' => [
+                ['properties' => ['alpha' => ['$ref' => '#/components/schemas/alpha~1beta'], 'gamma' => ['$ref' => '#/components/schemas/gamma~0delta']]],
+                ['alpha/beta' => ['type' => 'integer'], 'gamma~delta' => ['type' => 'integer']],
+                ['alpha' => 1, 'gamma' => 2],
+                ['gamma' => 'x'],
+            ],
+            'additionalProperties beside properties without type' => [
+                ['properties' => ['colors' => ['type' => 'array']], 'additionalProperties' => ['type' => 'integer']],
+                [],
+                ['colors' => ['red'], 'beta' => 2],
+                ['beta' => 'x'],
+            ],
+            'items without type ignore an object' => [['items' => ['type' => 'integer']], [], ['0' => 'x', 'length' => 1], [1, 'x']],
+            'enum listing a ref-shaped object' => [
+                ['$defs' => ['word' => ['type' => 'string']], 'enum' => [['$ref' => '#/$defs/word']]],
+                [],
+                ['$ref' => '#/$defs/word'],
+                'x',
+            ],
+            'maxProperties ignores a list' => [['maxProperties' => 2], [], [1, 2, 3], ['a' => 1, 'b' => 2, 'c' => 3]],
+            'required ignores a list' => [['required' => ['alpha']], [], [1, 2], ['beta' => 1]],
+            'dependentRequired ignores a list' => [['dependentRequired' => ['alpha' => ['beta']]], [], ['alpha'], ['alpha' => 1]],
+            // The other side of the list rule: where `type` pins `object`, a branch keyword still counts.
+            'minProperties in a branch of an object' => [['type' => 'object', 'allOf' => [['minProperties' => 1]]], [], ['a' => 1], new stdClass()],
+            'maxContains written as a decimal' => [['contains' => ['const' => 1], 'maxContains' => 2.0], [], [1, 1], [1, 1, 1]],
+            'minContains written as a decimal' => [['contains' => ['const' => 1], 'minContains' => 2.0], [], [1, 1], [1]],
+            'maxLength written as a decimal' => [['type' => 'string', 'maxLength' => 2.0], [], 'ab', 'abc'],
+            'minItems written as a decimal' => [['type' => 'array', 'minItems' => 2.0], [], [1, 2], [1]],
+            'maxProperties written as a decimal' => [['type' => 'object', 'maxProperties' => 1.0], [], ['a' => 1], ['a' => 1, 'b' => 2]],
+        ];
+        foreach ($cases as $key => [$schema, $components, $valid, $invalid]) {
+            yield $key => [$key, $schema, $components, json_encode(['f' => $valid], JSON_THROW_ON_ERROR), json_encode(['f' => $invalid], JSON_THROW_ON_ERROR)];
+        }
+    }
+
+    /**
+     * Where the convention that keeps a class stops. A component describing KEYS is an object DTO
+     * with `type: object` or without it — ordinary OpenAPI documents leave the type out, and the
+     * class is what an application types its code with — and so is the component that writes no
+     * keyword at all. Only an untyped component that describes no key becomes an alias of `mixed`,
+     * with no class file of its own.
+     */
+    public function testUntypedComponentKeepsItsClassOnlyWhereItDescribesAnObject(): void
+    {
+        $spec = self::probeSpec(['$ref' => '#/components/schemas/Pet']);
+        $spec['components']['schemas']['Probe']['properties'] += [
+            'anything' => ['$ref' => '#/components/schemas/Anything'],
+            'small' => ['$ref' => '#/components/schemas/Small'],
+        ];
+        $spec['components']['schemas']['Probe']['required'] = ['f', 'anything', 'small'];
+        $spec['components']['schemas'] += [
+            'Pet' => ['properties' => ['name' => ['type' => 'string']]],
+            'Anything' => ['description' => 'any value at all'],
+            'Small' => ['maximum' => 5],
+        ];
+        $namespace = $this->namespaceFor(GenerationMode::Runtime, 'untyped-component-classes');
+        $fqcn = $this->generate(spec: $spec, namespace: $namespace, mode: 'runtime');
+
+        $listed = scandir($this->outputDirectory . '/' . $namespace);
+        $this->assertIsArray($listed);
+        $this->assertContains('Pet.php', $listed);
+        $this->assertContains('Anything.php', $listed);
+        $this->assertNotContains('Small.php', $listed);
+
+        $types = [];
+        foreach (['f', 'anything', 'small'] as $property) {
+            $types[$property] = (string)(new ReflectionProperty($fqcn, $property))->getType();
+        }
+        $this->assertSame(
+            expected: ['f' => $namespace . '\Pet', 'anything' => $namespace . '\Anything', 'small' => 'mixed'],
+            actual: $types,
+        );
+    }
+
+    /**
+     * `format` is asserted on a STRING in this generator — a documented deviation from 2020-12, where it
+     * is an annotation by default — and only on a string. `{"format": "email"}` said nothing about `12`,
+     * yet Laravel's `email` rule and yii3's `Email` refused it, and `date_format:` refused even null.
+     * The numeric formats are the mirror image: `int32` bounds a number and ignores a string, where
+     * Symfony's `Range` refused `"x"`.
+     *
+     * @param array<string, mixed> $propertySchema
+     */
+    #[DataProvider('formatOnOtherTypeCases')]
+    public function testFormatIgnoresOtherTypes(string $key, array $propertySchema, string $validJson, string $invalidJson): void
+    {
+        $this->assertEveryModeYields(
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict($mode, self::probeSpec($propertySchema), 'format-other-' . $key, $validJson, $invalidJson),
+            context: $key,
+        );
+    }
+
+    /**
+     * @return iterable<string, array{0: string, 1: array<string, mixed>, 2: string, 3: string}>
+     */
+    public static function formatOnOtherTypeCases(): iterable
+    {
+        // format, a value of another type it must pass, a string (or a number) it refuses
+        $cases = [
+            'email ignores integer' => ['email', 12, 'nope'],
+            'email ignores null' => ['email', null, 'nope'],
+            'email ignores object' => ['email', ['a' => 1], 'nope'],
+            'idn-email ignores integer' => ['idn-email', 12, 'nope'],
+            'ipv4 ignores boolean' => ['ipv4', true, '1.2.3'],
+            'ipv6 ignores list' => ['ipv6', [1], 'nope'],
+            'date ignores integer' => ['date', 12, '2026-13-45'],
+            'date ignores null' => ['date', null, '2026-13-45'],
+            'date-time ignores float' => ['date-time', 1.5, 'nope'],
+            'uuid ignores object' => ['uuid', ['a' => 1], 'nope'],
+            // Formats no framework rule enforced: the neighbours that already agreed.
+            'hostname ignores integer' => ['hostname', 12, '-nope-'],
+            'uri ignores null' => ['uri', null, 'nope'],
+            'int32 ignores string' => ['int32', 'x', 3000000000],
+            'uint32 ignores list' => ['uint32', [1], -1],
+        ];
+        foreach ($cases as $key => [$format, $valid, $invalid]) {
+            yield $key => [$key, ['format' => $format], json_encode(['f' => $valid], JSON_THROW_ON_ERROR), json_encode(['f' => $invalid], JSON_THROW_ON_ERROR)];
+        }
+        // `type: string` pins the value: there the format stays a native rule, refusing as before.
+        yield 'email beside type string' => ['email-typed', ['type' => 'string', 'format' => 'email'], '{"f":"cat@example.com"}', '{"f":"nope"}'];
+        yield 'date beside type string' => ['date-typed', ['type' => 'string', 'format' => 'date'], '{"f":"2026-01-02"}', '{"f":"2026-13-45"}'];
+    }
+
+    /**
+     * ECMA-262 names a Unicode property in full under the `u` flag — `\p{Letter}`, `\p{Script=Greek}`,
+     * `\p{gc=Lu}` — where PCRE knows the short General_Category names and the bare script names. A
+     * long name did not compile: `pattern` refused every value as an invalid regex in all five modes,
+     * and a `patternProperties` key raised `preg_match(): Compilation failed` on every request in the
+     * framework modes.
+     *
+     * @param array<string, mixed> $propertySchema
+     */
+    #[DataProvider('unicodePropertyNameCases')]
+    public function testUnicodePropertyNamesCompile(string $key, array $propertySchema, string $validJson, string $invalidJson): void
+    {
+        $this->assertEveryModeYields(
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array|string => $this->verdictRaisingWarnings(
+                mode: $mode,
+                spec: self::probeSpec($propertySchema),
+                key: 'unicode-property-' . $key,
+                validJson: $validJson,
+                invalidJson: $invalidJson,
+            ),
+            context: $key,
+        );
+    }
+
+    /**
+     * @return iterable<string, array{0: string, 1: array<string, mixed>, 2: string, 3: string}>
+     */
+    public static function unicodePropertyNameCases(): iterable
+    {
+        // The short spellings PCRE always knew are the neighbours: they must keep working.
+        foreach (['Letter', 'L', 'Lowercase_Letter', 'General_Category=Letter', 'gc=Ll', 'Script=Greek', 'sc=Greek', 'Script_Extensions=Greek'] as $name) {
+            yield 'pattern \p{' . $name . '}' => [
+                'pattern-' . $name,
+                ['type' => 'string', 'pattern' => '^\p{' . $name . '}+$'],
+                '{"f":"π"}',
+                '{"f":"1"}',
+            ];
+        }
+        yield 'pattern \P{Letter}' => ['negated', ['type' => 'string', 'pattern' => '^\P{Letter}+$'], '{"f":"1"}', '{"f":"π"}'];
+        yield 'pattern \p{Decimal_Number}' => ['decimal', ['type' => 'string', 'pattern' => '^\p{Decimal_Number}$'], '{"f":"٣"}', '{"f":"a"}'];
+        yield 'pattern \p{Cased_Letter}' => ['cased', ['type' => 'string', 'pattern' => '^\p{Cased_Letter}$'], '{"f":"π"}', '{"f":"1"}'];
+        yield 'pattern \p{Letter} in a class' => ['class', ['type' => 'string', 'pattern' => '^[\p{Letter}\d]+$'], '{"f":"π1"}', '{"f":"-"}'];
+        yield 'pattern \p{Letter} without type' => ['untyped', ['pattern' => '\p{Letter}cole'], '{"f":"école"}', '{"f":"1cole"}'];
+        yield 'pattern \p{Letter} on list items' => ['items', ['type' => 'array', 'items' => ['type' => 'string', 'pattern' => '^\p{Letter}+$']], '{"f":["π"]}', '{"f":["1"]}'];
+        yield 'patternProperties \p{Letter}' => [
+            'pattern-properties',
+            ['type' => 'object', 'patternProperties' => ['^\p{Letter}+$' => ['type' => 'number']]],
+            '{"f":{"π":1}}',
+            '{"f":{"π":"x"}}',
+        ];
+        yield 'patternProperties \p{Letter} without type' => [
+            'pattern-properties-untyped',
+            ['patternProperties' => ['^\p{Letter}+$' => ['type' => 'number']]],
+            '{"f":{"π":1}}',
+            '{"f":{"π":"x"}}',
+        ];
+        yield 'patternProperties \p{Letter} closing the object' => [
+            'pattern-properties-closed',
+            ['type' => 'object', 'patternProperties' => ['^\p{Letter}+$' => ['type' => 'number']], 'additionalProperties' => false],
+            '{"f":{"π":1}}',
+            '{"f":{"1":1}}',
+        ];
+        yield 'propertyNames \p{Letter}' => ['property-names', ['type' => 'object', 'propertyNames' => ['pattern' => '^\p{Letter}+$']], '{"f":{"π":1}}', '{"f":{"1":1}}'];
+        // A name no dialect knows stays the uncompilable-pattern case it always was — refused as an
+        // invalid regex for `pattern`, matching no key for `patternProperties` — and never a warning.
+        yield 'pattern \p{} of an unknown property' => ['unknown', ['pattern' => '^\p{Nonexistent}*$'], '{"f":5}', '{"f":"a"}'];
+        yield 'patternProperties \p{} of an unknown property' => [
+            'unknown-key',
+            ['type' => 'object', 'patternProperties' => ['^\p{Nonexistent}+$' => ['minimum' => 5]], 'maxProperties' => 1],
+            '{"f":{"π":1}}',
+            '{"f":{"π":1,"ж":2}}',
+        ];
+    }
+
+    /**
+     * {@see verdict()} with every PHP warning raised as an `ErrorException`, the way an application's
+     * error handler raises it — and regardless of `@`, as some do. A `preg_match()` warning on a
+     * document pattern is then the 500 it is in production, and no longer passes for a refusal.
+     *
+     * @param array<string, mixed> $spec
+     * @return array{valid: bool, invalid: bool}|string
+     */
+    private function verdictRaisingWarnings(GenerationMode $mode, array $spec, string $key, string $validJson, string $invalidJson): array|string
+    {
+        $warnings = [];
+        set_error_handler(
+            callback: static function (int $severity, string $message) use (&$warnings): bool {
+                $warnings[] = $message;
+
+                return true;
+            },
+            error_levels: E_WARNING,
+        );
+        try {
+            $verdict = $this->verdict($mode, $spec, $key, $validJson, $invalidJson);
+        } finally {
+            restore_error_handler();
+        }
+
+        return $warnings === [] ? $verdict : 'warning: ' . $warnings[0];
     }
 
     public function testRuntimeRootPatternPreservesEscapedDelimiter(): void
@@ -1339,6 +1864,444 @@ final class ValidationParityTest extends TestCase
         foreach (GenerationMode::cases() as $mode) {
             yield $mode->value => [$mode];
         }
+    }
+
+    /**
+     * A reference by `$anchor`, by an `$id` (relative to the resource it sits in, absolute, or a URN),
+     * a JSON pointer INTO an embedded `$id` resource and a `$dynamicRef` all name a schema the
+     * document declares, so each must constrain the value like a `#/components/schemas/…` pointer
+     * does. They used to resolve to nothing and the constraint vanished: every mode accepted the
+     * invalid payload. The plain pointers are pinned beside them — the same resolution path handles
+     * both now.
+     *
+     * @param array<string, mixed> $propertySchema
+     * @param array<string, mixed> $extraComponents
+     */
+    #[DataProvider('schemaResourceReferenceCases')]
+    public function testSchemaResourceReferencesConstrainInEveryMode(
+        string $key,
+        array $propertySchema,
+        array $extraComponents,
+        string $validJson,
+        string $invalidJson,
+    ): void {
+        $spec = self::probeSpec($propertySchema);
+        foreach ($extraComponents as $name => $component) {
+            $spec['components']['schemas'][$name] = $component;
+        }
+
+        $this->assertEveryModeYields(
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict(
+                mode: $mode,
+                spec: $spec,
+                key: $key,
+                validJson: $validJson,
+                invalidJson: $invalidJson,
+            ),
+            context: $key,
+        );
+    }
+
+    /**
+     * @return iterable<string, array{0: string, 1: array<string, mixed>, 2: array<string, mixed>, 3: string, 4: string}>
+     */
+    public static function schemaResourceReferenceCases(): iterable
+    {
+        // Neighbours: the pointers that always resolved, through the same code now.
+        yield 'pointer to a component' => [
+            'ref-pointer-component',
+            ['$ref' => '#/components/schemas/Shade'],
+            ['Shade' => ['type' => 'string', 'maxLength' => 3]],
+            '{"f":"red"}',
+            '{"f":"crimson"}',
+        ];
+        yield 'pointer to an object component' => [
+            'ref-pointer-object',
+            ['$ref' => '#/components/schemas/Gadget'],
+            ['Gadget' => [
+                'type' => 'object',
+                'required' => ['size'],
+                'properties' => ['size' => ['type' => 'integer', 'maximum' => 9]],
+            ]],
+            '{"f":{"size":4}}',
+            '{"f":{"size":40}}',
+        ];
+
+        yield 'an $anchor in a local $defs' => [
+            'ref-anchor-defs',
+            ['$ref' => '#count', '$defs' => ['count' => ['$anchor' => 'count', 'type' => 'integer']]],
+            [],
+            '{"f":3}',
+            '{"f":"three"}',
+        ];
+        yield 'an $anchor on a component' => [
+            'ref-anchor-component',
+            ['$ref' => '#shade'],
+            ['Shade' => ['$anchor' => 'shade', 'type' => 'string', 'maxLength' => 3]],
+            '{"f":"red"}',
+            '{"f":"crimson"}',
+        ];
+        yield 'an $anchor inside an object component' => [
+            'ref-anchor-object',
+            ['$ref' => '#widget'],
+            ['Widget' => [
+                '$anchor' => 'widget',
+                'type' => 'object',
+                'required' => ['size'],
+                'properties' => ['size' => ['type' => 'integer', 'maximum' => 9]],
+            ]],
+            '{"f":{"size":4}}',
+            '{"f":{"size":40}}',
+        ];
+        yield 'a relative $id resolved against the embedding resource' => [
+            'ref-relative-id',
+            [
+                '$id' => 'https://example.com/shapes/root',
+                '$ref' => 'circle',
+                '$defs' => ['circle' => ['$id' => 'circle', 'type' => 'integer', 'minimum' => 5]],
+            ],
+            [],
+            '{"f":7}',
+            '{"f":2}',
+        ];
+        yield 'a pointer into an embedded resource' => [
+            'ref-pointer-in-resource',
+            [
+                '$id' => 'https://example.com/shapes/root',
+                '$ref' => 'palette#/$defs/hue',
+                '$defs' => ['palette' => ['$id' => 'palette', '$defs' => ['hue' => ['type' => 'string', 'minLength' => 2]]]],
+            ],
+            [],
+            '{"f":"teal"}',
+            '{"f":"t"}',
+        ];
+        yield 'an absolute $id on a component' => [
+            'ref-absolute-id',
+            ['$ref' => 'https://example.com/shapes/square'],
+            ['Square' => ['$id' => 'https://example.com/shapes/square', 'type' => 'number', 'maximum' => 4]],
+            '{"f":3}',
+            '{"f":5}',
+        ];
+        yield 'a URN $id and a pointer through it' => [
+            'ref-urn-pointer',
+            [
+                '$id' => 'urn:uuid:5b3f7a1e-0000-4000-8000-00000000c0de',
+                'type' => 'object',
+                'properties' => ['alpha' => ['$ref' => 'urn:uuid:5b3f7a1e-0000-4000-8000-00000000c0de#/$defs/beta']],
+                '$defs' => ['beta' => ['type' => 'string']],
+            ],
+            [],
+            '{"f":{"alpha":"x"}}',
+            '{"f":{"alpha":1}}',
+        ];
+        yield 'a URN $id and an $anchor through it' => [
+            'ref-urn-anchor',
+            [
+                '$id' => 'urn:example:animals',
+                'type' => 'object',
+                'properties' => ['cat' => ['$ref' => 'urn:example:animals#whiskers']],
+                '$defs' => ['whiskers' => ['$anchor' => 'whiskers', 'type' => 'integer']],
+            ],
+            [],
+            '{"f":{"cat":12}}',
+            '{"f":{"cat":"twelve"}}',
+        ];
+        yield 'a recursive pair of resources' => [
+            'ref-recursive-resources',
+            ['$ref' => 'https://example.com/tree'],
+            ['Tree' => [
+                '$id' => 'https://example.com/tree',
+                'type' => 'object',
+                'required' => ['nodes'],
+                'properties' => ['nodes' => ['type' => 'array', 'items' => ['$ref' => 'node']]],
+                '$defs' => ['node' => [
+                    '$id' => 'https://example.com/node',
+                    'type' => 'object',
+                    'required' => ['value'],
+                    'properties' => ['value' => ['type' => 'number'], 'subtree' => ['$ref' => 'tree']],
+                ]],
+            ]],
+            '{"f":{"nodes":[{"value":1,"subtree":{"nodes":[{"value":2}]}}]}}',
+            '{"f":{"nodes":[{"value":1,"subtree":{"nodes":[{"value":"two"}]}}]}}',
+        ];
+        yield 'a $dynamicRef bound by the outer resource (generic list)' => [
+            'dynamic-ref-generic-list',
+            [
+                '$id' => 'https://example.com/colors',
+                '$ref' => 'list',
+                '$defs' => [
+                    'color' => ['$dynamicAnchor' => 'item', 'type' => 'string'],
+                    'list' => [
+                        '$id' => 'list',
+                        'type' => 'array',
+                        'items' => ['$dynamicRef' => '#item'],
+                        '$defs' => ['default' => ['$dynamicAnchor' => 'item']],
+                    ],
+                ],
+            ],
+            [],
+            '{"f":["red","blue"]}',
+            '{"f":["red",7]}',
+        ];
+        yield 'a $dynamicRef with no outer anchor stays on its own' => [
+            'dynamic-ref-own-anchor',
+            [
+                '$id' => 'https://example.com/sizes',
+                'type' => 'array',
+                'items' => ['$dynamicRef' => '#size'],
+                '$defs' => ['size' => ['$dynamicAnchor' => 'size', 'type' => 'integer']],
+            ],
+            [],
+            '{"f":[1,2]}',
+            '{"f":["big"]}',
+        ];
+    }
+
+    /**
+     * `unevaluatedProperties` and `unevaluatedItems` read what every in-place applicator beside them
+     * evaluated: `properties`, `patternProperties`, `additionalProperties`, `prefixItems`, `items` and
+     * `contains` of the schema itself, of every `allOf` branch, of each `anyOf`/`oneOf` branch that
+     * matched, of the `if`/`then`/`else` arm that applied, of a triggered `dependentSchemas` entry and
+     * of a `$ref` target — and nothing from a branch that failed. Runtime, laravel and laravel-data
+     * refused valid payloads here: the keys an `allOf` branch, a `$ref` or an `additionalProperties:
+     * true` evaluated came out unevaluated, because the class closed itself on its own declared names
+     * or the reference was gone from the constraints.
+     *
+     * Symfony and yii3 hydrate first, and a key no class declares does not survive that — the closed
+     * object limitation README.support-matrix documents. Only there do they accept the invalid payload.
+     *
+     * @param array<string, mixed> $schema
+     * @param array<string, mixed> $extraComponents
+     */
+    #[DataProvider('unevaluatedAnnotationCases')]
+    public function testUnevaluatedKeywordsSeeWhatInPlaceApplicatorsEvaluated(
+        string $key,
+        array $schema,
+        array $extraComponents,
+        string $validJson,
+        string $invalidJson,
+        bool $atRoot,
+        bool $closedObjectDiverges,
+    ): void {
+        if ($atRoot) {
+            $spec = self::probeSpec(['type' => 'string']);
+            $spec['components']['schemas']['Probe'] = $schema;
+        } else {
+            $spec = self::probeSpec($schema);
+        }
+        foreach ($extraComponents as $name => $component) {
+            $spec['components']['schemas'][$name] = $component;
+        }
+
+        $diverges = [];
+        if ($closedObjectDiverges) {
+            $reason = 'documented: a closed object is not enforceable once hydrated (README.support-matrix) — '
+                . 'the undeclared key is dropped before any generated check runs';
+            $diverges = [
+                ...self::diverges(mode: GenerationMode::Symfony, expected: ['valid' => true, 'invalid' => true], reason: $reason),
+                ...self::diverges(mode: GenerationMode::Yii3, expected: ['valid' => true, 'invalid' => true], reason: $reason),
+            ];
+        }
+
+        $this->assertEveryModeYields(
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict(
+                mode: $mode,
+                spec: $spec,
+                key: $key,
+                validJson: $validJson,
+                invalidJson: $invalidJson,
+            ),
+            diverges: $diverges,
+            context: $key,
+        );
+    }
+
+    /**
+     * @return iterable<string, array{0: string, 1: array<string, mixed>, 2: array<string, mixed>, 3: string, 4: string, 5: bool, 6: bool}>
+     */
+    public static function unevaluatedAnnotationCases(): iterable
+    {
+        $colour = ['type' => 'string'];
+
+        // Properties evaluated in place.
+        yield 'properties beside an allOf branch' => [
+            'uneval-allof-properties',
+            ['type' => 'object', 'properties' => ['alpha' => $colour], 'allOf' => [['properties' => ['beta' => $colour]]], 'unevaluatedProperties' => false],
+            [],
+            '{"f":{"alpha":"red","beta":"blue"}}',
+            '{"f":{"alpha":"red","beta":"blue","gamma":"green"}}',
+            false,
+            true,
+        ];
+        yield 'patternProperties in an allOf branch' => [
+            'uneval-allof-pattern',
+            ['type' => 'object', 'properties' => ['alpha' => $colour], 'allOf' => [['patternProperties' => ['^beta' => $colour]]], 'unevaluatedProperties' => false],
+            [],
+            '{"f":{"alpha":"red","betaOne":"blue"}}',
+            '{"f":{"alpha":"red","betaOne":"blue","gamma":"green"}}',
+            false,
+            true,
+        ];
+        yield 'additionalProperties true beside it' => [
+            'uneval-additional-true',
+            ['type' => 'object', 'properties' => ['alpha' => $colour], 'additionalProperties' => true, 'unevaluatedProperties' => false],
+            [],
+            '{"f":{"alpha":"red","beta":"blue"}}',
+            '{"f":{"alpha":1}}',
+            false,
+            false,
+        ];
+        yield 'additionalProperties true in an allOf branch' => [
+            'uneval-allof-additional',
+            ['type' => 'object', 'properties' => ['alpha' => $colour], 'allOf' => [['additionalProperties' => true]], 'unevaluatedProperties' => false],
+            [],
+            '{"f":{"alpha":"red","beta":"blue"}}',
+            '{"f":{"alpha":1}}',
+            false,
+            false,
+        ];
+        yield 'unevaluatedProperties true in an allOf branch' => [
+            'uneval-allof-inner-true',
+            ['type' => 'object', 'properties' => ['alpha' => $colour], 'allOf' => [['unevaluatedProperties' => true]], 'unevaluatedProperties' => false],
+            [],
+            '{"f":{"alpha":"red","beta":"blue"}}',
+            '{"f":{"alpha":1}}',
+            false,
+            false,
+        ];
+        yield 'the matching anyOf branch only' => [
+            'uneval-anyof',
+            [
+                'type' => 'object',
+                'properties' => ['alpha' => $colour],
+                'anyOf' => [
+                    ['properties' => ['beta' => ['const' => 'blue']], 'required' => ['beta']],
+                    ['properties' => ['gamma' => ['const' => 'green']], 'required' => ['gamma']],
+                ],
+                'unevaluatedProperties' => false,
+            ],
+            [],
+            '{"f":{"alpha":"red","beta":"blue"}}',
+            '{"f":{"alpha":"red","beta":"blue","gamma":"grey"}}',
+            false,
+            false,
+        ];
+        yield 'the target of a $ref beside it' => [
+            'uneval-ref',
+            ['$ref' => '#/components/schemas/Swatch', 'properties' => ['alpha' => $colour], 'unevaluatedProperties' => false],
+            ['Swatch' => ['type' => 'object', 'properties' => ['beta' => $colour]]],
+            '{"f":{"alpha":"red","beta":"blue"}}',
+            '{"f":{"alpha":"red","beta":"blue","gamma":"green"}}',
+            false,
+            true,
+        ];
+
+        // Items evaluated in place.
+        yield 'items beside it' => [
+            'uneval-items',
+            ['type' => 'array', 'items' => $colour, 'unevaluatedItems' => false],
+            [],
+            '{"f":["red","blue"]}',
+            '{"f":["red",1]}',
+            false,
+            false,
+        ];
+        yield 'prefixItems in an allOf branch' => [
+            'uneval-allof-prefix',
+            ['type' => 'array', 'prefixItems' => [$colour], 'allOf' => [['prefixItems' => [true, ['type' => 'number']]]], 'unevaluatedItems' => false],
+            [],
+            '{"f":["red",1]}',
+            '{"f":["red",1,true]}',
+            false,
+            false,
+        ];
+        yield 'contains in allOf branches' => [
+            'uneval-allof-contains',
+            ['type' => 'array', 'allOf' => [['contains' => ['multipleOf' => 2]], ['contains' => ['multipleOf' => 3]]], 'unevaluatedItems' => ['multipleOf' => 5]],
+            [],
+            '{"f":[2,3,4,5,6]}',
+            '{"f":[2,3,4,7,8]}',
+            false,
+            false,
+        ];
+        yield 'prefixItems of the matching anyOf branch' => [
+            'uneval-anyof-prefix',
+            [
+                'type' => 'array',
+                'prefixItems' => [['const' => 'red']],
+                'anyOf' => [['prefixItems' => [true, ['const' => 'blue']]], ['prefixItems' => [true, true, ['const' => 'green']]]],
+                'unevaluatedItems' => false,
+            ],
+            [],
+            '{"f":["red","blue"]}',
+            '{"f":["red","blue","grey"]}',
+            false,
+            false,
+        ];
+        yield 'prefixItems of a $ref target' => [
+            'uneval-ref-prefix',
+            ['$ref' => '#/components/schemas/Pair', 'prefixItems' => [$colour], 'unevaluatedItems' => false],
+            ['Pair' => ['type' => 'array', 'prefixItems' => [true, $colour]]],
+            '{"f":["red","blue"]}',
+            '{"f":["red","blue","green"]}',
+            false,
+            false,
+        ];
+
+        // The same at the top of the body, where runtime and laravel read the raw request.
+        yield 'root: properties beside an allOf branch' => [
+            'uneval-root-allof-properties',
+            ['type' => 'object', 'properties' => ['alpha' => $colour], 'allOf' => [['properties' => ['beta' => $colour]]], 'unevaluatedProperties' => false],
+            [],
+            '{"alpha":"red","beta":"blue"}',
+            '{"alpha":"red","beta":"blue","gamma":"green"}',
+            true,
+            true,
+        ];
+        yield 'root: additionalProperties true in an allOf branch' => [
+            'uneval-root-allof-additional',
+            ['type' => 'object', 'properties' => ['alpha' => $colour], 'allOf' => [['additionalProperties' => true]], 'unevaluatedProperties' => false],
+            [],
+            '{"alpha":"red","beta":"blue"}',
+            '{"alpha":1}',
+            true,
+            false,
+        ];
+        yield 'root: unevaluatedProperties true in an allOf branch' => [
+            'uneval-root-allof-inner-true',
+            ['type' => 'object', 'properties' => ['alpha' => $colour], 'allOf' => [['unevaluatedProperties' => true]], 'unevaluatedProperties' => false],
+            [],
+            '{"alpha":"red","beta":"blue"}',
+            '{"alpha":1}',
+            true,
+            false,
+        ];
+        yield 'root: the then arm that applied' => [
+            'uneval-root-then',
+            [
+                'type' => 'object',
+                'properties' => ['alpha' => $colour],
+                'if' => ['required' => ['alpha']],
+                'then' => ['properties' => ['beta' => $colour]],
+                'unevaluatedProperties' => false,
+            ],
+            [],
+            '{"alpha":"red","beta":"blue"}',
+            '{"beta":"blue"}',
+            true,
+            true,
+        ];
+        yield 'root: a branch sees only its own evaluation' => [
+            'uneval-root-cousin',
+            ['type' => 'object', 'properties' => ['alpha' => $colour], 'allOf' => [['unevaluatedProperties' => false]]],
+            [],
+            '{}',
+            '{"alpha":"red"}',
+            true,
+            false,
+        ];
     }
 
     /**
@@ -5184,12 +6147,54 @@ final class ValidationParityTest extends TestCase
             . 'date-time — see "a loose format: date-time string"',
         );
 
+        // The properties a union BRANCH declares are not properties of the class an `allOf` beside it
+        // makes: hydration keeps only what the class declares, and the branch's `required` is then asked
+        // about an object that no longer carries the key. Folding branch properties into the class is a
+        // design question of its own — branches are alternatives, and merging them as allOf restatements
+        // would intersect their types — so it is recorded rather than guessed. Laravel modes validate the
+        // raw payload and answer right.
+        $branchPropertiesDropped = static fn(string $keyword): array => [
+            ...self::diverges(
+                mode: GenerationMode::Runtime,
+                expected: ['valid' => false, 'invalid' => false],
+                reason: 'the ' . $keyword . ' branch properties are not class properties, so hydration drops them '
+                . 'and the branch `required` fails on what is left',
+            ),
+            ...self::diverges(
+                mode: GenerationMode::Yii3,
+                expected: ['valid' => false, 'invalid' => false],
+                reason: 'the ' . $keyword . ' branch properties are not class properties, so hydration drops them '
+                . 'and the branch `required` fails on what is left',
+            ),
+        ];
+
         return [
             // A `false` branch can never match, so this `anyOf` collapses to the single `type: string`
             // branch and the property is typed `?string` — but no raw `#[Validate]` is emitted for a
             // composition, so the caster above reaches the value first. The boolean is carried into
             // the constraints correctly; what diverges is the coercion alone.
             'anyOf with a false branch' => $coerced,
+            'oneOf with a false branch' => $coerced,
+            'allOf beside an anyOf of objects' => [
+                ...$branchPropertiesDropped('anyOf'),
+                // The class-level `anyOf` waits for an `Assert\AtLeastOneOf` that Symfony mode emits for
+                // a PROPERTY only, so on a class nothing checks it — the same hole a `required`-only
+                // `anyOf` beside an `allOf` has had all along.
+                ...self::diverges(
+                    mode: GenerationMode::Symfony,
+                    expected: ['valid' => true, 'invalid' => true],
+                    reason: 'a class-level anyOf is left to Assert\AtLeastOneOf, which is emitted for properties only',
+                ),
+            ],
+            'allOf beside a oneOf of objects' => [
+                ...$branchPropertiesDropped('oneOf'),
+                ...self::diverges(
+                    mode: GenerationMode::Symfony,
+                    expected: ['valid' => false, 'invalid' => false],
+                    reason: 'the oneOf branch properties are not class properties, so the serializer drops them '
+                    . 'and the branch `required` fails on what is left',
+                ),
+            ],
             'format date-time in a list' => $lenientDateTime,
         ];
     }

@@ -694,7 +694,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
             // be. The root of a request has no property name of its own, so it needs one given to it,
             // and `body` is the word the neighbouring messages already use
             // ("JSON body must be an object").
-            foreach ($this->validateValue('body', $bodyData, $objectConstraints) as $objectError) {
+            // As an OBJECT: the body is one by construction, and an empty or 0..n-keyed one is a PHP
+            // list once decoded, which the object keywords would read as a JSON array and ignore.
+            foreach ($this->validateValue('body', (object)$bodyData, $objectConstraints) as $objectError) {
                 $errors[] = $objectError;
             }
         }

@@ -1153,10 +1153,28 @@ trait RendersRuntimeDto
     private function resolveObjectConstraints(string $className): array
     {
         $schema = $this->dtoSchemas[$className] ?? [];
-        $closed = ($schema['additionalProperties'] ?? null) === false
-            || ($schema['unevaluatedProperties'] ?? null) === false;
+        $extracted = $this->withConstraintSourceOf(
+            className: $className,
+            extraction: fn(): array => $this->extractValidationConstraints($schema),
+        );
+        $evaluation = $this->unevaluatedPropertiesEvaluation(schema: $schema, extracted: $extracted);
+
+        // `unevaluatedProperties: false` closes the object on the declared names only while nothing else
+        // evaluates a key. An `additionalProperties` beside it evaluates every key it is asked about, so
+        // the keyword has nothing left to refuse; an in-place applicator evaluates keys the class never
+        // declares — that case is the validator's, through the evaluation slot below.
+        $additional = array_key_exists('additionalProperties', $schema) ? $schema['additionalProperties'] : null;
+        $hasAdditional = array_key_exists('additionalProperties', $schema);
+        $closedByUnevaluated = array_key_exists('unevaluatedProperties', $schema) && $schema['unevaluatedProperties'] === false;
+        $closed = $additional === false || ($closedByUnevaluated && !$hasAdditional && $evaluation === []);
 
         $objectConstraints = $closed ? ['additionalProperties' => false] : [];
+        if ($evaluation !== []) {
+            $objectConstraints = [...$objectConstraints, ...$evaluation];
+            if (array_key_exists('unevaluatedProperties', $extracted) && !$hasAdditional) {
+                $objectConstraints['unevaluatedProperties'] = $extracted['unevaluatedProperties'];
+            }
+        }
 
         // The keywords a document states about the OBJECT AS A WHOLE. Until 2.15.16 this slot carried
         // the closed-object flag and nothing else, so `minProperties`, `dependentRequired`, `not` and a
@@ -1165,11 +1183,8 @@ trait RendersRuntimeDto
         //
         // `properties` and `required` are deliberately absent: the per-property map and the required
         // flags already own them, and repeating them here would report every violation twice. What is
-        // left is exactly what no per-property rule can express.
-        $extracted = $this->withConstraintSourceOf(
-            className: $className,
-            extraction: fn(): array => $this->extractValidationConstraints($schema),
-        );
+        // left is exactly what no per-property rule can express. (The evaluation slot above carries the
+        // NAMES over empty schemas, which check nothing.)
         foreach (self::RUNTIME_OBJECT_LEVEL_KEYWORDS as $keyword) {
             if (array_key_exists($keyword, $extracted)) {
                 $objectConstraints[$keyword] = $extracted[$keyword];

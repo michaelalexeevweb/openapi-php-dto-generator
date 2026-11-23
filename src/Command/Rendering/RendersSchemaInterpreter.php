@@ -20,7 +20,7 @@ use OpenapiPhpDtoGenerator\Service\DtoValidator;
  *     symfony        #[Assert\Callback]        $context->buildViolation(...)->atPath(...)
  *     laravel        withValidator()           $validator->errors()->add($property, ...)
  *     laravel-data   the Laravel packaging, reached through RendersLaravelValidation
- *     yii3           #[Callback]               $result->addError($message, valuePath: ...)
+ *     yii3           #[Callback]               $result->addErrorWithoutPostProcessing($message, valuePath: ...)
  *
  * Why one copy rather than four: the walk is ~1500 emitted lines, and the parity suites exist to
  * prove the modes agree about a schema. Sharing the walker makes that agreement true BY
@@ -428,6 +428,21 @@ PHP;
 
         if ($needsStructuralNormalization) {
             $prologue[] = '        $structuredValue = $this->normalizeOpenApiStructuralValue($value);';
+            // A non-empty LIST is a JSON array, and the object keywords ignore an array: `required`,
+            // `properties`, `dependentRequired` refused `[1, 2, 3]` as an object missing its keys. Only
+            // where `type` pins `object` is a list a map keyed 0..n-1. The empty array stays an object
+            // — decoded, `[]` and `{}` are one value, and `json_encode([])` is how a PHP client sends
+            // the empty object.
+            $prologue[] = <<<'PHP'
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
+PHP;
         }
 
         if ($prologue !== []) {
@@ -885,27 +900,36 @@ PHP;
             // Presence belongs to the payload view. Null remains a real list item/object value.
             $valueArray = is_array($structural) ? $structural : [];
             $count = count($valueArray);
+            // The item keywords speak about a LIST. A JSON object reaches this point as an array with
+            // its member names for keys, and `minItems` beside no `type` counted those members as
+            // items — refusing an object the keyword says nothing about.
+            $isList = is_array($value) && array_is_list($value);
             $minItems = $this->toIntConstraint($schema['minItems'] ?? null);
-            if ($minItems !== null && is_array($value) && $count < $minItems) {
+            if ($minItems !== null && $isList && $count < $minItems) {
                 $errors[] = sprintf('%s must contain at least %d items', $path, $minItems);
             }
 
             $maxItems = $this->toIntConstraint($schema['maxItems'] ?? null);
-            if ($maxItems !== null && is_array($value) && $count > $maxItems) {
+            if ($maxItems !== null && $isList && $count > $maxItems) {
                 $errors[] = sprintf('%s must contain at most %d items', $path, $maxItems);
             }
 
+            // A non-empty list has no properties to count, unless `type` pins `object` — see
+            // `$structuredValue`.
+            $countsProperties = !$isList
+                || $valueArray === []
+                || (in_array('object', (array)($schema['type'] ?? []), true) && !in_array('array', (array)($schema['type'] ?? []), true));
             $minProperties = $this->toIntConstraint($schema['minProperties'] ?? null);
-            if ($minProperties !== null && $count < $minProperties) {
+            if ($minProperties !== null && $countsProperties && $count < $minProperties) {
                 $errors[] = sprintf('%s must have at least %d %s', $path, $minProperties, $minProperties === 1 ? 'property' : 'properties');
             }
 
             $maxProperties = $this->toIntConstraint($schema['maxProperties'] ?? null);
-            if ($maxProperties !== null && $count > $maxProperties) {
+            if ($maxProperties !== null && $countsProperties && $count > $maxProperties) {
                 $errors[] = sprintf('%s must have at most %d %s', $path, $maxProperties, $maxProperties === 1 ? 'property' : 'properties');
             }
 
-            if (is_array($value) && ($schema['uniqueItems'] ?? false) === true) {
+            if ($isList && ($schema['uniqueItems'] ?? false) === true) {
                 $seen = [];
                 foreach ($valueArray as $item) {
                     $fingerprint = $this->jsonValueFingerprint($item);
@@ -979,14 +1003,25 @@ PHP;
                     continue;
                 }
                 \$regex = \$this->delimitOpenApiPattern(\$pattern);
+                // A pattern PCRE cannot compile matches no key. Asked once, under a handler that takes
+                // the warning: `@` on every match did not stop an application handler that raises each
+                // warning regardless, and every request carrying such an object was a 500.
+                set_error_handler(static fn(): bool => true);
+                try {
+                    \$compiles = preg_match(\$regex, '') !== false;
+                } finally {
+                    restore_error_handler();
+                }
+                if (!\$compiles) {
+                    continue;
+                }
                 foreach (\$structuredValue as \$propertyName => \$propertyValue) {
                     // A JSON key "42" is the PHP int 42. Only a LIST's int keys are indexes, not names.
                     if (is_int(\$propertyName) && array_is_list(\$structuredValue)) {
                         continue;
                     }
                     \$propertyName = (string)\$propertyName;
-                    // `@`: a pattern PCRE cannot compile matches no key rather than raising a warning.
-                    \$matched = @preg_match(\$regex, \$propertyName);
+                    \$matched = preg_match(\$regex, \$propertyName);
                     // A key the engine ran out of resources on is undecided, not unmatched: its value
                     // skipped the very schema the pattern guards. Thrown, so no further key burns too.
                     if (\$matched === false && preg_last_error() !== PREG_INTERNAL_ERROR && preg_last_error() !== PREG_BAD_UTF8_ERROR) {
@@ -1148,13 +1183,16 @@ PHP;
                 ? "                    \$evaluatedItemIndices[\$index] = true;\n"
                 : '';
             // `contains` defaults to "at least one match"; the bounds only need reading when the
-            // schema actually carries them.
+            // schema actually carries them. An integral float is the integer it spells — `2.0` read as
+            // "not an int" fell back to the default and the bound was gone.
             $minContainsExpression = $hasMinContains
-                ? "is_int(\$schema['minContains'] ?? null) ? \$schema['minContains'] : 1"
+                ? "is_int(\$schema['minContains'] ?? null) || (is_float(\$schema['minContains'] ?? null) && floor(\$schema['minContains']) === \$schema['minContains']) ? (int)\$schema['minContains'] : 1"
                 : '1';
             $maxContainsCheck = $hasMaxContains
                 ? <<<'PHP'
-            $maxContains = is_int($schema['maxContains'] ?? null) ? $schema['maxContains'] : null;
+            $maxContains = is_int($schema['maxContains'] ?? null) || (is_float($schema['maxContains'] ?? null) && floor($schema['maxContains']) === $schema['maxContains'])
+                ? (int)$schema['maxContains']
+                : null;
             if ($maxContains !== null && $matchCount > $maxContains) {
                 $errors[] = sprintf('%s must contain at most %d item(s) matching the \'contains\' schema', $path, $maxContains);
             }
@@ -1751,7 +1789,21 @@ PHP;
         }
 
         if ($hasPattern || $hasPatternProperties || in_array('regex', $usedFormats, true)) {
-            $sections[] = <<<'PHP'
+            // `DtoValidator::delimitPattern()` spells an ECMA-262 Unicode property name the way PCRE
+            // reads it (`\p{Letter}` → `\p{L}`), and so does this copy — but the name table is only
+            // worth emitting where a document pattern names a property at all.
+            $namesUnicodeProperties = $this->schemaPatternsNameUnicodeProperties($constraints);
+            $unicodePropertyArm = $namesUnicodeProperties ? <<<'PHP'
+                // ECMA-262 `\p{…}` under the `u` flag names a property as PCRE does not: see
+                // `openApiUnicodePropertyName()`. Without the flag it is a plain `p`.
+                if ($unicode && ($next === 'p' || $next === 'P') && preg_match('/\G\{([A-Za-z0-9_]+(?:=[A-Za-z0-9_]+)?)\}/', $pattern, $property, 0, $i + 2) === 1) {
+                    $delimited .= '\\' . $next . '{' . $this->openApiUnicodePropertyName($property[1]) . '}';
+                    $i += 1 + strlen($property[0]);
+                    continue;
+                }
+
+PHP : '';
+            $delimitMethod = <<<'PHP'
 
     private function delimitOpenApiPattern(string $pattern, bool $unicode = true): string
     {
@@ -1769,6 +1821,7 @@ PHP;
                     $i += 1 + strlen($hex[0]);
                     continue;
                 }
+%unicodePropertyArm%
                 $i++;
                 // ECMA-262 `\v` is the one vertical TAB; PCRE's is a class that also holds `\n` and `\r`.
                 if ($next === 'v') {
@@ -1836,6 +1889,10 @@ PHP;
         return $delimited . ($unicode ? '#uD' : '#D');
     }
 PHP;
+            $sections[] = str_replace('%unicodePropertyArm%' . "\n", $unicodePropertyArm, $delimitMethod);
+            if ($namesUnicodeProperties) {
+                $sections[] = $this->renderOpenApiUnicodePropertyNameMethod();
+            }
         }
 
         // Read helpers follow their own keywords: lengths/counts need the int reader, the numeric
@@ -2059,8 +2116,19 @@ PHP;
                     continue;
                 }
                 $regex = $this->delimitOpenApiPattern($pattern);
+                // Matches no key when PCRE cannot compile it — asked once, without a warning, as the
+                // validation walk asks it.
+                set_error_handler(static fn(): bool => true);
+                try {
+                    $compiles = preg_match($regex, '') !== false;
+                } finally {
+                    restore_error_handler();
+                }
+                if (!$compiles) {
+                    continue;
+                }
                 foreach (array_keys($object) as $key) {
-                    $matched = @preg_match($regex, (string)$key);
+                    $matched = preg_match($regex, (string)$key);
                     // Undecided marks nothing — an unevaluated key is the closed answer — and stops:
                     // the validation walk refuses this object on the same key.
                     if ($matched === false && preg_last_error() !== PREG_INTERNAL_ERROR && preg_last_error() !== PREG_BAD_UTF8_ERROR) {
@@ -2586,6 +2654,11 @@ PHP,
 
     private function isValidOpenApiIdnHostname(string $value): bool
     {
+        // RFC 5891: a label must not begin with a combining mark — checked here, because an older
+        // symfony/polyfill-intl-idn converts such a label without complaint.
+        if (preg_match('/(?:^|[.\x{3002}\x{FF0E}\x{FF61}])\p{M}/u', $value) === 1) {
+            return false;
+        }
         $ascii = function_exists('idn_to_ascii') ? idn_to_ascii($value, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46) : false;
         return is_string($ascii) && filter_var($ascii, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) !== false;
     }
@@ -2817,6 +2890,73 @@ PHP,
     }
 
     /**
+     * Whether a `pattern` or a `patternProperties` key anywhere in the constraints names a Unicode
+     * property — `\p{…}` or `\P{…}` — and so needs the emitted name table. A literal `\\p{` matches
+     * too; that costs one unused method, never a missed translation.
+     *
+     * @param array<mixed> $constraints
+     */
+    private function schemaPatternsNameUnicodeProperties(array $constraints): bool
+    {
+        foreach ($constraints as $keyword => $value) {
+            if ($keyword === 'pattern' && is_string($value) && preg_match('/\\\[pP]\{/', $value) === 1) {
+                return true;
+            }
+            if ($keyword === 'patternProperties' && is_array($value)) {
+                foreach (array_keys($value) as $key) {
+                    if (preg_match('/\\\[pP]\{/', (string)$key) === 1) {
+                        return true;
+                    }
+                }
+            }
+            if (is_array($value) && $this->schemaPatternsNameUnicodeProperties($value)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The emitted twin of `DtoValidator::unicodePropertyName()`, its General_Category table written
+     * out from `DtoValidator::UNICODE_GENERAL_CATEGORIES` so the two cannot drift apart. The generated
+     * DTO depends on nothing of this package, hence a copy rather than a call.
+     */
+    private function renderOpenApiUnicodePropertyNameMethod(): string
+    {
+        $namesByShortName = [];
+        foreach (DtoValidator::UNICODE_GENERAL_CATEGORIES as $name => $shortName) {
+            $namesByShortName[$shortName][] = var_export($name, true);
+        }
+        $arms = '';
+        foreach ($namesByShortName as $shortName => $names) {
+            $arms .= '            ' . implode(', ', $names) . ' => ' . var_export($shortName, true) . ",\n";
+        }
+
+        return <<<PHP
+
+    private function openApiUnicodePropertyName(string \$name): string
+    {
+        // A General_Category value, alone or after `General_Category=` / `gc=`, by its short name; a
+        // script after `Script=` / `sc=` by its bare name, which is how PCRE reads one; anything else
+        // as written.
+        \$parts = explode('=', \$name, 2);
+        if (count(\$parts) === 2 && in_array(\$parts[0], ['Script', 'sc'], true)) {
+            return \$parts[1];
+        }
+        if (count(\$parts) === 2 && !in_array(\$parts[0], ['General_Category', 'gc'], true)) {
+            return \$name;
+        }
+        \$category = \$parts[count(\$parts) - 1];
+
+        return match (\$category) {
+{$arms}            default => \$category,
+        };
+    }
+PHP;
+    }
+
+    /**
      * Whether PCRE compiles the schema pattern. A native rule is only emitted for one that does: one
      * that does not raised a `preg_match()` warning at validation time — an ErrorException, a 500, in
      * Laravel — so it is left to the interpreter, which reports it as a validation error instead.
@@ -2869,8 +3009,13 @@ PHP,
      * regex constraints are intentionally removed here so the callback does not duplicate
      * attribute-based violations.
      *
+     * `$unmaterializedProperties` names the class properties typed `mixed`: nothing materializes
+     * under them, so an `allOf` there has no nested DTO to check it and is the callback's, exactly as
+     * it is below a container.
+     *
      * @param array<string, mixed> $constraints
      * @param array<string, true> $forceScalarOnProperties
+     * @param array<string, true> $unmaterializedProperties
      * @return array<string, mixed>
      */
     private function filterInterpreterConstraints(
@@ -2879,6 +3024,7 @@ PHP,
         array $forceScalarOnProperties = [],
         bool $isPropertySchema = false,
         bool $belowContainer = false,
+        array $unmaterializedProperties = [],
     ): array {
         $constraints = $this->foldScalarAllOfConstraints($constraints);
         $filtered = [];
@@ -2904,7 +3050,7 @@ PHP,
                                 constraints: $schema,
                                 allowScalarKeywords: $allowScalarKeywords || array_key_exists($name, $forceScalarOnProperties),
                                 isPropertySchema: true,
-                                belowContainer: $belowContainer,
+                                belowContainer: $belowContainer || array_key_exists($name, $unmaterializedProperties),
                             );
                         }
                     }
@@ -3006,10 +3152,23 @@ PHP,
                     // Property-level anyOf uses AtLeastOneOf; object allOf uses the nested DTO
                     // cascade. Plain allOf fragments that could not be folded retain independent
                     // assertions here. Below a container no attribute or child DTO covers them.
-                    if ($key === 'anyOf' && !$allowScalarKeywords) {
+                    // …unless an `unevaluated*` beside it has to know which branches MATCHED: what a
+                    // matching branch evaluates counts, and only the interpreter can tell which did.
+                    // `AtLeastOneOf` answers the keyword itself, so the branches travel whole for that.
+                    if (
+                        $key === 'anyOf'
+                        && !$allowScalarKeywords
+                        && !array_key_exists('unevaluatedProperties', $constraints)
+                        && !array_key_exists('unevaluatedItems', $constraints)
+                    ) {
                         break;
                     }
-                    if ($key === 'allOf' && !$belowContainer && (!is_array($value) || !$this->allOfHasPlainBranches($value))) {
+                    // A `false` branch is not something a nested DTO can check: it makes the whole `allOf`
+                    // unsatisfiable, and the class it would cascade into does not exist — `allOf: [true,
+                    // false]` types the property `mixed`. Left to the cascade, the branch was checked by
+                    // nothing and every value passed; it goes to the interpreter below like a plain one.
+                    $holdsFalse = is_array($value) && in_array(false, $value, true);
+                    if ($key === 'allOf' && !$belowContainer && !$holdsFalse && (!is_array($value) || !$this->allOfHasPlainBranches($value))) {
                         // The nested DTO checks these branches, but an `unevaluated*` beside them still
                         // needs what they EVALUATED: keep that shadow, every subschema `true`.
                         if (
@@ -3149,7 +3308,10 @@ PHP,
         // but they carry no meaning on their own, so they only survive next to a kept `contains`.
         if (array_key_exists('contains', $filtered)) {
             foreach (['minContains', 'maxContains'] as $containsModifier) {
-                if (is_int($constraints[$containsModifier] ?? null)) {
+                // `2.0` is the integer 2 to JSON Schema; dropped as "not an int", the modifier was gone
+                // and `contains` fell back to its default of one match.
+                $modifier = $constraints[$containsModifier] ?? null;
+                if (is_int($modifier) || (is_float($modifier) && floor($modifier) === $modifier)) {
                     $filtered[$containsModifier] = $constraints[$containsModifier];
                 }
             }

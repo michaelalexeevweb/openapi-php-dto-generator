@@ -1,4 +1,4 @@
-# yii3 mode — 80 files, 35915 lines
+# yii3 mode — 80 files, 36839 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -149,10 +149,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -333,11 +335,14 @@ final class Animal2AnyOf4 extends AbstractInput implements Animal2, DataSetInter
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -393,6 +398,14 @@ final class Animal2AnyOf4 extends AbstractInput implements Animal2, DataSetInter
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -542,10 +555,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -726,11 +741,14 @@ final class AnimalOneOf3 extends AbstractInput implements Animal, DataSetInterfa
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -786,6 +804,14 @@ final class AnimalOneOf3 extends AbstractInput implements Animal, DataSetInterfa
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -934,6 +960,7 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
@@ -1161,11 +1188,14 @@ final class ApiTest2403 extends AbstractInput implements DataSetInterface, Rules
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -1221,6 +1251,14 @@ final class ApiTest2403 extends AbstractInput implements DataSetInterface, Rules
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -1365,10 +1403,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -1566,11 +1606,14 @@ final class ApiTest2PatchRequest extends AbstractInput implements DataSetInterfa
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -1629,6 +1672,14 @@ final class ApiTest2PatchRequest extends AbstractInput implements DataSetInterfa
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -1780,10 +1831,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -1995,11 +2048,14 @@ final class ApiTest2PostRequest extends AbstractInput implements DataSetInterfac
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -2061,6 +2117,14 @@ final class ApiTest2PostRequest extends AbstractInput implements DataSetInterfac
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -2209,6 +2273,7 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
@@ -2436,11 +2501,14 @@ final class ApiTest403 extends AbstractInput implements DataSetInterface, RulesP
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -2496,6 +2564,14 @@ final class ApiTest403 extends AbstractInput implements DataSetInterface, RulesP
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -2644,6 +2720,7 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
@@ -2939,11 +3016,14 @@ final class ApiTestCatsActionsGetQueryParams extends AbstractInput implements Da
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -3008,6 +3088,14 @@ final class ApiTestCatsActionsGetQueryParams extends AbstractInput implements Da
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -3198,6 +3286,7 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
@@ -3493,11 +3582,14 @@ final class ApiTestCatsActionsPostQueryParams extends AbstractInput implements D
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -3562,6 +3654,14 @@ final class ApiTestCatsActionsPostQueryParams extends AbstractInput implements D
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -3752,6 +3852,7 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
@@ -4047,11 +4148,14 @@ final class ApiTestDogsTagsGetQueryParams extends AbstractInput implements DataS
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -4116,6 +4220,14 @@ final class ApiTestDogsTagsGetQueryParams extends AbstractInput implements DataS
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -4306,6 +4418,7 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
@@ -4601,11 +4714,14 @@ final class ApiTestDogsTagsPatchQueryParams extends AbstractInput implements Dat
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -4670,6 +4786,14 @@ final class ApiTestDogsTagsPatchQueryParams extends AbstractInput implements Dat
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -4856,10 +4980,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -5047,11 +5173,14 @@ final class ApiTestFileDeleteQueryParams extends AbstractInput implements DataSe
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -5107,6 +5236,14 @@ final class ApiTestFileDeleteQueryParams extends AbstractInput implements DataSe
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -5292,10 +5429,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -5483,11 +5622,14 @@ final class ApiTestFilePatchQueryParams extends AbstractInput implements DataSet
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -5543,6 +5685,14 @@ final class ApiTestFilePatchQueryParams extends AbstractInput implements DataSet
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -5725,10 +5875,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -5908,11 +6060,14 @@ final class ApiTestFilePostRequest extends AbstractInput implements DataSetInter
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -5968,6 +6123,14 @@ final class ApiTestFilePostRequest extends AbstractInput implements DataSetInter
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -6088,10 +6251,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -6274,11 +6439,14 @@ final class ApiTestJobs200 extends AbstractInput implements DataSetInterface, Ru
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -6334,6 +6502,14 @@ final class ApiTestJobs200 extends AbstractInput implements DataSetInterface, Ru
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -6483,10 +6659,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -6669,11 +6847,14 @@ final class ApiTestJobs404 extends AbstractInput implements DataSetInterface, Ru
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -6729,6 +6910,14 @@ final class ApiTestJobs404 extends AbstractInput implements DataSetInterface, Ru
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -6878,10 +7067,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -7064,11 +7255,14 @@ final class ApiTestJobsDefault extends AbstractInput implements DataSetInterface
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -7124,6 +7318,14 @@ final class ApiTestJobsDefault extends AbstractInput implements DataSetInterface
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -7274,10 +7476,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -7461,11 +7665,14 @@ final class ApiTestJobsPostRequest extends AbstractInput implements DataSetInter
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -7521,6 +7728,14 @@ final class ApiTestJobsPostRequest extends AbstractInput implements DataSetInter
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -7670,10 +7885,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -7858,11 +8075,14 @@ final class ApiTestLegacy200 extends AbstractInput implements DataSetInterface, 
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -7918,6 +8138,14 @@ final class ApiTestLegacy200 extends AbstractInput implements DataSetInterface, 
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -8065,6 +8293,7 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
@@ -8296,11 +8525,14 @@ final class ApiTestLegacyPostQueryParams extends AbstractInput implements DataSe
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -8356,6 +8588,14 @@ final class ApiTestLegacyPostQueryParams extends AbstractInput implements DataSe
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -8507,10 +8747,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -8696,11 +8938,14 @@ final class ApiTestLegacyPostRequest extends AbstractInput implements DataSetInt
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -8756,6 +9001,14 @@ final class ApiTestLegacyPostRequest extends AbstractInput implements DataSetInt
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -8905,10 +9158,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -9091,11 +9346,14 @@ final class ApiTestRepresentations200 extends AbstractInput implements DataSetIn
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -9151,6 +9409,14 @@ final class ApiTestRepresentations200 extends AbstractInput implements DataSetIn
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -9300,10 +9566,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -9486,11 +9754,14 @@ final class ApiTestRepresentations200Csv extends AbstractInput implements DataSe
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -9546,6 +9817,14 @@ final class ApiTestRepresentations200Csv extends AbstractInput implements DataSe
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -9696,10 +9975,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -9883,11 +10164,14 @@ final class ApiTestRepresentationsPostRequest extends AbstractInput implements D
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -9943,6 +10227,14 @@ final class ApiTestRepresentationsPostRequest extends AbstractInput implements D
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -10093,10 +10385,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -10280,11 +10574,14 @@ final class ApiTestRepresentationsPostRequestForm extends AbstractInput implemen
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -10340,6 +10637,14 @@ final class ApiTestRepresentationsPostRequestForm extends AbstractInput implemen
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -10490,10 +10795,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -10677,11 +10984,14 @@ final class ApiTestRepresentationsPostRequestXml extends AbstractInput implement
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -10737,6 +11047,14 @@ final class ApiTestRepresentationsPostRequestXml extends AbstractInput implement
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -10891,6 +11209,7 @@ use function array_map;
 use function ctype_digit;
 use function floor;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_finite;
 use function is_float;
@@ -11107,11 +11426,14 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams extends Abstra
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -11170,6 +11492,14 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams extends Abstra
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -11853,11 +12183,14 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -11943,6 +12276,14 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
         $errors = [];
         $normalizedValue = $this->normalizeOpenApiCallbackValue($value, $schema);
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -12206,6 +12547,7 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
@@ -12445,11 +12787,14 @@ final class ApiTestSerializationGetQueryParamsFilter extends AbstractInput imple
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -12505,6 +12850,14 @@ final class ApiTestSerializationGetQueryParamsFilter extends AbstractInput imple
         $errors = [];
         $normalizedValue = $this->normalizeOpenApiCallbackValue($value, $schema);
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -12665,6 +13018,7 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
@@ -12895,11 +13249,14 @@ final class ApiTestSharedPathGetQueryParams extends AbstractInput implements Dat
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -12955,6 +13312,14 @@ final class ApiTestSharedPathGetQueryParams extends AbstractInput implements Dat
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -13109,6 +13474,7 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
@@ -13379,11 +13745,14 @@ final class ApiTestTenantsDeleteQueryParams extends AbstractInput implements Dat
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -13445,6 +13814,14 @@ final class ApiTestTenantsDeleteQueryParams extends AbstractInput implements Dat
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -13599,6 +13976,7 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
@@ -13896,11 +14274,14 @@ final class ApiTestTenantsGetQueryParams extends AbstractInput implements DataSe
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -13965,6 +14346,14 @@ final class ApiTestTenantsGetQueryParams extends AbstractInput implements DataSe
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -14248,7 +14637,13 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
                     ],
                 ],
             ],
-            'impossible' => [],
+            'impossible' => [
+                'allOf' => [
+                    [
+                        'not' => [],
+                    ],
+                ],
+            ],
             'vacuous' => [
                 'type' => 'string',
                 'minLength' => 3,
@@ -14356,6 +14751,8 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
 
     public readonly string|int|float|bool|array|null $impossible;
 
+    #[StringValue(skipOnEmpty: new WhenNull())]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
     public readonly ?string $vacuous;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
@@ -14750,11 +15147,14 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -14849,6 +15249,14 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -14979,6 +15387,16 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
             $minContains = 1;
             if ($matchCount < $minContains) {
                 $errors[] = sprintf('%s must contain at least %d item(s) matching the \'contains\' schema', $path, $minContains);
+            }
+        }
+
+        if (is_array($schema['allOf'] ?? null)) {
+            foreach ($schema['allOf'] as $branch) {
+                if (!is_array($branch)) {
+                    continue;
+                }
+
+                $errors = [...$errors, ...$this->validateOpenApiNode($value, $branch, $path, $depth + 1)];
             }
         }
 
@@ -15231,6 +15649,7 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
@@ -15479,11 +15898,14 @@ final class ApplicatorRefsConditional extends AbstractInput implements DataSetIn
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -15539,6 +15961,14 @@ final class ApplicatorRefsConditional extends AbstractInput implements DataSetIn
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -15744,6 +16174,7 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
@@ -15989,11 +16420,14 @@ final class ApplicatorRefsKeyed extends AbstractInput implements DataSetInterfac
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -16049,6 +16483,14 @@ final class ApplicatorRefsKeyed extends AbstractInput implements DataSetInterfac
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -16242,6 +16684,7 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
@@ -16474,11 +16917,14 @@ final class ApplicatorRefsPoisonedKey extends AbstractInput implements DataSetIn
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -16534,6 +16980,14 @@ final class ApplicatorRefsPoisonedKey extends AbstractInput implements DataSetIn
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -16723,6 +17177,7 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
@@ -17010,11 +17465,14 @@ final class AwkwardNames extends AbstractInput implements DataSetInterface, Rule
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -17079,6 +17537,14 @@ final class AwkwardNames extends AbstractInput implements DataSetInterface, Rule
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -17231,10 +17697,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -17418,11 +17886,14 @@ final class CallbackJobDonePostRequest extends AbstractInput implements DataSetI
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -17478,6 +17949,14 @@ final class CallbackJobDonePostRequest extends AbstractInput implements DataSetI
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -17628,10 +18107,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -17815,11 +18296,14 @@ final class CallbackJobFailedPostRequest extends AbstractInput implements DataSe
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -17875,6 +18359,14 @@ final class CallbackJobFailedPostRequest extends AbstractInput implements DataSe
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -18024,10 +18516,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -18222,11 +18716,14 @@ final class Cat extends AbstractInput implements Animal, Animal2, DataSetInterfa
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -18285,6 +18782,14 @@ final class Cat extends AbstractInput implements Animal, Animal2, DataSetInterfa
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -18686,11 +19191,14 @@ final class ChainLink extends AbstractInput implements DataSetInterface, RulesPr
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -18749,6 +19257,14 @@ final class ChainLink extends AbstractInput implements DataSetInterface, RulesPr
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -18908,6 +19424,7 @@ use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -19095,11 +19612,14 @@ final class ChainMiddle extends AbstractInput implements DataSetInterface, Rules
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -19155,6 +19675,14 @@ final class ChainMiddle extends AbstractInput implements DataSetInterface, Rules
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -19308,10 +19836,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -19493,11 +20023,14 @@ final class ChainTag extends AbstractInput implements DataSetInterface, RulesPro
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -19553,6 +20086,14 @@ final class ChainTag extends AbstractInput implements DataSetInterface, RulesPro
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -19703,10 +20244,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -19901,11 +20444,14 @@ final class Circle extends AbstractInput implements Shape, DataSetInterface, Rul
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -19964,6 +20510,14 @@ final class Circle extends AbstractInput implements Shape, DataSetInterface, Rul
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -20444,11 +20998,14 @@ final class ContainerAliases extends AbstractInput implements DataSetInterface, 
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -20513,6 +21070,14 @@ final class ContainerAliases extends AbstractInput implements DataSetInterface, 
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -21209,11 +21774,14 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -21281,6 +21849,14 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('const', $schema)) {
             $fingerprint = $this->jsonValueFingerprint($normalizedValue);
@@ -21650,6 +22226,7 @@ use function array_map;
 use function ctype_digit;
 use function floor;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_finite;
 use function is_float;
@@ -21807,11 +22384,14 @@ final class CountMap extends AbstractInput implements DataSetInterface, RulesPro
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -21864,6 +22444,14 @@ final class CountMap extends AbstractInput implements DataSetInterface, RulesPro
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -22091,11 +22679,13 @@ use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
 use function implode;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -22307,11 +22897,14 @@ final class Discriminator1 extends AbstractInput implements Discriminator, DataS
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -22373,6 +22966,14 @@ final class Discriminator1 extends AbstractInput implements Discriminator, DataS
         $errors = [];
         $normalizedValue = $this->normalizeOpenApiCallbackValue($value, $schema);
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema) && !($value === null && ($schema['nullable'] ?? false) === true)) {
             $typeConstraint = $schema['type'];
@@ -22561,11 +23162,13 @@ use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
 use function array_filter;
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
 use function implode;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -22792,11 +23395,14 @@ final class Discriminator2 extends AbstractInput implements Discriminator, DataS
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -22861,6 +23467,14 @@ final class Discriminator2 extends AbstractInput implements Discriminator, DataS
         $errors = [];
         $normalizedValue = $this->normalizeOpenApiCallbackValue($value, $schema);
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema) && !($value === null && ($schema['nullable'] ?? false) === true)) {
             $typeConstraint = $schema['type'];
@@ -23064,10 +23678,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -23262,11 +23878,14 @@ final class Dog extends AbstractInput implements Animal, Animal2, DataSetInterfa
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -23325,6 +23944,14 @@ final class Dog extends AbstractInput implements Animal, Animal2, DataSetInterfa
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -23474,10 +24101,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -23672,11 +24301,14 @@ final class Dog2 extends AbstractInput implements Animal2, DataSetInterface, Rul
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -23735,6 +24367,14 @@ final class Dog2 extends AbstractInput implements Animal2, DataSetInterface, Rul
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -23887,10 +24527,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -24098,11 +24740,14 @@ final class FileRequest extends AbstractInput implements DataSetInterface, Rules
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -24164,6 +24809,14 @@ final class FileRequest extends AbstractInput implements DataSetInterface, Rules
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -24612,11 +25265,14 @@ final class ItemBounds extends AbstractInput implements DataSetInterface, RulesP
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -24678,6 +25334,14 @@ final class ItemBounds extends AbstractInput implements DataSetInterface, RulesP
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -25509,11 +26173,14 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -25590,6 +26257,14 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (is_array($schema['enum'] ?? null)) {
             $fingerprint = $this->jsonValueFingerprint($normalizedValue);
@@ -26245,11 +26920,14 @@ final class NullableContainerValues extends AbstractInput implements DataSetInte
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -26314,6 +26992,14 @@ final class NullableContainerValues extends AbstractInput implements DataSetInte
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema) && !($value === null && ($schema['nullable'] ?? false) === true)) {
             $typeConstraint = $schema['type'];
@@ -26572,6 +27258,7 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function count;
@@ -26865,11 +27552,14 @@ final class ObjectWideRules extends AbstractInput implements DataSetInterface, R
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -26931,6 +27621,14 @@ final class ObjectWideRules extends AbstractInput implements DataSetInterface, R
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -26954,27 +27652,36 @@ final class ObjectWideRules extends AbstractInput implements DataSetInterface, R
             // Presence belongs to the payload view. Null remains a real list item/object value.
             $valueArray = is_array($structural) ? $structural : [];
             $count = count($valueArray);
+            // The item keywords speak about a LIST. A JSON object reaches this point as an array with
+            // its member names for keys, and `minItems` beside no `type` counted those members as
+            // items — refusing an object the keyword says nothing about.
+            $isList = is_array($value) && array_is_list($value);
             $minItems = $this->toIntConstraint($schema['minItems'] ?? null);
-            if ($minItems !== null && is_array($value) && $count < $minItems) {
+            if ($minItems !== null && $isList && $count < $minItems) {
                 $errors[] = sprintf('%s must contain at least %d items', $path, $minItems);
             }
 
             $maxItems = $this->toIntConstraint($schema['maxItems'] ?? null);
-            if ($maxItems !== null && is_array($value) && $count > $maxItems) {
+            if ($maxItems !== null && $isList && $count > $maxItems) {
                 $errors[] = sprintf('%s must contain at most %d items', $path, $maxItems);
             }
 
+            // A non-empty list has no properties to count, unless `type` pins `object` — see
+            // `$structuredValue`.
+            $countsProperties = !$isList
+                || $valueArray === []
+                || (in_array('object', (array)($schema['type'] ?? []), true) && !in_array('array', (array)($schema['type'] ?? []), true));
             $minProperties = $this->toIntConstraint($schema['minProperties'] ?? null);
-            if ($minProperties !== null && $count < $minProperties) {
+            if ($minProperties !== null && $countsProperties && $count < $minProperties) {
                 $errors[] = sprintf('%s must have at least %d %s', $path, $minProperties, $minProperties === 1 ? 'property' : 'properties');
             }
 
             $maxProperties = $this->toIntConstraint($schema['maxProperties'] ?? null);
-            if ($maxProperties !== null && $count > $maxProperties) {
+            if ($maxProperties !== null && $countsProperties && $count > $maxProperties) {
                 $errors[] = sprintf('%s must have at most %d %s', $path, $maxProperties, $maxProperties === 1 ? 'property' : 'properties');
             }
 
-            if (is_array($value) && ($schema['uniqueItems'] ?? false) === true) {
+            if ($isList && ($schema['uniqueItems'] ?? false) === true) {
                 $seen = [];
                 foreach ($valueArray as $item) {
                     $fingerprint = $this->jsonValueFingerprint($item);
@@ -27197,10 +27904,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -27381,11 +28090,14 @@ final class Pet extends AbstractInput implements DataSetInterface, RulesProvider
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -27441,6 +28153,14 @@ final class Pet extends AbstractInput implements DataSetInterface, RulesProvider
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -27595,6 +28315,7 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
@@ -27903,11 +28624,14 @@ final class ReadOnlyFields extends AbstractInput implements DataSetInterface, Ru
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -27972,6 +28696,14 @@ final class ReadOnlyFields extends AbstractInput implements DataSetInterface, Ru
         $errors = [];
         $normalizedValue = $this->normalizeOpenApiCallbackValue($value, $schema);
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -28140,10 +28872,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -28326,11 +29060,14 @@ final class RetiredShape extends AbstractInput implements DataSetInterface, Rule
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -28386,6 +29123,14 @@ final class RetiredShape extends AbstractInput implements DataSetInterface, Rule
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -28571,10 +29316,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -28769,11 +29516,14 @@ final class Square extends AbstractInput implements Shape, DataSetInterface, Rul
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -28832,6 +29582,14 @@ final class Square extends AbstractInput implements Shape, DataSetInterface, Rul
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -28982,10 +29740,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -29180,11 +29940,14 @@ final class Tag extends AbstractInput implements DataSetInterface, RulesProvider
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -29243,6 +30006,14 @@ final class Tag extends AbstractInput implements DataSetInterface, RulesProvider
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -29392,10 +30163,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -29576,11 +30349,14 @@ final class Test extends AbstractInput implements DataSetInterface, RulesProvide
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -29636,6 +30412,14 @@ final class Test extends AbstractInput implements DataSetInterface, RulesProvide
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -30120,11 +30904,14 @@ final class Test2 extends AbstractInput implements DataSetInterface, RulesProvid
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -30195,6 +30982,14 @@ final class Test2 extends AbstractInput implements DataSetInterface, RulesProvid
         $errors = [];
         $normalizedValue = $this->normalizeOpenApiCallbackValue($value, $schema);
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -30390,6 +31185,7 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
@@ -30617,11 +31413,14 @@ final class Test2UserType extends AbstractInput implements DataSetInterface, Rul
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -30677,6 +31476,14 @@ final class Test2UserType extends AbstractInput implements DataSetInterface, Rul
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -30821,10 +31628,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -31034,11 +31843,14 @@ final class TestPatchRequest extends AbstractInput implements DataSetInterface, 
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -31100,6 +31912,14 @@ final class TestPatchRequest extends AbstractInput implements DataSetInterface, 
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -31576,11 +32396,14 @@ final class TestPostRequest extends AbstractInput implements DataSetInterface, R
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -31648,6 +32471,14 @@ final class TestPostRequest extends AbstractInput implements DataSetInterface, R
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (is_array($schema['oneOf'] ?? null)) {
             $matchingBranches = 0;
@@ -32339,11 +33170,14 @@ final class TreeNode extends AbstractInput implements DataSetInterface, RulesPro
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -32402,6 +33236,14 @@ final class TreeNode extends AbstractInput implements DataSetInterface, RulesPro
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (is_array($schema['oneOf'] ?? null)) {
             $matchingBranches = 0;
@@ -33190,11 +34032,14 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -33259,6 +34104,14 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (is_array($schema['oneOf'] ?? null)) {
             $matchingBranches = 0;
@@ -33665,6 +34518,7 @@ use function count;
 use function ctype_digit;
 use function floor;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_finite;
 use function is_float;
@@ -33860,11 +34714,14 @@ final class UniqueScalars extends AbstractInput implements DataSetInterface, Rul
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -33920,6 +34777,14 @@ final class UniqueScalars extends AbstractInput implements DataSetInterface, Rul
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];
@@ -33937,27 +34802,36 @@ final class UniqueScalars extends AbstractInput implements DataSetInterface, Rul
             // Presence belongs to the payload view. Null remains a real list item/object value.
             $valueArray = is_array($structural) ? $structural : [];
             $count = count($valueArray);
+            // The item keywords speak about a LIST. A JSON object reaches this point as an array with
+            // its member names for keys, and `minItems` beside no `type` counted those members as
+            // items — refusing an object the keyword says nothing about.
+            $isList = is_array($value) && array_is_list($value);
             $minItems = $this->toIntConstraint($schema['minItems'] ?? null);
-            if ($minItems !== null && is_array($value) && $count < $minItems) {
+            if ($minItems !== null && $isList && $count < $minItems) {
                 $errors[] = sprintf('%s must contain at least %d items', $path, $minItems);
             }
 
             $maxItems = $this->toIntConstraint($schema['maxItems'] ?? null);
-            if ($maxItems !== null && is_array($value) && $count > $maxItems) {
+            if ($maxItems !== null && $isList && $count > $maxItems) {
                 $errors[] = sprintf('%s must contain at most %d items', $path, $maxItems);
             }
 
+            // A non-empty list has no properties to count, unless `type` pins `object` — see
+            // `$structuredValue`.
+            $countsProperties = !$isList
+                || $valueArray === []
+                || (in_array('object', (array)($schema['type'] ?? []), true) && !in_array('array', (array)($schema['type'] ?? []), true));
             $minProperties = $this->toIntConstraint($schema['minProperties'] ?? null);
-            if ($minProperties !== null && $count < $minProperties) {
+            if ($minProperties !== null && $countsProperties && $count < $minProperties) {
                 $errors[] = sprintf('%s must have at least %d %s', $path, $minProperties, $minProperties === 1 ? 'property' : 'properties');
             }
 
             $maxProperties = $this->toIntConstraint($schema['maxProperties'] ?? null);
-            if ($maxProperties !== null && $count > $maxProperties) {
+            if ($maxProperties !== null && $countsProperties && $count > $maxProperties) {
                 $errors[] = sprintf('%s must have at most %d %s', $path, $maxProperties, $maxProperties === 1 ? 'property' : 'properties');
             }
 
-            if (is_array($value) && ($schema['uniqueItems'] ?? false) === true) {
+            if ($isList && ($schema['uniqueItems'] ?? false) === true) {
                 $seen = [];
                 foreach ($valueArray as $item) {
                     $fingerprint = $this->jsonValueFingerprint($item);
@@ -34528,11 +35402,14 @@ final class User extends AbstractInput implements DataSetInterface, RulesProvide
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -34597,6 +35474,14 @@ final class User extends AbstractInput implements DataSetInterface, RulesProvide
         $errors = [];
         $normalizedValue = $this->normalizeOpenApiCallbackValue($value, $schema);
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema) && !($value === null && ($schema['nullable'] ?? false) === true)) {
             $typeConstraint = $schema['type'];
@@ -34861,10 +35746,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -35102,11 +35989,14 @@ final class User2 extends AbstractInput implements DataSetInterface, RulesProvid
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -35171,6 +36061,14 @@ final class User2 extends AbstractInput implements DataSetInterface, RulesProvid
         $errors = [];
         $normalizedValue = $this->normalizeOpenApiCallbackValue($value, $schema);
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema) && !($value === null && ($schema['nullable'] ?? false) === true)) {
             $typeConstraint = $schema['type'];
@@ -35338,10 +36236,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -35567,11 +36467,14 @@ final class User2Pet extends AbstractInput implements DataSetInterface, RulesPro
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -35636,6 +36539,14 @@ final class User2Pet extends AbstractInput implements DataSetInterface, RulesPro
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema) && !($value === null && ($schema['nullable'] ?? false) === true)) {
             $typeConstraint = $schema['type'];
@@ -35786,10 +36697,12 @@ use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
 use stdClass;
 
+use function array_is_list;
 use function array_key_exists;
 use function array_map;
 use function ctype_digit;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
@@ -35973,11 +36886,14 @@ final class WebhookOrderPlacedPostRequest extends AbstractInput implements DataS
         foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
             $path = self::openApiViolationPath($error);
             // `ids[0].name` is the keys `ids`, 0, `name` — the value path `Each` writes for an item.
-            $result->addError(
-                str_ends_with($error, '.') ? $error : $error . '.',
+            // The sentence is final text: it quotes the schema (`must equal {"a":1}`, a `^a{2}$`) and
+            // the payload's own keys, and the validator's formatters read every `{…}` as a placeholder
+            // — the one picked without ext-intl threw on it, mid-validation.
+            $result->addErrorWithoutPostProcessing(
+                message: str_ends_with($error, '.') ? $error : $error . '.',
                 valuePath: $path === null ? [] : array_map(
-                    static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
-                    preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+                    callback: static fn (string $key): int|string => ctype_digit($key) ? (int)$key : $key,
+                    array: preg_split('/[.\[\]]+/', $path, -1, PREG_SPLIT_NO_EMPTY) ?: [],
                 ),
             );
         }
@@ -36033,6 +36949,14 @@ final class WebhookOrderPlacedPostRequest extends AbstractInput implements DataS
         $errors = [];
         $normalizedValue = $value;
         $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
 
         if (array_key_exists('type', $schema)) {
             $typeConstraint = $schema['type'];

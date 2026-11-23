@@ -30,6 +30,13 @@ use Symfony\Component\Serializer\Normalizer\ObjectNormalizer;
 use Symfony\Component\Serializer\Serializer;
 use Symfony\Component\Validator\Validation;
 use Throwable;
+use Yiisoft\Translator\CategorySource;
+use Yiisoft\Translator\IdMessageReader;
+use Yiisoft\Translator\IntlMessageFormatter;
+use Yiisoft\Translator\MessageFormatterInterface;
+use Yiisoft\Translator\SimpleMessageFormatter;
+use Yiisoft\Translator\Translator as Yii3Translator;
+use Yiisoft\Validator\Validator as Yii3Validator;
 
 /**
  * The parity suites compare VERDICTS. This one compares the SENTENCE.
@@ -52,6 +59,8 @@ use Throwable;
  */
 final class InterpreterMessageParityTest extends TestCase
 {
+    use ComparesModes;
+
     private string $outputDirectory;
 
     protected function setUp(): void
@@ -611,7 +620,148 @@ final class InterpreterMessageParityTest extends TestCase
     }
 
     /**
-     * @param array<string, mixed> $spec
+     * A brace in a message is TEXT, whoever put it there, in every mode.
+     *
+     * The interpreter's sentences quote the schema (`must equal {"tint":"red"}`, `must match pattern
+     * ^a{2}$`) and the payload (a key the client chose names the path). yiisoft/validator runs every
+     * message it is handed through its translator, and both of its formatters read `{…}` as a
+     * placeholder: `SimpleMessageFormatter` — the default whenever ext-intl is absent — threw
+     * `""tint":"red"" parameter's value is missing.` from inside validation, a 500 for a payload the
+     * client could pick, and `IntlMessageFormatter` swallows the pattern or substitutes a name it knows.
+     * So yii3 is driven once with the validator it builds by default and once per formatter, pinned —
+     * the suite must hold on a runner with intl AND on one without.
+     *
+     * @param array<string, mixed> $propertySchema
+     * @param array<string, array{expected: mixed, reason: string}> $diverges
+     */
+    #[DataProvider('bracedMessageProvider')]
+    public function testABraceInAMessageReadsLiterallyInEveryMode(
+        string $key,
+        array $propertySchema,
+        string $invalidJson,
+        string $literal,
+        array $diverges,
+    ): void {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Probe' => [
+                        'type' => 'object',
+                        'required' => ['f'],
+                        'properties' => ['f' => $propertySchema],
+                    ],
+                ],
+            ],
+        ];
+
+        $quoting = static fn(array $messages): array => array_values(array: array_filter(
+            array: $messages,
+            callback: static fn(string $message): bool => str_contains($message, $literal),
+        ));
+
+        $this->assertEveryModeYields(
+            expected: true,
+            observe: fn(GenerationMode $mode): bool => $quoting($this->messages($mode, $spec, $key, $invalidJson)) !== [],
+            diverges: $diverges,
+            context: $key,
+        );
+
+        $formatters = ['simple' => new SimpleMessageFormatter()];
+        if (extension_loaded('intl')) {
+            $formatters['intl'] = new IntlMessageFormatter();
+        }
+        foreach ($formatters as $name => $formatter) {
+            $reported = $this->yii3Messages(
+                spec: $spec,
+                key: $key,
+                json: $invalidJson,
+                container: new Yii3Container(validator: $this->yii3ValidatorFormattingWith($formatter)),
+            );
+            $this->assertNotSame(
+                expected: [],
+                actual: $quoting($reported),
+                message: sprintf(
+                    "yii3 mode with the %s formatter lost the literal %s in %s\n reported: %s",
+                    $name,
+                    $literal,
+                    $key,
+                    implode(' | ', $reported),
+                ),
+            );
+        }
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: array<string, mixed>, 2: string, 3: string, 4: array<string, array{expected: mixed, reason: string}>}>
+     */
+    public static function bracedMessageProvider(): array
+    {
+        // Laravel's validator owns an enum in both Laravel modes, so the sentence there is the
+        // framework's `validation.enum` and quotes no member — the interpreter never speaks for it.
+        $frameworkSpeaks = 'Laravel\'s validator enforces this enum itself, and its message quotes no member.';
+        $nativeEnum = [
+            'enum with an object member' => self::diverges(GenerationMode::Laravel, false, $frameworkSpeaks)
+                + self::diverges(GenerationMode::LaravelData, false, $frameworkSpeaks),
+        ];
+
+        $cases = [
+            'const object' => [
+                ['type' => 'object', 'const' => ['tint' => 'red']],
+                '{"f":{"tint":"blue"}}',
+                '{"tint":"red"}',
+            ],
+            'enum with an object member' => [
+                ['enum' => [['tint' => 'green'], 7]],
+                '{"f":{"tint":"blue"}}',
+                '{"tint":"green"}',
+            ],
+            'pattern with a quantifier' => [
+                ['type' => 'array', 'items' => ['type' => 'string', 'pattern' => '^a{2}$']],
+                '{"f":["a"]}',
+                '^a{2}$',
+            ],
+            'payload key that reads as a placeholder' => [
+                [
+                    'type' => 'object',
+                    'additionalProperties' => ['type' => 'integer'],
+                    'propertyNames' => ['pattern' => '^[a-z]+$'],
+                ],
+                '{"f":{"{property}":1}}',
+                '{property}',
+            ],
+        ];
+
+        $withKey = [];
+        foreach ($cases as $key => [$schema, $json, $literal]) {
+            $withKey[$key] = [$key, $schema, $json, $literal, $nativeEnum[$key] ?? []];
+        }
+
+        return $withKey;
+    }
+
+    /**
+     * The validator yiisoft/validator builds when given none, with the formatter chosen by the test
+     * instead of by `extension_loaded('intl')`.
+     */
+    private function yii3ValidatorFormattingWith(MessageFormatterInterface $formatter): Yii3Validator
+    {
+        $translator = new Yii3Translator();
+        $translator->addCategorySources(new CategorySource(
+            name: Yii3Validator::DEFAULT_TRANSLATION_CATEGORY,
+            reader: new IdMessageReader(),
+            formatter: $formatter,
+        ));
+
+        return new Yii3Validator(translator: $translator);
+    }
+
+    /**
      * @return array<int, string>
      */
     private function messages(GenerationMode $mode, array $spec, string $key, string $json): array
@@ -794,7 +944,7 @@ final class InterpreterMessageParityTest extends TestCase
      * @param array<string, mixed> $spec
      * @return array<int, string>
      */
-    private function yii3Messages(array $spec, string $key, string $json): array
+    private function yii3Messages(array $spec, string $key, string $json, ?Yii3Container $container = null): array
     {
         $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::Yii3, $key), 'yii3');
         $payload = json_decode($json, true);
@@ -802,7 +952,7 @@ final class InterpreterMessageParityTest extends TestCase
             return [];
         }
 
-        $container = new Yii3Container();
+        $container ??= new Yii3Container();
 
         try {
             $result = $container->validate($container->hydrate($fqcn, $payload));

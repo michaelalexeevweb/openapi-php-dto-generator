@@ -504,4 +504,340 @@ trait RendersCommonDtoParts
 
         return $properties;
     }
+
+    /**
+     * The schema without the type-specific keywords its `type` does not pin — the ones a native rule
+     * would apply to a value of ANY type.
+     *
+     * A keyword that speaks about one JSON type says nothing about a value of another: `pattern`
+     * ignores `true`, `minimum` ignores `"x"`, `minItems` ignores a string, and `format: email` ignores
+     * `12`. The emitted interpreter knows that; a framework rule does not — `Assert\Regex`, Laravel's
+     * `regex:` and `email`, yii3's `Length` all refuse the value instead of passing it over, and the
+     * official JSON-Schema-Test-Suite found every framework mode doing so. So a mode builds its native
+     * rules from what this returns and leaves the rest to the interpreter, which applies each keyword
+     * to its own type only.
+     *
+     * Pinned means: the PHP type is one kind (`string`, `?int`, a class), or every non-null member of
+     * `type` is a type the keyword speaks about. Where it is, nothing changes.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<string, mixed>
+     */
+    private function withoutKeywordsTheTypeDoesNotPin(array $schema, string $phpType): array
+    {
+        $phpMembers = array_values(array_diff(explode('|', ltrim($phpType, '?')), ['null']));
+        if (count($phpMembers) === 1 && !in_array($phpMembers[0], ['', 'mixed'], true)) {
+            return $schema;
+        }
+
+        $declared = $schema['type'] ?? null;
+        $pinned = match (true) {
+            is_string($declared) => [$declared],
+            is_array($declared) => array_values(array_diff(array_filter($declared, is_string(...)), ['null'])),
+            default => null,
+        };
+
+        $kept = [];
+        foreach ($schema as $keyword => $value) {
+            $speaksAbout = $this->jsonTypesAKeywordSpeaksAbout(keyword: $keyword, value: $value);
+            if ($speaksAbout !== [] && ($pinned === null || array_diff($pinned, $speaksAbout) !== [])) {
+                continue;
+            }
+            $kept[$keyword] = $value;
+        }
+
+        return $kept;
+    }
+
+    /**
+     * The JSON types a keyword constrains, or none for a keyword that constrains every value alike.
+     * `format` depends on its value: a string format speaks about strings, a numeric one about numbers.
+     *
+     * @return array<int, string>
+     */
+    private function jsonTypesAKeywordSpeaksAbout(string $keyword, mixed $value): array
+    {
+        return match ($keyword) {
+            'minLength', 'maxLength', 'pattern' => ['string'],
+            'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf' => ['integer', 'number'],
+            'minItems', 'maxItems', 'uniqueItems', 'contains' => ['array'],
+            'minProperties', 'maxProperties', 'required', 'dependentRequired' => ['object'],
+            'format' => match (true) {
+                !is_string($value) => [],
+                in_array($value, self::OPENAPI_NUMERIC_FORMATS, true) => ['integer', 'number'],
+                default => ['string'],
+            },
+            default => [],
+        };
+    }
+
+    /**
+     * The properties typed `mixed`, by OpenAPI name — see `filterInterpreterConstraints()`.
+     *
+     * @param array<int, SchemaProperty> $properties
+     * @return array<string, true>
+     */
+    private function mixedPropertyNames(array $properties): array
+    {
+        $mixed = [];
+        foreach ($properties as $property) {
+            if (ltrim($property['type'], '?') === 'mixed') {
+                $mixed[$property['openApiName']] = true;
+            }
+        }
+
+        return $mixed;
+    }
+
+    /**
+     * Whether a schema speaks about the KEYS of an object through a subschema — `properties`,
+     * `patternProperties`, `additionalProperties`, `dependentSchemas`. Beside a property typed `mixed`
+     * no class is generated for those keys, so nothing but the interpreter can check them: a mode
+     * that leaves their subschemas to native attributes or rules leaves them to nobody.
+     *
+     * @param array<string, mixed> $constraints
+     */
+    private function schemaDescribesUnmaterializedKeys(array $constraints): bool
+    {
+        foreach (['properties', 'patternProperties', 'dependentSchemas'] as $mapKeyword) {
+            if (is_array($constraints[$mapKeyword] ?? null) && $constraints[$mapKeyword] !== []) {
+                return true;
+            }
+        }
+
+        return array_key_exists('additionalProperties', $constraints) && $constraints['additionalProperties'] !== true;
+    }
+
+    /**
+     * What a CLASS's `unevaluatedProperties` must see beside the object-level keywords a mode already
+     * carries: the names the class declares, every `allOf` branch, and the `anyOf`/`oneOf` branches
+     * whole — a key is evaluated by a union branch only when that branch MATCHES, so the branch's
+     * assertions decide it. `if`/`then`/`else` and `dependentSchemas` travel as object-level keywords
+     * already.
+     *
+     * The class folds its `allOf` branches into one set of properties and closed itself on those
+     * names, which was right only while nothing else evaluated a key: an `additionalProperties: true`
+     * or `unevaluatedProperties: true` in a branch, a matching `anyOf` branch, an `if` that applied —
+     * each evaluates keys the class never declares, and the payload it allowed was refused. The other
+     * direction too: `allOf: [{unevaluatedProperties: false}]` evaluates NOTHING the branch does not
+     * declare, its own siblings included, and the folded class accepted them.
+     *
+     * Property schemas arrive as names over the empty schema: the class validates each property
+     * already, so a second copy would report every violation twice, while the NAME is what marks a key
+     * evaluated. The same goes for an `allOf` branch's `required`. Empty when the class's in-place
+     * tree uses no `unevaluatedProperties` or has no applicator for it to read — then the class's own
+     * names are the whole answer and the mode keeps closing on them.
+     *
+     * @param array<string, mixed> $schema the class schema as the document declared it
+     * @param array<string, mixed> $extracted the class schema's validation constraints
+     * @return array<string, mixed>
+     */
+    private function unevaluatedPropertiesEvaluation(array $schema, array $extracted): array
+    {
+        $hasApplicator = false;
+        foreach (['allOf', 'anyOf', 'oneOf', 'if', 'dependentSchemas'] as $applicator) {
+            $hasApplicator = $hasApplicator || is_array($schema[$applicator] ?? null);
+        }
+        if (!$hasApplicator || !$this->inPlaceTreeUses(schema: $schema, keyword: 'unevaluatedProperties')) {
+            return [];
+        }
+
+        $evaluation = ['properties' => self::evaluatedNamesOnly($schema['properties'] ?? null)];
+
+        // The extraction reads a tree that uses `unevaluated*` with every `$ref` branch inlined, so a
+        // referenced component's keys arrive like an inline branch's.
+        $branches = [];
+        foreach (is_array($extracted['allOf'] ?? null) ? $extracted['allOf'] : [] as $branch) {
+            if (!is_array($branch)) {
+                $branches[] = $branch;
+
+                continue;
+            }
+            $reduced = [];
+            foreach ($branch as $keyword => $value) {
+                if ($keyword === 'required') {
+                    continue;
+                }
+                $reduced[$keyword] = $keyword === 'properties' ? self::evaluatedNamesOnly($value) : $value;
+            }
+            $branches[] = $reduced;
+        }
+        if ($branches !== []) {
+            $evaluation['allOf'] = $branches;
+        }
+
+        foreach (['anyOf', 'oneOf'] as $union) {
+            if (is_array($extracted[$union] ?? null)) {
+                $evaluation[$union] = $extracted[$union];
+            }
+        }
+
+        return $evaluation;
+    }
+
+    /**
+     * The interpreter constraints of a class whose `allOf` was merged into one schema, with the
+     * evaluation of its `unevaluatedProperties` put back the way the document wrote it.
+     *
+     * Merging pours every branch into the class schema, last one wins: `allOf: [{unevaluatedProperties:
+     * false}]` beside an outer `true` became one `false` over the class's own properties, and a branch's
+     * `additionalProperties` closed or opened the whole class. Each branch evaluates on its own, so where
+     * `unevaluatedProperties` reads the tree, the branches travel as written and the merged class keeps
+     * only the keywords it declared itself — see `unevaluatedPropertiesEvaluation()`.
+     *
+     * @param array<string, mixed> $constraints the interpreter constraints built from the merged schema
+     * @return array<string, mixed>
+     */
+    private function withUnevaluatedPropertiesEvaluated(array $constraints, string $className): array
+    {
+        $schema = $this->dtoSchemas[$className] ?? [];
+        $extracted = $this->withConstraintSourceOf(
+            className: $className,
+            extraction: fn(): array => $this->extractValidationConstraints($schema),
+        );
+        $evaluation = $this->unevaluatedPropertiesEvaluation(schema: $schema, extracted: $extracted);
+        if ($evaluation === []) {
+            // Every key the class declares is evaluated by its `properties`, including one whose schema
+            // left nothing to check once the PHP type took it over — `x: {$ref: '#'}` went with its
+            // name, and the class refused its own `x` as unevaluated.
+            if (array_key_exists('unevaluatedProperties', $constraints)) {
+                $names = [];
+                foreach ($this->getSchemaProperties($className) as $property) {
+                    $names[$property['openApiName']] = [];
+                }
+                $constraints['properties'] = (is_array($constraints['properties'] ?? null) ? $constraints['properties'] : []) + $names;
+            }
+
+            return $constraints;
+        }
+
+        // These modes judge the HYDRATED object, which holds the declared properties and nothing else. A
+        // branch that requires a key the class does not declare cannot match there however the payload
+        // looked, so the applicator holding it would refuse every valid payload; it is left out, and the
+        // closed-object limitation covers what it could have caught (README.support-matrix). The `$ref`
+        // in such a branch used to stay unresolved and drop the applicator by accident.
+        $declared = [];
+        foreach ($this->getSchemaProperties($className) as $property) {
+            $declared[$property['openApiName']] = true;
+        }
+        $judgeable = static function (mixed $subschema) use ($declared): bool {
+            foreach (self::requiredNamesInPlace($subschema) as $requiredName) {
+                if (!array_key_exists($requiredName, $declared)) {
+                    return false;
+                }
+            }
+
+            return true;
+        };
+        if (!$judgeable($evaluation)) {
+            $kept = [];
+            foreach ($constraints as $keyword => $value) {
+                if (in_array($keyword, ['allOf', 'anyOf', 'oneOf', 'if', 'then', 'else', 'dependentSchemas', 'not'], true) && !$judgeable([$keyword => $value])) {
+                    continue;
+                }
+                $kept[$keyword] = $value;
+            }
+
+            return $kept;
+        }
+
+        $result = [];
+        foreach ($constraints as $keyword => $value) {
+            // Replaced below by what the document wrote.
+            if (in_array($keyword, ['allOf', 'anyOf', 'oneOf', 'unevaluatedProperties'], true)) {
+                continue;
+            }
+            // Kept only where the class declared it itself, not where a branch was merged in.
+            if (in_array($keyword, ['additionalProperties', 'patternProperties'], true) && !array_key_exists($keyword, $schema)) {
+                continue;
+            }
+            $result[$keyword] = $value;
+        }
+        $result['properties'] = (is_array($constraints['properties'] ?? null) ? $constraints['properties'] : []) + $evaluation['properties'];
+        foreach (['allOf', 'anyOf', 'oneOf'] as $applicator) {
+            if (array_key_exists($applicator, $evaluation)) {
+                $result[$applicator] = $evaluation[$applicator];
+            }
+        }
+        if (array_key_exists('unevaluatedProperties', $extracted) && !array_key_exists('additionalProperties', $schema)) {
+            $result['unevaluatedProperties'] = $extracted['unevaluatedProperties'];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Whether `$keyword` appears in the schema or in any subschema that applies to the SAME value — the
+     * in-place applicators — rather than to one of its members.
+     */
+    private function inPlaceTreeUses(mixed $schema, string $keyword, int $depth = 0): bool
+    {
+        if (!is_array($schema) || $depth > 32) {
+            return false;
+        }
+        if (array_key_exists($keyword, $schema)) {
+            return true;
+        }
+        $subschemas = [];
+        foreach (['allOf', 'anyOf', 'oneOf', 'dependentSchemas'] as $listKeyword) {
+            foreach (is_array($schema[$listKeyword] ?? null) ? $schema[$listKeyword] : [] as $branch) {
+                $subschemas[] = $branch;
+            }
+        }
+        foreach (['if', 'then', 'else'] as $conditionalKeyword) {
+            $subschemas[] = $schema[$conditionalKeyword] ?? null;
+        }
+        foreach ($subschemas as $subschema) {
+            if ($this->inPlaceTreeUses(schema: $subschema, keyword: $keyword, depth: $depth + 1)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Every name a `required` lists in the schema or in the subschemas that apply to the same object.
+     *
+     * @return list<string>
+     */
+    private static function requiredNamesInPlace(mixed $schema, int $depth = 0): array
+    {
+        if (!is_array($schema) || $depth > 32) {
+            return [];
+        }
+        $names = [];
+        foreach (is_array($schema['required'] ?? null) ? $schema['required'] : [] as $name) {
+            $names[] = (string)$name;
+        }
+        $subschemas = [];
+        foreach (['allOf', 'anyOf', 'oneOf', 'dependentSchemas'] as $listKeyword) {
+            foreach (is_array($schema[$listKeyword] ?? null) ? $schema[$listKeyword] : [] as $branch) {
+                $subschemas[] = $branch;
+            }
+        }
+        foreach (['if', 'then', 'else', 'not'] as $conditionalKeyword) {
+            $subschemas[] = $schema[$conditionalKeyword] ?? null;
+        }
+        foreach ($subschemas as $subschema) {
+            $names = [...$names, ...self::requiredNamesInPlace($subschema, $depth + 1)];
+        }
+
+        return $names;
+    }
+
+    /**
+     * A `properties` map as the names it declares, each over the empty schema.
+     *
+     * @return array<string, array<never, never>>
+     */
+    private static function evaluatedNamesOnly(mixed $properties): array
+    {
+        $names = [];
+        foreach (is_array($properties) ? array_keys($properties) : [] as $name) {
+            $names[(string)$name] = [];
+        }
+
+        return $names;
+    }
 }

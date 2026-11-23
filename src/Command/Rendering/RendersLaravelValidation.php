@@ -468,6 +468,10 @@ trait RendersLaravelValidation
      */
     private function laravelSchemaRuleSpec(array $schema, string $phpType = '', bool $patternAsRule = false): array
     {
+        // `email`, `regex:` and `multiple_of:` refuse a value of any other type, where the keyword says
+        // nothing about it: `{"format": "email"}` must pass `12`. Only what `type` pins becomes a rule;
+        // the rest is left unconsumed, so the interpreter applies it to its own type.
+        $schema = $this->withoutKeywordsTheTypeDoesNotPin(schema: $schema, phpType: $phpType);
         $rules = [];
         $consumed = [];
         $type = $schema['type'] ?? null;
@@ -568,6 +572,14 @@ trait RendersLaravelValidation
      */
     private function laravelItemRulesForProperty(array $property): array
     {
+        // A `mixed` value may be a list or an object, and `field.*` reaches the members of both: an
+        // untyped `items` refused the values of an object it says nothing about, an untyped
+        // `additionalProperties` the members of a list and the keys `properties` declares. Each keyword
+        // ignores the other shape, which only the interpreter can tell apart.
+        if ($property['type'] === 'mixed') {
+            return [];
+        }
+
         $constraints = $this->laravelConstraintsFor($property);
         $itemSchema = null;
 
@@ -1269,11 +1281,24 @@ trait RendersLaravelValidation
             }
         }
 
-        return $this->laravelWithClosedObjectFlag(
+        $objectLevel = $this->laravelWithClosedObjectFlag(
             schema: $schema,
             objectLevel: $objectLevel,
             extractedAdditional: $extracted['additionalProperties'] ?? null,
         );
+
+        // Where an in-place applicator evaluates keys too, the interpreter decides `unevaluatedProperties`
+        // from the whole tree — see `unevaluatedPropertiesEvaluation()`. `additionalProperties` beside
+        // the keyword evaluates every key, which leaves the keyword itself nothing to refuse.
+        $evaluation = $this->unevaluatedPropertiesEvaluation(schema: $schema, extracted: $extracted);
+        if ($evaluation !== []) {
+            $objectLevel = [...$objectLevel, ...$evaluation];
+            if (array_key_exists('unevaluatedProperties', $extracted) && !array_key_exists('additionalProperties', $schema)) {
+                $objectLevel['unevaluatedProperties'] = $extracted['unevaluatedProperties'];
+            }
+        }
+
+        return $objectLevel;
     }
 
     /**
@@ -1304,7 +1329,8 @@ trait RendersLaravelValidation
     private function laravelWithClosedObjectFlag(array $schema, array $objectLevel, mixed $extractedAdditional): array
     {
         $closesWithAdditional = ($schema['additionalProperties'] ?? null) === false;
-        $closesWithUnevaluated = ($schema['unevaluatedProperties'] ?? null) === false;
+        $closesWithUnevaluated = ($schema['unevaluatedProperties'] ?? null) === false
+            && !array_key_exists('additionalProperties', $schema);
         // `{}` admits every value, so it asserts nothing and needs no slot.
         $additionalSchema = is_array($extractedAdditional) && $extractedAdditional !== [] ? $extractedAdditional : null;
 
@@ -1458,7 +1484,12 @@ trait RendersLaravelValidation
         // the schema is "this object must carry these keys", which no rule expresses. Where the object
         // became a nested DTO its own rules own that; where it stayed a map nothing does, so it has to
         // reach the interpreter.
-        if (is_array($schema['required'] ?? null) && !is_array($schema['properties'] ?? null)) {
+        //
+        // A `mixed` property is the other such place: an untyped schema with `properties` is not
+        // materialized — JSON Schema lets it hold any value — so no nested class and no dotted rule
+        // reaches the keys it describes, and its `required` and `properties` are the interpreter's.
+        $keysUnmaterialized = $property['type'] === 'mixed';
+        if (is_array($schema['required'] ?? null) && (!is_array($schema['properties'] ?? null) || $keysUnmaterialized)) {
             $consumed = array_values(array_filter(
                 array: $consumed,
                 callback: static fn(string $keyword): bool => $keyword !== 'required',
@@ -1492,7 +1523,8 @@ trait RendersLaravelValidation
         foreach (['items', 'additionalProperties'] as $containerKey) {
             // Depth 1: the ITEM is one container hop from the property, and coverage is judged by
             // distance from the PROPERTY — that is where the dotted path starts counting.
-            $containerCoveredByRules[$containerKey] = is_array($schema[$containerKey] ?? null)
+            $containerCoveredByRules[$containerKey] = !$keysUnmaterialized
+                && is_array($schema[$containerKey] ?? null)
                 && $this->laravelUnconsumedKeywords($schema[$containerKey], 1) === [];
         }
 
@@ -1503,11 +1535,13 @@ trait RendersLaravelValidation
         // (E2 in `.todo.codegeneration_symfony_vs_runtime`).
         $keptProperties = [];
         if (is_array($schema['properties'] ?? null)) {
-            $namesMatter = array_key_exists('unevaluatedProperties', $schema)
+            $namesMatter = $this->inPlaceTreeUses(schema: $schema, keyword: 'unevaluatedProperties')
                 || array_key_exists('additionalProperties', $schema);
 
             foreach ($schema['properties'] as $name => $nested) {
-                if (is_array($nested) && $this->laravelUnconsumedKeywords($nested) !== []) {
+                if ($keysUnmaterialized) {
+                    $keptProperties[$name] = $nested;
+                } elseif (is_array($nested) && $this->laravelUnconsumedKeywords($nested) !== []) {
                     $keptProperties[$name] = $this->laravelPruneNestedRuleCoveredKeywords($nested);
                 } elseif ($namesMatter) {
                     $keptProperties[$name] = [];
@@ -1528,10 +1562,15 @@ trait RendersLaravelValidation
 
             if (($keyword === 'items' || $keyword === 'additionalProperties') && is_array($value)) {
                 if ($containerCoveredByRules[$keyword]) {
+                    // The rules check every item, but `unevaluatedItems` beside them still has to know
+                    // that `items` EVALUATED them: the empty schema says so and checks nothing twice.
+                    if ($keyword === 'items' && $this->inPlaceTreeUses(schema: $schema, keyword: 'unevaluatedItems')) {
+                        $pruned[$keyword] = [];
+                    }
                     continue;
                 }
 
-                $pruned[$keyword] = $this->laravelPruneNestedRuleCoveredKeywords($value, 1);
+                $pruned[$keyword] = $keysUnmaterialized ? $value : $this->laravelPruneNestedRuleCoveredKeywords($value, 1);
                 continue;
             }
 
@@ -1550,11 +1589,22 @@ trait RendersLaravelValidation
 
                 $branches = [];
                 foreach ($value as $branch) {
+                    // `false` is the branch no rule covers: it refuses every value, so the whole `allOf`
+                    // is that one branch. Skipped with `true`, it left a schema that admits nothing
+                    // admitting everything.
+                    if ($branch === false) {
+                        $branches = [false];
+                        break;
+                    }
                     if (!is_array($branch)) {
                         continue;
                     }
 
-                    $prunedBranch = $this->laravelPruneNestedRuleCoveredKeywords($branch);
+                    $prunedBranch = $this->laravelPruneNestedRuleCoveredKeywords(
+                        schema: $branch,
+                        evaluationMatters: $this->inPlaceTreeUses(schema: $schema, keyword: 'unevaluatedProperties')
+                            || $this->inPlaceTreeUses(schema: $schema, keyword: 'unevaluatedItems'),
+                    );
                     if ($prunedBranch !== []) {
                         $branches[] = $prunedBranch;
                     }
@@ -1591,7 +1641,7 @@ trait RendersLaravelValidation
      * @param array<string, mixed> $schema
      * @return array<string, mixed>
      */
-    private function laravelPruneNestedRuleCoveredKeywords(array $schema, int $hop = 0): array
+    private function laravelPruneNestedRuleCoveredKeywords(array $schema, int $hop = 0, bool $evaluationMatters = false): array
     {
         // Same unit and same rule as the coverage test: past the last hop the dotted rules reach, a
         // rule covers nothing, so every assertion from here down has to survive into the interpreter.
@@ -1600,10 +1650,20 @@ trait RendersLaravelValidation
             $consumed = [...$consumed, ...$this->laravelSchemaRuleSpec($schema)['consumed']];
         }
 
+        // An `allOf` branch hands what it evaluates to the `unevaluated*` of the schema above it, so with
+        // one there its names and its `items` survive the pruning as empty schemas, as they do here.
+        $namesMatter = $evaluationMatters
+            || $this->inPlaceTreeUses(schema: $schema, keyword: 'unevaluatedProperties')
+            || array_key_exists('additionalProperties', $schema);
+        $itemsMatter = $evaluationMatters || $this->inPlaceTreeUses(schema: $schema, keyword: 'unevaluatedItems');
+
         $pruned = [];
         foreach ($schema as $keyword => $value) {
             if (($keyword === 'items' || $keyword === 'additionalProperties') && is_array($value)) {
                 if ($this->laravelUnconsumedKeywords($value, $hop + 1) === []) {
+                    if ($keyword === 'items' && $itemsMatter) {
+                        $pruned[$keyword] = [];
+                    }
                     continue;
                 }
 
@@ -1612,9 +1672,6 @@ trait RendersLaravelValidation
             }
 
             if ($keyword === 'properties' && is_array($value)) {
-                $namesMatter = array_key_exists('unevaluatedProperties', $schema)
-                    || array_key_exists('additionalProperties', $schema);
-
                 $kept = [];
                 foreach ($value as $name => $nested) {
                     if (is_array($nested) && $this->laravelUnconsumedKeywords($nested) !== []) {
@@ -2361,8 +2418,8 @@ trait RendersLaravelValidation
         $values = is_array($constraints['additionalProperties'] ?? null) ? $constraints['additionalProperties'] : null;
         if (
             $itemDtoClass !== null
-            || ($items !== null && $this->laravelSchemaIsObject($items))
-            || ($values !== null && $this->laravelSchemaIsObject($values))
+            || ($property['type'] !== 'mixed' && $items !== null && $this->laravelSchemaIsObject($items))
+            || ($property['type'] !== 'mixed' && $values !== null && $this->laravelSchemaIsObject($values))
         ) {
             $paths[] = $path . '.*';
         }
@@ -2421,7 +2478,10 @@ trait RendersLaravelValidation
     {
         $segment = $this->laravelPathSegment($property['openApiName']);
         $path = $prefix === '' ? $segment : $prefix . '.' . $segment;
-        $paths = $this->laravelScalarTypePathsIn($this->laravelConstraintsFor($property), $path, 1);
+        // No `field.*` below a `mixed` value — see `laravelItemRulesForProperty()`.
+        $paths = $property['type'] === 'mixed'
+            ? []
+            : $this->laravelScalarTypePathsIn($this->laravelConstraintsFor($property), $path, 1);
 
         $nestedClass = $this->laravelDtoClass($property);
         $itemClass = $this->laravelDtoItemClass($property);

@@ -53,14 +53,19 @@ final class Yii3Container implements ContainerInterface
     /** @var array<string, object> */
     private array $instances = [];
 
-    public function __construct(?ServerRequest $request = null)
+    /**
+     * `$validator` is for a test that pins the message formatter: the default one picks
+     * `IntlMessageFormatter` or `SimpleMessageFormatter` by whether ext-intl is loaded, and the two
+     * read a brace in a message differently.
+     */
+    public function __construct(?ServerRequest $request = null, ?ValidatorInterface $validator = null)
     {
         $this->requestProvider = new RequestProvider($request ?? new ServerRequest('POST', '/'));
         $this->instances[RequestProviderInterface::class] = $this->requestProvider;
         // The emitted `#[Validate]` resolves through `ValidateResolver`, which needs the validator; ONE
         // instance, because `ValidatingHydrator` hands it the result to fill and the attribute
         // resolution must find that same one.
-        $validator = new Validator();
+        $validator ??= new Validator();
         $this->instances[ValidatorInterface::class] = $validator;
         $this->instances[ValidateResolver::class] = new ValidateResolver($validator);
     }
@@ -173,7 +178,12 @@ final class Yii3Container implements ContainerInterface
      */
     public function validate(object $input): Result
     {
-        return (new Validator())->validate($input);
+        $validator = $this->instances[ValidatorInterface::class];
+        if (!$validator instanceof ValidatorInterface) {
+            throw new RuntimeException('The validator is wired in the constructor.');
+        }
+
+        return $validator->validate($input);
     }
 
     public function hydrator(): Hydrator

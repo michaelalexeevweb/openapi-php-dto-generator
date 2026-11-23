@@ -668,8 +668,10 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $accepted = (new DtoDeserializer())->deserialize($this->jsonPostRequest('{"id":1,"name":"a"}'), $fqcn);
         self::assertSame('a', $accepted->getName());
 
+        // `unevaluatedProperties` beside an `allOf` is decided from what the branches evaluated on THIS
+        // body, by the validator, so the refusal names the keyword the document wrote.
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('Unknown property "extra" is not allowed by the schema.');
+        $this->expectExceptionMessage('Body has unevaluated property "extra" which is not allowed.');
         (new DtoDeserializer())->deserialize($this->jsonPostRequest('{"id":1,"name":"a","extra":2}'), $fqcn);
     }
 

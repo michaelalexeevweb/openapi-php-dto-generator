@@ -165,6 +165,7 @@ trait RendersSymfonyDto
             ),
             allowScalarKeywords: false,
             forceScalarOnProperties: $forceRootCallbackBounds,
+            unmaterializedProperties: $this->mixedPropertyNames($properties),
         );
         $validationConstraints = $this->symfonyWithoutUncountableMinProperties($validationConstraints);
 
@@ -179,7 +180,10 @@ trait RendersSymfonyDto
             }
         }
 
-        $validationConstraints = $this->pruneConstraintsCoveredByPhpType($validationConstraints, $params);
+        $validationConstraints = $this->withUnevaluatedPropertiesEvaluated(
+            constraints: $this->pruneConstraintsCoveredByPhpType($validationConstraints, $params),
+            className: $className,
+        );
         if (self::constraintsAreInert($validationConstraints)) {
             $validationConstraints = [];
         }
@@ -343,6 +347,7 @@ trait RendersSymfonyDto
                 $forceRootCallbackBounds[$property['openApiName']] = true;
             }
         }
+        $mixedProperties = $this->mixedPropertyNames($this->getSchemaProperties($className));
 
         // `false` is the default, and it is spelled out on purpose: it is the contrasting half of
         // the argument below. Scalar keywords are OFF everywhere and ON for exactly these
@@ -354,6 +359,7 @@ trait RendersSymfonyDto
             ),
             allowScalarKeywords: false,
             forceScalarOnProperties: $forceRootCallbackBounds,
+            unmaterializedProperties: $mixedProperties,
         ));
     }
 
@@ -1093,8 +1099,13 @@ PHP;
      */
     private function resolveSymfonyAttributes(array $property): array
     {
-        $constraints = $this->foldScalarAllOfConstraints(
-            constraints: is_array($property['constraints'] ?? null) ? $property['constraints'] : [],
+        // A keyword the property's type does not pin is the callback's, which applies it to its own
+        // type only — see `shouldForceRootCallbackForProperty()`.
+        $constraints = $this->withoutKeywordsTheTypeDoesNotPin(
+            schema: $this->foldScalarAllOfConstraints(
+                constraints: is_array($property['constraints'] ?? null) ? $property['constraints'] : [],
+            ),
+            phpType: $property['type'],
         );
         $attributes = [];
 
@@ -1138,10 +1149,12 @@ PHP;
             $countMin ??= $constraints['minProperties'] ?? null;
             $countMax ??= $constraints['maxProperties'] ?? null;
         }
-        if (is_int($countMin)) {
+        $countMin = $this->symfonyIntegralCount($countMin);
+        $countMax = $this->symfonyIntegralCount($countMax);
+        if ($countMin !== null) {
             $count[] = 'min: ' . $countMin;
         }
-        if (is_int($countMax)) {
+        if ($countMax !== null) {
             $count[] = 'max: ' . $countMax;
         }
         if ($count !== []) {
@@ -1303,12 +1316,14 @@ PHP;
         $covered = [];
 
         $length = [];
-        if (is_int($constraints['minLength'] ?? null)) {
-            $length[] = 'min: ' . $constraints['minLength'];
+        $minLength = $this->symfonyIntegralCount($constraints['minLength'] ?? null);
+        if ($minLength !== null) {
+            $length[] = 'min: ' . $minLength;
             $covered[] = 'minLength';
         }
-        if (is_int($constraints['maxLength'] ?? null)) {
-            $length[] = 'max: ' . $constraints['maxLength'];
+        $maxLength = $this->symfonyIntegralCount($constraints['maxLength'] ?? null);
+        if ($maxLength !== null) {
+            $length[] = 'max: ' . $maxLength;
             $covered[] = 'maxLength';
         }
         if ($length !== []) {
@@ -1708,6 +1723,20 @@ PHP;
     }
 
     /**
+     * A count keyword's value as the integer it spells: JSON Schema calls `2.0` the integer 2, and a
+     * document writing it got no `Assert\Length`/`Assert\Count` at all — while the callback, which
+     * drops what an attribute covers, had already let the keyword go.
+     */
+    private function symfonyIntegralCount(mixed $value): ?int
+    {
+        return match (true) {
+            is_int($value) => $value,
+            is_float($value) && floor($value) === $value => (int)$value,
+            default => null,
+        };
+    }
+
+    /**
      * `minProperties`/`maxProperties` on a generated DTO-typed property cannot use Assert\Count:
      * Count expects array|\Countable, while nested DTOs are objects. These bounds are handled by
      * the callback path instead.
@@ -1717,7 +1746,10 @@ PHP;
     private function shouldCallbackValidateObjectPropertyBounds(array $property): bool
     {
         $constraints = is_array($property['constraints'] ?? null) ? $property['constraints'] : [];
-        if (!is_int($constraints['minProperties'] ?? null) && !is_int($constraints['maxProperties'] ?? null)) {
+        if (
+            $this->symfonyIntegralCount($constraints['minProperties'] ?? null) === null
+            && $this->symfonyIntegralCount($constraints['maxProperties'] ?? null) === null
+        ) {
             return false;
         }
         if (!$this->symfonyPropertyCascades($property)) {
@@ -1737,13 +1769,33 @@ PHP;
         }
 
         $constraints = is_array($property['constraints'] ?? null) ? $property['constraints'] : [];
+        // `pattern` beside no `type`, `minimum` beside `type: [string, integer]`: no attribute says
+        // "only if the value is a string", so `resolveSymfonyAttributes()` emits none and the callback,
+        // which applies each keyword to its own type, takes them — `Assert\Regex` refused `true`.
+        $folded = $this->foldScalarAllOfConstraints($constraints);
+        if (count($this->withoutKeywordsTheTypeDoesNotPin(schema: $folded, phpType: $property['type'])) !== count($folded)) {
+            return true;
+        }
         if (($constraints['type'] ?? null) === 'null') {
+            return true;
+        }
+        // An untyped schema with `properties` is not materialized — JSON Schema lets it hold any value,
+        // so the property stays `mixed` — and no class carries attributes for the keys it describes.
+        // Filtered with the class-level rule, `properties: {foo: {type: integer}}` lost its `type` as
+        // "an attribute's job" and the whole keyword went with it: `{"foo": []}` was accepted.
+        if ($property['type'] === 'mixed' && $this->schemaDescribesUnmaterializedKeys($constraints)) {
             return true;
         }
         if (is_array($constraints['oneOf'] ?? null)) {
             return true;
         }
         if (is_array($constraints['anyOf'] ?? null) && $this->anyOfBranchCarriesPattern($constraints['anyOf'])) {
+            return true;
+        }
+        // A BOOLEAN branch has no `Assert\*` spelling, so `Assert\AtLeastOneOf` is not emitted for such an
+        // `anyOf` at all — and the callback skipped it too, expecting the attribute. `anyOf: [false,
+        // false]` was then checked by nothing and accepted every value the document refuses.
+        if (is_array($constraints['anyOf'] ?? null) && array_filter($constraints['anyOf'], is_bool(...)) !== []) {
             return true;
         }
 
