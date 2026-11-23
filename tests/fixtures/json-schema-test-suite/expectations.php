@@ -367,24 +367,6 @@ return [
                 'yii3' => ['diverges', 'generator: a $ref below an untyped schema, an escaped/encoded pointer or a root pointer is ignored or mis-resolved'],
             ],
         ],
-        'refs with relative uris and defs' => [
-            'invalid on inner field' => [
-                'runtime' => ['diverges', 'generator: a $ref below an untyped schema, an escaped/encoded pointer or a root pointer is ignored or mis-resolved'],
-                'symfony' => ['diverges', 'generator: a $ref below an untyped schema, an escaped/encoded pointer or a root pointer is ignored or mis-resolved'],
-                'laravel' => ['diverges', 'generator: a $ref below an untyped schema, an escaped/encoded pointer or a root pointer is ignored or mis-resolved'],
-                'laravel-data' => ['diverges', 'generator: a $ref below an untyped schema, an escaped/encoded pointer or a root pointer is ignored or mis-resolved'],
-                'yii3' => ['diverges', 'generator: a $ref below an untyped schema, an escaped/encoded pointer or a root pointer is ignored or mis-resolved'],
-            ],
-        ],
-        'relative refs with absolute uris and defs' => [
-            'invalid on inner field' => [
-                'runtime' => ['diverges', 'generator: a $ref below an untyped schema, an escaped/encoded pointer or a root pointer is ignored or mis-resolved'],
-                'symfony' => ['diverges', 'generator: a $ref below an untyped schema, an escaped/encoded pointer or a root pointer is ignored or mis-resolved'],
-                'laravel' => ['diverges', 'generator: a $ref below an untyped schema, an escaped/encoded pointer or a root pointer is ignored or mis-resolved'],
-                'laravel-data' => ['diverges', 'generator: a $ref below an untyped schema, an escaped/encoded pointer or a root pointer is ignored or mis-resolved'],
-                'yii3' => ['diverges', 'generator: a $ref below an untyped schema, an escaped/encoded pointer or a root pointer is ignored or mis-resolved'],
-            ],
-        ],
     ],
     'required.json' => [
         'required validation' => [

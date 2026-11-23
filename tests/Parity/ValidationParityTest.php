@@ -1867,6 +1867,36 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * A `$ref` to an object class with keys described beside it is both (JSON Schema 2020-12, OpenAPI
+     * 3.1): the property was typed by the named class alone, and `properties` / `required` beside the
+     * `$ref` were dropped — `{"foo": "x"}` passed a `foo: {type: integer}`, and a missing required
+     * `foo` was not noticed. The keys of the named class still apply.
+     */
+    #[DataProvider('everyMode')]
+    public function testKeysBesideAnObjectReferenceApply(GenerationMode $mode): void
+    {
+        $spec = self::probeSpec([
+            '$ref' => '#/components/schemas/Inner',
+            'properties' => ['foo' => ['type' => 'integer']],
+            'required' => ['foo'],
+        ]);
+        $spec['components']['schemas']['Inner'] = ['type' => 'object', 'properties' => ['bar' => ['type' => 'string']]];
+
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => false],
+            actual: $this->verdict($mode, $spec, 'ref-siblings-own-key', '{"f":{"bar":"a","foo":1}}', '{"f":{"bar":"a","foo":"x"}}'),
+        );
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => false],
+            actual: $this->verdict($mode, $spec, 'ref-siblings-required', '{"f":{"foo":1}}', '{"f":{"bar":"a"}}'),
+        );
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => false],
+            actual: $this->verdict($mode, $spec, 'ref-siblings-target-key', '{"f":{"bar":"a","foo":2}}', '{"f":{"bar":1,"foo":2}}'),
+        );
+    }
+
+    /**
      * A `$ref` that points INSIDE a component — at one of its properties, into its `$defs` — names that
      * schema. It read as a class called `Pet/properties/code` and stopped generation as unresolvable. A
      * boolean component is the schema it spells: `true` admits every value, `false` none — so for those
@@ -6677,6 +6707,16 @@ final class ValidationParityTest extends TestCase
         }
 
         (new GenerateDtoCommand())->generateFromArray($spec, $target, $namespace, $mode);
+        // An autoloader, as an application has: a class that extends another (`allOf` with one `$ref`)
+        // must find its parent whatever order the files are listed in.
+        spl_autoload_register(static function (string $class) use ($namespace, $target): void {
+            if (str_starts_with($class, $namespace . '\\')) {
+                $file = $target . '/' . str_replace('\\', '/', substr($class, strlen($namespace) + 1)) . '.php';
+                if (is_file($file)) {
+                    require_once $file;
+                }
+            }
+        });
         foreach (glob($target . '/*.php') ?: [] as $file) {
             require_once $file;
         }

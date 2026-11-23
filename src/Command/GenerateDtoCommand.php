@@ -2020,6 +2020,7 @@ final class GenerateDtoCommand extends Command
             }
             $propertySchema = $this->canonicalNullableRefContainers($propertySchema);
             $propertySchema = $this->nullableScalarAliasUnion(schema: $propertySchema, sourceFile: $sourceFile);
+            $propertySchema = $this->objectReferenceWithItsSiblings($propertySchema);
             $ref = $propertySchema['$ref'] ?? null;
             // A `$ref` to a component that is itself `nullable: true` (3.0) admits null like the
             // component does; the flag lived on the target, where the property never looked.
@@ -2110,6 +2111,81 @@ final class GenerateDtoCommand extends Command
         }
 
         return $schema;
+    }
+
+    /**
+     * `objectReferenceWithItsSiblings()` over every component's properties, BEFORE the inline objects
+     * are expanded into classes of their own: the `allOf` it writes is one of them.
+     */
+    private function mergeObjectReferenceSiblings(): void
+    {
+        foreach ($this->dtoSchemas as $className => $schema) {
+            if (!is_array($schema['properties'] ?? null)) {
+                continue;
+            }
+            $properties = [];
+            foreach ($schema['properties'] as $name => $propertySchema) {
+                $properties[$name] = is_array($propertySchema)
+                    ? $this->objectReferenceWithItsSiblings($propertySchema)
+                    : $propertySchema;
+            }
+            $schema['properties'] = $properties;
+            $this->dtoSchemas[$className] = $schema;
+        }
+    }
+
+    /**
+     * A `$ref` to an object class with keywords beside it that describe more keys — `{$ref: Inner,
+     * properties: {foo: …}}` — is both (JSON Schema 2020-12, OpenAPI 3.1): the class it names, and the
+     * keys beside it. The property was typed by the named class alone and the keys beside it were
+     * dropped, unchecked and unread. Written as `allOf: [{$ref}, {the keys}]`, it becomes the class
+     * an `allOf` makes. An `unevaluated*` beside a `$ref` is handled where it is checked, and the
+     * annotations stay where they are.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<string, mixed>
+     */
+    private function objectReferenceWithItsSiblings(array $schema): array
+    {
+        $ref = $schema['$ref'] ?? null;
+        $prefix = '#/components/schemas/';
+        if (!is_string($ref) || !str_starts_with($ref, $prefix)) {
+            return $schema;
+        }
+        $keys = ['properties', 'patternProperties', 'additionalProperties', 'propertyNames', 'required', 'dependentRequired', 'minProperties', 'maxProperties'];
+        if (array_intersect_key($schema, array_flip($keys)) === []) {
+            return $schema;
+        }
+        $targetClass = $this->schemaClassName(substr($ref, strlen($prefix)));
+        if (!$this->isObjectDtoComponent($targetClass)) {
+            return $schema;
+        }
+        // A target with an `unevaluated*` of its own judges its own keys only — the `$ref` is a new
+        // scope — and a class extending it would widen that scope to the keys beside: left as it was.
+        $target = $this->dtoSchemas[$targetClass] ?? [];
+        if (array_key_exists('unevaluatedProperties', $target) || array_key_exists('unevaluatedItems', $target)) {
+            return $schema;
+        }
+
+        $kept = [];
+        $beside = [];
+        foreach ($schema as $keyword => $value) {
+            if ($keyword === '$ref' || $keyword === '$defs') {
+                continue;
+            }
+            // On top, where an `unevaluated*` sees what BOTH branches evaluate.
+            if (
+                in_array($keyword, self::ALIAS_ANNOTATION_KEYWORDS, true)
+                || in_array($keyword, self::NON_ASSERTING_KEYWORDS, true)
+                || in_array($keyword, ['unevaluatedProperties', 'unevaluatedItems'], true)
+            ) {
+                $kept[$keyword] = $value;
+                continue;
+            }
+            $beside[$keyword] = $value;
+        }
+
+        return $kept + ['allOf' => [['$ref' => $ref], ['type' => 'object'] + $beside]];
     }
 
     /**
@@ -2349,6 +2425,7 @@ final class GenerateDtoCommand extends Command
     {
         $this->redirectPureAliasReferences();
         $this->attributeReferencedRequestBodies();
+        $this->mergeObjectReferenceSiblings();
         $this->expandNestedSchemas();
         $this->inlineNullSchemaReferences();
         $this->resolvePendingAllOfDiscriminators();

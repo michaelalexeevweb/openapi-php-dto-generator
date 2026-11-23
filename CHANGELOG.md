@@ -3,6 +3,22 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.141 — 2026-11-23
+
+- keys beside an object $ref apply
+
+JSON-Schema-Test-Suite burn-down: ten entries fewer (272 → 262).
+
+**Regenerate after upgrading.**
+
+- a `$ref` to an object class with keys described beside it — `{$ref: Inner, properties: {foo: …},
+  required: [foo]}` — is both, as JSON Schema 2020-12 and OpenAPI 3.1 read it. The property was typed by the
+  named class alone, and the `properties`, `required`, `additionalProperties`, … beside the `$ref` were
+  dropped: `{"foo": "x"}` passed a `foo: {type: integer}`, a missing required `foo` went unnoticed, and the
+  key was not even read into the DTO. The two become an `allOf`, a class of its own, in every mode. An
+  `unevaluated*` beside the `$ref` stays on top, where it sees the keys of both; a target that carries an
+  `unevaluated*` of its own is left as it was, since the `$ref` is a scope of its own there.
+
 ## 2.15.140 — 2026-11-23
 
 - refs into a component resolved
