@@ -1,3 +1,25 @@
+{% if selfReachable %}
+    /**
+     * Rule sets joined path by path: two sets that name one path both apply. A plain merge kept the
+     * later one only — the rule that checks a self-referring level (`openApiRecursiveRule()`) replaced
+     * the `array` and presence rules written for the same path.
+     *
+     * @param array<string, array<int, mixed>> ...$sets
+     * @return array<string, array<int, mixed>>
+     */
+    private static function openApiMergedRules(array ...$sets): array
+    {
+        $merged = [];
+        foreach ($sets as $set) {
+            foreach ($set as $path => $rules) {
+                $merged[$path] = [...($merged[$path] ?? []), ...$rules];
+            }
+        }
+
+        return $merged;
+    }
+
+{% endif %}
 {% if nestedChildren is not empty %}
     /**
      * What the nested DTOs below this class's properties add to its validation — their dotted rules and
@@ -14,12 +36,62 @@
         ];
 
         return [
+{% if selfReachable %}
+            'rules' => self::openApiMergedRules(...array_column($parts, 'rules')),
+{% else %}
             'rules' => array_merge(...array_column($parts, 'rules')),
+{% endif %}
             'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
             'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
         ];
     }
 
+{% if selfReachable %}
+    /**
+     * The rule that checks a value holding this class where the schema refers back to itself — see
+     * `openApiNestedValidation()`: this class's rules, run on the value, every problem reported at its
+     * path. A value that is no array is left to the `array` rule beside it.
+     *
+     * @internal
+     */
+    private static function openApiRecursiveRule(): \Illuminate\Contracts\Validation\ValidationRule
+    {
+        return new class implements \Illuminate\Contracts\Validation\ValidationRule, \Illuminate\Contracts\Validation\ValidatorAwareRule {
+            private ?\Illuminate\Validation\Validator $validator = null;
+
+            public function setValidator(\Illuminate\Validation\Validator $validator): static
+            {
+                $this->validator = $validator;
+
+                return $this;
+            }
+
+            public function validate(string $attribute, mixed $value, \Closure $fail): void
+            {
+                if (!is_array($value) || $this->validator === null) {
+                    return;
+                }
+                $nested = new \Illuminate\Validation\Validator(
+                    translator: $this->validator->getTranslator(),
+                    data: $value,
+                    rules: self::ownRules(),
+                );
+                foreach ($nested->errors()->messages() as $key => $messages) {
+                    foreach ($messages as $message) {
+                        $fail($attribute . '.' . $key . ': ' . $message);
+                    }
+                }
+            }
+
+            /** @return array<string, mixed> */
+            private static function ownRules(): array
+            {
+                return {{ className }}::rules();
+            }
+        };
+    }
+
+{% endif %}
 {% endif %}
 {% if nestedValidation is not null %}
     /**
@@ -34,8 +106,18 @@
      */
     public static function openApiNestedValidation(string $prefix, array $visited): array
     {
+{% if selfReachable %}
+        // The schema holds itself below this point. The rules cannot be written out to every depth, so
+        // the level here is checked as the data reaches it: with this class's own rules, which do the
+        // same one level further down. Stopping here, as this did, left everything below unchecked,
+        // and a wrong value there reached hydration and failed with a 500 instead of a 422.
+{% endif %}
         if (in_array(self::class, $visited, true)) {
+{% if selfReachable %}
+            return ['rules' => [$prefix => [self::openApiRecursiveRule()]], 'objectPaths' => [], 'scalarPaths' => []];
+{% else %}
             return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
+{% endif %}
         }
         $visited[] = self::class;
 
@@ -63,7 +145,11 @@
         ];
 
         return [
+{% if selfReachable %}
+            'rules' => self::openApiMergedRules(...array_column($parts, 'rules')),
+{% else %}
             'rules' => array_merge(...array_column($parts, 'rules')),
+{% endif %}
             'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
             'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
         ];

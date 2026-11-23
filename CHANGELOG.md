@@ -3,6 +3,20 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.142 — 2026-11-23
+
+- laravel validates trees at every depth
+
+**Laravel, laravel-data: regenerate after upgrading.** A schema that holds itself — a tree, a reply to a reply —
+answered a wrong value deep enough down with a 500.
+
+- the rules are written out ahead of the data, and the guard against the cycle stopped them one level down:
+  everything deeper went unchecked, and `fromValidated()` (laravel-data: `from()`) then died on it —
+  `Argument #1 ($data) must be of type array, false given`, a 500 where a 422 was due. The level where a class
+  meets itself again now carries a rule that runs that class's own rules on the value, so every depth the
+  payload reaches is checked. Only a class that holds itself gets the rule; every other class is generated as
+  before.
+
 ## 2.15.141 — 2026-11-23
 
 - keys beside an object $ref apply

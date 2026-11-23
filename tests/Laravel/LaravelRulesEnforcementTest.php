@@ -663,6 +663,33 @@ final class LaravelRulesEnforcementTest extends TestCase
     }
 
     /**
+     * A schema that holds itself is validated at every depth the payload reaches. The rules are written
+     * out ahead of the data, and the cycle guard stopped them one level down: a wrong value deeper than
+     * that passed validation, and `fromValidated()` then died on it — `Argument #1 ($data) must be of
+     * type array, false given`, a 500 where a 422 was due.
+     */
+    public function testASelfReferringSchemaIsValidatedAtEveryDepth(): void
+    {
+        $fqcn = $this->generateProbe(
+            key: 'self-referring-tree',
+            propertySchema: ['$ref' => '#/components/schemas/Node'],
+            extraSchemas: ['Node' => [
+                'type' => 'object',
+                'properties' => ['name' => ['type' => 'string'], 'child' => ['$ref' => '#/components/schemas/Node']],
+            ]],
+        );
+        /** @var array<string, mixed> $rules */
+        $rules = call_user_func([$fqcn, 'rules']);
+        $factory = $this->validatorFactory();
+        $deep = static fn(mixed $leaf): array => ['f' => ['name' => 'a', 'child' => ['name' => 'b', 'child' => ['name' => 'c', 'child' => $leaf]]]];
+
+        $this->assertFalse($factory->make($deep(['name' => 'd']), $rules)->fails());
+        $this->assertTrue($factory->make($deep(false), $rules)->fails());
+        $this->assertTrue($factory->make($deep(['name' => 4]), $rules)->fails());
+        $this->assertTrue($factory->make($deep(['name' => 'd', 'child' => ['child' => 5]]), $rules)->fails());
+    }
+
+    /**
      * An optional property must accept an absent key and a value, and still reject a value that breaks
      * its own rules. That is `sometimes`, and it is what makes PATCH work.
      *

@@ -1867,6 +1867,37 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * A schema that holds itself — a tree — is checked at every depth the data reaches. Laravel's rules
+     * are written out ahead of the data, so the cycle guard stopped them one level down: a wrong value
+     * deeper than that passed validation and failed in hydration — a 500 (`fromValidated(): Argument #1
+     * must be of type array`) where a 422 was due. The deeper levels are checked as they are reached.
+     */
+    #[DataProvider('everyMode')]
+    public function testASelfReferringSchemaIsCheckedAtEveryDepth(GenerationMode $mode): void
+    {
+        $spec = self::probeSpec(['$ref' => '#/components/schemas/Node']);
+        $spec['components']['schemas']['Node'] = [
+            'type' => 'object',
+            'properties' => ['name' => ['type' => 'string'], 'child' => ['$ref' => '#/components/schemas/Node']],
+        ];
+        $deep = static fn(string $leaf): string => '{"f":{"name":"a","child":{"name":"b","child":{"name":"c","child":' . $leaf . '}}}}';
+
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => false],
+            actual: $this->verdict($mode, $spec, 'tree-leaf-type', $deep('{"name":"d"}'), $deep('{"name":4}')),
+        );
+        // A scalar where a class is due is the serializer's to refuse in symfony mode, and whether it does
+        // depends on its release — README.support-matrix, "a scalar for a property typed as a generated
+        // class": 7.4.10 built an empty object, 7.4.23 and 8.1 refuse it. Only the valid tree is asserted
+        // there; every other mode must refuse.
+        $verdict = $this->verdict($mode, $spec, 'tree-leaf-shape', $deep('{"name":"d"}'), $deep('false'));
+        $this->assertTrue($verdict['valid']);
+        if ($mode !== GenerationMode::Symfony) {
+            $this->assertFalse($verdict['invalid']);
+        }
+    }
+
+    /**
      * A `$ref` to an object class with keys described beside it is both (JSON Schema 2020-12, OpenAPI
      * 3.1): the property was typed by the named class alone, and `properties` / `required` beside the
      * `$ref` were dropped — `{"foo": "x"}` passed a `foo: {type: integer}`, and a missing required

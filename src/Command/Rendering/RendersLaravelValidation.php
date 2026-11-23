@@ -2753,6 +2753,7 @@ trait RendersLaravelValidation
      *   objectPathsExpression: string,
      *   scalarPathsExpression: string,
      *   nestedPathsEscapeDots: bool,
+     *   selfReachable: bool,
      * }
      */
     private function laravelNestedTemplateVars(
@@ -2802,7 +2803,39 @@ trait RendersLaravelValidation
             'objectPathsExpression' => $paths('self::OPENAPI_OBJECT_PATHS', $objectPaths !== [], $childObjectPaths, 'objectPaths'),
             'scalarPathsExpression' => $paths('self::OPENAPI_SCALAR_PATHS', $scalarPaths !== [], $childScalarPaths, 'scalarPaths'),
             'nestedPathsEscapeDots' => $childEscapedDots,
+            'selfReachable' => $this->laravelReachesItself(
+                className: $className,
+                children: array_column($nestedChildren, 'class'),
+            ),
         ];
+    }
+
+    /**
+     * Whether a class holds itself somewhere below — a tree. Only such a class meets its own cycle guard
+     * in `openApiNestedValidation()`, so only it needs the rule that checks the levels below as the data
+     * reaches them, and the rule sets joined by path that carry it.
+     *
+     * @param list<string> $children the classes directly below
+     */
+    private function laravelReachesItself(string $className, array $children): bool
+    {
+        $pending = $children;
+        $seen = [];
+        while ($pending !== []) {
+            $next = array_shift($pending);
+            if ($next === $className) {
+                return true;
+            }
+            if (array_key_exists($next, $seen) || !array_key_exists($next, $this->laravelComposedTargets())) {
+                continue;
+            }
+            $seen[$next] = true;
+            foreach ($this->laravelNestedValidationPlan($next)['children'] as $child) {
+                $pending[] = $child['class'];
+            }
+        }
+
+        return false;
     }
 
     /**

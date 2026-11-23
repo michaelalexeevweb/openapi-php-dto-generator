@@ -334,22 +334,22 @@ return [
     'ref.json' => [
         'root pointer ref' => [
             'match' => [
-                'runtime' => ['diverges', 'generator: a $ref below an untyped schema, an escaped/encoded pointer or a root pointer is ignored or mis-resolved'],
-                'symfony' => ['diverges', 'generator: a $ref below an untyped schema, an escaped/encoded pointer or a root pointer is ignored or mis-resolved'],
-                'laravel' => ['diverges', 'generator: a $ref below an untyped schema, an escaped/encoded pointer or a root pointer is ignored or mis-resolved'],
-                'laravel-data' => ['diverges', 'generator: a $ref below an untyped schema, an escaped/encoded pointer or a root pointer is ignored or mis-resolved'],
-                'yii3' => ['diverges', 'generator: a $ref below an untyped schema, an escaped/encoded pointer or a root pointer is ignored or mis-resolved'],
+                'runtime' => ['diverges', 'documented: a schema with properties and no type is an object here, so false is no value for it (README.support-matrix, declared divergence)'],
+                'symfony' => ['diverges', 'documented: a schema with properties and no type is an object here, so false is no value for it (README.support-matrix, declared divergence)'],
+                'laravel' => ['diverges', 'documented: a schema with properties and no type is an object here, so false is no value for it (README.support-matrix, declared divergence)'],
+                'laravel-data' => ['diverges', 'documented: a schema with properties and no type is an object here, so false is no value for it (README.support-matrix, declared divergence)'],
+                'yii3' => ['diverges', 'documented: a schema with properties and no type is an object here, so false is no value for it (README.support-matrix, declared divergence)'],
             ],
             'recursive match' => [
-                'runtime' => ['diverges', 'generator: a $ref below an untyped schema, an escaped/encoded pointer or a root pointer is ignored or mis-resolved'],
-                'symfony' => ['diverges', 'generator: a $ref below an untyped schema, an escaped/encoded pointer or a root pointer is ignored or mis-resolved'],
-                'laravel' => ['crashes', 'TypeError: ProbeF::fromValidated(): Argument #1 ($data) must be of type array, false given, called in ProbeF.php on line 398'],
-                'laravel-data' => ['crashes', 'CannotCreateData: Could not create a `ProbeF` object from value with type `boolean`, no normalizer was found'],
-                'yii3' => ['diverges', 'generator: a $ref below an untyped schema, an escaped/encoded pointer or a root pointer is ignored or mis-resolved'],
+                'runtime' => ['diverges', 'documented: a schema with properties and no type is an object here, so false is no value for it (README.support-matrix, declared divergence)'],
+                'symfony' => ['diverges', 'documented: a schema with properties and no type is an object here, so false is no value for it (README.support-matrix, declared divergence)'],
+                'laravel' => ['diverges', 'documented: a schema with properties and no type is an object here, so false is no value for it (README.support-matrix, declared divergence)'],
+                'laravel-data' => ['diverges', 'documented: a schema with properties and no type is an object here, so false is no value for it (README.support-matrix, declared divergence)'],
+                'yii3' => ['diverges', 'documented: a schema with properties and no type is an object here, so false is no value for it (README.support-matrix, declared divergence)'],
             ],
             'mismatch' => [
-                'symfony' => ['diverges', 'generator: a $ref below an untyped schema, an escaped/encoded pointer or a root pointer is ignored or mis-resolved'],
-                'yii3' => ['diverges', 'generator: a $ref below an untyped schema, an escaped/encoded pointer or a root pointer is ignored or mis-resolved'],
+                'symfony' => ['diverges', 'documented: a schema with properties and no type is an object here, so false is no value for it (README.support-matrix, declared divergence)'],
+                'yii3' => ['diverges', 'documented: a schema with properties and no type is an object here, so false is no value for it (README.support-matrix, declared divergence)'],
             ],
         ],
         'remote ref, containing refs itself' => [

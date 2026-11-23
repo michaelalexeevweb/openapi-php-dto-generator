@@ -405,6 +405,16 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
      */
     public static function rules(): array
     {
+{% if nestedChildren is not empty and selfReachable %}
+        return self::openApiMergedRules(
+            [
+{% for rule in rules %}
+                '{{ rule.path|php_string }}' => {{ rule.rules|raw }},
+{% endfor %}
+            ],
+            self::openApiNestedParts()['rules'],
+        );
+{% else %}
         return [
 {% for rule in rules %}
             '{{ rule.path|php_string }}' => {{ rule.rules|raw }},
@@ -413,6 +423,7 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
             ...self::openApiNestedParts()['rules'],
 {% endif %}
         ];
+{% endif %}
     }
 {% if rules is not empty %}
 

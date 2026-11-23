@@ -354,6 +354,7 @@ trait RendersLaravelDto
             'scalarTypePaths' => [],
             'nestedChildren' => [],
             'nestedValidation' => null,
+            'selfReachable' => false,
             'checksObjectPaths' => false,
             'checksScalarPaths' => false,
             'laravelFormRequest' => $this->laravelFormRequest,
