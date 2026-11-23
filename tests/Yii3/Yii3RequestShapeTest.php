@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Tests\Yii3;
 
+use BackedEnum;
 use Nyholm\Psr7\ServerRequest;
 use PHPUnit\Framework\TestCase;
 use ReflectionAttribute;
@@ -899,6 +900,68 @@ final class Yii3RequestShapeTest extends TestCase
         self::assertArrayHasKey('ids.1', $refused);
         self::assertArrayHasKey('weights.0', $refused);
         self::assertArrayHasKey('flags.0', $refused);
+    }
+
+    public function testAQueryListOfAnIntegerEnumIsReadAsItsBackingType(): void
+    {
+        // `?levels[]=2` holds `"2"`. A list of `type: integer` was read as integers, a list of an
+        // int-backed enum was not: once the interpreter checked the items' `enum`, the string `"2"`
+        // was no member of `[1, 2, 3]` and a valid query was refused. A string enum stays as sent.
+        $namespace = $this->generateSpec([
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => [
+                '/widgets' => [
+                    'get' => [
+                        'parameters' => [
+                            ['name' => 'levels', 'in' => 'query', 'schema' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Level']]],
+                            ['name' => 'grades', 'in' => 'query', 'schema' => ['type' => 'array', 'items' => ['type' => 'integer', 'enum' => [10, 20]]]],
+                            ['name' => 'shades', 'in' => 'query', 'schema' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Shade']]],
+                        ],
+                        'responses' => ['204' => ['description' => 'none']],
+                    ],
+                ],
+            ],
+            'components' => [
+                'schemas' => [
+                    'Level' => ['type' => 'integer', 'enum' => [1, 2, 3]],
+                    'Shade' => ['type' => 'string', 'enum' => ['crimson', 'azure']],
+                ],
+            ],
+        ]);
+        $class = null;
+        foreach ((array)glob($this->outputDirectory . '/' . $namespace . '/*QueryParams.php') as $file) {
+            if (is_string($file)) {
+                $class = $namespace . '\\' . basename($file, '.php');
+            }
+        }
+        self::assertNotNull($class, 'the operation must produce a parameters class');
+
+        $input = (new Yii3Container())->hydrateValidatedInput(
+            class: $class,
+            payload: [],
+            method: 'GET',
+            query: ['levels' => ['1', '3'], 'grades' => ['20'], 'shades' => ['azure']],
+        );
+        $result = $input->getValidationResult();
+        self::assertNotNull($result);
+        self::assertSame([], $this->messages($result));
+        self::assertSame([1, 3], array_map(static fn(BackedEnum $level): int|string => $level->value, $input->getLevels() ?? []));
+        self::assertSame([20], array_map(static fn(BackedEnum $grade): int|string => $grade->value, $input->getGrades() ?? []));
+        self::assertSame(['azure'], array_map(static fn(BackedEnum $shade): int|string => $shade->value, $input->getShades() ?? []));
+
+        $refused = $this->messages(
+            result: (new Yii3Container())->hydrateValidated(
+                class: $class,
+                payload: [],
+                method: 'GET',
+                query: ['levels' => ['1', '7'], 'grades' => ['abc'], 'shades' => ['1']],
+            ),
+        );
+        self::assertArrayNotHasKey('levels.0', $refused);
+        self::assertArrayHasKey('levels.1', $refused);
+        self::assertArrayHasKey('grades.0', $refused);
+        self::assertArrayHasKey('shades.0', $refused);
     }
 
     public function testAContainerDefaultIsWhatAnAbsentKeyReadsAs(): void

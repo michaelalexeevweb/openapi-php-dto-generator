@@ -3,6 +3,15 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.133 — 2026-11-23
+
+- yii3 query int-enum lists read
+
+yii3: a list of an int-backed enum in a query string, a path, a header or a cookie (`?levels[]=2`) reads its
+items as integers, as a list of `type: integer` already did. Since 2.15.132 the interpreter checks the items'
+`enum`, and the string `"2"` was no member of `[1, 2, 3]`: a valid request was refused. A string-backed enum
+is read as sent. The other modes already read these items by the enum's backing type.
+
 ## 2.15.132 — 2026-11-23
 
 - JSON-Schema-Test-Suite in every mode

@@ -2682,7 +2682,14 @@ PHP;
         }
 
         $nullableItem = str_starts_with($item, '?');
-        $cast = match (ltrim($item, '?')) {
+        // A list of an enum holds its backing values: `?levels[]=2` is `"2"`, and the interpreter, which
+        // checks the items' `enum`, found no `"2"` among `[1, 2, 3]`. The items read as the backing type;
+        // a string-backed enum needs nothing.
+        $readAs = ltrim($item, '?');
+        if (array_key_exists($readAs, $this->enumSchemas)) {
+            $readAs = $this->enumSchemas[$readAs]['type'];
+        }
+        $cast = match ($readAs) {
             'int' => "is_string(\$item) && preg_match('/^-?\\d+$/D', \$item) === 1 ? (int)\$item : \$item",
             'float' => 'is_string($item) && is_numeric($item) ? (float)$item : $item',
             'bool' => "match (\$item) { 'true', '1' => true, 'false', '0' => false, default => \$item }",
@@ -2694,7 +2701,7 @@ PHP;
 
         return [
             'cast' => 'static fn(mixed $item): mixed => ' . $cast,
-            'held' => ltrim($item, '?') . '|string' . ($nullableItem ? '|null' : ''),
+            'held' => $readAs . '|string' . ($nullableItem ? '|null' : ''),
         ];
     }
 
