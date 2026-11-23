@@ -1093,7 +1093,11 @@ PHP;
         if ($hasNot) {
             $sections[] = <<<'PHP'
         if (is_array($schema['not'] ?? null) && $this->matchesOpenApiNode($value, $schema['not'], $path, $depth + 1)) {
-            $errors[] = sprintf('%s must not match the \'not\' schema', $path);
+            // `not: {}` is how the generator spells the schema `false`, and a document that wrote `false`
+            // never mentioned `not` — the same sentence the runtime validator writes for it.
+            $errors[] = $schema['not'] === []
+                ? sprintf('%s is not allowed by the schema', $path)
+                : sprintf('%s must not match the \'not\' schema', $path);
         }
 PHP;
         }
@@ -1162,7 +1166,7 @@ PHP;
             $sections[] = <<<PHP
         if (\$listValue && (\$schema['items'] ?? null) === false) {
             foreach (array_keys(\$value) as \$index) {
-{$skipPrefixItems}                \$errors[] = sprintf('%s has an item at index %s which the schema does not allow', \$path, \$index);
+{$skipPrefixItems}                \$errors[] = sprintf('%s[%s] is not allowed by the schema', \$path, \$index);
             }
         }
 PHP;

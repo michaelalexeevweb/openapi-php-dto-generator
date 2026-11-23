@@ -210,6 +210,63 @@ final class InterpreterMessageParityTest extends TestCase
     }
 
     /**
+     * The schema `false` refuses with "is not allowed by the schema" in every mode.
+     *
+     * The generator spells `false` as `not: {}`, and the emitted interpreter used to say so: laravel,
+     * laravel-data and yii3 answered `must not match the 'not' schema` for a document that never wrote
+     * `not`, and `items: false` read `has an item at index 0 which the schema does not allow`, while
+     * runtime said "is not allowed by the schema" for all three. The subject is named per mode — an item
+     * is `"f".0` in runtime and `f[0]` in the interpreter — so only the sentence after it is compared.
+     *
+     * @param array<string, mixed>|false $propertySchema
+     */
+    #[DataProvider('falseSchemaProvider')]
+    public function testAFalseSchemaReadsAsNotAllowedInEveryMode(array|false $propertySchema, string $invalidJson): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Nothing' => false,
+                    'Probe' => [
+                        'type' => 'object',
+                        'properties' => ['f' => $propertySchema],
+                    ],
+                ],
+            ],
+        ];
+
+        foreach (GenerationMode::cases() as $mode) {
+            $reported = $this->messages($mode, $spec, 'false schema', $invalidJson);
+            $joined = implode(' | ', $reported);
+
+            $this->assertNotSame([], $reported, sprintf('%s mode accepted %s', $mode->value, $invalidJson));
+            $this->assertStringContainsString(
+                needle: 'is not allowed by the schema',
+                haystack: $joined,
+                message: sprintf('%s mode words a false schema differently', $mode->value),
+            );
+            $this->assertStringNotContainsString("'not' schema", $joined, $mode->value . ' mode names a keyword the document never wrote');
+            $this->assertStringNotContainsString('does not allow', $joined, $mode->value . ' mode words items: false differently');
+        }
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>|false, 1: string}>
+     */
+    public static function falseSchemaProvider(): iterable
+    {
+        yield 'a property that is false' => [false, '{"f":1}'];
+        yield 'a $ref to a false component' => [['$ref' => '#/components/schemas/Nothing'], '{"f":1}'];
+        yield 'items: false' => [['type' => 'array', 'items' => false], '{"f":[1]}'];
+    }
+
+    /**
      * A nested `required` is the one place the subject itself differs beyond the prefix: runtime reports
      * `param "f".b`, Laravel `f.b`, and Symfony just `field "b"` — its constraint sits on the nested
      * DTO's own class, so the parent path is carried by the violation's `getPropertyPath()` rather than

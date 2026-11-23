@@ -350,8 +350,10 @@ final class GenerateDtoCommandCoverageTest extends TestCase
             ],
         ];
 
+        // A mapping that names no schema stops generation. Since 2.15.143 a pointer outside
+        // `components.schemas` may name a schema, so the refusal comes from the reference itself.
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('must reference #/components/schemas/*');
+        $this->expectExceptionMessage('Unresolvable reference "#/components/responses/Foo"');
 
         $this->generator->generateFromArray($openApi, $this->outputDirectory, 'NsDiscD');
     }

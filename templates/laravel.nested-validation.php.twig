@@ -25,7 +25,11 @@
      * What the nested DTOs below this class's properties add to its validation — their dotted rules and
      * the paths whose wire shape is checked — asked of each nested class rather than written out here.
      *
+{% if reachesRecursion %}
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>, recursions: array<string, class-string>}
+{% else %}
      * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+{% endif %}
      */
     private static function openApiNestedParts(): array
     {
@@ -43,14 +47,55 @@
 {% endif %}
             'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
             'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+{% if reachesRecursion %}
+            'recursions' => array_merge(...array_column($parts, 'recursions')),
+{% endif %}
         ];
     }
 
+{% if reachesRecursion %}
+    /**
+     * The wire-shape paths below the levels where the schema refers back to itself, as deep as the raw
+     * body goes. Written out they would never end, so each such level the payload actually reaches is
+     * asked for its own paths, and names the levels below it in turn. Without this the `type: object`
+     * check stopped at the first self-referring level: `{"next": {"meta": [1]}}` was accepted where
+     * `{"meta": [1]}` was refused.
+     *
+     * @return array{objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    private static function openApiRecursivePaths(\stdClass $decoded): array
+    {
+        $objectPaths = [];
+        $scalarPaths = [];
+        $pending = self::openApiNestedParts()['recursions'];
+        while ($pending !== []) {
+            $prefix = (string)array_key_first($pending);
+            $class = $pending[$prefix];
+            $pending = array_slice($pending, 1, preserve_keys: true);
+            // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
+            if (self::rawNodesAt($decoded, str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $prefix) ?: []), '') === []) {
+                continue;
+            }
+            $level = $class::openApiNestedValidation($prefix, []);
+            $objectPaths = [...$objectPaths, ...$level['objectPaths']];
+            $scalarPaths = [...$scalarPaths, ...$level['scalarPaths']];
+            $pending = [...$pending, ...($level['recursions'] ?? [])];
+        }
+
+        return ['objectPaths' => $objectPaths, 'scalarPaths' => $scalarPaths];
+    }
+
+{% endif %}
 {% if selfReachable %}
     /**
      * The rule that checks a value holding this class where the schema refers back to itself — see
-     * `openApiNestedValidation()`: this class's rules, run on the value, every problem reported at its
-     * path. A value that is no array is left to the `array` rule beside it.
+     * `openApiNestedValidation()`: this class's rules, written under the path the value sits at and run
+     * on the payload, so every problem is reported once, under the field it is about, as any other rule
+     * reports it. A value that is no array is left to the `array` rule beside it.
+     *
+     * Run on the value alone, as this was, the inner messages came back folded into one error on the
+     * outer key — `child: child.child: validation.array` instead of an error at `child.child.child` —
+     * and a violation the interpreter also saw was reported twice.
      *
      * @internal
      */
@@ -71,14 +116,18 @@
                 if (!is_array($value) || $this->validator === null) {
                     return;
                 }
+                $rules = [];
+                foreach (self::ownRules() as $path => $pathRules) {
+                    $rules[$attribute . '.' . $path] = $pathRules;
+                }
                 $nested = new \Illuminate\Validation\Validator(
                     translator: $this->validator->getTranslator(),
-                    data: $value,
-                    rules: self::ownRules(),
+                    data: (fn(): array => $this->replacePlaceholders($this->getData()))->call($this->validator),
+                    rules: $rules,
                 );
                 foreach ($nested->errors()->messages() as $key => $messages) {
                     foreach ($messages as $message) {
-                        $fail($attribute . '.' . $key . ': ' . $message);
+                        $this->validator->errors()->add($key, $message);
                     }
                 }
             }
@@ -102,7 +151,12 @@
      *
      * @internal called by the generated classes that hold this one
      * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+{% if reachesRecursion %}
+     *   but the path where the payload re-enters it, in `recursions`
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>, recursions: array<string, class-string>}
+{% else %}
      * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+{% endif %}
      */
     public static function openApiNestedValidation(string $prefix, array $visited): array
     {
@@ -114,7 +168,12 @@
 {% endif %}
         if (in_array(self::class, $visited, true)) {
 {% if selfReachable %}
-            return ['rules' => [$prefix => [self::openApiRecursiveRule()]], 'objectPaths' => [], 'scalarPaths' => []];
+            return [
+                'rules' => [$prefix => [self::openApiRecursiveRule()]],
+                'objectPaths' => [],
+                'scalarPaths' => [],
+                'recursions' => [$prefix => self::class],
+            ];
 {% else %}
             return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
 {% endif %}
@@ -152,6 +211,9 @@
 {% endif %}
             'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
             'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+{% if reachesRecursion %}
+            'recursions' => array_merge(...array_column($parts, 'recursions')),
+{% endif %}
         ];
     }
 

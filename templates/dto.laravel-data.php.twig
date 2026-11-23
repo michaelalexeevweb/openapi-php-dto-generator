@@ -620,7 +620,9 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
             // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
             $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
             foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
-                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
+                if ((is_bool($node) || (is_float($node) && !is_finite($node))) && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
                 }
             }
@@ -670,7 +672,7 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
             return;
         }
 
-        foreach ({{ objectPathsExpression }} as $path) {
+        foreach ({% if reachesRecursion %}[...{{ objectPathsExpression }}, ...self::openApiRecursivePaths($decoded)['objectPaths']]{% else %}{{ objectPathsExpression }}{% endif %} as $path) {
             foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
                 // `[]` is how PHP encodes an empty array, so it is the empty object a PHP client sends.
                 if (is_array($node) && $node !== []) {

@@ -145,6 +145,34 @@ final class LaravelValidatedPathTest extends TestCase
     }
 
     /**
+     * A union of one class and a scalar, and of a list and a boolean. The constructor was typed
+     * `Shade|string` and handed the validated array — a TypeError on every valid object — and
+     * `toArray()` wrote `array_values()` around a `true` it held for `array|bool`. Both members of
+     * each union come back out as they went in, the object as the class it was built into.
+     */
+    public function testAClassOrAScalarUnionHydratesTheMemberItWasSent(): void
+    {
+        $fqcn = $this->generate('class or scalar union', [
+            'Shade' => ['type' => 'object', 'required' => ['hue'], 'properties' => ['hue' => ['type' => 'string']]],
+            'Widget' => ['type' => 'object', 'properties' => [
+                'tint' => ['anyOf' => [['$ref' => '#/components/schemas/Shade'], ['type' => 'string']]],
+                'size' => ['oneOf' => [['type' => 'object', 'required' => ['k'], 'properties' => ['k' => ['type' => 'integer']]], ['type' => 'integer']]],
+                'marks' => ['anyOf' => [['type' => 'array', 'items' => ['type' => 'integer']], ['type' => 'boolean']]],
+            ]],
+        ], 'Widget');
+
+        $this->assertRoundTrips($fqcn, '{"tint":{"hue":"red"},"size":{"k":3},"marks":[1,2]}');
+        $this->assertRoundTrips($fqcn, '{"tint":"plain","size":4,"marks":true}');
+        $validator = $this->validate($fqcn, '{"tint":{"hue":"red"}}');
+        $this->assertTrue($validator->passes());
+        $dto = call_user_func([$fqcn, 'fromValidated'], $validator->validated());
+        $this->assertSame(substr($fqcn, 0, (int)strrpos($fqcn, '\\')) . '\Shade', get_debug_type($dto->getTint()));
+        foreach (['{"tint":5}', '{"tint":{}}', '{"tint":[1]}', '{"size":"x"}', '{"size":{}}', '{"marks":["x"]}', '{"marks":"x"}'] as $invalid) {
+            $this->assertRefused($fqcn, $invalid);
+        }
+    }
+
+    /**
      * A discriminated `oneOf` whose discriminator is a plain string. A value no variant answers to,
      * and a payload whose fields fit one variant while its discriminator names the other, are refused
      * with a 422; they passed validation and died in `fromValidated()` — `Unknown kind`, or a
@@ -420,6 +448,71 @@ final class LaravelValidatedPathTest extends TestCase
         $output = json_encode($dto, JSON_THROW_ON_ERROR);
         $this->assertSame(json_decode($json, true, 512, JSON_THROW_ON_ERROR), json_decode($output, true, 512, JSON_THROW_ON_ERROR), $json);
         $this->assertTrue($this->validate($fqcn, $output)->passes(), 'output of ' . $json . ' must pass again');
+    }
+
+    /**
+     * An optional object with a schema `default` PHP has no constant for (README.laravel, "An optional
+     * property with a schema `default`"): not applied, so an absent key is null, as in the other modes.
+     * It was declared non-nullable with nothing to fall back on, and `fromValidated()` died with a
+     * TypeError on every payload that left the key out. A scalar default beside it is still applied.
+     */
+    public function testAnAbsentObjectWithADefaultIsNullNotATypeError(): void
+    {
+        $inner = ['type' => 'object', 'properties' => ['x' => ['type' => 'integer']]];
+        $fqcn = $this->generate(
+            key: 'object-default',
+            schemas: [
+                'Inner' => $inner,
+                'Probe' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'e' => [...$inner, 'default' => ['x' => 1]],
+                        'g' => ['$ref' => '#/components/schemas/Inner', 'default' => ['x' => 2]],
+                        'n' => ['type' => 'integer', 'default' => 4],
+                    ],
+                ],
+            ],
+            rootClass: 'Probe',
+        );
+
+        $this->assertRoundTrips($fqcn, '{}');
+        $this->assertRoundTrips($fqcn, '{"e":{"x":2},"g":{"x":3}}');
+        $this->assertRefused($fqcn, '{"e":null}');
+
+        $dto = call_user_func([$fqcn, 'fromValidated'], []);
+        $this->assertNull($dto->getE());
+        $this->assertNull($dto->getG());
+        $this->assertSame(4, $dto->getN());
+        $this->assertFalse($dto->isEProvided());
+    }
+
+    /**
+     * A number past the float range (`1e400`) decodes to INF: `multiple_of` threw `MathException` on it
+     * — a 500 — and `numeric` let it into the DTO, which `toJson()` could not write. Refused by the
+     * validator now, at every depth; a finite multiple still passes.
+     */
+    public function testANumberPastTheFloatRangeIsRefusedByTheValidator(): void
+    {
+        $fqcn = $this->generate(
+            key: 'overflowing-number',
+            schemas: [
+                'Probe' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'step' => ['type' => 'number', 'multipleOf' => 0.01],
+                        'count' => ['type' => 'integer', 'multipleOf' => 3],
+                        'halves' => ['type' => 'array', 'items' => ['type' => 'number', 'multipleOf' => 0.5]],
+                        'ratio' => ['type' => 'number'],
+                    ],
+                ],
+            ],
+            rootClass: 'Probe',
+        );
+
+        foreach (['{"step":1e400}', '{"step":-1e400}', '{"count":1e400}', '{"halves":[1e400]}', '{"ratio":1e400}', '{"step":0.015}', '{"step":"x"}'] as $json) {
+            $this->assertRefused($fqcn, $json);
+        }
+        $this->assertRoundTrips($fqcn, '{"step":0.02,"count":3,"halves":[0.5],"ratio":1.5}');
     }
 
     /**

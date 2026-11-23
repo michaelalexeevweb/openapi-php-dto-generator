@@ -1,4 +1,4 @@
-# laravel mode — 106 files, 30273 lines
+# laravel mode — 106 files, 30365 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -959,8 +959,11 @@ final class ApiTest2PatchRequest implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // A JSON `true` passes Laravel's `integer` and `numeric` too: `filter_var()` reads it as 1.
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
                 $lenient = is_string($node)
-                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node));
+                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node))
+                    || (is_float($node) && !is_finite($node));
                 if ($lenient && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }
@@ -1358,8 +1361,11 @@ final class ApiTest2PostRequest implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // A JSON `true` passes Laravel's `integer` and `numeric` too: `filter_var()` reads it as 1.
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
                 $lenient = is_string($node)
-                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node));
+                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node))
+                    || (is_float($node) && !is_finite($node));
                 if ($lenient && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }
@@ -4134,6 +4140,8 @@ use function get_object_vars;
 use function in_array;
 use function is_array;
 use function is_bool;
+use function is_finite;
+use function is_float;
 use function is_string;
 use function json_decode;
 use function property_exists;
@@ -4305,8 +4313,11 @@ final class ApiTestJobs200 implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // A JSON `true` passes Laravel's `integer` and `numeric` too: `filter_var()` reads it as 1.
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
                 $lenient = is_string($node)
-                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node));
+                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node))
+                    || (is_float($node) && !is_finite($node));
                 if ($lenient && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }
@@ -5055,6 +5066,8 @@ use function get_object_vars;
 use function in_array;
 use function is_array;
 use function is_bool;
+use function is_finite;
+use function is_float;
 use function is_string;
 use function json_decode;
 use function property_exists;
@@ -5226,8 +5239,11 @@ final class ApiTestLegacy200 implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // A JSON `true` passes Laravel's `integer` and `numeric` too: `filter_var()` reads it as 1.
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
                 $lenient = is_string($node)
-                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node));
+                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node))
+                    || (is_float($node) && !is_finite($node));
                 if ($lenient && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }
@@ -5983,6 +5999,8 @@ use function get_object_vars;
 use function in_array;
 use function is_array;
 use function is_bool;
+use function is_finite;
+use function is_float;
 use function is_string;
 use function json_decode;
 use function property_exists;
@@ -6154,8 +6172,11 @@ final class ApiTestRepresentations200 implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // A JSON `true` passes Laravel's `integer` and `numeric` too: `filter_var()` reads it as 1.
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
                 $lenient = is_string($node)
-                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node));
+                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node))
+                    || (is_float($node) && !is_finite($node));
                 if ($lenient && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }
@@ -7915,7 +7936,7 @@ final class ApiTestSerializationGetQueryParams implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // `[]` is let through: it is how PHP encodes an empty array, `json_encode([])`, so every
-                // PHP client sends it for an empty object, and runtime and Symfony mode accept it.
+                // PHP client sends it for an empty object, and Symfony mode accepts it.
                 if (is_array($node) && $node !== []) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
@@ -10251,7 +10272,7 @@ final class ApplicatorRefs implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // `[]` is let through: it is how PHP encodes an empty array, `json_encode([])`, so every
-                // PHP client sends it for an empty object, and runtime and Symfony mode accept it.
+                // PHP client sends it for an empty object, and Symfony mode accepts it.
                 if (is_array($node) && $node !== []) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
@@ -10639,7 +10660,11 @@ final class ApplicatorRefs implements JsonSerializable
         }
 
         if (is_array($schema['not'] ?? null) && self::matchesOpenApiNode($value, $schema['not'], $path, $depth + 1)) {
-            $errors[] = sprintf('%s must not match the \'not\' schema', $path);
+            // `not: {}` is how the generator spells the schema `false`, and a document that wrote `false`
+            // never mentioned `not` — the same sentence the runtime validator writes for it.
+            $errors[] = $schema['not'] === []
+                ? sprintf('%s is not allowed by the schema', $path)
+                : sprintf('%s must not match the \'not\' schema', $path);
         }
 
         if (is_array($schema['if'] ?? null)) {
@@ -10675,7 +10700,7 @@ final class ApplicatorRefs implements JsonSerializable
                 if ($index < $prefixCount) {
                     continue;
                 }
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 
@@ -12588,7 +12613,11 @@ final class ApplicatorRefsPoisonedKey implements JsonSerializable
         }
 
         if (is_array($schema['not'] ?? null) && self::matchesOpenApiNode($value, $schema['not'], $path, $depth + 1)) {
-            $errors[] = sprintf('%s must not match the \'not\' schema', $path);
+            // `not: {}` is how the generator spells the schema `false`, and a document that wrote `false`
+            // never mentioned `not` — the same sentence the runtime validator writes for it.
+            $errors[] = $schema['not'] === []
+                ? sprintf('%s is not allowed by the schema', $path)
+                : sprintf('%s must not match the \'not\' schema', $path);
         }
 
         return $errors;
@@ -12883,8 +12912,11 @@ final class AwkwardNames implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // A JSON `true` passes Laravel's `integer` and `numeric` too: `filter_var()` reads it as 1.
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
                 $lenient = is_string($node)
-                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node));
+                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node))
+                    || (is_float($node) && !is_finite($node));
                 if ($lenient && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }
@@ -14100,7 +14132,7 @@ final class ChainLink implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // `[]` is let through: it is how PHP encodes an empty array, `json_encode([])`, so every
-                // PHP client sends it for an empty object, and runtime and Symfony mode accept it.
+                // PHP client sends it for an empty object, and Symfony mode accepts it.
                 if (is_array($node) && $node !== []) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
@@ -14314,7 +14346,7 @@ final class ChainLink implements JsonSerializable
 
         if ($listValue && ($schema['items'] ?? null) === false) {
             foreach (array_keys($value) as $index) {
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 
@@ -14661,7 +14693,7 @@ final class ChainMiddle implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // `[]` is let through: it is how PHP encodes an empty array, `json_encode([])`, so every
-                // PHP client sends it for an empty object, and runtime and Symfony mode accept it.
+                // PHP client sends it for an empty object, and Symfony mode accepts it.
                 if (is_array($node) && $node !== []) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
@@ -14868,7 +14900,7 @@ final class ChainMiddle implements JsonSerializable
 
         if ($listValue && ($schema['items'] ?? null) === false) {
             foreach (array_keys($value) as $index) {
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 
@@ -15343,8 +15375,11 @@ final class Circle implements Shape, JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // A JSON `true` passes Laravel's `integer` and `numeric` too: `filter_var()` reads it as 1.
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
                 $lenient = is_string($node)
-                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node));
+                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node))
+                    || (is_float($node) && !is_finite($node));
                 if ($lenient && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }
@@ -15496,6 +15531,8 @@ use function get_object_vars;
 use function in_array;
 use function is_array;
 use function is_bool;
+use function is_finite;
+use function is_float;
 use function is_object;
 use function is_string;
 use function json_decode;
@@ -15723,7 +15760,7 @@ final class ContainerAliases implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // `[]` is let through: it is how PHP encodes an empty array, `json_encode([])`, so every
-                // PHP client sends it for an empty object, and runtime and Symfony mode accept it.
+                // PHP client sends it for an empty object, and Symfony mode accepts it.
                 if (is_array($node) && $node !== []) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
@@ -15734,8 +15771,11 @@ final class ContainerAliases implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // A JSON `true` passes Laravel's `integer` and `numeric` too: `filter_var()` reads it as 1.
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
                 $lenient = is_string($node)
-                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node));
+                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node))
+                    || (is_float($node) && !is_finite($node));
                 if ($lenient && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }
@@ -16336,7 +16376,7 @@ final class Containers implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // `[]` is let through: it is how PHP encodes an empty array, `json_encode([])`, so every
-                // PHP client sends it for an empty object, and runtime and Symfony mode accept it.
+                // PHP client sends it for an empty object, and Symfony mode accepts it.
                 if (is_array($node) && $node !== []) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
@@ -16347,8 +16387,11 @@ final class Containers implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // A JSON `true` passes Laravel's `integer` and `numeric` too: `filter_var()` reads it as 1.
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
                 $lenient = is_string($node)
-                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node));
+                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node))
+                    || (is_float($node) && !is_finite($node));
                 if ($lenient && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }
@@ -16728,7 +16771,7 @@ final class Containers implements JsonSerializable
 
         if ($listValue && ($schema['items'] ?? null) === false) {
             foreach (array_keys($value) as $index) {
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 
@@ -17571,8 +17614,11 @@ final class Discriminator1 implements Discriminator, JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // A JSON `true` passes Laravel's `integer` and `numeric` too: `filter_var()` reads it as 1.
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
                 $lenient = is_string($node)
-                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node));
+                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node))
+                    || (is_float($node) && !is_finite($node));
                 if ($lenient && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }
@@ -17904,8 +17950,11 @@ final class Discriminator2 implements Discriminator, JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // A JSON `true` passes Laravel's `integer` and `numeric` too: `filter_var()` reads it as 1.
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
                 $lenient = is_string($node)
-                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node));
+                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node))
+                    || (is_float($node) && !is_finite($node));
                 if ($lenient && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }
@@ -19014,7 +19063,7 @@ final class ItemBounds implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // `[]` is let through: it is how PHP encodes an empty array, `json_encode([])`, so every
-                // PHP client sends it for an empty object, and runtime and Symfony mode accept it.
+                // PHP client sends it for an empty object, and Symfony mode accepts it.
                 if (is_array($node) && $node !== []) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
@@ -19025,8 +19074,11 @@ final class ItemBounds implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // A JSON `true` passes Laravel's `integer` and `numeric` too: `filter_var()` reads it as 1.
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
                 $lenient = is_string($node)
-                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node));
+                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node))
+                    || (is_float($node) && !is_finite($node));
                 if ($lenient && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }
@@ -19257,7 +19309,7 @@ final class ItemBounds implements JsonSerializable
 
         if ($listValue && ($schema['items'] ?? null) === false) {
             foreach (array_keys($value) as $index) {
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 
@@ -19795,7 +19847,7 @@ final class NestedContainers implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // `[]` is let through: it is how PHP encodes an empty array, `json_encode([])`, so every
-                // PHP client sends it for an empty object, and runtime and Symfony mode accept it.
+                // PHP client sends it for an empty object, and Symfony mode accepts it.
                 if (is_array($node) && $node !== []) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
@@ -19806,8 +19858,11 @@ final class NestedContainers implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // A JSON `true` passes Laravel's `integer` and `numeric` too: `filter_var()` reads it as 1.
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
                 $lenient = is_string($node)
-                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node));
+                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node))
+                    || (is_float($node) && !is_finite($node));
                 if ($lenient && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }
@@ -20123,7 +20178,7 @@ final class NestedContainers implements JsonSerializable
 
         if ($listValue && ($schema['items'] ?? null) === false) {
             foreach (array_keys($value) as $index) {
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 
@@ -20529,7 +20584,7 @@ final class NullableContainerValues implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // `[]` is let through: it is how PHP encodes an empty array, `json_encode([])`, so every
-                // PHP client sends it for an empty object, and runtime and Symfony mode accept it.
+                // PHP client sends it for an empty object, and Symfony mode accepts it.
                 if (is_array($node) && $node !== []) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
@@ -20540,8 +20595,11 @@ final class NullableContainerValues implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // A JSON `true` passes Laravel's `integer` and `numeric` too: `filter_var()` reads it as 1.
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
                 $lenient = is_string($node)
-                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node));
+                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node))
+                    || (is_float($node) && !is_finite($node));
                 if ($lenient && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }
@@ -21274,7 +21332,11 @@ final class ObjectWideRules implements JsonSerializable
         }
 
         if (is_array($schema['not'] ?? null) && self::matchesOpenApiNode($value, $schema['not'], $path, $depth + 1)) {
-            $errors[] = sprintf('%s must not match the \'not\' schema', $path);
+            // `not: {}` is how the generator spells the schema `false`, and a document that wrote `false`
+            // never mentioned `not` — the same sentence the runtime validator writes for it.
+            $errors[] = $schema['not'] === []
+                ? sprintf('%s is not allowed by the schema', $path)
+                : sprintf('%s must not match the \'not\' schema', $path);
         }
 
         if (is_array($schema['if'] ?? null)) {
@@ -21843,8 +21905,11 @@ final class ReadOnlyFields implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // A JSON `true` passes Laravel's `integer` and `numeric` too: `filter_var()` reads it as 1.
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
                 $lenient = is_string($node)
-                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node));
+                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node))
+                    || (is_float($node) && !is_finite($node));
                 if ($lenient && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }
@@ -22320,8 +22385,11 @@ final class RetiredShape implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // A JSON `true` passes Laravel's `integer` and `numeric` too: `filter_var()` reads it as 1.
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
                 $lenient = is_string($node)
-                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node));
+                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node))
+                    || (is_float($node) && !is_finite($node));
                 if ($lenient && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }
@@ -22672,8 +22740,11 @@ final class Square implements Shape, JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // A JSON `true` passes Laravel's `integer` and `numeric` too: `filter_var()` reads it as 1.
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
                 $lenient = is_string($node)
-                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node));
+                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node))
+                    || (is_float($node) && !is_finite($node));
                 if ($lenient && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }
@@ -23034,8 +23105,11 @@ final class Tag implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // A JSON `true` passes Laravel's `integer` and `numeric` too: `filter_var()` reads it as 1.
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
                 $lenient = is_string($node)
-                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node));
+                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node))
+                    || (is_float($node) && !is_finite($node));
                 if ($lenient && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }
@@ -23353,8 +23427,11 @@ final class Test implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // A JSON `true` passes Laravel's `integer` and `numeric` too: `filter_var()` reads it as 1.
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
                 $lenient = is_string($node)
-                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node));
+                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node))
+                    || (is_float($node) && !is_finite($node));
                 if ($lenient && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }
@@ -23924,7 +24001,7 @@ final class Test2 implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // `[]` is let through: it is how PHP encodes an empty array, `json_encode([])`, so every
-                // PHP client sends it for an empty object, and runtime and Symfony mode accept it.
+                // PHP client sends it for an empty object, and Symfony mode accepts it.
                 if (is_array($node) && $node !== []) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
@@ -23935,8 +24012,11 @@ final class Test2 implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // A JSON `true` passes Laravel's `integer` and `numeric` too: `filter_var()` reads it as 1.
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
                 $lenient = is_string($node)
-                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node));
+                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node))
+                    || (is_float($node) && !is_finite($node));
                 if ($lenient && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }
@@ -24211,7 +24291,7 @@ final class Test2 implements JsonSerializable
 
         if ($listValue && ($schema['items'] ?? null) === false) {
             foreach (array_keys($value) as $index) {
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 
@@ -24922,8 +25002,11 @@ final class TestPatchRequest implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // A JSON `true` passes Laravel's `integer` and `numeric` too: `filter_var()` reads it as 1.
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
                 $lenient = is_string($node)
-                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node));
+                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node))
+                    || (is_float($node) && !is_finite($node));
                 if ($lenient && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }
@@ -25415,8 +25498,11 @@ final class TestPostRequest implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // A JSON `true` passes Laravel's `integer` and `numeric` too: `filter_var()` reads it as 1.
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
                 $lenient = is_string($node)
-                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node));
+                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node))
+                    || (is_float($node) && !is_finite($node));
                 if ($lenient && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }
@@ -26433,7 +26519,7 @@ final class TreeNode implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // `[]` is let through: it is how PHP encodes an empty array, `json_encode([])`, so every
-                // PHP client sends it for an empty object, and runtime and Symfony mode accept it.
+                // PHP client sends it for an empty object, and Symfony mode accepts it.
                 if (is_array($node) && $node !== []) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
@@ -27498,7 +27584,7 @@ final class UnionUnderContainer implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // `[]` is let through: it is how PHP encodes an empty array, `json_encode([])`, so every
-                // PHP client sends it for an empty object, and runtime and Symfony mode accept it.
+                // PHP client sends it for an empty object, and Symfony mode accepts it.
                 if (is_array($node) && $node !== []) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
@@ -27862,7 +27948,7 @@ final class UnionUnderContainer implements JsonSerializable
 
         if ($listValue && ($schema['items'] ?? null) === false) {
             foreach (array_keys($value) as $index) {
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 
@@ -29019,7 +29105,7 @@ final class User implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // `[]` is let through: it is how PHP encodes an empty array, `json_encode([])`, so every
-                // PHP client sends it for an empty object, and runtime and Symfony mode accept it.
+                // PHP client sends it for an empty object, and Symfony mode accepts it.
                 if (is_array($node) && $node !== []) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
@@ -29030,8 +29116,11 @@ final class User implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // A JSON `true` passes Laravel's `integer` and `numeric` too: `filter_var()` reads it as 1.
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
                 $lenient = is_string($node)
-                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node));
+                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node))
+                    || (is_float($node) && !is_finite($node));
                 if ($lenient && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }
@@ -29769,7 +29858,7 @@ final class User2 implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // `[]` is let through: it is how PHP encodes an empty array, `json_encode([])`, so every
-                // PHP client sends it for an empty object, and runtime and Symfony mode accept it.
+                // PHP client sends it for an empty object, and Symfony mode accepts it.
                 if (is_array($node) && $node !== []) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
@@ -29780,8 +29869,11 @@ final class User2 implements JsonSerializable
             $segments = explode('.', $path);
             foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // A JSON `true` passes Laravel's `integer` and `numeric` too: `filter_var()` reads it as 1.
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
                 $lenient = is_string($node)
-                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node));
+                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node))
+                    || (is_float($node) && !is_finite($node));
                 if ($lenient && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }

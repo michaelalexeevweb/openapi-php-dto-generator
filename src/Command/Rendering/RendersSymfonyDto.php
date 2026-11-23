@@ -739,6 +739,39 @@ PHP;
     private const array SYMFONY_ANNOTATION_KEYWORDS = ['nullable'];
 
     /**
+     * Container keywords an `Assert\AtLeastOneOf` branch has no spelling for — see
+     * `anyOfBranchOutgrowsItsAttribute()`.
+     *
+     * @var array<int, string>
+     */
+    private const array SYMFONY_UNSPELLED_CONTAINER_KEYWORDS = [
+        'minItems',
+        'maxItems',
+        'uniqueItems',
+        'contains',
+        'minContains',
+        'maxContains',
+        'prefixItems',
+        'unevaluatedItems',
+        'additionalProperties',
+        'unevaluatedProperties',
+        'patternProperties',
+        'propertyNames',
+        'minProperties',
+        'maxProperties',
+        'required',
+        'dependentRequired',
+        'dependentSchemas',
+        'not',
+        'allOf',
+        'anyOf',
+        'oneOf',
+        'if',
+        'enum',
+        'const',
+    ];
+
+    /**
      * @param SchemaProperty $property
      * @return array{
      *     declaredType: string,
@@ -1195,7 +1228,9 @@ PHP;
         if ($countMax !== null) {
             $count[] = 'max: ' . $countMax;
         }
-        if ($count !== []) {
+        // The callback took them where the property's unsent value breaks them — see
+        // `symfonyDefaultBreaksItsKeywords()`; the attribute would refuse `{}`.
+        if ($count !== [] && !$this->symfonyDefaultBreaksItsKeywords($property)) {
             $attributes[] = '#[Assert\Count(' . implode(', ', $count) . ')]';
         }
 
@@ -1212,7 +1247,13 @@ PHP;
         // anyOf — the value must satisfy at least one branch.
         // Not on a `mixed` property: the callback owns its `anyOf` — see `shouldForceRootCallbackForProperty()`.
         $anyOf = $constraints['anyOf'] ?? null;
-        if (is_array($anyOf) && count($anyOf) >= 2 && !$this->anyOfBranchCarriesPattern($anyOf) && $property['type'] !== 'mixed') {
+        if (
+            is_array($anyOf)
+            && count($anyOf) >= 2
+            && !$this->anyOfBranchCarriesPattern($anyOf)
+            && !$this->anyOfBranchOutgrowsItsAttribute($anyOf)
+            && $property['type'] !== 'mixed'
+        ) {
             $branches = [];
             $allBranchesValidatable = true;
             foreach ($anyOf as $branch) {
@@ -1220,8 +1261,20 @@ PHP;
                 // that enum is the member check — `Type('string')` beside a `Choice` refused every
                 // member, because by then it was no string.
                 $enumClass = is_array($branch) ? $this->symfonyAnyOfEnumBranchClass(property: $property, branch: $branch) : null;
+                // A `{type: null}` branch beside two others — `anyOf: [Code, null, integer]` — is the
+                // `null` the nullable PHP type admits. It had no expression, the whole attribute was
+                // dropped, and the other branches' keywords with it: `"a"` passed a `minLength: 2`.
+                $isNullBranch = is_array($branch) && in_array($branch['type'] ?? null, ['null', ['null']], true) && count($branch) === 1;
+                // An inline object branch beside scalars is hydrated into the class generated for it,
+                // as a `$ref` one is: `Type('array')` refused every valid object, which by then was no
+                // array. The class checks its own keywords through the union cascade.
+                $inlineClass = is_array($branch) && ($branch['type'] ?? null) === 'object' && !array_key_exists('x-php-instanceof', $branch)
+                    ? $this->unionClassBesideScalars($property['type'])
+                    : null;
                 $expressions = match (true) {
+                    $isNullBranch => ['new Assert\IsNull()'],
                     $enumClass !== null => ['new Assert\Type(' . $enumClass . '::class)'],
+                    $inlineClass !== null => ['new Assert\Type(' . $inlineClass . '::class)'],
                     is_array($branch) => $this->valueConstraintExpressions($branch),
                     default => [],
                 };
@@ -1446,7 +1499,18 @@ PHP;
             }
         }
 
-        $formatSpecs = $this->formatConstraintSpecs($constraints['format'] ?? null, $inAnyOfBranch);
+        $format = $constraints['format'] ?? null;
+        // A numeric format bounds a NUMBER: `{type: string, format: int32}` holds `"5000000000"`, and
+        // `Assert\Range` read the string as the number it spells and refused it.
+        $declaredType = $constraints['type'] ?? null;
+        if (
+            in_array($format, ['int32', 'uint32'], true)
+            && $declaredType !== null
+            && array_intersect(is_array($declaredType) ? $declaredType : [$declaredType], ['integer', 'number']) === []
+        ) {
+            $format = null;
+        }
+        $formatSpecs = $this->formatConstraintSpecs($format, $inAnyOfBranch);
         foreach ($formatSpecs as $spec) {
             $specs[] = $spec;
         }
@@ -1567,6 +1631,21 @@ PHP;
 
         foreach ($this->scalarConstraintSpecs($schema, inAnyOfBranch: true) as $spec) {
             $expressions[] = 'new Assert\\' . $spec['name'] . '(' . $spec['args'] . ')';
+        }
+
+        // A list branch of scalar items — `anyOf: [{type: array, items: {type: integer}}, {type: boolean}]`.
+        // The items are part of the branch: left out, `["x"]` matched it as "an array". Only after
+        // `Type('array')` has held, which the `Sequentially` the branch becomes guarantees; an item of
+        // any other shape keeps the branch at "an array", as before.
+        $items = $schema['items'] ?? null;
+        if (
+            $symfonyType === 'array'
+            && ($schema['type'] ?? null) === 'array'
+            && is_array($items)
+            && in_array($items['type'] ?? null, ['integer', 'number', 'string', 'boolean'], true)
+        ) {
+            $itemExpressions = $this->valueConstraintExpressions($items);
+            $expressions[] = 'new Assert\All([' . implode(', ', $itemExpressions) . '])';
         }
 
         return $expressions;
@@ -1818,8 +1897,22 @@ PHP;
             return false;
         }
         $constraints = is_array($property['constraints'] ?? null) ? $property['constraints'] : [];
+        // What the property HOLDS while the key is absent: a container default is written as `[]`
+        // (`renderDefaultValue()`), so `{minItems: 2, default: [1, 2]}` holds an empty list, which
+        // `Assert\Count` refused on `{}` just the same.
+        $held = $this->symfonyPropertyHoldsAnArray($property) ? [] : $default;
 
-        return (new DtoValidator())->validate('default', $default, $constraints) !== [];
+        return (new DtoValidator())->validate('default', $held, $constraints) !== [];
+    }
+
+    /**
+     * Whether the property's PHP type is a non-nullable array — a list or a map.
+     *
+     * @param SchemaProperty $property
+     */
+    private function symfonyPropertyHoldsAnArray(array $property): bool
+    {
+        return $property['type'] === 'array' || str_starts_with($property['type'], 'array<');
     }
 
     /**
@@ -1878,6 +1971,9 @@ PHP;
         if (is_array($constraints['anyOf'] ?? null) && $this->anyOfBranchCarriesPattern($constraints['anyOf'])) {
             return true;
         }
+        if (is_array($constraints['anyOf'] ?? null) && $this->anyOfBranchOutgrowsItsAttribute($constraints['anyOf'])) {
+            return true;
+        }
         // A BOOLEAN branch has no `Assert\*` spelling, so `Assert\AtLeastOneOf` is not emitted for such an
         // `anyOf` at all — and the callback skipped it too, expecting the attribute. `anyOf: [false,
         // false]` was then checked by nothing and accepted every value the document refuses.
@@ -1912,6 +2008,37 @@ PHP;
         return is_string($constraints['pattern'] ?? null)
             && $constraints['pattern'] !== ''
             && !$this->patternCompiles($constraints['pattern']);
+    }
+
+    /**
+     * Whether a property-level `anyOf` has a container branch whose keywords `valueConstraintExpressions()`
+     * cannot spell: it says "an array", and for a list of scalars "of these items", nothing more. A
+     * nullable list alias with `maxItems: 2` took `[1, 2, 3]`, a nullable map of integers took
+     * `{"a": "x"}`, and the callback skipped the `anyOf` as the attribute's. Such an `anyOf` is the
+     * callback's, which reads every keyword of every branch.
+     *
+     * @param array<mixed> $branches
+     */
+    private function anyOfBranchOutgrowsItsAttribute(array $branches): bool
+    {
+        foreach ($branches as $branch) {
+            if (!is_array($branch) || !in_array($branch['type'] ?? null, ['array', 'object'], true)) {
+                continue;
+            }
+            // A class branch is held as its class, which checks its own keywords.
+            if (is_string($branch['x-php-instanceof'] ?? null) || array_key_exists('properties', $branch)) {
+                continue;
+            }
+            if (array_intersect(array_keys($branch), self::SYMFONY_UNSPELLED_CONTAINER_KEYWORDS) !== []) {
+                return true;
+            }
+            $items = $branch['items'] ?? null;
+            if (is_array($items) && array_diff(array_keys($items), ['type']) !== []) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

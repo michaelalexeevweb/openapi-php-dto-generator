@@ -255,6 +255,22 @@ final class GenerateDtoCommand extends Command
     ];
 
     /**
+     * A hoisted pointer's name is cut past this length — see `hoistedSchemaName()`.
+     */
+    private const int HOISTED_NAME_MAX_LENGTH = 64;
+
+    /**
+     * Where a schema sits below another, by the keyword that holds it: one schema, a map of them
+     * by name, a list of them by index — see `isSchemaPosition()`.
+     */
+    private const array SCHEMA_VALUED_KEYWORDS = [
+        'items', 'additionalItems', 'additionalProperties', 'unevaluatedItems', 'unevaluatedProperties',
+        'not', 'if', 'then', 'else', 'contains', 'propertyNames', 'contentSchema',
+    ];
+    private const array SCHEMA_MAP_KEYWORDS = ['properties', 'patternProperties', 'dependentSchemas', '$defs', 'definitions'];
+    private const array SCHEMA_LIST_KEYWORDS = ['allOf', 'anyOf', 'oneOf', 'prefixItems'];
+
+    /**
      * Keywords whose value is data, never a schema — see `rewriteDefsRefs()`.
      *
      * @var list<string>
@@ -463,6 +479,23 @@ final class GenerateDtoCommand extends Command
      * @var array<string, array<mixed>>
      */
     private array $externalDocuments = [];
+
+    /**
+     * The component each schema `$ref` that addresses a file whole, or a place outside its
+     * `components.schemas`, was given: canonical file path => pointer ('' for the whole file) =>
+     * component name. See `pointedSchemaComponent()`.
+     *
+     * @var array<string, array<string, string>>
+     */
+    private array $pointedSchemaComponents = [];
+
+    /**
+     * The schemas `rewriteSchemaPointers()` lifted out of the document it is rewriting, by the
+     * pointer they were found at; merged into that document's `components.schemas` when it is done.
+     *
+     * @var array<string, array{name: string, schema: mixed}>
+     */
+    private array $localPointedSchemas = [];
 
     /**
      * Raw, unmodified schema definitions keyed by generated class name, captured for every
@@ -1073,6 +1106,7 @@ final class GenerateDtoCommand extends Command
         );
         // After initializeGeneration: it resets the per-run document state this reads into.
         $this->readDocumentLevelFields($data);
+        $data = $this->rewriteSchemaPointers(document: $data, sourceFile: $this->rootSpecFile, isRootDocument: true);
         $this->registerDocumentSchemas(openApi: $data, sourceFile: $realFilePath, includeInlineSchemas: true);
         $this->scanExternalSchemaRefs(node: $data, currentSourceFile: $realFilePath);
 
@@ -1213,11 +1247,16 @@ final class GenerateDtoCommand extends Command
             }
             /** @var array<string, mixed> $schemas */
             $schemas = $openApi['components']['schemas'];
+            // A name is taken when its CLASS is: `widgetPropertiesInner` and `WidgetPropertiesInner`
+            // are one class, and a pointer that took the second beside the first stopped generation.
+            $takenClassNames = [];
+            foreach (array_keys($schemas) as $schemaName) {
+                $takenClassNames[strtolower($this->schemaClassName($schemaName))] = true;
+            }
+            /** @var array<string, array<mixed>> $copies */
+            $copies = [];
             foreach (array_keys($fresh) as $pointer) {
-                $segments = array_map(
-                    callback: static fn(string $segment): string => str_replace(['~1', '~0'], ['/', '~'], $segment),
-                    array: explode('/', substr($pointer, strlen($prefix))),
-                );
+                $segments = self::componentPointerSegments($pointer, $prefix);
                 $node = $schemas;
                 foreach ($segments as $segment) {
                     if (!is_array($node) || !array_key_exists($segment, $node)) {
@@ -1233,27 +1272,181 @@ final class GenerateDtoCommand extends Command
                     $hoisted[$pointer] = null;
                     continue;
                 }
-                $base = implode('', array_map(
-                    callback: static fn(string $segment): string => $segment === ''
-                        ? 'Empty'
-                        : ucfirst((string)preg_replace('/[^A-Za-z0-9]+/', '', $segment)),
-                    array: $segments,
-                ));
-                $name = $base === '' ? 'Pointed' : $base;
-                $suffix = 2;
-                while (array_key_exists($name, $schemas)) {
-                    $name = $base . $suffix++;
-                }
-                $schemas[$name] = $node;
+                $name = $this->hoistedSchemaName(pointer: $pointer, segments: $segments, takenClassNames: $takenClassNames);
+                $takenClassNames[strtolower($this->schemaClassName($name))] = true;
+                $copies[$pointer] = $node;
                 $hoisted[$pointer] = $name;
             }
-            $openApi['components']['schemas'] = $schemas;
             $renames = array_filter($hoisted, is_string(...));
+            foreach ($copies as $pointer => $node) {
+                $schemas[$renames[$pointer]] = $this->referenceHoistedDescendants(
+                    node: $node,
+                    pointer: $pointer,
+                    prefix: $prefix,
+                    renames: $renames,
+                );
+            }
+            $openApi['components']['schemas'] = $schemas;
             $rewritten = $this->rewriteComponentSubschemaPointers(node: $openApi, prefix: $prefix, renames: $renames);
             $openApi = is_array($rewritten) ? $rewritten : $openApi;
         }
 
         return $openApi;
+    }
+
+    /**
+     * The name a hoisted pointer takes: its path spelled as a class (`PetPropertiesName`), or the next
+     * free suffix when that class exists. A path deep enough spells a name past what a file system
+     * takes as a file name (255 bytes) — twenty-odd `properties/a` levels — so a long one is cut and
+     * told apart from its neighbours by a checksum of the pointer.
+     *
+     * @param list<string> $segments
+     * @param array<string, true> $takenClassNames lower-cased class names already in use
+     */
+    private function hoistedSchemaName(string $pointer, array $segments, array $takenClassNames): string
+    {
+        $base = implode('', array_map(
+            callback: static fn(string $segment): string => $segment === ''
+                ? 'Empty'
+                : ucfirst((string)preg_replace('/[^A-Za-z0-9]+/', '', $segment)),
+            array: $segments,
+        ));
+        if ($base === '') {
+            $base = 'Pointed';
+        }
+        if (strlen($base) > self::HOISTED_NAME_MAX_LENGTH) {
+            $base = substr($base, 0, self::HOISTED_NAME_MAX_LENGTH - 10) . sprintf('%010u', crc32($pointer));
+        }
+        $name = $base;
+        $suffix = 2;
+        while (array_key_exists(strtolower($this->schemaClassName($name)), $takenClassNames)) {
+            $name = $base . $suffix++;
+        }
+
+        return $name;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function componentPointerSegments(string $pointer, string $prefix): array
+    {
+        return array_map(
+            callback: static fn(string $segment): string => str_replace(['~1', '~0'], ['/', '~'], $segment),
+            array: explode('/', substr($pointer, strlen($prefix))),
+        );
+    }
+
+    /**
+     * A hoisted schema is a copy of the subtree it points at. A schema below it that another pointer
+     * names is that pointer's component already, so the copy refers to it instead of carrying a second
+     * copy — with its own set of classes. Copied whole, N pointers down one chain of depth D wrote
+     * N·D classes from a document of D + N lines. The nearest such schema is replaced first; one below
+     * it is inside that component already, and its path no longer leads anywhere here.
+     *
+     * Only a schema position is replaced: a pointer at a `properties` map is hoisted as written, but
+     * putting a `$ref` in place of the map would empty the object that holds it.
+     *
+     * @param array<mixed> $node
+     * @param array<string, string> $renames pointer => hoisted component name
+     * @return array<mixed>
+     */
+    private function referenceHoistedDescendants(array $node, string $pointer, string $prefix, array $renames): array
+    {
+        $descendants = array_filter(
+            array: array_keys($renames),
+            callback: static fn(string $candidate): bool => str_starts_with($candidate, $pointer . '/'),
+        );
+        usort($descendants, static fn(string $left, string $right): int => strlen($left) <=> strlen($right));
+        $depth = count(self::componentPointerSegments($pointer, $prefix));
+        foreach ($descendants as $descendant) {
+            $segments = self::componentPointerSegments($descendant, $prefix);
+            if (!self::isSchemaPosition($segments)) {
+                continue;
+            }
+            $node = self::replacedAtPath(
+                node: $node,
+                path: array_slice($segments, $depth),
+                replacement: ['$ref' => $prefix . $renames[$descendant]],
+            ) ?? $node;
+        }
+
+        return $node;
+    }
+
+    /**
+     * Whether a component path (`Pet`, `properties`, `name`) ends at a schema rather than at a keyword's
+     * map or list of schemas, read from the component down.
+     *
+     * @param list<string> $segments
+     */
+    private static function isSchemaPosition(array $segments): bool
+    {
+        $count = count($segments);
+        $position = 1;
+        while ($position < $count) {
+            $keyword = $segments[$position];
+            $next = $segments[$position + 1] ?? null;
+            $indexed = $next !== null && ctype_digit($next);
+            // `items` holds one schema, or — the draft-4 tuple form — a list of them.
+            if ($keyword === 'items' && $indexed) {
+                $position += 2;
+                continue;
+            }
+            if (in_array($keyword, self::SCHEMA_LIST_KEYWORDS, true)) {
+                if (!$indexed) {
+                    return false;
+                }
+                $position += 2;
+                continue;
+            }
+            if (in_array($keyword, self::SCHEMA_MAP_KEYWORDS, true)) {
+                if ($next === null) {
+                    return false;
+                }
+                $position += 2;
+                continue;
+            }
+            if (!in_array($keyword, self::SCHEMA_VALUED_KEYWORDS, true)) {
+                return false;
+            }
+            $position++;
+        }
+
+        return true;
+    }
+
+    /**
+     * `$node` with the value at `$path` replaced, or null when the path does not lead there.
+     *
+     * @param array<mixed> $node
+     * @param list<string> $path
+     * @param array<string, string> $replacement
+     * @return array<mixed>|null
+     */
+    private static function replacedAtPath(array $node, array $path, array $replacement): ?array
+    {
+        $segment = $path[0] ?? null;
+        if ($segment === null || !array_key_exists($segment, $node)) {
+            return null;
+        }
+        $rest = array_slice($path, 1);
+        if ($rest === []) {
+            $node[$segment] = $replacement;
+
+            return $node;
+        }
+        $child = $node[$segment];
+        if (!is_array($child)) {
+            return null;
+        }
+        $replaced = self::replacedAtPath(node: $child, path: $rest, replacement: $replacement);
+        if ($replaced === null) {
+            return null;
+        }
+        $node[$segment] = $replaced;
+
+        return $node;
     }
 
     /**
@@ -1422,6 +1615,7 @@ final class GenerateDtoCommand extends Command
         $this->readDocumentLevelFields($openApi);
         $openApi = (new SchemaResourceResolver())->resolve(document: $openApi, documentBase: SchemaResourceResolver::ARRAY_DOCUMENT_BASE);
         $openApi = $this->hoistComponentSubschemas($this->foldJsonSchemaDefs($openApi));
+        $openApi = $this->rewriteSchemaPointers(document: $openApi, sourceFile: null, isRootDocument: true);
         $schemas = $this->extractSchemas($openApi);
         foreach ($this->extractInlineResponseSchemas($openApi) as $name => $schema) {
             $schemas[$name] = $schema;
@@ -1958,6 +2152,8 @@ final class GenerateDtoCommand extends Command
         $this->enumOutputDirectories = [];
         $this->externalDocSchemas = [];
         $this->externalDocuments = [];
+        $this->pointedSchemaComponents = [];
+        $this->localPointedSchemas = [];
         $this->endpointByClass = [];
         $this->deprecatedByClass = [];
         $this->relatedByClass = [];
@@ -2126,12 +2322,48 @@ final class GenerateDtoCommand extends Command
             $properties = [];
             foreach ($schema['properties'] as $name => $propertySchema) {
                 $properties[$name] = is_array($propertySchema)
-                    ? $this->objectReferenceWithItsSiblings($propertySchema)
+                    ? $this->objectReferencesWithTheirSiblings($propertySchema)
                     : $propertySchema;
             }
             $schema['properties'] = $properties;
             $this->dtoSchemas[$className] = $schema;
         }
+    }
+
+    /**
+     * `objectReferenceWithItsSiblings()` at the property and at every place inside it that holds a
+     * schema of its own value: the items of a list, the values of a map, a branch of a union. Applied
+     * at the property alone, `items: {$ref: Inner, properties: {foo: …}}` kept the bare `Inner`: a
+     * wrong `foo` passed, a valid one was dropped on the way through, and a `required: [foo]` beside
+     * it refused every map value, judged against the `Inner` that had dropped `foo`.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<string, mixed>
+     */
+    private function objectReferencesWithTheirSiblings(array $schema, int $depth = 0): array
+    {
+        $schema = $this->objectReferenceWithItsSiblings($schema);
+        if ($depth > 32) {
+            return $schema;
+        }
+        foreach (['items', 'additionalProperties'] as $keyword) {
+            if (is_array($schema[$keyword] ?? null)) {
+                $schema[$keyword] = $this->objectReferencesWithTheirSiblings($schema[$keyword], $depth + 1);
+            }
+        }
+        foreach (['prefixItems', 'anyOf', 'oneOf'] as $keyword) {
+            $branches = $schema[$keyword] ?? null;
+            if (!is_array($branches) || !array_is_list($branches)) {
+                continue;
+            }
+            $rewritten = [];
+            foreach ($branches as $branch) {
+                $rewritten[] = is_array($branch) ? $this->objectReferencesWithTheirSiblings($branch, $depth + 1) : $branch;
+            }
+            $schema[$keyword] = $rewritten;
+        }
+
+        return $schema;
     }
 
     /**
@@ -3314,8 +3546,9 @@ final class GenerateDtoCommand extends Command
     /**
      * @return array{0: string, 1: string}|null
      */
-    private function resolveExternalSchemaPointer(string $ref, ?string $currentSourceFile): ?array
+    private function resolveExternalSchemaPointer(string $ref, ?string $currentSourceFile, ?string $reportedRef = null): ?array
     {
+        $reportedRef ??= $ref;
         if ($currentSourceFile === null || !str_contains($ref, '#/components/schemas/')) {
             return null;
         }
@@ -3330,14 +3563,14 @@ final class GenerateDtoCommand extends Command
         // other local file would have the generator read it into its output or its error message.
         $effectivePart = preg_replace('/\.(dist|example|local|sample)$/i', '', $filePart) ?? $filePart;
         if (!in_array(strtolower(pathinfo($effectivePart, PATHINFO_EXTENSION)), ['yaml', 'yml', 'json'], true)) {
-            throw new RuntimeException(sprintf('Referenced file must be a .yaml, .yml or .json document: %s', $ref));
+            throw new RuntimeException(sprintf('Referenced file must be a .yaml, .yml or .json document: %s', $reportedRef));
         }
 
         $absoluteFile = realpath(dirname($currentSourceFile) . DIRECTORY_SEPARATOR . $filePart);
         if ($absoluteFile === false) {
-            throw new RuntimeException(sprintf('Referenced OpenAPI file not found: %s', $ref));
+            throw new RuntimeException(sprintf('Referenced OpenAPI file not found: %s', $reportedRef));
         }
-        $this->assertReferenceReadable(ref: $ref, realFile: $absoluteFile);
+        $this->assertReferenceReadable(ref: $reportedRef, realFile: $absoluteFile);
 
         return [$this->canonicalSourceFile($absoluteFile), '#' . $pointerPart];
     }
@@ -3409,11 +3642,362 @@ final class GenerateDtoCommand extends Command
         // Fold this external document's own `$defs` into its components.schemas (and rewrite
         // its internal `#/$defs/` pointers) so cross-file `file#/$defs/X` references resolve.
         $data = $this->hoistComponentSubschemas($this->foldJsonSchemaDefs($data));
+        // Cached before its references are rewritten: a file they lead to may point back here, and
+        // finds the components it declares.
+        $this->externalDocuments[$filePath] = $data;
+        $this->externalDocSchemas[$filePath] = $this->extractSchemas($data);
+
+        $data = $this->rewriteSchemaPointers(document: $data, sourceFile: $filePath, isRootDocument: false);
+        // The components given to pointers into this file meanwhile — its own, and those of files
+        // that point back into it — are kept beside what it declares.
+        $components = is_array($data['components'] ?? null) ? $data['components'] : [];
+        $schemas = is_array($components['schemas'] ?? null) ? $components['schemas'] : [];
+        foreach ($this->pointedSchemaComponents[$filePath] ?? [] as $name) {
+            $schemas[$name] = $this->externalDocuments[$filePath]['components']['schemas'][$name] ?? null;
+        }
+        $components['schemas'] = $schemas;
+        $data['components'] = $components;
         $this->externalDocuments[$filePath] = $data;
 
-        $schemas = $this->extractSchemas($data);
+        return $this->externalDocSchemas[$filePath] = $this->extractSchemas($data);
+    }
 
-        return $this->externalDocSchemas[$filePath] = $schemas;
+    /**
+     * A schema `$ref` may address a file whole (`./Pet.yaml`, a JSON Schema document) or any place
+     * in a document (`shapes.yaml#/Side`, `#/definitions/Corner`), not only a component. The rest of
+     * the generator resolves `#/components/schemas/Name` and nothing else, and a reference in any
+     * other spelling read as "no constraint": the property became `mixed`, every mode accepted
+     * whatever arrived, and generation reported success — a missing file included.
+     *
+     * Each such target becomes a component of the document it lives in, ONCE (every reference to it
+     * names the same class), and each reference is rewritten to point at it; a target that is not
+     * there stops generation. Only references in SCHEMA positions are rewritten: a path item, a
+     * parameter or a request body is referenced by file as well, and is not a schema.
+     *
+     * @param array<string, mixed> $document
+     * @return array<string, mixed>
+     */
+    private function rewriteSchemaPointers(array $document, ?string $sourceFile, bool $isRootDocument): array
+    {
+        // A file read meanwhile is rewritten in a walk of its own; this one's lifts are kept apart.
+        $outerLocal = $this->swapLocalPointedSchemas([]);
+        $context = ['document' => $document, 'sourceFile' => $sourceFile, 'isRootDocument' => $isRootDocument];
+        $rewritten = $this->rewriteDocumentSchemaPointers(node: $document, path: [], context: $context);
+        $rewritten = is_array($rewritten) ? $rewritten : $document;
+
+        $liftedSchemas = $this->swapLocalPointedSchemas($outerLocal);
+        if ($liftedSchemas !== []) {
+            $components = is_array($rewritten['components'] ?? null) ? $rewritten['components'] : [];
+            $schemas = is_array($components['schemas'] ?? null) ? $components['schemas'] : [];
+            foreach ($liftedSchemas as $lifted) {
+                $schemas[$lifted['name']] = $lifted['schema'];
+            }
+            $components['schemas'] = $schemas;
+            $rewritten['components'] = $components;
+        }
+
+        /** @var array<string, mixed> $rewritten */
+        return $rewritten;
+    }
+
+    /**
+     * The walk outside schemas: a schema starts under `schema` (of a parameter, a header or a media
+     * type), as a component of `components.schemas`, or as an entry of a root `$defs`/`definitions`.
+     *
+     * @param list<int|string> $path
+     * @param array{document: array<string, mixed>, sourceFile: ?string, isRootDocument: bool} $context
+     */
+    private function rewriteDocumentSchemaPointers(mixed $node, array $path, array $context): mixed
+    {
+        if (!is_array($node)) {
+            return $node;
+        }
+        $result = [];
+        foreach ($node as $key => $value) {
+            $childPath = [...$path, $key];
+            $isSchemaMap = $childPath === ['components', 'schemas']
+                || $childPath === ['$defs']
+                || $childPath === ['definitions'];
+            if ($isSchemaMap && is_array($value)) {
+                $schemas = [];
+                foreach ($value as $name => $schema) {
+                    $schemas[$name] = $this->rewriteSchemaNodePointers(node: $schema, context: $context);
+                }
+                $result[$key] = $schemas;
+                continue;
+            }
+            // `schema` of a parameter, a header or a media type — not a component, a response, a
+            // header or a path that happens to be called `schema`.
+            $parentKey = $path === [] ? null : $path[array_key_last($path)];
+            $namesObjects = (count($path) === 2 && $path[0] === 'components')
+                || in_array($parentKey, ['paths', 'webhooks', 'responses', 'headers', 'content', 'callbacks', 'links', 'encoding'], true);
+            if ($key === 'schema' && !$namesObjects) {
+                $result[$key] = $this->rewriteSchemaNodePointers(node: $value, context: $context);
+                continue;
+            }
+            if (in_array($key, ['example', 'examples'], true) || (is_string($key) && str_starts_with($key, 'x-'))) {
+                $result[$key] = $value;
+                continue;
+            }
+            $result[$key] = $this->rewriteDocumentSchemaPointers(node: $value, path: $childPath, context: $context);
+        }
+
+        return $result;
+    }
+
+    /**
+     * The walk inside a schema, where every `$ref` names a schema — except under the keywords whose
+     * value is data (`enum`, `default`, …) and in extensions.
+     *
+     * @param array{document: array<string, mixed>, sourceFile: ?string, isRootDocument: bool} $context
+     */
+    private function rewriteSchemaNodePointers(mixed $node, array $context, bool $namesKeys = false): mixed
+    {
+        if (!is_array($node)) {
+            return $node;
+        }
+        $result = [];
+        foreach ($node as $key => $value) {
+            if (!$namesKeys && (in_array($key, self::DATA_VALUED_KEYWORDS, true) || (is_string($key) && str_starts_with($key, 'x-')))) {
+                $result[$key] = $value;
+                continue;
+            }
+            if (!$namesKeys && $key === '$ref' && is_string($value)) {
+                $result[$key] = $this->pointedSchemaReference(ref: $value, context: $context);
+                continue;
+            }
+            if (!$namesKeys && $key === 'discriminator' && is_array($value) && is_array($value['mapping'] ?? null)) {
+                $mapping = [];
+                foreach ($value['mapping'] as $wireValue => $target) {
+                    // A bare name is a component name, not a reference.
+                    $isReference = is_string($target)
+                        && (str_contains($target, '#') || preg_match('/\.(ya?ml|json)$/i', $target) === 1);
+                    $mapping[$wireValue] = $isReference ? $this->pointedSchemaReference(ref: $target, context: $context) : $target;
+                }
+                $value['mapping'] = $mapping;
+                $result[$key] = $value;
+                continue;
+            }
+            $result[$key] = $this->rewriteSchemaNodePointers(
+                node: $value,
+                context: $context,
+                namesKeys: !$namesKeys && in_array($key, self::NAME_KEYED_KEYWORDS, true),
+            );
+        }
+
+        return $result;
+    }
+
+    /**
+     * The `$ref` in the spelling the generator resolves: a component pointer, in the same file.
+     *
+     * @param array{document: array<string, mixed>, sourceFile: ?string, isRootDocument: bool} $context
+     */
+    private function pointedSchemaReference(string $ref, array $context): string
+    {
+        $ref = $this->stripDocumentSelfPrefix($ref);
+        $hash = strpos($ref, '#');
+        $filePart = $hash === false ? $ref : substr($ref, 0, $hash);
+        $pointer = $hash === false ? '' : rawurldecode(substr($ref, $hash + 1));
+
+        // An anchor, a remote URI and a component are someone else's to resolve.
+        $isAnchor = $pointer !== '' && !str_starts_with($pointer, '/');
+        $isRemote = preg_match('#^[A-Za-z][A-Za-z0-9+.-]*:#', $filePart) === 1;
+        if ($isAnchor || $isRemote || str_starts_with($pointer, '/components/schemas/')) {
+            return $ref;
+        }
+
+        if ($filePart === '') {
+            if ($pointer === '' && $context['isRootDocument']) {
+                // The whole OpenAPI document is not a schema; left as it was.
+                return $ref;
+            }
+            if ($context['isRootDocument'] || $context['sourceFile'] === null) {
+                return '#/components/schemas/' . $this->localPointedSchema(ref: $ref, pointer: $pointer, context: $context);
+            }
+
+            return '#/components/schemas/' . $this->pointedSchemaComponent(
+                file: $context['sourceFile'],
+                pointer: $pointer,
+                ref: $ref,
+            );
+        }
+
+        if ($context['sourceFile'] === null) {
+            // A document given as an array names no directory its files could be read from.
+            return $ref;
+        }
+        $resolved = $this->resolveExternalSchemaPointer(
+            ref: $filePart . '#/components/schemas/',
+            currentSourceFile: $context['sourceFile'],
+            reportedRef: $ref,
+        );
+        if ($resolved === null) {
+            return $ref;
+        }
+
+        return $filePart . '#/components/schemas/' . $this->pointedSchemaComponent(file: $resolved[0], pointer: $pointer, ref: $ref);
+    }
+
+    /**
+     * A pointer into the document being rewritten, which is not cached anywhere yet: its target is
+     * lifted into the document's own components.
+     *
+     * @param array{document: array<string, mixed>, sourceFile: ?string, isRootDocument: bool} $context
+     */
+    private function localPointedSchema(string $ref, string $pointer, array $context): string
+    {
+        if (array_key_exists($pointer, $this->localPointedSchemas)) {
+            return $this->localPointedSchemas[$pointer]['name'];
+        }
+        $schema = $this->schemaAtPointer(document: $context['document'], pointer: $pointer, ref: $ref);
+        $taken = array_keys(is_array($context['document']['components']['schemas'] ?? null) ? $context['document']['components']['schemas'] : []);
+        foreach ($this->localPointedSchemas as $lifted) {
+            $taken[] = $lifted['name'];
+        }
+        $name = $this->pointedSchemaName(pointer: $pointer, file: null, taken: $taken);
+        // Named before its own references are rewritten, so one that leads back here terminates.
+        $this->localPointedSchemas[$pointer] = ['name' => $name, 'schema' => $schema];
+        $this->localPointedSchemas[$pointer]['schema'] = $this->rewriteSchemaNodePointers(node: $schema, context: $context);
+
+        return $name;
+    }
+
+    /**
+     * The component a schema of another file — the file whole, or the place a pointer names in it —
+     * is generated as; added to that file's components the first time.
+     */
+    private function pointedSchemaComponent(string $file, string $pointer, string $ref): string
+    {
+        if (array_key_exists($pointer, $this->pointedSchemaComponents[$file] ?? [])) {
+            return $this->pointedSchemaComponents[$file][$pointer];
+        }
+
+        $declared = $this->externalSchemasOf($file);
+        // Reading the file may have reached this very pointer from inside it.
+        $knownAfterReading = $this->pointedSchemaComponentsOf($file);
+        if (array_key_exists($pointer, $knownAfterReading)) {
+            return $knownAfterReading[$pointer];
+        }
+        $document = $this->externalDocuments[$file] ?? [];
+        if ($pointer === '') {
+            if (array_key_exists('openapi', $document) || array_key_exists('swagger', $document) || array_key_exists('paths', $document)) {
+                throw new RuntimeException(sprintf(
+                    'Unresolvable reference "%s": the file is an OpenAPI document, not a schema. Point at one of its schemas instead.',
+                    $ref,
+                ));
+            }
+            // A JSON Schema document whose `$defs` were folded into components: those stay components.
+            $schema = [];
+            foreach ($document as $keyword => $value) {
+                if ($keyword !== 'components') {
+                    $schema[$keyword] = $value;
+                }
+            }
+        } else {
+            $schema = $this->schemaAtPointer(document: $document, pointer: $pointer, ref: $ref);
+        }
+
+        $name = $this->pointedSchemaName(pointer: $pointer, file: $file, taken: array_map(strval(...), array_keys($declared)));
+        $this->pointedSchemaComponents[$file][$pointer] = $name;
+        $context = ['document' => $document, 'sourceFile' => $file, 'isRootDocument' => false];
+        $schema = $this->normalizeEnumSpelling($this->rewriteSchemaNodePointers(node: $schema, context: $context));
+
+        $this->externalDocSchemas[$file][$name] = $schema;
+        $components = is_array($this->externalDocuments[$file]['components'] ?? null) ? $this->externalDocuments[$file]['components'] : [];
+        $schemas = is_array($components['schemas'] ?? null) ? $components['schemas'] : [];
+        $schemas[$name] = $schema;
+        $components['schemas'] = $schemas;
+        $this->externalDocuments[$file]['components'] = $components;
+
+        return $name;
+    }
+
+    /**
+     * @param array<string, array{name: string, schema: mixed}> $replacement
+     * @return array<string, array{name: string, schema: mixed}>
+     */
+    private function swapLocalPointedSchemas(array $replacement): array
+    {
+        $previous = $this->localPointedSchemas;
+        $this->localPointedSchemas = $replacement;
+
+        return $previous;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function pointedSchemaComponentsOf(string $file): array
+    {
+        return $this->pointedSchemaComponents[$file] ?? [];
+    }
+
+    /**
+     * @param array<mixed> $document
+     * @return array<mixed>
+     */
+    private function schemaAtPointer(array $document, string $pointer, string $ref): array
+    {
+        $node = $document;
+        foreach (array_slice(explode('/', $pointer), 1) as $segment) {
+            $segment = str_replace(['~1', '~0'], ['/', '~'], $segment);
+            if (!is_array($node) || !array_key_exists($segment, $node)) {
+                $node = null;
+                break;
+            }
+            $node = $node[$segment];
+        }
+        if (is_bool($node)) {
+            return self::booleanSchemaAsObject($node);
+        }
+        if (!is_array($node)) {
+            throw new RuntimeException(sprintf('Unresolvable reference "%s": the pointer leads to no schema.', $ref));
+        }
+
+        return $node;
+    }
+
+    /**
+     * A class name for a pointed schema: the file's name for a whole file, the last segment of the
+     * pointer otherwise — the whole path when that segment is a keyword or an index. Never one the
+     * document already uses, in any case.
+     *
+     * @param list<string> $taken
+     */
+    private function pointedSchemaName(string $pointer, ?string $file, array $taken): string
+    {
+        $words = static function (string $text): string {
+            $parts = preg_split('/[^A-Za-z0-9]+/', $text);
+
+            return implode('', array_map(ucfirst(...), $parts === false ? [] : $parts));
+        };
+        $segments = array_map(
+            static fn(string $segment): string => str_replace(['~1', '~0'], ['/', '~'], $segment),
+            array_slice(explode('/', $pointer), 1),
+        );
+        if ($pointer === '') {
+            $base = $words(pathinfo((string)preg_replace('/\.(dist|example|local|sample)$/i', '', basename((string)$file)), PATHINFO_FILENAME));
+        } else {
+            $last = (string)end($segments);
+            $structural = ['schema', 'items', 'not', 'additionalProperties', 'contains', 'if', 'then', 'else', 'propertyNames'];
+            $base = in_array($last, $structural, true) || preg_match('/^\d*$/', $last) === 1
+                ? implode('', array_map($words, $segments))
+                : $words($last);
+        }
+        $base = $base === '' || ctype_digit($base[0]) ? 'Pointed' . $base : $base;
+
+        $folded = array_map(strtolower(...), $taken);
+        foreach ($this->pointedSchemaComponents[(string)$file] ?? [] as $name) {
+            $folded[] = strtolower($name);
+        }
+        $name = $base;
+        $suffix = 2;
+        while (in_array(strtolower($name), $folded, true)) {
+            $name = $base . $suffix++;
+        }
+
+        return $name;
     }
 
     /**
@@ -4433,6 +5017,7 @@ final class GenerateDtoCommand extends Command
             // Aliases are inlined FIRST: everything below reads the property's own keywords, and an
             // `enum` that arrives with the alias has to be marked for constraint validation like any
             // inline one — otherwise it is silently dropped and the values are never checked.
+            $propertySchema = $this->withoutNullTheReferenceRefuses($propertySchema);
             $propertySchema = $this->inlineFreeFormObjectRef($propertySchema);
             $propertySchema = $this->inlineScalarAliasRef($propertySchema, $ownerClassName);
             $propertySchema = $this->unwrapArrayAliasAllOf($propertySchema);
@@ -4440,6 +5025,7 @@ final class GenerateDtoCommand extends Command
                 // An `items: {$ref: Alias}` names the same alias one level down.
                 $propertySchema['items'] = $this->inlineScalarAliasRef($propertySchema['items'], $ownerClassName);
             }
+            $propertySchema = $this->inlineScalarAliasBranches($propertySchema, $ownerClassName);
             $propertySchema = $this->markInlineEnumValidation($propertySchema);
 
             [$type, $nullableBySchema] = $this->resolvePropertyType(
@@ -6784,6 +7370,36 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * A `type` list beside a `$ref` narrows the referenced schema, as every sibling keyword does under
+     * JSON Schema 2020-12 — it cannot widen it. `{$ref: Swatch, type: [object, "null"]}` against a
+     * `type: object` component admits no null: both have to hold. Read as a nullable reference, it
+     * admitted `null` in every mode, and a scalar alias spelled so admitted it in yii3. `null` is
+     * dropped from the list where the component's own `type` excludes it. 3.0's `nullable: true`
+     * beside a `$ref` is untouched — README.validation explains that deliberate deviation.
+     *
+     * @param array<string, mixed> $propertySchema
+     * @return array<string, mixed>
+     */
+    private function withoutNullTheReferenceRefuses(array $propertySchema): array
+    {
+        $ref = $propertySchema['$ref'] ?? null;
+        $type = $propertySchema['type'] ?? null;
+        if (!is_string($ref) || !is_array($type) || !in_array('null', $type, true)) {
+            return $propertySchema;
+        }
+        $definition = $this->localSchemaDefinitionForRef($ref);
+        $referencedType = $definition['type'] ?? null;
+        if ($definition === null || $referencedType === null || $this->schemaAllowsNull($definition) || $this->componentAdmitsNull($definition)) {
+            return $propertySchema;
+        }
+
+        $narrowed = array_values(array_filter($type, static fn(mixed $member): bool => $member !== 'null'));
+        $propertySchema['type'] = count($narrowed) === 1 ? $narrowed[0] : $narrowed;
+
+        return $propertySchema;
+    }
+
+    /**
      * A property that is a pure `$ref` to a free-form object component gets the referenced schema
      * inlined. Resolving the type alone is not enough: the constraints are read from the property
      * schema, and a bare `$ref` carries none, so the map would lose its `type: object` and the
@@ -6869,6 +7485,103 @@ final class GenerateDtoCommand extends Command
             own: $propertySchema,
             target: $this->aliasChainInlined(definition: $definition, sourceFile: $sourceFile, depth: 0),
         );
+    }
+
+    /**
+     * A scalar alias named where a value sits one level down — a branch of an `anyOf` / `oneOf` /
+     * `allOf` beside other branches, the value schema of a map (`additionalProperties`) — is the schema
+     * it names, exactly as `inlineScalarAliasRef()` makes it for the property itself and for `items`.
+     * Left a reference, the property was typed by the alias's class, which is never written: `Code|Count`,
+     * `Code|int|null`, `array<string, Code>`. The runtime refused every value with `Unsupported type` /
+     * `unknown type`, laravel died on the constructor or on `Class not found` before reading the
+     * payload, laravel-data could not find the data class, and the alias's keywords went unchecked
+     * where a value was let through. A branch or map value that names an object class is left alone.
+     *
+     * The two-branch "alias or null" union never gets here — `nullableScalarAliasUnion()` has made it
+     * the alias, nullable, already.
+     *
+     * @param array<string, mixed> $propertySchema
+     * @return array<string, mixed>
+     */
+    private function inlineScalarAliasBranches(array $propertySchema, string $ownerClassName, int $depth = 0): array
+    {
+        foreach (['anyOf', 'oneOf', 'allOf'] as $compositionKey) {
+            $branches = $propertySchema[$compositionKey] ?? null;
+            if (!is_array($branches)) {
+                continue;
+            }
+            $inlinedBranches = [];
+            foreach ($branches as $index => $branch) {
+                $inlinedBranches[$index] = is_array($branch)
+                    ? $this->inlineScalarAliasValue(schema: $branch, ownerClassName: $ownerClassName, depth: $depth)
+                    : $branch;
+            }
+            $propertySchema[$compositionKey] = $inlinedBranches;
+        }
+
+        $items = $propertySchema['items'] ?? null;
+        if (is_array($items)) {
+            $propertySchema['items'] = $this->inlineScalarAliasValue(schema: $items, ownerClassName: $ownerClassName, depth: $depth);
+        }
+        $valueSchema = $propertySchema['additionalProperties'] ?? null;
+        if (is_array($valueSchema) && $this->staysAMap($propertySchema)) {
+            $propertySchema['additionalProperties'] = $this->inlineScalarAliasValue(schema: $valueSchema, ownerClassName: $ownerClassName, depth: $depth);
+        }
+
+        return $propertySchema;
+    }
+
+    /**
+     * Whether an object schema is typed as a map rather than extracted into a class of its own. Only
+     * then may its `additionalProperties` be rewritten here: a class is extracted from the schema as
+     * the document wrote it, and a rewritten copy would no longer be the same schema — the two
+     * collide on the class name.
+     *
+     * @param array<string, mixed> $schema
+     */
+    private function staysAMap(array $schema): bool
+    {
+        if (!$this->isMapLikeObjectSchema($schema)) {
+            return false;
+        }
+        foreach (self::OBJECT_SHAPING_KEYWORDS as $keyword) {
+            if (
+                array_key_exists($keyword, $schema)
+                && !in_array($keyword, self::PROPERTY_KEY_CONSTRAINT_KEYWORDS, true)
+            ) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * One value position of `inlineScalarAliasBranches()`: the alias it names inlined, then the same
+     * done one level further down — a union component inlined here brings branches that name aliases
+     * of their own.
+     *
+     * @param array<mixed> $schema
+     * @return array<mixed>
+     */
+    private function inlineScalarAliasValue(array $schema, string $ownerClassName, int $depth): array
+    {
+        if ($depth >= self::SHAPE_PROBE_DEPTH) {
+            return $schema;
+        }
+        /** @var array<string, mixed> $schema */
+        if (!is_string($schema['$ref'] ?? null)) {
+            // An inline subschema is left exactly as written: one that shapes an object is extracted
+            // into a class of its own from the document, and a copy rewritten here would no longer be
+            // the same schema — the two collide on the class name.
+            return $schema;
+        }
+        $inlined = $this->inlineScalarAliasRef($schema, $ownerClassName);
+        if (array_key_exists('$ref', $inlined)) {
+            return $inlined;
+        }
+
+        return $this->inlineScalarAliasBranches(propertySchema: $inlined, ownerClassName: $ownerClassName, depth: $depth + 1);
     }
 
     /**
@@ -7188,7 +7901,7 @@ final class GenerateDtoCommand extends Command
      */
     private function isScalarAliasSchema(array $schema): bool
     {
-        if ($this->isUntypedValueSchema($schema)) {
+        if ($this->isUntypedValueSchema($schema) || $this->isScalarUnionSchema($schema, depth: 0)) {
             return true;
         }
 
@@ -7216,6 +7929,77 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * A union whose every branch is a scalar value — `anyOf: [{$ref: Code}, {$ref: Count}]`,
+     * `oneOf: [{$ref: Count}, {type: string}, {type: null}]` — is a scalar alias of its own: a value of
+     * one of those types, never an object. Kept a class, it became a union interface no value can
+     * implement, and a property naming it refused every string and number (laravel died on the
+     * constructor). Referenced, it is inlined like any scalar alias, and its branches with it.
+     *
+     * Only the two union keywords and annotations: a `type`, a `discriminator`, an `allOf` or any other
+     * asserting keyword beside the union keeps the schema what it was.
+     *
+     * @param array<string, mixed> $schema
+     */
+    private function isScalarUnionSchema(array $schema, int $depth): bool
+    {
+        if ($depth >= self::SHAPE_PROBE_DEPTH) {
+            return false;
+        }
+        $unionKeys = array_values(array_intersect(['anyOf', 'oneOf'], array_keys($schema)));
+        if (count($unionKeys) !== 1) {
+            return false;
+        }
+        foreach (array_keys($schema) as $keyword) {
+            if (
+                $keyword !== $unionKeys[0]
+                && !in_array($keyword, self::ALIAS_ANNOTATION_KEYWORDS, true)
+                && !in_array($keyword, self::NON_ASSERTING_KEYWORDS, true)
+                && !str_starts_with($keyword, 'x-')
+            ) {
+                return false;
+            }
+        }
+        $branches = $schema[$unionKeys[0]];
+        if (!is_array($branches) || $branches === []) {
+            return false;
+        }
+        foreach ($branches as $branch) {
+            if (!is_array($branch) || !$this->isScalarUnionBranch(branch: $branch, depth: $depth)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<mixed> $branch
+     */
+    private function isScalarUnionBranch(array $branch, int $depth): bool
+    {
+        $ref = $branch['$ref'] ?? null;
+        if (is_string($ref)) {
+            if (array_keys($branch) !== ['$ref'] || !str_starts_with($ref, '#/components/schemas/')) {
+                return false;
+            }
+            $definition = $this->dtoSchemas[$this->schemaClassName($this->componentNameInPointer($ref))] ?? null;
+
+            return is_array($definition)
+                && !$this->isEnumSchema($definition)
+                && (
+                    $this->isScalarUnionSchema($definition, depth: $depth + 1)
+                    || (array_key_exists('type', $definition) && $this->isScalarAliasSchema($definition))
+                );
+        }
+        /** @var array<string, mixed> $branch */
+        if ($this->isScalarUnionSchema($branch, depth: $depth + 1)) {
+            return true;
+        }
+
+        return array_key_exists('type', $branch) && $this->isScalarAliasSchema($branch);
+    }
+
+    /**
      * `{type: object}` with nothing else on it allows any properties — it is the same free-form
      * object as `{type: object, additionalProperties: true}`, only spelled shorter. Materializing
      * it into a DTO class produced a class with no properties, which silently swallowed the whole
@@ -7232,7 +8016,13 @@ final class GenerateDtoCommand extends Command
      */
     private function isFreeFormObjectSchema(array $schema): bool
     {
-        if (($schema['type'] ?? null) !== 'object') {
+        // `type: [object, null]` too, the OpenAPI 3.1 spelling of `{type: object, nullable: true}`:
+        // read as `object` alone, it became an empty class and every key the client sent was dropped.
+        $type = $schema['type'] ?? null;
+        if (is_array($type)) {
+            $type = array_values(array_diff($type, ['null'])) === ['object'] ? 'object' : null;
+        }
+        if ($type !== 'object') {
             return false;
         }
 
@@ -7786,7 +8576,10 @@ final class GenerateDtoCommand extends Command
         }
 
         $ref = $this->referenceOrSingleRefAllOf($propertySchema);
-        $definition = $ref === null ? null : $this->arrayAliasDefinition($ref);
+        // A map component the same: a plain `$ref` to it is typed as the map, while the `allOf`
+        // spelling — 3.0's way to write a nullable one — named an empty class of that name, which
+        // dropped every value: `{"a": "x"}` passed a map of integers in symfony and yii3.
+        $definition = $ref === null ? null : ($this->arrayAliasDefinition($ref) ?? $this->mapComponentDefinition($ref));
         if ($ref === null || $definition === null) {
             return $propertySchema;
         }

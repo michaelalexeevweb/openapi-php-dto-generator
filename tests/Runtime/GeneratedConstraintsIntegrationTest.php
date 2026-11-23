@@ -225,6 +225,132 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         return $fqcn;
     }
 
+    /**
+     * An undeclared key in a NESTED closed object is named by its path, as every other nested error
+     * is: the bare `Unknown property "x"` read the same for a stray key at the root, in `closed` or in
+     * the second item of a list. The root keeps the bare name — it has no path above it.
+     */
+    #[DataProvider('unknownPropertyPaths')]
+    public function testAnUnknownPropertyIsNamedByItsPath(string $json, string $expected): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Holder' => [
+                    'type' => 'object',
+                    'additionalProperties' => false,
+                    'properties' => [
+                        'closed' => ['$ref' => '#/components/schemas/Shut'],
+                        'shuts' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Shut']],
+                        'inline' => [
+                            'type' => 'object',
+                            'properties' => ['shape' => ['type' => 'string']],
+                            'additionalProperties' => false,
+                        ],
+                    ],
+                ],
+                'Shut' => [
+                    'type' => 'object',
+                    'properties' => ['colour' => ['type' => 'string'], 'deeper' => ['$ref' => '#/components/schemas/Shut']],
+                    'additionalProperties' => false,
+                ],
+            ]],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'UnknownPropertyPath' . md5($json), 'Holder');
+
+        try {
+            (new DtoDeserializer())->deserialize($this->jsonPostRequest($json), $fqcn);
+            $this->fail($json . ' must be refused');
+        } catch (RuntimeException $e) {
+            $this->assertSame(expected: $expected, actual: $e->getMessage());
+        }
+    }
+
+    public static function unknownPropertyPaths(): iterable
+    {
+        yield 'root' => ['{"stray":1}', 'Unknown property "stray" is not allowed by the schema.'];
+        yield 'nested ref' => ['{"closed":{"x":"y"}}', 'Unknown property "closed.x" is not allowed by the schema.'];
+        yield 'two levels' => ['{"closed":{"deeper":{"x":"y"}}}', 'Unknown property "closed.deeper.x" is not allowed by the schema.'];
+        yield 'list item' => ['{"shuts":[{"colour":"a"},{"x":"y"}]}', 'Unknown property "shuts.1.x" is not allowed by the schema.'];
+        yield 'inline' => ['{"inline":{"x":"y"}}', 'Unknown property "inline.x" is not allowed by the schema.'];
+    }
+
+    /**
+     * The magnitude in the out-of-range message is the number sent. `%.0F` writes a whole number with
+     * no decimal point, and trimming zeros off it as if it had one reported 1e20 as `got 1`.
+     */
+    #[DataProvider('outOfRangeWholeNumbers')]
+    public function testAnOutOfRangeIntegerIsReportedAsSent(string $sent, string $reported): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Counter' => ['type' => 'object', 'properties' => ['n' => ['type' => 'integer']]],
+            ]],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'OutOfRangeMessage' . md5($sent), 'Counter');
+
+        try {
+            (new DtoDeserializer())->deserialize($this->jsonPostRequest('{"n":' . $sent . '}'), $fqcn);
+            $this->fail($sent . ' is outside int64 and must be refused');
+        } catch (RuntimeException $e) {
+            $this->assertSame(
+                expected: 'param "n" must be within integer range (-9223372036854775808 to 9223372036854775807), got ' . $reported,
+                actual: $e->getMessage(),
+            );
+        }
+    }
+
+    public static function outOfRangeWholeNumbers(): iterable
+    {
+        yield '1e20' => ['1e20', '100000000000000000000'];
+        yield '1.5e19' => ['1.5e19', '15000000000000000000'];
+        yield 'negative' => ['-1e20', '-100000000000000000000'];
+        yield 'no trailing zero' => ['12345678901234567891', '12345678901234567168'];
+    }
+
+    /**
+     * `minProperties` and its neighbours on a class-typed property are the class's, judged against
+     * the body it was built from. The property's copy was asked of the hydrated object, which holds
+     * the declared keys alone: `{"a":1,"z":2}` failed `minProperties: 2`, which the body met.
+     */
+    #[DataProvider('objectWideKeywordsOnAClassProperty')]
+    public function testObjectWideKeywordsOnAClassPropertyCountTheBody(array $keywords, string $json, bool $accepted): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Holder' => [
+                    'type' => 'object',
+                    'required' => ['inner'],
+                    'properties' => ['inner' => ['type' => 'object', 'properties' => ['a' => ['type' => 'integer']]] + $keywords],
+                ],
+            ]],
+        ];
+        $fqcn = $this->generateFromInlineSpec($spec, 'ObjectWideOnProperty' . md5($json . serialize($keywords)), 'Holder');
+
+        try {
+            (new DtoDeserializer())->deserialize($this->jsonPostRequest($json), $fqcn);
+            $this->assertTrue($accepted, $json . ' must be refused');
+        } catch (RuntimeException $e) {
+            $this->assertFalse($accepted, $json . ' must be accepted: ' . $e->getMessage());
+        }
+    }
+
+    public static function objectWideKeywordsOnAClassProperty(): iterable
+    {
+        yield 'minProperties met with an undeclared key' => [['minProperties' => 2], '{"inner":{"a":1,"z":2}}', true];
+        yield 'minProperties short' => [['minProperties' => 2], '{"inner":{"a":1}}', false];
+        yield 'maxProperties past with an undeclared key' => [['maxProperties' => 1], '{"inner":{"a":1,"z":2}}', false];
+        yield 'maxProperties met' => [['maxProperties' => 1], '{"inner":{"a":1}}', true];
+        yield 'propertyNames on an undeclared key' => [['propertyNames' => ['maxLength' => 1]], '{"inner":{"a":1,"zz":2}}', false];
+        yield 'patternProperties on an undeclared key' => [['patternProperties' => ['^x' => ['type' => 'integer']]], '{"inner":{"a":1,"x1":"s"}}', false];
+        yield 'patternProperties met' => [['patternProperties' => ['^x' => ['type' => 'integer']]], '{"inner":{"a":1,"x1":2}}', true];
+    }
+
     private function jsonPostRequest(string $body): Request
     {
         return Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $body);

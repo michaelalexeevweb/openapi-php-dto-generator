@@ -447,12 +447,15 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
         if (!$decoded instanceof \stdClass) {
             return;
         }
+{% if reachesRecursion %}
+        $recursivePaths = self::openApiRecursivePaths($decoded);
+{% endif %}
 {% if checksObjectPaths %}
 
-        foreach ({{ objectPathsExpression }} as $path) {
+        foreach ({% if reachesRecursion %}[...{{ objectPathsExpression }}, ...$recursivePaths['objectPaths']]{% else %}{{ objectPathsExpression }}{% endif %} as $path) {
 {{ splitPath }}            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // `[]` is let through: it is how PHP encodes an empty array, `json_encode([])`, so every
-                // PHP client sends it for an empty object, and runtime and Symfony mode accept it.
+                // PHP client sends it for an empty object, and Symfony mode accepts it.
                 if (is_array($node) && $node !== []) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
@@ -461,11 +464,14 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
 {% endif %}
 {% if checksScalarPaths %}
 
-        foreach ({{ scalarPathsExpression }} as $path => $type) {
+        foreach ({% if reachesRecursion %}[...{{ scalarPathsExpression }}, ...$recursivePaths['scalarPaths']]{% else %}{{ scalarPathsExpression }}{% endif %} as $path => $type) {
 {{ splitPath }}            foreach (self::rawNodesAt($decoded, $segments, '') as $foundPath => $node) {
                 // A JSON `true` passes Laravel's `integer` and `numeric` too: `filter_var()` reads it as 1.
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
                 $lenient = is_string($node)
-                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node));
+                    || ($type === 'boolean' ? $node === 0 || $node === 1 : is_bool($node))
+                    || (is_float($node) && !is_finite($node));
                 if ($lenient && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : $type);
                 }

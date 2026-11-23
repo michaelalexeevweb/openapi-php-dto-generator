@@ -249,14 +249,18 @@ UserPostRequest::withValidator($validator, $this->getContent());
 The generated FormRequest passes it for you. With the raw body in hand, a non-empty JSON array sent
 for a `type: object` property is refused (`flags expects object, got array.`) while a JSON object keyed
 `0..n-1` still passes. An EMPTY array passes as the empty object: it is what `json_encode([])` writes,
-so every PHP client sends `[]` for `{}`, and runtime and Symfony mode accept it too. Omit the argument
-and only that one check is skipped — everything else runs.
+so every PHP client sends `[]` for `{}`, and Symfony, laravel-data and yii3 mode accept it too. Runtime
+mode is the exception — it decodes the body itself and keeps every JSON object a `stdClass`, so it still
+tells `[]` from `{}` and refuses `[]` where an object is asked for (see the
+[support matrix](README.support-matrix.md#divergences)). Omit the argument and only that one check is
+skipped — everything else runs.
 
-### One thing this mode can do that the others cannot
+### Closed objects are enforced
 
 `additionalProperties: false` and `unevaluatedProperties: false` actually fire here. The interpreter
-reads the raw payload, so an undeclared key is still visible; runtime and Symfony mode both bind the
-payload into an object first, and by then the key is gone.
+reads the raw payload, so an undeclared key is still visible. Runtime mode refuses it too — its
+deserializer reads the raw body as well — while Symfony and yii3 mode bind the payload into an object
+first, and by then the key is gone.
 
 ## PATCH / partial updates
 
@@ -280,7 +284,9 @@ mode.
 An optional property with a schema `default` is that default when the key is absent —
 `getKind()` returns `Kind::All`, not `null` — and its type admits `null` only if the schema does.
 `isKindProvided()` still says the key was not sent, and `toArray()` still leaves it out unless the schema
-lets the property be null. A REQUIRED
+lets the property be null. A default PHP has no constant for — an object (`{type: object, default:
+{...}}`, a `$ref` with a `default`) or a union — is not applied: such a property is an ordinary optional
+one, nullable and `null` when the key is absent, as in the other modes. A REQUIRED
 property with a default stays required: the default does not make the key optional, as in Symfony mode.
 
 ## The response direction
@@ -383,7 +389,8 @@ A request body sent as a non-empty JSON array is refused under `payload` with `J
 object, got array.` It decodes to the PHP array an object keyed 0..n-1 does, so with every property
 optional it passed before 2.15.101. `[]` is the empty object, at the root as nested: `json_encode([])` is
 how a PHP client sends one, and Laravel's `postJson()` with no data sends it too. Runtime mode refuses
-`[]` at the root as well — the one place the two differ.
+`[]` wherever an object is asked for, at the root and nested alike — it decodes the body itself and still
+tells `[]` from `{}`.
 
 ### Errors about the object itself
 

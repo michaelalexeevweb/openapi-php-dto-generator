@@ -706,12 +706,17 @@ trait RendersYii3Dto
      * `DateTimeImmutable` here, so `format: time` stays a string and its rule is not emitted at all.
      * The interpreter owns that format instead, and refuses `99:99` exactly as the other modes do.
      *
+     * The others — `Email`, `Url`, `Ip` — refuse every value that is not a string, while a `format`
+     * ignores one (JSON Schema 2020-12 §7.1): `{type: integer, format: email}` refused `5`. So they
+     * judge a string property only, and the interpreter, which reads a format for strings alone,
+     * takes the keyword anywhere else.
+     *
      * @param SchemaProperty $property
      */
     private function yii3FormatRuleApplies(array $property, string $rule): bool
     {
         if (!in_array($rule, self::YII3_DATE_NAMESPACE_RULES, true)) {
-            return true;
+            return ltrim($property['type'], '?') === 'string';
         }
 
         return str_contains($property['type'], 'DateTimeImmutable');
@@ -824,10 +829,15 @@ trait RendersYii3Dto
         // gets a rule; `yii3NativelyCoveredKeywords()` reads the same view, so the rest stays with the
         // interpreter, which applies each keyword to its own type.
         $ruleConstraints = $this->withoutKeywordsTheTypeDoesNotPin(schema: $constraints, phpType: $property['type']);
+        // The scalar rules are collected first and rendered below: on a property the hydrator turns into
+        // a generated backed enum they would judge the enum OBJECT, and `GreaterThanOrEqual(0)` or
+        // `Length(min: 1)` refused every case of `{type: integer, minimum: 0, enum: [1, 2]}` — the
+        // valid ones included. There they join the raw `In` check instead, which sees the scalar.
+        $scalarRules = [];
         $min = $ruleConstraints['minLength'] ?? null;
         $max = $ruleConstraints['maxLength'] ?? null;
         if (($min !== null || $max !== null) && $this->yii3LimitsAreUsable($min, $max)) {
-            $attributes[] = $this->yii3Rule('Length', $this->yii3LimitArguments($min, $max), $ruleImports);
+            $scalarRules[] = ['rule' => 'Length', 'arguments' => $this->yii3LimitArguments($min, $max)];
         }
 
         foreach (
@@ -840,13 +850,13 @@ trait RendersYii3Dto
         ) {
             $bound = $ruleConstraints[$keyword] ?? null;
             if (is_numeric($bound) && !$this->yii3BoundIsExclusiveByModifier($ruleConstraints, $keyword)) {
-                $attributes[] = $this->yii3Rule($rule, [$this->yii3NumberLiteral($bound), "type: 'original'"], $ruleImports);
+                $scalarRules[] = ['rule' => $rule, 'arguments' => [$this->yii3NumberLiteral($bound), "type: 'original'"]];
             }
         }
 
         $pattern = $ruleConstraints['pattern'] ?? null;
         if (is_string($pattern) && $pattern !== '' && $this->patternCompiles($pattern)) {
-            $attributes[] = $this->yii3Rule('Regex', [$this->yii3RegexLiteral($pattern)], $ruleImports);
+            $scalarRules[] = ['rule' => 'Regex', 'arguments' => [$this->yii3RegexLiteral($pattern)]];
         }
 
         $format = $ruleConstraints['format'] ?? null;
@@ -855,7 +865,14 @@ trait RendersYii3Dto
             && array_key_exists($format, self::YII3_FORMAT_RULES)
             && $this->yii3FormatRuleApplies($property, self::YII3_FORMAT_RULES[$format])
         ) {
-            $attributes[] = $this->yii3Rule(self::YII3_FORMAT_RULES[$format], [], $ruleImports);
+            $scalarRules[] = ['rule' => self::YII3_FORMAT_RULES[$format], 'arguments' => []];
+        }
+
+        $enum = $this->enumSchemas[ltrim($property['type'], '?')] ?? null;
+        if ($enum === null) {
+            foreach ($scalarRules as ['rule' => $rule, 'arguments' => $arguments]) {
+                $attributes[] = $this->yii3Rule($rule, $arguments, $ruleImports);
+            }
         }
 
         // Hydrator attributes that CONVERT the value, kept apart and emitted last: the hydrator runs its
@@ -1005,13 +1022,16 @@ trait RendersYii3Dto
         // it stays uninitialised — for an OPTIONAL one that reads as "not sent": `?level=nonsense`
         // answered as if the filter were absent. The raw value is checked against the cases instead.
         // Strict in a body, which is JSON and says `1`; a parameter arrives as text and says `"1"`.
-        $enum = $this->enumSchemas[ltrim($property['type'], '?')] ?? null;
         if ($enum !== null) {
             $arguments = ['[' . implode(', ', $this->yii3EnumInValues(values: $enum['values'], strict: !$isParameter)) . ']'];
             if (!$isParameter) {
                 $arguments[] = 'strict: true';
             }
-            $attributes[] = $this->yii3RawRule(rule: 'In', arguments: $arguments, skip: $skip, ruleImports: $ruleImports);
+            $attributes[] = $this->yii3RawRuleChain(
+                rules: [['rule' => 'In', 'arguments' => $arguments], ...$scalarRules],
+                skip: $skip,
+                ruleImports: $ruleImports,
+            );
         }
 
         // The same loss for a date: `#[ToDateTime]` that parses nothing leaves the property uninitialised,
@@ -1228,11 +1248,17 @@ trait RendersYii3Dto
                 continue;
             }
 
-            $scalar = match ($member) {
-                'int' => ['Integer', 'an integer'],
-                'float' => ['Number', 'a number'],
-                'string' => ['StringValue', 'a string'],
-                'bool' => ['BooleanValue', 'a boolean'],
+            // A class or a list member is an array on the wire, and nothing else is: a scalar the cast
+            // would turn into the class, or into `true` for `array|bool`, is refused here. The class's own
+            // keywords are `Nested`'s, the list's the interpreter's.
+            $isGeneratedClass = array_key_exists($this->shortClassName($member), $this->dtoSchemas) && !$this->yii3IsUnionInterface($member);
+            $scalar = match (true) {
+                $member === 'int' => ['Integer', 'an integer'],
+                $member === 'float' => ['Number', 'a number'],
+                $member === 'string' => ['StringValue', 'a string'],
+                $member === 'bool' => ['BooleanValue', 'a boolean'],
+                $isGeneratedClass => ['Each', 'an object'],
+                $member === 'array' => ['Each', 'an array'],
                 default => null,
             };
             if ($scalar === null) {
@@ -1316,6 +1342,31 @@ trait RendersYii3Dto
         // A union interface is held as the decoded array, which `Nested` refuses; the interpreter checks it.
         if ($this->isGeneratedDtoType($property['type'])) {
             return $this->yii3IsUnionInterface($property['type']) ? [] : [$this->yii3Rule('Nested', [], $ruleImports)];
+        }
+
+        // `Shade|string`: the class checks itself when it is what the property holds, and `Nested` alone
+        // refused the string. Nothing checked the object before — `{}` passed a `required` of the class.
+        $unionClass = $this->unionClassBesideScalars($property['type']);
+        if ($unionClass !== null && !$this->yii3IsUnionInterface($unionClass)) {
+            $alternatives = [];
+            foreach ($this->yii3TypeMembers($property['type']) as $member) {
+                $scalarRule = match ($member) {
+                    'int' => 'Integer',
+                    'float' => 'Number',
+                    'string' => 'StringValue',
+                    'bool' => 'BooleanValue',
+                    default => null,
+                };
+                if ($scalarRule === null && $this->shortClassName($member) !== $unionClass) {
+                    // An enum member is held as its case, which no scalar rule names.
+                    return [];
+                }
+                $fqcn = $this->yii3RuleClass($scalarRule ?? 'Nested');
+                $ruleImports[] = $fqcn;
+                $alternatives[] = sprintf('new %s()', $this->yii3Lib($scalarRule ?? 'Nested', $fqcn));
+            }
+
+            return [$this->yii3Rule('AnyRule', ['[' . implode(', ', $alternatives) . ']'], $ruleImports)];
         }
 
         $itemType = $this->yii3ArrayItemType($property);
@@ -2005,7 +2056,12 @@ PHP;
     {
         $propertyConstraints = $constraints['properties'] ?? null;
         if (!is_array($propertyConstraints)) {
-            return $constraints;
+            // No `properties` left at all when every one of them is a nested DTO — the names still
+            // have to be listed beside `additionalProperties` (below).
+            if (!array_key_exists('additionalProperties', $constraints) || $properties === []) {
+                return $constraints;
+            }
+            $propertyConstraints = [];
         }
 
         foreach ($properties as $property) {
@@ -2032,6 +2088,19 @@ PHP;
             }
 
             $propertyConstraints[$name] = $kept;
+        }
+
+        // A property the class holds as a nested DTO (or a `$ref` it otherwise materializes) leaves no
+        // schema behind — its own class validates it — and with it went its NAME. Beside
+        // `additionalProperties` the interpreter then read the key the payload carries as an
+        // undeclared one: `{"leaf": {...}}` was refused as "additional property \"leaf\"" for every
+        // value. Every declared name stays listed, with nothing to check where nothing is left.
+        if (array_key_exists('additionalProperties', $constraints)) {
+            foreach ($properties as $property) {
+                if (!array_key_exists($property['openApiName'], $propertyConstraints)) {
+                    $propertyConstraints[$property['openApiName']] = [];
+                }
+            }
         }
 
         $constraints['properties'] = $propertyConstraints;

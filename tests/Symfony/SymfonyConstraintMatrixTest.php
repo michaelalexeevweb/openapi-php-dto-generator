@@ -653,14 +653,14 @@ final class SymfonyConstraintMatrixTest extends TestCase
         $this->assertSame('field "v" must be greater than or equal to 10.', $violations->get(0)->getMessage());
     }
 
-    public function testAnyOfBranchThatIsPureNullDropsTheConstraint(): void
+    public function testAnyOfBranchThatIsPureNullKeepsTheOtherBranchesChecked(): void
     {
         if (!class_exists(Validation::class)) {
             $this->markTestSkipped('symfony/validator not installed');
         }
 
-        // Documented limitation: a `{type: null}` branch cannot be expressed as an Assert branch,
-        // so the whole AtLeastOneOf is dropped and the field is only nullable.
+        // A `{type: null}` branch is `Assert\IsNull`. It had no spelling, the whole `AtLeastOneOf`
+        // was dropped, and the other branches' keywords with it: `'ab'` passed `minLength: 5`.
         [$content, $fqcn] = $this->generateSingleFieldDto('NullBranch', [
             'anyOf' => [
                 ['type' => 'string', 'minLength' => 5],
@@ -668,11 +668,12 @@ final class SymfonyConstraintMatrixTest extends TestCase
             ],
         ]);
 
-        $this->assertStringNotContainsString('#[Assert\AtLeastOneOf(', $content);
+        $this->assertStringContainsString('new Assert\IsNull()', $content);
 
         $validator = Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator();
         $this->assertCount(0, $validator->validate(new $fqcn(v: 'abcde')));
-        $this->assertCount(0, $validator->validate(new $fqcn(v: 'ab')), 'branch constraints are not enforced');
+        $this->assertCount(0, $validator->validate(new $fqcn(v: null)));
+        $this->assertCount(1, $validator->validate(new $fqcn(v: 'ab')));
     }
 
     public function testReadOnlyAndWriteOnlyFieldsAreStillValidated(): void
@@ -784,6 +785,49 @@ final class SymfonyConstraintMatrixTest extends TestCase
         }
 
         return implode("\n", $messages);
+    }
+
+    /**
+     * An optional container whose unsent value breaks its own count keyword: the callback takes
+     * the keyword, so `{}` passes and a short list is reported once — `Assert\Count` beside the
+     * callback said it twice, and refused `{}` as well.
+     */
+    public function testAnUnsentContainerBelowItsCountIsLeftAloneAndASentOneReportedOnce(): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'CountedDefaults' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'list' => ['type' => 'array', 'items' => ['type' => 'integer'], 'minItems' => 2, 'default' => [1]],
+                            'tally' => ['type' => 'object', 'additionalProperties' => ['type' => 'integer'], 'minProperties' => 1, 'default' => []],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+        $this->generator->generateFromArray($spec, $this->outputDirectory, 'SymCountedDefaults', 'symfony');
+        $path = $this->outputDirectory . '/CountedDefaults.php';
+        $this->assertStringNotContainsString('Assert\Count', (string)file_get_contents($path));
+        require_once $path;
+
+        $fqcn = 'SymCountedDefaults\CountedDefaults';
+        $validator = Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator();
+
+        $this->assertCount(0, $validator->validate(new $fqcn()));
+        $short = new $fqcn();
+        $short->setList([1]);
+        $this->assertCount(1, $validator->validate($short));
+        $empty = new $fqcn();
+        $empty->setTally([]);
+        $this->assertCount(1, $validator->validate($empty));
     }
 
     public function testContentKeywordsValidateInCallback(): void

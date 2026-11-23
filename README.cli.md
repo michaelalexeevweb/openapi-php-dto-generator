@@ -59,6 +59,13 @@ Parameters:
 | `--only` | | | Generate only the classes whose name matches this mask (`Order`, `Order*`), and every class they need. Repeatable. See [Part of a document](#part-of-a-document). |
 | `--exclude` | | | Leave out the classes whose name matches this mask; a kept class that needs one stops generation. Repeatable. |
 
+A schema `$ref` may name a component of another document (`money.yml#/components/schemas/Money`), a whole
+file that is a JSON Schema (`./schemas/Pet.yaml`), or any place in a document (`shapes.yml#/Side`,
+`#/definitions/Corner`). A target outside `components.schemas` becomes a class of the document it lives in,
+named after the file or the pointer's last segment (`Pet`, `Side`, `Corner`); every reference to it names
+the same class. A reference that names nothing — a missing file, a pointer the file does not contain, a
+whole OpenAPI document where a schema is expected — stops generation.
+
 Without `--ref`, a class from another document goes under the output directory, at the path its namespace
 gives: the document's directory relative to the root one, each segment in class-name case —
 `models/money.yml` becomes `<namespace>\Models` in `<directory>/Models/`. A `common` directory follows the

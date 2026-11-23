@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Command\Rendering;
 
+use OpenapiPhpDtoGenerator\Service\DtoValidator;
 use RuntimeException;
 
 /**
@@ -648,6 +649,7 @@ trait RendersRuntimeDto
      *     presenceFlagName: string,
      *     presenceAlwaysTrue: bool,
      *     isMap: bool,
+     *     arraysAreObjects: bool,
      *     hasArrayAdder: bool,
      *     arrayAdderMethodName: string,
      *     arrayAdderItemType: string,
@@ -828,6 +830,12 @@ trait RendersRuntimeDto
             'isList' => str_starts_with($property['type'], 'array')
                 && ($property['isMap'] ?? false) !== true
                 && ($property['isShapeUnion'] ?? false) !== true,
+            // …except when the union's only container IS an object — `anyOf: [{type: object}, {type:
+            // null}]`, `[map, string]`: then a PHP array in it can only be that object, and goes out
+            // as one, as a `type: object` map does. Raw, `{}` came back as `[]`.
+            'arraysAreObjects' => ($property['isShapeUnion'] ?? false) === true
+                && is_array($property['constraints'] ?? null)
+                && DtoValidator::admitsObjectContainerOnly($property['constraints']),
             'hasArrayAdder' => str_starts_with($property['type'], 'array'),
             'arrayAdderMethodName' => 'addItemTo' . ucfirst($property['name']),
             'arrayAdderItemType' => $this->resolveArrayItemPhpType($property['type']),

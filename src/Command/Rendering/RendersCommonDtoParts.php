@@ -840,4 +840,36 @@ trait RendersCommonDtoParts
 
         return $names;
     }
+
+    /**
+     * The one generated class in a union whose other members are scalars (or enums) — `Shade|string`,
+     * `Shade|int|null` — or null for any other type. On the wire such a value is the object exactly
+     * when it is a JSON object, so that alone decides which member it is; a second class, or an `array`
+     * member beside the class, would make the question ambiguous and is left alone.
+     */
+    private function unionClassBesideScalars(string $phpType): ?string
+    {
+        $members = array_values(array_diff(explode('|', str_replace('?', '', $phpType)), ['null']));
+        if (count($members) < 2) {
+            return null;
+        }
+
+        $classes = [];
+        foreach ($members as $member) {
+            $member = trim($member);
+            if (in_array($member, ['string', 'int', 'float', 'bool'], true)) {
+                continue;
+            }
+            $short = $this->shortClassName($member);
+            if (array_key_exists($short, $this->enumSchemas)) {
+                continue;
+            }
+            if (!array_key_exists($short, $this->dtoSchemas)) {
+                return null;
+            }
+            $classes[] = $short;
+        }
+
+        return count($classes) === 1 ? $classes[0] : null;
+    }
 }

@@ -157,6 +157,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
      *     nestedArrayItemType: string|null,
      *     openApiFormat: string|null,
      *     allowsAssociativeArray: bool,
+     *     alsoAllowsJsonList: bool,
      *     temporalFormat: string|null,
      *     arrayItemTemporalFormat: string|null,
      *     fieldConstraints: array<string,mixed>|null,
@@ -699,6 +700,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
                             $errors[] = $extraException->getMessage();
                         }
                     } else {
+                        foreach ($this->listsWhereObjectsBelong(value: $bodyData[$bodyKey], constraints: $extraPropertySchema, paramPath: "{$bodyKey}") as $extraError) {
+                            $errors[] = $extraError;
+                        }
                         foreach ($this->validateValue('param "' . $bodyKey . '"', $bodyData[$bodyKey], $extraPropertySchema) as $extraError) {
                             $errors[] = $extraError;
                         }
@@ -1056,6 +1060,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                         temporalFormat: $paramMeta['temporalFormat'],
                         openApiFormat: $paramMeta['openApiFormat'],
                         allowsAssociativeArray: $paramMeta['allowsAssociativeArray'],
+                        alsoAllowsJsonList: $paramMeta['alsoAllowsJsonList'],
                         arrayItemsNullable: $paramMeta['arrayItemsNullable'],
                         arrayItemTemporalFormat: $paramMeta['arrayItemTemporalFormat'],
                         nestedArrayItemType: $paramMeta['nestedArrayItemType'],
@@ -1073,6 +1078,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                         dtoReflection: $reflection,
                         openApiFormat: $paramMeta['openApiFormat'],
                         allowsAssociativeArray: $paramMeta['allowsAssociativeArray'],
+                        alsoAllowsJsonList: $paramMeta['alsoAllowsJsonList'],
                         arrayItemsNullable: $paramMeta['arrayItemsNullable'],
                         arrayItemTemporalFormat: $paramMeta['arrayItemTemporalFormat'],
                         nestedArrayItemType: $paramMeta['nestedArrayItemType'],
@@ -1090,11 +1096,17 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
             $args[] = $value;
 
+            if ($rawWasProvided && $rawSource === 'json' && is_array($paramMeta['fieldConstraints'])) {
+                foreach ($this->listsWhereObjectsBelong(value: $rawValue, constraints: $paramMeta['fieldConstraints'], paramPath: $requestFieldName) as $shapeError) {
+                    $errors[] = $shapeError;
+                }
+            }
+
             if ($rawWasProvided && is_array($paramMeta['fieldConstraints']) && $paramMeta['fieldConstraints'] !== []) {
                 foreach (
                     $this->validateValue(
                         subject: sprintf('param "%s"', $requestFieldName),
-                        value: $value,
+                        value: $this->asTheObjectItArrivedAs(cast: $value, raw: $rawValue),
                         constraints: $paramMeta['fieldConstraints'],
                     ) as $constraintError
                 ) {
@@ -1184,6 +1196,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
      *     nestedArrayItemType: string|null,
      *     openApiFormat: string|null,
      *     allowsAssociativeArray: bool,
+     *     alsoAllowsJsonList: bool,
      *     temporalFormat: string|null,
      *     arrayItemTemporalFormat: string|null,
      *     fieldConstraints: array<string,mixed>|null,
@@ -1249,6 +1262,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             $hasDefaultValue = $param->isDefaultValueAvailable();
             $fieldConstraints = $constraints[$paramName] ?? null;
             $allowsAssociativeArray = $this->allowsAssociativeArray($fieldConstraints);
+            $alsoAllowsJsonList = $allowsAssociativeArray && is_array($fieldConstraints) && !DtoValidator::admitsObjectContainerOnly($fieldConstraints);
             $openApiFormat = $this->resolveOpenApiFormat($fieldConstraints);
             $allowsNull = $paramType?->allowsNull() ?? false;
             $isRequired = $this->resolveParameterRequiredFlag(
@@ -1377,6 +1391,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 'nestedArrayItemType' => $nestedArrayItemType,
                 'openApiFormat' => $openApiFormat,
                 'allowsAssociativeArray' => $allowsAssociativeArray,
+                'alsoAllowsJsonList' => $alsoAllowsJsonList,
                 'temporalFormat' => $temporalFormat,
                 'arrayItemTemporalFormat' => $arrayItemTemporalFormat,
                 'fieldConstraints' => $fieldConstraints,
@@ -2162,6 +2177,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         ReflectionClass $dtoReflection,
         ?string $openApiFormat,
         bool $allowsAssociativeArray,
+        bool $alsoAllowsJsonList = false,
         bool $arrayItemsNullable = false,
         ?string $arrayItemTemporalFormat = null,
         ?string $nestedArrayItemType = null,
@@ -2191,6 +2207,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 dtoReflection: $dtoReflection,
                 openApiFormat: $openApiFormat,
                 allowsAssociativeArray: $allowsAssociativeArray,
+                alsoAllowsJsonList: $alsoAllowsJsonList,
                 arrayItemsNullable: $arrayItemsNullable,
                 arrayItemTemporalFormat: $arrayItemTemporalFormat,
                 nestedArrayItemType: $nestedArrayItemType,
@@ -2222,6 +2239,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         ReflectionClass $dtoReflection,
         ?string $openApiFormat,
         bool $allowsAssociativeArray,
+        bool $alsoAllowsJsonList,
         bool $arrayItemsNullable,
         ?string $arrayItemTemporalFormat,
         ?string $nestedArrayItemType,
@@ -2250,6 +2268,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     temporalFormat: $temporalFormat,
                     openApiFormat: $openApiFormat,
                     allowsAssociativeArray: $allowsAssociativeArray,
+                    alsoAllowsJsonList: $alsoAllowsJsonList,
                     arrayItemsNullable: $arrayItemsNullable,
                     arrayItemTemporalFormat: $arrayItemTemporalFormat,
                     nestedArrayItemType: $nestedArrayItemType,
@@ -2822,6 +2841,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         ?string $arrayItemTemporalFormat = null,
         ?string $nestedArrayItemType = null,
         bool $nestedArrayItemsNullable = false,
+        bool $alsoAllowsJsonList = false,
     ): mixed {
         $paramPath ??= $paramName;
         if ($value === null) {
@@ -2867,7 +2887,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
                                 $paramPath,
                                 (string)PHP_INT_MIN,
                                 (string)PHP_INT_MAX,
-                                rtrim(rtrim(sprintf('%.0F', $value), '0'), '.'),
+                                // `%.0F` writes no decimal point, so every trailing zero is significant: 1e20 is
+                                // `100000000000000000000`, not `1`.
+                                sprintf('%.0F', $value),
                             )
                             : $this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'int', value: $value),
                     );
@@ -2941,8 +2963,10 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 // are still distinguishable, so the wire shape is checked at the source. An empty array
                 // is refused only in a body decoded here, where `{}` would have stayed a `stdClass`;
                 // a pre-decoded value reports `{}` exactly that way.
+                // A union naming an array branch beside the object one takes either.
                 if (
                     $allowsAssociativeArray
+                    && !$alsoAllowsJsonList
                     && !$cameInAsJsonObject
                     && array_is_list($value)
                     && ($value !== [] || $this->jsonShapesKnown)
@@ -3409,9 +3433,10 @@ final class DtoDeserializer implements DtoDeserializerInterface
     {
         // Both spellings carry a subject: `param "x" expects int` and `Required parameter "x" not found
         // in request.` — a nested DTO's message named the bare key, so a missing `discriminator.id`
-        // read exactly like a missing root `id`.
+        // read exactly like a missing root `id`. A closed object's `Unknown property "x"` too: without
+        // the path, a stray key in `closed` or in the second item of a list read as one at the root.
         return preg_replace_callback(
-            pattern: '/\b(param|parameter) "([^"]+)"/i',
+            pattern: '/\b(param|parameter|Unknown property) "([^"]+)"/i',
             callback: static fn(array $m): string => sprintf('%s "%s.%s"', $m[1], $prefix, $m[2]),
             subject: $message,
         ) ?? $message;
@@ -4155,6 +4180,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                             temporalFormat: $paramMeta['temporalFormat'],
                             openApiFormat: $paramMeta['openApiFormat'],
                             allowsAssociativeArray: $paramMeta['allowsAssociativeArray'],
+                            alsoAllowsJsonList: $paramMeta['alsoAllowsJsonList'],
                             arrayItemsNullable: $paramMeta['arrayItemsNullable'],
                             arrayItemTemporalFormat: $paramMeta['arrayItemTemporalFormat'],
                             nestedArrayItemType: $paramMeta['nestedArrayItemType'],
@@ -4171,6 +4197,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                             dtoReflection: $reflection,
                             openApiFormat: $paramMeta['openApiFormat'],
                             allowsAssociativeArray: $paramMeta['allowsAssociativeArray'],
+                            alsoAllowsJsonList: $paramMeta['alsoAllowsJsonList'],
                             arrayItemsNullable: $paramMeta['arrayItemsNullable'],
                             arrayItemTemporalFormat: $paramMeta['arrayItemTemporalFormat'],
                             nestedArrayItemType: $paramMeta['nestedArrayItemType'],
@@ -4185,11 +4212,17 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 return null;
             }
 
+            if (is_array($paramMeta['fieldConstraints'])) {
+                foreach ($this->listsWhereObjectsBelong(value: $value, constraints: $paramMeta['fieldConstraints'], paramPath: $name) as $shapeError) {
+                    $errors[] = $shapeError;
+                }
+            }
+
             if (is_array($paramMeta['fieldConstraints']) && $paramMeta['fieldConstraints'] !== []) {
                 foreach (
                     $this->validateValue(
                         subject: sprintf('param "%s"', $name),
-                        value: $cast,
+                        value: $this->asTheObjectItArrivedAs(cast: $cast, raw: $value),
                         constraints: $paramMeta['fieldConstraints'],
                     ) as $constraintError
                 ) {
@@ -4376,7 +4409,52 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return false;
         }
 
-        return ($constraints['type'] ?? null) === 'object';
+        if (($constraints['type'] ?? null) === 'object') {
+            return true;
+        }
+
+        // A property-level `anyOf`/`oneOf` with an object branch — `[map, null]`, `[{type: object},
+        // string]` — is declared `array` too, and a body decoded here holds that object as a
+        // `stdClass`: with only `type` read, every JSON object was refused as "expects array, got
+        // object" while the other four modes took it.
+        foreach ($this->unionBranchTypes($constraints) as $branchTypes) {
+            if (in_array('object', $branchTypes, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The types each `anyOf`/`oneOf` branch names, an empty list for a branch that names none; a
+     * `type: null` branch is left out, it admits neither container.
+     *
+     * @param array<string, mixed> $constraints
+     * @return list<list<string>>
+     */
+    private function unionBranchTypes(array $constraints): array
+    {
+        $branchTypes = [];
+        foreach (['anyOf', 'oneOf'] as $keyword) {
+            $branches = $constraints[$keyword] ?? null;
+            if (!is_array($branches)) {
+                continue;
+            }
+            foreach ($branches as $branch) {
+                if (!is_array($branch)) {
+                    continue;
+                }
+                $type = $branch['type'] ?? null;
+                $types = is_string($type) ? [$type] : (is_array($type) ? array_values(array_filter($type, is_string(...))) : []);
+                if ($types === ['null']) {
+                    continue;
+                }
+                $branchTypes[] = $types;
+            }
+        }
+
+        return $branchTypes;
     }
 
     /**
@@ -4392,6 +4470,90 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         return null;
+    }
+
+    /**
+     * A JSON object cast to a PHP list — `{}`, or `{"0": 1}` — is handed to the validator as the
+     * object it was. Where `type` pins `object` the validator reads a list as one itself; a union
+     * with an object branch pins nothing, so `{}` became `[]` there and matched no branch.
+     */
+    private function asTheObjectItArrivedAs(mixed $cast, mixed $raw): mixed
+    {
+        return $raw instanceof stdClass && is_array($cast) && array_is_list($cast) ? (object)$cast : $cast;
+    }
+
+    /**
+     * A JSON array found where the schema allows only an object, at any depth of a value the request
+     * decoded itself.
+     *
+     * The validator cannot answer this: a typed map is held as a PHP array, and one whose keys are
+     * `0, 1, …` is a list, so it reads any PHP array as a possible object. The cast refuses a JSON
+     * array for the levels it types — a property, the items of a typed list — and nothing looked
+     * deeper: an undeclared key under `additionalProperties: {type: object}`, or the items of a list of
+     * lists, took `[1, 2]` for an object and wrote it back as `{"0":1,"1":2}`. The RAW value still
+     * knows, because a body decoded here keeps every JSON object a `stdClass` (see
+     * `$jsonShapesKnown`); a value handed over already decoded does not, and is left alone. Only
+     * `type` is read, walking `items`, `prefixItems`, `properties` and `additionalProperties`.
+     *
+     * @param array<array-key, mixed> $constraints
+     * @return list<string>
+     */
+    private function listsWhereObjectsBelong(mixed $value, array $constraints, string $paramPath, int $depth = 0): array
+    {
+        if (!$this->jsonShapesKnown || $depth > 64) {
+            return [];
+        }
+
+        if (is_array($value)) {
+            if (DtoValidator::admitsObjectContainerOnly($constraints)) {
+                return [$this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'object', value: $value)];
+            }
+
+            $items = $constraints['items'] ?? null;
+            $prefixItems = $constraints['prefixItems'] ?? null;
+            if (!is_array($items) && !is_array($prefixItems)) {
+                return [];
+            }
+
+            $errors = [];
+            foreach ($value as $index => $item) {
+                $itemSchema = is_array($prefixItems) && is_array($prefixItems[$index] ?? null) ? $prefixItems[$index] : $items;
+                if (is_array($itemSchema) && (is_array($item) || $item instanceof stdClass)) {
+                    $errors = [
+                        ...$errors,
+                        ...$this->listsWhereObjectsBelong(value: $item, constraints: $itemSchema, paramPath: "{$paramPath}.{$index}", depth: $depth + 1),
+                    ];
+                }
+            }
+
+            return $errors;
+        }
+
+        if (!$value instanceof stdClass) {
+            return [];
+        }
+
+        $properties = $constraints['properties'] ?? null;
+        $additional = $constraints['additionalProperties'] ?? null;
+        if (!is_array($properties) && !is_array($additional)) {
+            return [];
+        }
+
+        $errors = [];
+        foreach (get_object_vars($value) as $key => $member) {
+            if (!is_array($member) && !$member instanceof stdClass) {
+                continue;
+            }
+            $memberSchema = is_array($properties) && is_array($properties[$key] ?? null) ? $properties[$key] : $additional;
+            if (is_array($memberSchema)) {
+                $errors = [
+                    ...$errors,
+                    ...$this->listsWhereObjectsBelong(value: $member, constraints: $memberSchema, paramPath: "{$paramPath}.{$key}", depth: $depth + 1),
+                ];
+            }
+        }
+
+        return $errors;
     }
 
     /**

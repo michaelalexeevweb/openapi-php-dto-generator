@@ -355,6 +355,7 @@ trait RendersLaravelDto
             'nestedChildren' => [],
             'nestedValidation' => null,
             'selfReachable' => false,
+            'reachesRecursion' => false,
             'checksObjectPaths' => false,
             'checksScalarPaths' => false,
             'laravelFormRequest' => $this->laravelFormRequest,
@@ -370,6 +371,24 @@ trait RendersLaravelDto
                 ? $discriminator['propertyName']
                 : null,
         ]);
+    }
+
+    /**
+     * The constructor default a schema `default` becomes, or `''` when PHP cannot spell one.
+     *
+     * An OBJECT default (`{type: object, default: {x: 1}}`, a `$ref` with a default) and a union one
+     * have no constant expression, so the property gets none — and is then an optional property like
+     * any other, nullable and null when absent, as in the other modes. Read as "has a default" it was
+     * declared non-nullable with nothing to fall back on, and `fromValidated()` died with a TypeError
+     * on every payload that left the key out.
+     *
+     * @param SchemaProperty $property
+     */
+    private function laravelDefaultLiteral(array $property, string $phpType): string
+    {
+        $default = $property['default'] ?? null;
+
+        return $default === null ? '' : $this->renderDefaultValue($default, $phpType, $phpType);
     }
 
     /**
@@ -396,18 +415,18 @@ trait RendersLaravelDto
         // NOT `$property['required']`: a readOnly property is absent from a request, `fromValidated()`
         // hands the constructor `null` for it, and a required parameter has nowhere to put that.
         $required = $this->propertyIsRequiredOnInput($property);
-        $default = $property['default'] ?? null;
         // `nullable` on the property also covers "optional"; only the schema's own word counts here, as in
         // Symfony mode. An optional property WITH a default never holds null unless the schema allows it
         // — `?Kind $kind = Kind::A` invited a null the document rejects.
         $schemaNullable = $property['schemaNullable'] ?? $property['nullable'];
-        $declaredNullable = $schemaNullable || (!$required && $default === null);
+        $renderedDefault = $this->laravelDefaultLiteral(property: $property, phpType: $phpType);
+        $declaredNullable = $schemaNullable || (!$required && $renderedDefault === '');
         $declaredType = $this->composePhpTypeHint($phpType, $declaredNullable);
 
         if ($required) {
             $defaultLiteral = '';
-        } elseif ($default !== null) {
-            $defaultLiteral = $this->renderDefaultValue($default, $phpType, $declaredType);
+        } elseif ($renderedDefault !== '') {
+            $defaultLiteral = $renderedDefault;
         } else {
             $defaultLiteral = ' = null';
         }
@@ -520,6 +539,22 @@ trait RendersLaravelDto
                 : $raw,
         };
         $raw = $this->laravelWithUnionEnumCast($param['declaredType'], sprintf('$data[%s]', $key), $raw);
+        // `Shade|string`: the validator has already decided the value matches one member, and only the
+        // class arrives as an array. Handed over as that array, the constructor threw a TypeError — a
+        // 500 on every valid object.
+        $unionDtoMember = $this->unionClassBesideScalars($param['declaredType']);
+        if ($unionDtoMember !== null) {
+            $raw = sprintf(
+                '(is_array(%1$s) ? %2$s : (%3$s))',
+                sprintf('$data[%s]', $key),
+                $this->laravelNestedDtoExpression(
+                    dtoClass: $unionDtoMember,
+                    rawAccess: sprintf('$data[%s]', $key),
+                    wireName: $property['openApiName'],
+                ),
+                $raw,
+            );
+        }
 
         $itemsNullable = $this->laravelItemsNullable($property);
         $inlineDiscriminator = $this->laravelInlineDiscriminator($property);
@@ -757,7 +792,10 @@ trait RendersLaravelDto
         // The same answer `resolveLaravelParam()` gives: an optional property with a schema default is
         // not nullable, and `?->` on it read as if it were.
         $nullable = ($property['schemaNullable'] ?? $property['nullable']) === true
-            || (!$this->propertyIsRequiredOnInput($property) && ($property['default'] ?? null) === null);
+            || (!$this->propertyIsRequiredOnInput($property) && $this->laravelDefaultLiteral(
+                property: $property,
+                phpType: str_contains($property['type'], '<') ? 'array' : $property['type'],
+            ) === '');
         $arrow = $nullable ? '?->' : '->';
 
         if ($this->temporalGetterBody($property) !== null) {
@@ -853,12 +891,39 @@ trait RendersLaravelDto
         // `array_filter()` handed to the constructor would otherwise be written as `{"0":…,"2":…}`. A
         // MAP never reaches here — it returned above, where its keys ARE the data.
         if ($this->laravelDescribesList($property)) {
+            // `array|bool`: the list is one member, and `array_values()` on the other was a TypeError.
+            $topLevelMembers = array_diff(explode('|', ltrim((string)preg_replace('/<.*>/s', '', $property['type']), '?')), ['null']);
+            if (count($topLevelMembers) > 1) {
+                return sprintf('is_array(%1$s) ? array_values(%1$s) : %1$s', $propertyAccess);
+            }
+
             return $nullable
                 ? sprintf('%s === null ? null : array_values(%s)', $propertyAccess, $propertyAccess)
                 : sprintf('array_values(%s)', $propertyAccess);
         }
 
-        // A union with an enum member writes the case's value, the way a plain enum property does.
+        // A union with one class member writes the object the way a plain nested DTO is written; the
+        // scalar members go out as they are.
+        $unionDtoMember = $this->unionClassBesideScalars($property['type']);
+        if ($unionDtoMember !== null) {
+            return sprintf(
+                '%1$s instanceof %2$s ? (%1$s->toArray() ?: (object)[]) : (%3$s)',
+                $propertyAccess,
+                $this->shortClassName($unionDtoMember),
+                $this->laravelUnionEnumToWire($property, $propertyAccess),
+            );
+        }
+
+        return $this->laravelUnionEnumToWire($property, $propertyAccess);
+    }
+
+    /**
+     * A union with an enum member writes the case's value, the way a plain enum property does.
+     *
+     * @param SchemaProperty $property
+     */
+    private function laravelUnionEnumToWire(array $property, string $propertyAccess): string
+    {
         foreach (explode('|', str_replace('?', '', $property['type'])) as $member) {
             $enumName = $this->shortClassName(trim($member));
             if (str_contains($property['type'], '|') && array_key_exists($enumName, $this->enumSchemas)) {

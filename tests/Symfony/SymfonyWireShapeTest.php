@@ -661,7 +661,9 @@ final class SymfonyWireShapeTest extends TestCase
                 '--attributes' => $mode,
             ]));
 
-            return $tester->getDisplay();
+            // The console wraps the warning to its width, at a place that depends on the path's length:
+            // read as one line.
+            return (string)preg_replace('/\s+/', ' ', $tester->getDisplay());
         };
 
         $run('runtime');

@@ -1,4 +1,4 @@
-# yii3 mode — 80 files, 36839 lines
+# yii3 mode — 80 files, 36851 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -11544,7 +11544,7 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams extends Abstra
 
         if ($listValue && ($schema['items'] ?? null) === false) {
             foreach (array_keys($value) as $index) {
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 
@@ -12338,7 +12338,7 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
 
         if ($listValue && ($schema['items'] ?? null) === false) {
             foreach (array_keys($value) as $index) {
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 
@@ -15316,7 +15316,11 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
         }
 
         if (is_array($schema['not'] ?? null) && $this->matchesOpenApiNode($value, $schema['not'], $path, $depth + 1)) {
-            $errors[] = sprintf('%s must not match the \'not\' schema', $path);
+            // `not: {}` is how the generator spells the schema `false`, and a document that wrote `false`
+            // never mentioned `not` — the same sentence the runtime validator writes for it.
+            $errors[] = $schema['not'] === []
+                ? sprintf('%s is not allowed by the schema', $path)
+                : sprintf('%s must not match the \'not\' schema', $path);
         }
 
         if (is_array($schema['if'] ?? null)) {
@@ -15355,7 +15359,7 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
                 if ($index < $prefixCount) {
                     continue;
                 }
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 
@@ -17029,7 +17033,11 @@ final class ApplicatorRefsPoisonedKey extends AbstractInput implements DataSetIn
         }
 
         if (is_array($schema['not'] ?? null) && $this->matchesOpenApiNode($value, $schema['not'], $path, $depth + 1)) {
-            $errors[] = sprintf('%s must not match the \'not\' schema', $path);
+            // `not: {}` is how the generator spells the schema `false`, and a document that wrote `false`
+            // never mentioned `not` — the same sentence the runtime validator writes for it.
+            $errors[] = $schema['not'] === []
+                ? sprintf('%s is not allowed by the schema', $path)
+                : sprintf('%s must not match the \'not\' schema', $path);
         }
 
         return $errors;
@@ -21141,7 +21149,7 @@ final class ContainerAliases extends AbstractInput implements DataSetInterface, 
 
         if ($listValue && ($schema['items'] ?? null) === false) {
             foreach (array_keys($value) as $index) {
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 
@@ -21956,7 +21964,7 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
 
         if ($listValue && ($schema['items'] ?? null) === false) {
             foreach (array_keys($value) as $index) {
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 
@@ -25424,7 +25432,7 @@ final class ItemBounds extends AbstractInput implements DataSetInterface, RulesP
 
         if ($listValue && ($schema['items'] ?? null) === false) {
             foreach (array_keys($value) as $index) {
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 
@@ -26351,7 +26359,7 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
 
         if ($listValue && ($schema['items'] ?? null) === false) {
             foreach (array_keys($value) as $index) {
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 
@@ -27063,7 +27071,7 @@ final class NullableContainerValues extends AbstractInput implements DataSetInte
 
         if ($listValue && ($schema['items'] ?? null) === false) {
             foreach (array_keys($value) as $index) {
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 
@@ -27741,7 +27749,11 @@ final class ObjectWideRules extends AbstractInput implements DataSetInterface, R
         }
 
         if (is_array($schema['not'] ?? null) && $this->matchesOpenApiNode($value, $schema['not'], $path, $depth + 1)) {
-            $errors[] = sprintf('%s must not match the \'not\' schema', $path);
+            // `not: {}` is how the generator spells the schema `false`, and a document that wrote `false`
+            // never mentioned `not` — the same sentence the runtime validator writes for it.
+            $errors[] = $schema['not'] === []
+                ? sprintf('%s is not allowed by the schema', $path)
+                : sprintf('%s must not match the \'not\' schema', $path);
         }
 
         if (is_array($schema['if'] ?? null)) {
@@ -34254,7 +34266,7 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
 
         if ($listValue && ($schema['items'] ?? null) === false) {
             foreach (array_keys($value) as $index) {
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 
@@ -34880,7 +34892,7 @@ final class UniqueScalars extends AbstractInput implements DataSetInterface, Rul
 
         if ($listValue && ($schema['items'] ?? null) === false) {
             foreach (array_keys($value) as $index) {
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 

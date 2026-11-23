@@ -351,6 +351,9 @@ return [
                 'symfony' => ['diverges', 'documented: a schema with properties and no type is an object here, so false is no value for it (README.support-matrix, declared divergence)'],
                 'yii3' => ['diverges', 'documented: a schema with properties and no type is an object here, so false is no value for it (README.support-matrix, declared divergence)'],
             ],
+            'recursive mismatch' => [
+                'yii3' => ['diverges', 'documented: a closed object is not enforceable once hydrated (README.support-matrix, closed DTO-shaped schema)'],
+            ],
         ],
         'remote ref, containing refs itself' => [
             '*' => [

@@ -440,6 +440,16 @@ final class DtoNormalizer implements DtoNormalizerInterface
 
                 $constraints = $meta['constraintsByField'][$propertyName] ?? null;
                 if (is_array($constraints) && $constraints !== []) {
+                    // A union whose only container is an object goes out as one (see the emitted
+                    // `toArray()`), so its `[]` is judged as the `{}` it will be written as.
+                    if (
+                        is_array($value)
+                        && array_is_list($value)
+                        && !array_key_exists('type', $constraints)
+                        && DtoValidator::admitsObjectContainerOnly($constraints)
+                    ) {
+                        $value = (object)$value;
+                    }
                     array_push(
                         $errors,
                         ...$this->fieldValidator()->validate(

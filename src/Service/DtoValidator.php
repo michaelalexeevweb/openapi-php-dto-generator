@@ -513,6 +513,49 @@ final class DtoValidator implements DtoValidatorInterface
     }
 
     /**
+     * Whether the only JSON container a schema admits is an object, so that a PHP list held for it
+     * is that object keyed `0..n-1` (`{}` among them) and never a JSON array.
+     *
+     * `type` decides when it is there. Without it, a property-level `anyOf`/`oneOf` decides: every
+     * branch other than `type: null` that admits a container admits an object, and none admits an
+     * array — `[{type: object}, {type: null}]`, `[map, string]`. A branch naming no type admits
+     * either, so it answers no. The deserializer, the normalizer and the emitted `toArray()` read a
+     * hydrated union value by it, the way they read a `type: object` map.
+     *
+     * @param array<array-key, mixed> $constraints
+     */
+    public static function admitsObjectContainerOnly(array $constraints): bool
+    {
+        if (array_key_exists('type', $constraints)) {
+            $type = $constraints['type'];
+            $types = is_string($type) ? [$type] : (is_array($type) ? $type : []);
+
+            return in_array('object', $types, true) && !in_array('array', $types, true);
+        }
+
+        $sawObject = false;
+        foreach (['anyOf', 'oneOf'] as $keyword) {
+            $branches = $constraints[$keyword] ?? null;
+            if (!is_array($branches)) {
+                continue;
+            }
+            foreach ($branches as $branch) {
+                if (!is_array($branch)) {
+                    return false;
+                }
+                $type = $branch['type'] ?? null;
+                $types = is_string($type) ? [$type] : (is_array($type) ? $type : []);
+                if ($types === [] || in_array('array', $types, true)) {
+                    return false;
+                }
+                $sawObject = $sawObject || in_array('object', $types, true);
+            }
+        }
+
+        return $sawObject;
+    }
+
+    /**
      * Whether a `type` admits an object and no array — the one case where a PHP list must be a map.
      */
     private function typePinsObject(mixed $type): bool
@@ -828,7 +871,7 @@ final class DtoValidator implements DtoValidatorInterface
                     // {minLength: 7}}}` accepted `"short"` — while `then: {required: [code]}`, which this
                     // helper leaves alone, was enforced all along.
                     constraints: $isGeneratedDto && $propertyRulesOwnedByDto
-                        ? $this->withPropertyRulesOwnedByTheDto($constraints)
+                        ? $this->withObjectRulesOwnedByTheDto(dto: $value, constraints: $this->withPropertyRulesOwnedByTheDto($constraints))
                         : $constraints,
                     depth: $depth,
                 )];
@@ -2687,6 +2730,38 @@ final class DtoValidator implements DtoValidatorInterface
         unset($constraints[$keyword]);
 
         return $constraints;
+    }
+
+    /**
+     * The key-counting keywords a generated DTO's class carries itself, dropped from the schema the
+     * value is checked against where they say the same thing. The class judged them already — the
+     * deserializer against the RAW body, the normalizer against what the object holds — and asked
+     * here of the hydrated object they counted the declared keys alone: an undeclared key the payload
+     * carried was gone, and `{"a": 1, "z": 2}` failed `minProperties: 2`, which the body met.
+     *
+     * @param array<string, mixed> $constraints
+     * @return array<string, mixed>
+     */
+    private function withObjectRulesOwnedByTheDto(object $dto, array $constraints): array
+    {
+        $method = [$dto::class, 'getObjectConstraints'];
+        if (!is_callable($method)) {
+            return $constraints;
+        }
+        $own = $method();
+        if (!is_array($own) || $own === []) {
+            return $constraints;
+        }
+
+        $kept = [];
+        foreach ($constraints as $keyword => $value) {
+            if (in_array($keyword, ['minProperties', 'maxProperties', 'propertyNames'], true) && array_key_exists($keyword, $own) && $own[$keyword] === $value) {
+                continue;
+            }
+            $kept[$keyword] = $value;
+        }
+
+        return $kept;
     }
 
     /**

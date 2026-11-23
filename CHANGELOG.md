@@ -3,6 +3,86 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.143 — 2026-11-23
+
+- scalar aliases resolved everywhere
+- external file $refs validated
+- class|scalar unions fixed
+- runtime object unions accepted
+- $ref siblings apply at every level
+- yii3 enums with keywords accepted
+- laravel defaults and trees fixed
+- hoisted names safe
+- docs match behaviour
+
+A full review of 2.15.142 — five reviewers, every finding reproduced by a second one — confirmed 42 defects.
+40 are fixed here; the other two are framework boundaries, now documented (README.support-matrix).
+
+**Regenerate after upgrading, in every mode.**
+
+Generation (every mode):
+
+- a scalar alias named where a value sits is the schema it names: a branch of an `anyOf` / `oneOf` / `allOf`
+  beside other branches, or the value of a map (`additionalProperties: {$ref: Code}`, a boolean component
+  included). The property was typed by the alias's class, which is never written: the runtime refused every
+  value with `Unsupported type`, laravel died with `Class not found` on every request, laravel-data could not
+  find the data class, symfony refused even an empty map. A union component made only of scalar branches is
+  a value too, no longer an empty union interface that no value implements;
+- a schema `$ref` to a whole file (`./Pet.yaml`) or to a pointer outside `components.schemas`
+  (`shapes.json#/Side`, `#/definitions/Corner`) became an unvalidated `mixed` property — any value accepted,
+  generation still `[OK]`. It is a class of the document it lives in now, validated like any component; a
+  missing file or a pointer to nothing stops generation;
+- keys beside an object `$ref` apply in `items`, `prefixItems`, map values and union branches too, not only at
+  property level;
+- `type: [object, null]` with no properties is a free-form object, not an empty class that dropped every key;
+- 3.1 `{$ref: Obj, type: [object, "null"]}` no longer admits null when the component's `type` excludes it;
+- a string `format` on a non-string type no longer refuses every value (laravel, laravel-data, yii3);
+- a hoisted `#/components/schemas/X/...` schema takes a free name when its path-derived one is taken, a name
+  past 64 characters ends in a checksum, and several pointers into one chain share the deeper components
+  instead of copying the subtree.
+
+Runtime:
+
+- a property-level `anyOf` / `oneOf` with an object branch (`[map, null]`, `[{type: object}, string]`,
+  `[$ref FreeForm, null]`) refused every JSON object with `expects array, got object`;
+- a JSON array is refused wherever only an object is allowed, at any depth of a body the runtime decoded;
+- `minProperties` on a class-typed property is judged on the raw body, not on the declared keys;
+- an unknown key in a nested closed object is named by its path; the out-of-range integer message reports the
+  number sent (`1e20`, not `1`).
+
+Laravel, laravel-data:
+
+- a union of a class and a scalar: laravel's `fromValidated()` died on every valid object (a 500), laravel-data
+  refused every valid scalar;
+- an optional object property with a `default` threw a TypeError whenever the key was absent;
+- a self-referring schema keeps the raw-body `type: object` check at every depth, and the errors of the
+  recursive rule land once, under their real path (`child.child.child`), no longer folded and repeated;
+- `1e400` made `multiple_of` throw `MathException` (a 500) and `numeric` let INF in: refused now;
+- a scalar keyword beside an `enum` on list items or map values is checked.
+
+Symfony:
+
+- a class|scalar union branch is checked as the class, and a list branch of an `anyOf` checks its items;
+- an `anyOf` with a `{type: null}` branch beside two others keeps its other branches' checks;
+- an unsent list or map whose `default` breaks `minItems` / `minProperties` no longer refuses the payload;
+- a nullable container alias or nullable inline map checks what is inside;
+- `format: int32` / `uint32` bounds apply to numbers only, not to a `type: string`.
+
+yii3:
+
+- an `enum` beside a scalar keyword (`minimum`, `minLength`, `pattern`, `format`) refused every member;
+- `additionalProperties` on a class with a nested-DTO property refused that declared key for every value;
+- a union with a class or an `array` member is checked raw, and its class member is validated.
+
+Messages and docs:
+
+- a `false` schema and `items: false` read `… is not allowed by the schema` in every mode;
+- README.laravel no longer claims the runtime accepts `[]` for an object, README.validation no longer says
+  subschema-local `$defs` are not resolved, and the support matrix's divergence count matches its table.
+  New divergence rows: a number past the float range (symfony, a property of the class itself); a numeric
+  string for an integer `enum` (symfony, laravel-data); a class requiring nothing beside a scalar on symfony
+  serializer 7.4.10.
+
 ## 2.15.142 — 2026-11-23
 
 - laravel validates trees at every depth

@@ -459,6 +459,7 @@ trait RendersLaravelDataDto
             'nestedChildren' => [],
             'nestedValidation' => null,
             'selfReachable' => false,
+            'reachesRecursion' => false,
             'checksObjectPaths' => false,
             'unionMembers' => null,
             'interfaceExtends' => [],
@@ -688,6 +689,7 @@ trait RendersLaravelDataDto
             'nestedChildren' => [],
             'nestedValidation' => null,
             'selfReachable' => false,
+            'reachesRecursion' => false,
             'checksObjectPaths' => false,
             'unionMembers' => $unionTypes,
             'interfaceExtends' => $interfaceExtends,
@@ -968,7 +970,9 @@ trait RendersLaravelDataDto
      */
     private function laravelDataSuppressesInferredNestedRules(array $property, ?string $itemClass): bool
     {
-        $target = $itemClass ?? $this->laravelDtoClass($property);
+        // `Shade|string` as well: laravel-data takes the union for its class member and resolved the
+        // class's rules on every value, so a valid string was refused for the object's `required`.
+        $target = $itemClass ?? $this->laravelDtoClass($property) ?? $this->unionClassBesideScalars($property['type']);
         if ($target === null) {
             return false;
         }

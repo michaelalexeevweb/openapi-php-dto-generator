@@ -1,4 +1,4 @@
-# symfony mode — 77 files, 13274 lines
+# symfony mode — 77 files, 13286 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -2034,7 +2034,7 @@ final class ApiTestSerializationGetQueryParams
 
         if ($listValue && ($schema['items'] ?? null) === false) {
             foreach (array_keys($value) as $index) {
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 
@@ -3432,7 +3432,11 @@ final class ApplicatorRefs
         }
 
         if (is_array($schema['not'] ?? null) && $this->matchesOpenApiNode($value, $schema['not'], $path, $depth + 1)) {
-            $errors[] = sprintf('%s must not match the \'not\' schema', $path);
+            // `not: {}` is how the generator spells the schema `false`, and a document that wrote `false`
+            // never mentioned `not` — the same sentence the runtime validator writes for it.
+            $errors[] = $schema['not'] === []
+                ? sprintf('%s is not allowed by the schema', $path)
+                : sprintf('%s must not match the \'not\' schema', $path);
         }
 
         if (is_array($schema['if'] ?? null)) {
@@ -3471,7 +3475,7 @@ final class ApplicatorRefs
                 if ($index < $prefixCount) {
                     continue;
                 }
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 
@@ -4687,7 +4691,11 @@ final class ApplicatorRefsPoisonedKey
         }
 
         if (is_array($schema['not'] ?? null) && $this->matchesOpenApiNode($value, $schema['not'], $path, $depth + 1)) {
-            $errors[] = sprintf('%s must not match the \'not\' schema', $path);
+            // `not: {}` is how the generator spells the schema `false`, and a document that wrote `false`
+            // never mentioned `not` — the same sentence the runtime validator writes for it.
+            $errors[] = $schema['not'] === []
+                ? sprintf('%s is not allowed by the schema', $path)
+                : sprintf('%s must not match the \'not\' schema', $path);
         }
 
         return $errors;
@@ -5674,7 +5682,7 @@ final class ContainerAliases
 
         if ($listValue && ($schema['items'] ?? null) === false) {
             foreach (array_keys($value) as $index) {
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 
@@ -6281,7 +6289,7 @@ final class Containers
 
         if ($listValue && ($schema['items'] ?? null) === false) {
             foreach (array_keys($value) as $index) {
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 
@@ -7498,7 +7506,7 @@ final class ItemBounds
 
         if ($listValue && ($schema['items'] ?? null) === false) {
             foreach (array_keys($value) as $index) {
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 
@@ -8387,7 +8395,7 @@ final class NestedContainers
 
         if ($listValue && ($schema['items'] ?? null) === false) {
             foreach (array_keys($value) as $index) {
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 
@@ -8995,7 +9003,7 @@ final class NullableContainerValues
 
         if ($listValue && ($schema['items'] ?? null) === false) {
             foreach (array_keys($value) as $index) {
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 
@@ -9529,7 +9537,11 @@ final class ObjectWideRules
         }
 
         if (is_array($schema['not'] ?? null) && $this->matchesOpenApiNode($value, $schema['not'], $path, $depth + 1)) {
-            $errors[] = sprintf('%s must not match the \'not\' schema', $path);
+            // `not: {}` is how the generator spells the schema `false`, and a document that wrote `false`
+            // never mentioned `not` — the same sentence the runtime validator writes for it.
+            $errors[] = $schema['not'] === []
+                ? sprintf('%s is not allowed by the schema', $path)
+                : sprintf('%s must not match the \'not\' schema', $path);
         }
 
         if (is_array($schema['if'] ?? null)) {
@@ -12504,7 +12516,7 @@ final class UnionUnderContainer
 
         if ($listValue && ($schema['items'] ?? null) === false) {
             foreach (array_keys($value) as $index) {
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 
@@ -12991,7 +13003,7 @@ final class UniqueScalars
 
         if ($listValue && ($schema['items'] ?? null) === false) {
             foreach (array_keys($value) as $index) {
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 

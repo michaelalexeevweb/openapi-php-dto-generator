@@ -508,7 +508,10 @@ trait RendersLaravelValidation
             $consumed[] = 'type';
         }
 
-        if (array_key_exists('format', $schema) && is_string($schema['format'])) {
+        // Only on a string: every rule `laravelFormatRule()` returns refuses any other value, while a
+        // `format` ignores one (JSON Schema 2020-12 §7.1) — `{type: integer, format: uuid}` refused
+        // `5`. Elsewhere the interpreter takes the keyword and reads it for strings alone.
+        if (array_key_exists('format', $schema) && is_string($schema['format']) && $type === 'string') {
             $formatRule = $this->laravelFormatRule($schema['format']);
             if ($formatRule !== null) {
                 $rules[] = $formatRule;
@@ -518,7 +521,7 @@ trait RendersLaravelValidation
                 // a DateTimeImmutable property, whose `date_format:` rule would otherwise be reported
                 // ALONGSIDE the interpreter's own "must be of type string" — see the "date-time + not"
                 // case in `LaravelRulesEnforcementTest::overlapProvider()`.
-                if ($typeRule === null && $type === 'string') {
+                if ($typeRule === null) {
                     $consumed[] = 'type';
                 }
             }
@@ -555,6 +558,12 @@ trait RendersLaravelValidation
         }
 
         if (array_key_exists('multipleOf', $schema) && (is_int($schema['multipleOf']) || is_float($schema['multipleOf']))) {
+            // A JSON number past the float range (`1e400`) decodes to INF, `numeric` takes it, and
+            // `multiple_of` then throws `MathException` — a 500 for any client that sends one. The guard
+            // refuses it first, and `bail` keeps `multiple_of` from ever seeing it (or anything a rule
+            // before it already refused).
+            $rules[] = "'bail'";
+            $rules[] = "static function (string \$attribute, mixed \$value, \\Closure \$fail): void { if (is_float(\$value) && !is_finite(\$value)) { \$fail('validation.numeric')->translate(); } }";
             $rules[] = sprintf("'multiple_of:%s'", $this->laravelNumberLiteral($schema['multipleOf']));
             $consumed[] = 'multipleOf';
         }
@@ -611,6 +620,16 @@ trait RendersLaravelValidation
                 $enumRule = sprintf('\Illuminate\Validation\Rule::enum(\%s::class)', $this->laravelEnumFqcn($itemClass));
 
                 $itemRules = $this->laravelEnumIsIntBacked($itemClass) ? ["'integer'", $enumRule] : [$enumRule];
+                // A scalar keyword beside the members (`minLength`, `minimum`, `pattern`) is the item's
+                // rule as well: the interpreter is told the item rules cover it, so left out here it was
+                // checked nowhere and `["a"]` passed `minLength: 2`. The type rule is the enum's own.
+                if (is_array($itemSchema)) {
+                    foreach ($this->laravelRulesForSchema($itemSchema) as $keywordRule) {
+                        if (!in_array($keywordRule, ["'string'", "'integer'", "'numeric'", "'boolean'"], true)) {
+                            $itemRules[] = $keywordRule;
+                        }
+                    }
+                }
 
                 return [
                     $this->laravelPathSegment($property['openApiName']) . '.*' => $this->laravelItemsNullable($property)
@@ -2424,7 +2443,12 @@ trait RendersLaravelValidation
         $itemDtoClass = $itemClass !== null && !$this->laravelIsEnumClass($itemClass) ? $itemClass : null;
 
         $paths = [];
-        if ($nestedClass !== null || $this->laravelSchemaIsObject($constraints)) {
+        // `Shade|string` too: an array there can only be the class, so a JSON list is refused as one.
+        if (
+            $nestedClass !== null
+            || $this->laravelSchemaIsObject($constraints)
+            || $this->unionClassBesideScalars($property['type']) !== null
+        ) {
             $paths[] = $path;
         }
 
@@ -2754,6 +2778,7 @@ trait RendersLaravelValidation
      *   scalarPathsExpression: string,
      *   nestedPathsEscapeDots: bool,
      *   selfReachable: bool,
+     *   reachesRecursion: bool,
      * }
      */
     private function laravelNestedTemplateVars(
@@ -2807,7 +2832,42 @@ trait RendersLaravelValidation
                 className: $className,
                 children: array_column($nestedChildren, 'class'),
             ),
+            'reachesRecursion' => $this->laravelReachesRecursion(
+                className: $className,
+                children: array_column($nestedChildren, 'class'),
+            ),
         ];
+    }
+
+    /**
+     * Whether a class, or one anywhere below it, holds itself. Such a subtree meets a cycle guard in
+     * `openApiNestedValidation()`, and the wire-shape paths below that point are found by following the
+     * payload (`openApiRecursivePaths()`), which needs the re-entry points passed up to this class.
+     *
+     * @param list<string> $children the classes directly below
+     */
+    private function laravelReachesRecursion(string $className, array $children): bool
+    {
+        if ($this->laravelReachesItself(className: $className, children: $children)) {
+            return true;
+        }
+
+        $pending = $children;
+        $seen = [];
+        while ($pending !== []) {
+            $next = array_shift($pending);
+            if (array_key_exists($next, $seen) || !array_key_exists($next, $this->laravelComposedTargets())) {
+                continue;
+            }
+            $seen[$next] = true;
+            $grandChildren = array_column($this->laravelNestedValidationPlan($next)['children'], 'class');
+            if ($this->laravelReachesItself(className: $next, children: $grandChildren)) {
+                return true;
+            }
+            array_push($pending, ...$grandChildren);
+        }
+
+        return false;
     }
 
     /**

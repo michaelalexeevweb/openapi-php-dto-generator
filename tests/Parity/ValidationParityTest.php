@@ -19,6 +19,7 @@ use OpenapiPhpDtoGenerator\Tests\Yii3\Yii3Container;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use ReflectionProperty;
+use RuntimeException;
 use stdClass;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\PropertyInfo\Extractor\PhpDocExtractor;
@@ -55,6 +56,14 @@ final class ValidationParityTest extends TestCase
     use ComparesModes;
 
     private string $outputDirectory;
+
+    /**
+     * Documents written beside the spec, by file name: when there are any, the spec is written to a
+     * file next to them and generated from there, so its `$ref`s can name them.
+     *
+     * @var array<string, mixed>
+     */
+    private array $siblingDocuments = [];
 
     protected function setUp(): void
     {
@@ -1667,6 +1676,129 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * A `$ref` to a whole file, or to a pointer outside `components.schemas` of another file, names
+     * a schema like any component does. Both used to be read as "no constraint": the property became
+     * `mixed`, and every mode accepted whatever arrived.
+     */
+    public function testAnExternalReferenceToAWholeFileOrAnyPointerIsValidated(): void
+    {
+        $this->siblingDocuments = [
+            'Animal.json' => [
+                'type' => 'object',
+                'properties' => ['legs' => ['type' => 'integer']],
+                'required' => ['legs'],
+            ],
+            'shapes.json' => [
+                'Side' => ['type' => 'integer', 'minimum' => 3],
+                'definitions' => [
+                    'Corner' => [
+                        'type' => 'object',
+                        'properties' => ['angle' => ['$ref' => '#/Side']],
+                        'required' => ['angle'],
+                    ],
+                ],
+            ],
+            'Box.json' => [
+                'type' => 'object',
+                'properties' => [
+                    'inner' => ['$ref' => '#'],
+                    'tag' => ['$ref' => 'shapes.json#/Side'],
+                ],
+            ],
+            'tiles.json' => [
+                'openapi' => '3.1.0',
+                'info' => ['title' => 'T', 'version' => '1.0.0'],
+                'components' => ['schemas' => ['Tile' => ['type' => 'string', 'minLength' => 2]]],
+            ],
+        ];
+        $cases = [
+            'whole-file' => [['$ref' => 'Animal.json'], '{"f":{"legs":4}}', ['"text"', '{}', '{"legs":"four"}']],
+            'whole-file-relative' => [['$ref' => './Animal.json'], '{"f":{"legs":4}}', ['"text"', '{"legs":"four"}']],
+            'root-pointer' => [['$ref' => 'shapes.json#/Side'], '{"f":5}', ['"text"', '2']],
+            'nested-pointer' => [['$ref' => 'shapes.json#/definitions/Corner'], '{"f":{"angle":4}}', ['{}', '{"angle":1}']],
+            // A scalar is left out: Symfony lets one through to a self-referencing DTO whatever
+            // spelling names it — `#/components/schemas/Box` too.
+            'self-reference' => [['$ref' => 'Box.json'], '{"f":{"inner":{"tag":3}}}', ['{"tag":1}', '{"inner":{"tag":1}}']],
+            // The neighbour that always worked keeps working.
+            'component' => [['$ref' => 'tiles.json#/components/schemas/Tile'], '{"f":"ab"}', ['"a"', '5']],
+            'pointer-through-a-local-pointer' => [['$ref' => 'shapes.json#/definitions/Corner/properties/angle'], '{"f":4}', ['1', '"text"']],
+        ];
+        foreach ($cases as $name => [$propertySchema, $validJson, $invalidJsons]) {
+            $spec = self::probeSpec($propertySchema);
+            foreach (GenerationMode::cases() as $mode) {
+                foreach ($invalidJsons as $index => $invalidJson) {
+                    $this->assertSame(
+                        expected: ['valid' => true, 'invalid' => false],
+                        actual: $this->verdict($mode, $spec, 'external-' . $name . '-' . $index, $validJson, '{"f":' . $invalidJson . '}'),
+                        message: $mode->value . ' ' . $name . ' ' . $invalidJson,
+                    );
+                }
+            }
+        }
+    }
+
+    /**
+     * A pointer outside `components.schemas` of the document itself names a schema too.
+     */
+    public function testALocalReferenceOutsideTheComponentsIsValidated(): void
+    {
+        $cases = [
+            'definitions' => [['$ref' => '#/definitions/Corner'], '{"f":{"angle":4}}', ['"text"', '{}', '{"angle":1}']],
+            'root-entry' => [['$ref' => '#/shapes/Side'], '{"f":5}', ['"text"', '2']],
+        ];
+        foreach ($cases as $name => [$propertySchema, $validJson, $invalidJsons]) {
+            $spec = self::probeSpec($propertySchema);
+            $spec['shapes'] = ['Side' => ['type' => 'integer', 'minimum' => 3]];
+            $spec['definitions'] = [
+                'Corner' => ['type' => 'object', 'properties' => ['angle' => ['$ref' => '#/shapes/Side']], 'required' => ['angle']],
+            ];
+            foreach (GenerationMode::cases() as $mode) {
+                foreach ($invalidJsons as $index => $invalidJson) {
+                    $this->assertSame(
+                        expected: ['valid' => true, 'invalid' => false],
+                        actual: $this->verdict($mode, $spec, 'local-pointer-' . $name . '-' . $index, $validJson, '{"f":' . $invalidJson . '}'),
+                        message: $mode->value . ' ' . $name . ' ' . $invalidJson,
+                    );
+                }
+            }
+        }
+    }
+
+    /**
+     * A reference that names nothing stops generation: a missing file, a pointer the file does not
+     * contain, or a whole OpenAPI document used as a schema. Each used to generate `mixed`.
+     */
+    public function testAnExternalReferenceToNothingStopsGeneration(): void
+    {
+        $this->siblingDocuments = [
+            'shapes.json' => ['Side' => ['type' => 'integer']],
+            'tiles.json' => [
+                'openapi' => '3.1.0',
+                'info' => ['title' => 'T', 'version' => '1.0.0'],
+                'components' => ['schemas' => ['Tile' => ['type' => 'string']]],
+            ],
+        ];
+        $cases = [
+            'missing.json' => 'Referenced OpenAPI file not found: missing.json',
+            'missing.json#/Side' => 'Referenced OpenAPI file not found: missing.json#/Side',
+            'sub/../missing.yaml#/Side' => 'Referenced OpenAPI file not found: sub/../missing.yaml#/Side',
+            'shapes.json#/Nothing' => 'Unresolvable reference "shapes.json#/Nothing"',
+            'tiles.json' => 'Unresolvable reference "tiles.json"',
+        ];
+        foreach ($cases as $ref => $message) {
+            foreach (GenerationMode::cases() as $mode) {
+                $refusal = 'generated';
+                try {
+                    $this->generate(self::probeSpec(['$ref' => $ref]), 'App\ExternalNothing' . md5($ref . $mode->value), $mode->value);
+                } catch (RuntimeException $exception) {
+                    $refusal = $exception->getMessage();
+                }
+                $this->assertStringContainsString(needle: $message, haystack: $refusal, message: $mode->value . ' ' . $ref);
+            }
+        }
+    }
+
+    /**
      * A `$ref` to a component that is `{type: null}` is the null schema, not an empty object.
      */
     public function testAReferencedNullSchemaAcceptsOnlyNull(): void
@@ -1776,6 +1908,269 @@ final class ValidationParityTest extends TestCase
                 yield $key . '/' . $mode->value => [$mode, $key, $spec, $valid, $invalid];
             }
         }
+    }
+
+    /**
+     * Object shapes the runtime refused or emptied while the other modes took them: a property-level
+     * union with an object branch (`[map, null]`, `[{type: object}, string]`) refused every JSON
+     * object as "expects array, got object"; keys beside a `$ref` were merged at property level only,
+     * not in items, map values or a union branch; and `type: [object, null]` became an empty class.
+     *
+     * @param array<string, mixed> $spec
+     */
+    #[DataProvider('objectShapeCases')]
+    public function testObjectShapesAreJudgedAlikeInEveryPosition(GenerationMode $mode, string $key, array $spec, string $validJson, string $invalidJson): void
+    {
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => false],
+            actual: $this->verdict($mode, $spec, 'object-shape-' . $key, $validJson, $invalidJson),
+        );
+    }
+
+    public static function objectShapeCases(): iterable
+    {
+        $map = ['type' => 'object', 'additionalProperties' => ['type' => 'integer']];
+        $withComponents = static function (array $schema): array {
+            $spec = self::probeSpec($schema);
+            $spec['components']['schemas']['Tally'] = ['type' => 'object', 'additionalProperties' => ['type' => 'integer']];
+            $spec['components']['schemas']['Loose'] = ['type' => 'object'];
+            $spec['components']['schemas']['Swatch'] = ['type' => 'object', 'properties' => ['colour' => ['type' => 'string']]];
+
+            return $spec;
+        };
+        $swatchAnd = static fn(array $required): array => [
+            '$ref' => '#/components/schemas/Swatch',
+            'properties' => ['size' => ['type' => 'integer']],
+        ] + ($required === [] ? [] : ['required' => $required]);
+        $cases = [
+            'inline map or null' => [self::probeSpec(['anyOf' => [$map, ['type' => 'null']]]), '{"f":{"a":1}}', '{"f":"x"}'],
+            'map ref or null' => [$withComponents(['oneOf' => [['$ref' => '#/components/schemas/Tally'], ['type' => 'null']]]), '{"f":{"a":1}}', '{"f":{"a":"x"}}'],
+            'map ref or null given null' => [$withComponents(['oneOf' => [['$ref' => '#/components/schemas/Tally'], ['type' => 'null']]]), '{"f":null}', '{"f":"x"}'],
+            'free object or string' => [self::probeSpec(['anyOf' => [['type' => 'object'], ['type' => 'string']]]), '{"f":{"x":1}}', '{"f":true}'],
+            'free object or string given a string' => [self::probeSpec(['anyOf' => [['type' => 'object'], ['type' => 'string']]]), '{"f":"s"}', '{"f":1}'],
+            'free object or integer' => [self::probeSpec(['oneOf' => [['type' => 'object'], ['type' => 'integer']]]), '{"f":{"x":1}}', '{"f":"s"}'],
+            'free object or null' => [self::probeSpec(['anyOf' => [['type' => 'object'], ['type' => 'null']]]), '{"f":{"k":1}}', '{"f":1}'],
+            'free object or null given {}' => [self::probeSpec(['anyOf' => [['type' => 'object'], ['type' => 'null']]]), '{"f":{}}', '{"f":"s"}'],
+            'free object ref or null' => [$withComponents(['anyOf' => [['$ref' => '#/components/schemas/Loose'], ['type' => 'null']]]), '{"f":{"k":1}}', '{"f":1}'],
+            'list or object' => [self::probeSpec(['anyOf' => [['type' => 'array', 'items' => ['type' => 'string']], ['type' => 'object']]]), '{"f":{"x":1}}', '{"f":true}'],
+            'list or object given a list' => [self::probeSpec(['anyOf' => [['type' => 'array', 'items' => ['type' => 'string']], ['type' => 'object']]]), '{"f":["a"]}', '{"f":1}'],
+            'map or string' => [self::probeSpec(['anyOf' => [$map, ['type' => 'string']]]), '{"f":{"x":1}}', '{"f":1}'],
+            'type object or null' => [self::probeSpec(['type' => ['object', 'null']]), '{"f":{"k":1}}', '{"f":1}'],
+            'items of type object or null' => [self::probeSpec(['type' => 'array', 'items' => ['type' => ['object', 'null']]]), '{"f":[{"k":1},null]}', '{"f":[1]}'],
+            'ref beside keys in items' => [$withComponents(['type' => 'array', 'items' => $swatchAnd([])]), '{"f":[{"size":2,"colour":"a"}]}', '{"f":[{"size":"x"}]}'],
+            'ref beside required in items' => [$withComponents(['type' => 'array', 'items' => $swatchAnd(['size'])]), '{"f":[{"size":2}]}', '{"f":[{"colour":"a"}]}'],
+            'ref beside keys in map values' => [$withComponents(['type' => 'object', 'additionalProperties' => $swatchAnd([])]), '{"f":{"k":{"size":2}}}', '{"f":{"k":{"size":"x"}}}'],
+            'ref beside required in map values' => [$withComponents(['type' => 'object', 'additionalProperties' => $swatchAnd(['size'])]), '{"f":{"k":{"size":2}}}', '{"f":{"k":{}}}'],
+            'ref beside required or null' => [$withComponents(['anyOf' => [$swatchAnd(['size']), ['type' => 'null']]]), '{"f":{"size":2}}', '{"f":{"colour":"a"}}'],
+            'ref beside keys or null' => [$withComponents(['anyOf' => [$swatchAnd([]), ['type' => 'null']]]), '{"f":{"size":2}}', '{"f":{"size":"x"}}'],
+        ];
+        foreach ($cases as $key => [$spec, $valid, $invalid]) {
+            foreach (GenerationMode::cases() as $mode) {
+                yield $key . '/' . $mode->value => [$mode, $key, $spec, $valid, $invalid];
+            }
+        }
+    }
+
+    /**
+     * Shapes judged differently by one mode or two: an unsent container whose `default` breaks its
+     * own count keyword (symfony refused `{}`); a nullable container alias or nullable inline map,
+     * whose inside nothing checked (symfony, and yii3 for the 3.0 `allOf` spelling); a numeric
+     * `format` on a `type: string` (symfony applied the integer range to the string); keys beside
+     * a `$ref` that admit null the referenced schema refuses; a string `format` on a number
+     * (laravel, laravel-data and yii3 applied it); `minProperties` and its neighbours on a class,
+     * which the runtime counted on the declared properties only.
+     *
+     * @param array<string, mixed> $spec
+     * @param array{valid: bool, invalid: bool} $expected
+     */
+    #[DataProvider('modeSpecificShapeCases')]
+    public function testModeSpecificShapesAreJudgedByTheSchema(GenerationMode $mode, string $key, array $spec, string $validJson, string $invalidJson, array $expected): void
+    {
+        $this->assertSame(
+            expected: $expected,
+            actual: $this->verdict($mode, $spec, 'mode-shape-' . $key, $validJson, $invalidJson),
+        );
+    }
+
+    public static function modeSpecificShapeCases(): iterable
+    {
+        $optional = static function (array $schema): array {
+            $spec = self::probeSpec($schema);
+            $spec['components']['schemas']['Probe'] = ['type' => 'object', 'properties' => ['f' => $schema]];
+
+            return $spec;
+        };
+        $withComponents = static function (array $schema, string $version = '3.1.0'): array {
+            $spec = self::probeSpec($schema);
+            $spec['openapi'] = $version;
+            $spec['components']['schemas']['Pair'] = ['type' => 'array', 'items' => ['type' => 'integer'], 'maxItems' => 2];
+            $spec['components']['schemas']['Tally'] = ['type' => 'object', 'additionalProperties' => ['type' => 'integer']];
+            $spec['components']['schemas']['Swatch'] = ['type' => 'object', 'properties' => ['colour' => ['type' => 'string']]];
+            $spec['components']['schemas']['Hue'] = ['type' => 'string'];
+
+            return $spec;
+        };
+        $list = ['type' => 'array', 'items' => ['type' => 'integer'], 'minItems' => 2];
+        $map = ['type' => 'object', 'additionalProperties' => ['type' => 'integer'], 'minProperties' => 1];
+        $pairOrNull = ['anyOf' => [['$ref' => '#/components/schemas/Pair'], ['type' => 'null']]];
+        $tallyOrNull = ['anyOf' => [['type' => 'object', 'additionalProperties' => ['type' => 'integer']], ['type' => 'null']]];
+        $shape = static fn(array $keywords): array => ['type' => 'object', 'properties' => ['a' => ['type' => 'integer']]] + $keywords;
+        // Symfony and yii3 build the class from the payload and drop every undeclared key before a
+        // rule runs: README.support-matrix lists it beside `additionalProperties: false`.
+        // The runtime deserializer counts the body (`GeneratedConstraintsIntegrationTest`), but the
+        // write-back keeps the declared keys only, and `{"a":1}` is short of `minProperties: 2`.
+        $declaredOnly = [
+            'runtime' => ['valid' => false, 'invalid' => false],
+            'symfony' => ['valid' => false, 'invalid' => false],
+            'yii3' => ['valid' => false, 'invalid' => false],
+        ];
+        $undeclaredUnseen = ['symfony' => ['valid' => true, 'invalid' => true], 'yii3' => ['valid' => true, 'invalid' => true]];
+        $cases = [
+            'unsent list default below minItems' => [$optional($list + ['default' => [1]]), '{}', '{"f":[1]}'],
+            'unsent map default below minProperties' => [$optional($map + ['default' => []]), '{}', '{"f":{}}'],
+            'unsent list default within minItems' => [$optional($list + ['default' => [1, 2]]), '{}', '{"f":[1]}'],
+            'sent list beside a breaking default' => [$optional($list + ['default' => [1]]), '{"f":[1,2]}', '{"f":[1]}'],
+            'list alias or null past maxItems' => [$withComponents($pairOrNull), '{"f":[1,2]}', '{"f":[1,2,3]}'],
+            'list alias or null with a bad item' => [$withComponents($pairOrNull), '{"f":null}', '{"f":["x"]}'],
+            'list alias or null or string' => [$withComponents(['anyOf' => [['$ref' => '#/components/schemas/Pair'], ['type' => 'null'], ['type' => 'string']]]), '{"f":"s"}', '{"f":[1,2,3]}'],
+            'inline map or null with a bad value' => [self::probeSpec($tallyOrNull), '{"f":{"a":1}}', '{"f":{"a":"x"}}'],
+            'map alias nullable through allOf (3.0)' => [$withComponents(['allOf' => [['$ref' => '#/components/schemas/Tally']], 'nullable' => true], '3.0.3'), '{"f":{"a":1}}', '{"f":{"a":"x"}}'],
+            'map alias nullable through allOf given null (3.0)' => [$withComponents(['allOf' => [['$ref' => '#/components/schemas/Tally']], 'nullable' => true], '3.0.3'), '{"f":null}', '{"f":{"a":"x"}}'],
+            'map alias through allOf' => [$withComponents(['allOf' => [['$ref' => '#/components/schemas/Tally']]]), '{"f":{"a":1}}', '{"f":{"a":"x"}}'],
+            'string int32 past the integer range' => [self::probeSpec(['type' => 'string', 'format' => 'int32']), '{"f":"5000000000"}', '{"f":5}'],
+            'string uint32 below zero' => [self::probeSpec(['type' => 'string', 'format' => 'uint32']), '{"f":"-1"}', '{"f":5}'],
+            'integer int32 past the integer range' => [self::probeSpec(['type' => 'integer', 'format' => 'int32']), '{"f":5}', '{"f":5000000000}'],
+            'object ref beside type object or null' => [$withComponents(['$ref' => '#/components/schemas/Swatch', 'type' => ['object', 'null']]), '{"f":{"colour":"a"}}', '{"f":null}'],
+            'string ref beside type string or null' => [$withComponents(['$ref' => '#/components/schemas/Hue', 'type' => ['string', 'null']]), '{"f":"a"}', '{"f":null}'],
+            'object ref or null' => [$withComponents(['anyOf' => [['$ref' => '#/components/schemas/Swatch'], ['type' => 'null']]]), '{"f":null}', '{"f":{"colour":5}}'],
+            'integer with format date-time' => [self::probeSpec(['type' => 'integer', 'format' => 'date-time']), '{"f":1700000000}', '{"f":"x"}'],
+            'integer with format uuid' => [self::probeSpec(['type' => 'integer', 'format' => 'uuid']), '{"f":5}', '{"f":"x"}'],
+            'integer with format email' => [self::probeSpec(['type' => 'integer', 'format' => 'email']), '{"f":5}', '{"f":"x"}'],
+            'string with format email' => [self::probeSpec(['type' => 'string', 'format' => 'email']), '{"f":"a@example.com"}', '{"f":"x"}'],
+            'class minProperties counts undeclared keys' => [self::probeSpec($shape(['minProperties' => 2])), '{"f":{"a":1,"z":2}}', '{"f":{"a":1}}', $declaredOnly],
+            'class maxProperties counts undeclared keys' => [self::probeSpec($shape(['maxProperties' => 1])), '{"f":{"a":1}}', '{"f":{"a":1,"z":2}}', $undeclaredUnseen],
+            'class propertyNames sees undeclared keys' => [self::probeSpec($shape(['propertyNames' => ['maxLength' => 1]])), '{"f":{"a":1,"z":2}}', '{"f":{"a":1,"zz":2}}', $undeclaredUnseen],
+            'class patternProperties sees undeclared keys' => [self::probeSpec($shape(['patternProperties' => ['^x' => ['type' => 'integer']]])), '{"f":{"a":1,"x1":2}}', '{"f":{"a":1,"x1":"s"}}', $undeclaredUnseen],
+            'class minProperties met by declared keys' => [self::probeSpec($shape(['minProperties' => 1])), '{"f":{"a":1}}', '{"f":{}}'],
+            // Symfony's `BackedEnumNormalizer` and laravel-data hand "1" to `Level::from()`, which
+            // takes it: README.support-matrix lists it beside the numeric string for `type: integer`.
+            'integer enum given a numeric string' => [
+                self::probeSpec(['type' => 'integer', 'enum' => [1, 2]]),
+                '{"f":2}',
+                '{"f":"1"}',
+                ['symfony' => ['valid' => true, 'invalid' => true], 'laravel-data' => ['valid' => true, 'invalid' => true]],
+            ],
+        ];
+        foreach ($cases as $key => $case) {
+            [$spec, $valid, $invalid] = $case;
+            $diverges = $case[3] ?? [];
+            foreach (GenerationMode::cases() as $mode) {
+                yield $key . '/' . $mode->value => [$mode, $key, $spec, $valid, $invalid, $diverges[$mode->value] ?? ['valid' => true, 'invalid' => false]];
+            }
+        }
+    }
+
+    /**
+     * What the runtime writes back is what it read: keys beside a `$ref` in items or map values, a
+     * `type: [object, null]` free-form object, an empty object in a union whose only container is an
+     * object. Each was accepted and came back emptied — `{"size":2}` as `{}`, `{}` as `[]`.
+     */
+    #[DataProvider('runtimeRoundTrips')]
+    public function testTheRuntimeWritesBackWhatItRead(array $spec, string $key, string $json): void
+    {
+        $this->assertSame(expected: $json, actual: $this->runtimeRoundTrip($spec, 'round-trip-' . $key, $json));
+    }
+
+    public static function runtimeRoundTrips(): iterable
+    {
+        $withSwatch = static function (array $schema): array {
+            $spec = self::probeSpec($schema);
+            $spec['components']['schemas']['Swatch'] = ['type' => 'object', 'properties' => ['colour' => ['type' => 'string']]];
+
+            return $spec;
+        };
+        $swatchAndSize = ['$ref' => '#/components/schemas/Swatch', 'properties' => ['size' => ['type' => 'integer']]];
+        $objectOrNull = self::probeSpec(['anyOf' => [['type' => 'object'], ['type' => 'null']]]);
+        $objectOrString = self::probeSpec(['anyOf' => [['type' => 'object'], ['type' => 'string']]]);
+        $mapOrNull = self::probeSpec(['anyOf' => [['type' => 'object', 'additionalProperties' => ['type' => 'integer']], ['type' => 'null']]]);
+
+        yield 'ref beside keys in items' => [$withSwatch(['type' => 'array', 'items' => $swatchAndSize]), 'items', '{"f":[{"colour":"a","size":2}]}'];
+        yield 'ref beside keys in map values' => [$withSwatch(['type' => 'object', 'additionalProperties' => $swatchAndSize]), 'map', '{"f":{"k":{"colour":"a","size":2}}}'];
+        yield 'type object or null' => [self::probeSpec(['type' => ['object', 'null']]), 'nullable', '{"f":{"k":1}}'];
+        yield 'type object or null given null' => [self::probeSpec(['type' => ['object', 'null']]), 'nullable', '{"f":null}'];
+        yield 'items of type object or null' => [self::probeSpec(['type' => 'array', 'items' => ['type' => ['object', 'null']]]), 'nullable-items', '{"f":[{"k":1},null]}'];
+        yield 'object or null' => [$objectOrNull, 'object-or-null', '{"f":{"k":1}}'];
+        yield 'object or null given {}' => [$objectOrNull, 'object-or-null', '{"f":{}}'];
+        yield 'object or null given a digit key' => [$objectOrNull, 'object-or-null', '{"f":{"0":1}}'];
+        yield 'object or string given {}' => [$objectOrString, 'object-or-string', '{"f":{}}'];
+        yield 'object or string given a string' => [$objectOrString, 'object-or-string', '{"f":"s"}'];
+        yield 'map or null given {}' => [$mapOrNull, 'map-or-null', '{"f":{}}'];
+        yield 'map or null' => [$mapOrNull, 'map-or-null', '{"f":{"a":1}}'];
+    }
+
+    /**
+     * The values of a map inside a union are checked once the union takes the object: before, the
+     * object never got that far.
+     *
+     * @param array<string, mixed> $spec
+     */
+    #[DataProvider('unionMapValues')]
+    public function testTheRuntimeChecksTheValuesOfAMapInAUnion(array $spec, string $key, string $validJson, string $invalidJson): void
+    {
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => false],
+            actual: $this->runtimeVerdict($spec, 'union-map-values-' . $key, $validJson, $invalidJson),
+        );
+    }
+
+    public static function unionMapValues(): iterable
+    {
+        $map = ['type' => 'object', 'additionalProperties' => ['type' => 'integer']];
+
+        yield 'map or null' => [self::probeSpec(['anyOf' => [$map, ['type' => 'null']]]), 'or-null', '{"f":{"a":1}}', '{"f":{"a":"x"}}'];
+        yield 'map or string' => [self::probeSpec(['anyOf' => [$map, ['type' => 'string']]]), 'or-string', '{"f":{"a":1}}', '{"f":{"a":"x"}}'];
+        yield 'object or string given a list' => [self::probeSpec(['anyOf' => [['type' => 'object'], ['type' => 'string']]]), 'object-or-string', '{"f":{"a":1}}', '{"f":[1]}'];
+        yield 'object or null given a list' => [self::probeSpec(['anyOf' => [['type' => 'object'], ['type' => 'null']]]), 'object-or-null', '{"f":{"a":1}}', '{"f":[]}'];
+    }
+
+    /**
+     * A JSON array is no object at any depth the runtime decoded itself. The cast checks the levels it
+     * types; an undeclared key under `additionalProperties: {type: object}` and the items of a list of
+     * lists were only asked of the validator, which reads any PHP array as a possible map, and `[1, 2]`
+     * came back as `{"0":1,"1":2}`.
+     *
+     * @param array<string, mixed> $spec
+     */
+    #[DataProvider('arraysWhereObjectsBelong')]
+    public function testTheRuntimeRefusesAnArrayWhereAnObjectBelongs(array $spec, string $key, string $json, bool $accepted): void
+    {
+        $verdict = $this->runtimeVerdict($spec, 'array-for-object-' . $key, $json, $json);
+        $this->assertSame(expected: $accepted, actual: $verdict['valid'], message: $json);
+    }
+
+    public static function arraysWhereObjectsBelong(): iterable
+    {
+        $extras = static function (array $extra): array {
+            $spec = self::probeSpec(['type' => 'string']);
+            $spec['components']['schemas']['Probe']['additionalProperties'] = $extra;
+
+            return $spec;
+        };
+        $objectExtras = $extras(['type' => 'object']);
+        $listOfObjectsExtras = $extras(['type' => 'array', 'items' => ['type' => 'object']]);
+        $listOfLists = self::probeSpec(['type' => 'array', 'items' => ['type' => 'array', 'items' => ['type' => 'object']]]);
+
+        yield 'extra object given a list' => [$objectExtras, 'extra', '{"f":"a","e":[1,2]}', false];
+        yield 'extra object given []' => [$objectExtras, 'extra', '{"f":"a","e":[]}', false];
+        yield 'extra object given an object' => [$objectExtras, 'extra', '{"f":"a","e":{"k":1}}', true];
+        yield 'extra object given {}' => [$objectExtras, 'extra', '{"f":"a","e":{}}', true];
+        yield 'extra list of objects given [[1]]' => [$listOfObjectsExtras, 'extra-list', '{"f":"a","e":[[1]]}', false];
+        yield 'extra list of objects given [[]]' => [$listOfObjectsExtras, 'extra-list', '{"f":"a","e":[[]]}', false];
+        yield 'extra list of objects given [{}]' => [$listOfObjectsExtras, 'extra-list', '{"f":"a","e":[{}]}', true];
+        yield 'list of lists given [[[1]]]' => [$listOfLists, 'nested', '{"f":[[[1,2]]]}', false];
+        yield 'list of lists given [[[]]]' => [$listOfLists, 'nested', '{"f":[[[]]]}', false];
+        yield 'list of lists given [[{}]]' => [$listOfLists, 'nested', '{"f":[[{"a":1}]]}', true];
+        yield 'list of lists given [[]]' => [$listOfLists, 'nested', '{"f":[[]]}', true];
     }
 
     /**
@@ -1952,6 +2347,7 @@ final class ValidationParityTest extends TestCase
     public static function componentSubschemaCases(): iterable
     {
         $pet = ['type' => 'object', 'properties' => ['code' => ['type' => 'string', 'minLength' => 2]]];
+        $inner = ['type' => 'object', 'properties' => ['z' => ['type' => 'string', 'minLength' => 2]]];
         $cases = [
             'property-of-a-component' => [
                 ['$ref' => '#/components/schemas/Pet/properties/code'],
@@ -1981,12 +2377,94 @@ final class ValidationParityTest extends TestCase
                 '{"f":"text"}',
                 ['valid' => true, 'invalid' => true],
             ],
+            // The name the path spells, `WidgetPropertiesInner`, is a class the document already has
+            // under another spelling: the pointer takes the next free name instead of stopping.
+            'name-taken-under-another-spelling' => [
+                ['$ref' => '#/components/schemas/Widget/properties/inner'],
+                [
+                    'widgetPropertiesInner' => ['type' => 'object', 'properties' => ['q' => ['type' => 'integer']]],
+                    'Widget' => ['type' => 'object', 'properties' => ['inner' => $inner]],
+                ],
+                '{"f":{"z":"ab"}}',
+                '{"f":{"z":"a"}}',
+                ['valid' => true, 'invalid' => false],
+            ],
+            'name-taken-in-the-same-spelling' => [
+                ['$ref' => '#/components/schemas/Widget/properties/inner'],
+                [
+                    'WidgetPropertiesInner' => ['type' => 'object', 'properties' => ['q' => ['type' => 'integer']]],
+                    'Widget' => ['type' => 'object', 'properties' => ['inner' => $inner]],
+                ],
+                '{"f":{"z":"ab"}}',
+                '{"f":{"z":"a"}}',
+                ['valid' => true, 'invalid' => false],
+            ],
+            // Twenty-five levels down a chain: the name the path spells is past what a file system
+            // accepts as a file name, so it is shortened.
+            'deep-pointer' => [
+                ['$ref' => '#/components/schemas/Deep/' . implode('/', array_fill(0, 25, 'properties/a'))],
+                ['Deep' => self::propertyChain(28)],
+                '{"f":{"a":{"a":{"a":"ab"}}}}',
+                '{"f":{"a":{"a":{"a":"a"}}}}',
+                ['valid' => true, 'invalid' => false],
+            ],
         ];
         foreach (GenerationMode::cases() as $mode) {
             foreach ($cases as $key => [$property, $extra, $first, $second, $expected]) {
                 yield $mode->value . ' ' . $key => [$mode, $key, $property, $extra, $first, $second, $expected];
             }
         }
+    }
+
+    /**
+     * Pointers at every level of one chain: each pointed schema becomes one class, and the classes a
+     * pointed subtree contains are written once — a schema below another pointer is that pointer's
+     * class, not a fresh copy of it. Copied per pointer, ten pointers into a ten-level chain wrote
+     * sixty-odd classes; every file name stays short enough to be written.
+     */
+    public function testPointersIntoOneChainShareTheirClasses(): void
+    {
+        $depth = 10;
+        $properties = [];
+        for ($level = 1; $level <= $depth; $level++) {
+            $properties['p' . $level] = ['$ref' => '#/components/schemas/Deep/' . implode('/', array_fill(0, $level, 'properties/a'))];
+        }
+        $spec = self::probeSpec(['type' => 'string']);
+        $spec['components']['schemas']['Probe']['properties'] += $properties;
+        $spec['components']['schemas']['Deep'] = self::propertyChain($depth + 1);
+
+        $namespace = $this->namespaceFor(GenerationMode::Runtime, 'pointer-chain');
+        $this->generate($spec, $namespace, 'runtime');
+        $files = glob($this->outputDirectory . '/' . $namespace . '/*.php') ?: [];
+
+        // Deep with its eleven levels, one class per pointer, Probe — and nothing duplicated.
+        $this->assertLessThanOrEqual(2 * ($depth + 1) + 1, count($files));
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => false],
+            actual: $this->verdict(
+                GenerationMode::Runtime,
+                $spec,
+                'pointer-chain-verdict',
+                '{"f":"x","p9":{"a":{"a":"ab"}}}',
+                '{"f":"x","p9":{"a":{"a":"a"}}}',
+            ),
+        );
+    }
+
+    /**
+     * An object whose `a` holds an object whose `a` … `$levels` deep, ending in a string of at least
+     * two characters.
+     *
+     * @return array<string, mixed>
+     */
+    private static function propertyChain(int $levels): array
+    {
+        $schema = ['type' => 'string', 'minLength' => 2];
+        for ($level = 0; $level < $levels; $level++) {
+            $schema = ['type' => 'object', 'properties' => ['a' => $schema]];
+        }
+
+        return $schema;
     }
 
     /**
@@ -2043,6 +2521,110 @@ final class ValidationParityTest extends TestCase
         foreach (GenerationMode::cases() as $mode) {
             foreach ($cases as $key => $property) {
                 yield $mode->value . ' ' . $key => [$mode, $key, $property];
+            }
+        }
+    }
+
+    /**
+     * A scalar alias named where a value sits — a branch of a union beside other branches, a branch of
+     * an `allOf`, the value of a map — is the schema it names. The reference typed the property by the
+     * alias's class, which is never written: the runtime refused every value with `Unsupported type` or
+     * `unknown type`, laravel died on the constructor or on `Class not found` before any payload was
+     * read, and the alias's own keywords went unchecked where the value was accepted.
+     *
+     * @param array<string, mixed> $property
+     * @param list<array{string, string, bool}> $pairs valid payload, invalid payload, whether the invalid one is a numeric string
+     */
+    #[DataProvider('scalarAliasPositionCases')]
+    public function testAScalarAliasIsTheSchemaItNamesWhereverAValueSits(GenerationMode $mode, string $key, array $property, array $pairs): void
+    {
+        $spec = self::probeSpec($property);
+        $spec['components']['schemas']['Code'] = ['type' => 'string', 'minLength' => 2, 'maxLength' => 3];
+        $spec['components']['schemas']['Count'] = ['type' => 'integer', 'minimum' => 0];
+        $spec['components']['schemas']['Any'] = true;
+        $spec['components']['schemas']['Never'] = false;
+        $spec['components']['schemas']['CodeOrCount'] = ['anyOf' => [['$ref' => '#/components/schemas/Code'], ['$ref' => '#/components/schemas/Count']]];
+
+        foreach ($pairs as $index => [$valid, $invalid, $numericString]) {
+            // A numeric string for an integer is the documented leniency of these two modes
+            // (README.support-matrix.md, `testLenientScalarsArePinnedPerMode`), not this defect.
+            if ($numericString && in_array($mode, [GenerationMode::LaravelData, GenerationMode::Yii3], true)) {
+                continue;
+            }
+            $this->assertSame(
+                expected: ['valid' => true, 'invalid' => false],
+                actual: $this->verdict($mode, $spec, 'alias-position-' . $key . '-' . $index, $valid, $invalid),
+                message: $valid . ' / ' . $invalid,
+            );
+        }
+    }
+
+    public static function scalarAliasPositionCases(): iterable
+    {
+        $code = ['$ref' => '#/components/schemas/Code'];
+        $count = ['$ref' => '#/components/schemas/Count'];
+        $cases = [
+            'anyof-two-aliases' => [
+                ['anyOf' => [$code, $count]],
+                [['{"f":"ab"}', '{"f":"a"}', false], ['{"f":3}', '{"f":-1}', false], ['{"f":3}', '{"f":true}', false], ['{"f":"ab"}', '{"f":1.5}', false]],
+            ],
+            'anyof-alias-null-scalar' => [
+                ['anyOf' => [$code, ['type' => 'null'], ['type' => 'integer']]],
+                [['{"f":"ab"}', '{"f":"a"}', false], ['{"f":null}', '{"f":1.5}', false], ['{"f":-4}', '{"f":true}', false]],
+            ],
+            'oneof-alias-inline-scalar' => [
+                ['oneOf' => [$count, ['type' => 'string']]],
+                [['{"f":3}', '{"f":-1}', false], ['{"f":"x"}', '{"f":true}', false]],
+            ],
+            'union-component' => [
+                ['$ref' => '#/components/schemas/CodeOrCount'],
+                [['{"f":"ab"}', '{"f":"a"}', false], ['{"f":3}', '{"f":-1}', false]],
+            ],
+            'list-of-union-component' => [
+                ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/CodeOrCount']],
+                [['{"f":["ab",3]}', '{"f":["a"]}', false], ['{"f":[]}', '{"f":[-1]}', false]],
+            ],
+            'map-of-union-component' => [
+                ['type' => 'object', 'additionalProperties' => ['$ref' => '#/components/schemas/CodeOrCount']],
+                [['{"f":{"k":"ab","j":3}}', '{"f":{"k":-1}}', false]],
+            ],
+            'allof-alias-and-bound' => [
+                ['allOf' => [$count, ['maximum' => 10]]],
+                [['{"f":5}', '{"f":true}', false], ['{"f":5}', '{"f":"5"}', true], ['{"f":0}', '{"f":11}', false], ['{"f":10}', '{"f":-1}', false]],
+            ],
+            'map-of-string-alias' => [
+                ['type' => 'object', 'additionalProperties' => $code],
+                [['{"f":{"k":"ab"}}', '{"f":{"k":"abcd"}}', false], ['{"f":{}}', '{"f":{"k":5}}', false]],
+            ],
+            'map-of-integer-alias' => [
+                ['type' => 'object', 'additionalProperties' => $count],
+                [['{"f":{"k":1,"j":0}}', '{"f":{"k":-1}}', false], ['{"f":{}}', '{"f":{"k":"1"}}', true]],
+            ],
+            'map-with-key-constraint' => [
+                ['type' => 'object', 'propertyNames' => ['maxLength' => 3], 'additionalProperties' => $code],
+                [['{"f":{"k":"ab"}}', '{"f":{"k":"abcd"}}', false], ['{"f":{"k":"ab"}}', '{"f":{"long":"ab"}}', false]],
+            ],
+            'map-of-true' => [
+                ['type' => 'object', 'additionalProperties' => ['$ref' => '#/components/schemas/Any']],
+                [['{"f":{"x":{},"y":[],"z":1}}', '{"f":5}', false]],
+            ],
+            'map-of-false' => [
+                ['type' => 'object', 'additionalProperties' => ['$ref' => '#/components/schemas/Never']],
+                [['{"f":{}}', '{"f":{"x":1}}', false]],
+            ],
+            // Neighbours that already worked and must keep working.
+            'list-of-alias' => [
+                ['type' => 'array', 'items' => $count],
+                [['{"f":[0,4]}', '{"f":[-1]}', false]],
+            ],
+            'alias-or-null' => [
+                ['anyOf' => [$code, ['type' => 'null']]],
+                [['{"f":"ab"}', '{"f":"a"}', false], ['{"f":null}', '{"f":5}', false]],
+            ],
+        ];
+        foreach (GenerationMode::cases() as $mode) {
+            foreach ($cases as $key => [$property, $pairs]) {
+                yield $mode->value . ' ' . $key => [$mode, $key, $property, $pairs];
             }
         }
     }
@@ -2630,6 +3212,408 @@ final class ValidationParityTest extends TestCase
             true,
             false,
         ];
+    }
+
+    /**
+     * An `enum` beside a scalar keyword (`minimum`, `minLength`, `pattern`): both apply, the keyword
+     * to the member that was sent. yii3 put the keyword's rule on the property the hydrator had already
+     * turned into the generated backed enum, so `GreaterThanOrEqual(0)` judged the enum OBJECT and
+     * refused every member, the valid ones included. The keyword is still enforced: a member it rules
+     * out is refused.
+     *
+     * @param array<string, mixed> $schema
+     */
+    #[DataProvider('enumBesideAScalarKeywordCases')]
+    public function testAnEnumBesideAScalarKeywordKeepsItsValidMembers(
+        GenerationMode $mode,
+        string $key,
+        array $schema,
+        bool $required,
+        string $validJson,
+        string $invalidJson,
+    ): void {
+        $spec = self::probeSpec($schema);
+        if (!$required) {
+            $spec['components']['schemas']['Probe'] = ['type' => 'object', 'properties' => ['f' => $schema]];
+        }
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => false],
+            actual: $this->verdict($mode, $spec, 'enum-beside-keyword-' . $key, $validJson, $invalidJson),
+            message: $mode->value . ': ' . $key,
+        );
+    }
+
+    public static function enumBesideAScalarKeywordCases(): iterable
+    {
+        $cases = [
+            'minimum rules a member out' => [['type' => 'integer', 'minimum' => 0, 'enum' => [-1, 2]], true, '{"f":2}', '{"f":-1}'],
+            'minimum beside members it allows' => [['type' => 'integer', 'minimum' => 0, 'enum' => [1, 2]], true, '{"f":1}', '{"f":3}'],
+            'minLength rules a member out' => [['type' => 'string', 'minLength' => 2, 'enum' => ['a', 'cd']], true, '{"f":"cd"}', '{"f":"a"}'],
+            'pattern rules a member out' => [['type' => 'string', 'pattern' => '^c', 'enum' => ['ab', 'cd']], true, '{"f":"cd"}', '{"f":"ab"}'],
+            'optional minimum' => [['type' => 'integer', 'minimum' => 0, 'enum' => [-1, 2]], false, '{"f":2}', '{"f":-1}'],
+            'optional maximum' => [['type' => 'number', 'maximum' => 5, 'enum' => [1, 7]], false, '{}', '{"f":7}'],
+            'list items' => [['type' => 'array', 'items' => ['type' => 'string', 'minLength' => 2, 'enum' => ['a', 'cd']]], true, '{"f":["cd"]}', '{"f":["a"]}'],
+        ];
+        foreach ($cases as $key => [$schema, $required, $valid, $invalid]) {
+            foreach (GenerationMode::cases() as $mode) {
+                yield $key . ' / ' . $mode->value => [$mode, $key, $schema, $required, $valid, $invalid];
+            }
+        }
+    }
+
+    /**
+     * `additionalProperties: false` on a class one of whose DECLARED properties is a nested class. yii3
+     * dropped such a property from the interpreter's `properties` — its own class validates it — and
+     * with it the name, so the closed object refused the key as "additional property" for every value
+     * it could hold. The value is still checked by its own class.
+     */
+    #[DataProvider('closedClassWithANestedPropertyCases')]
+    public function testADeclaredNestedPropertyIsNotAnAdditionalOne(
+        GenerationMode $mode,
+        string $key,
+        bool $onlyNested,
+        string $validJson,
+        string $invalidJson,
+    ): void {
+        $schemas = $onlyNested
+            ? [
+                'Flags' => ['type' => 'object', 'properties' => ['a' => ['type' => 'boolean']]],
+                'Probe' => [
+                    'type' => 'object',
+                    'additionalProperties' => false,
+                    'properties' => ['flags' => ['$ref' => '#/components/schemas/Flags']],
+                ],
+            ]
+            : [
+                'Leaf' => ['type' => 'object', 'properties' => ['v' => ['type' => 'string']]],
+                'Probe' => [
+                    'type' => 'object',
+                    'additionalProperties' => false,
+                    'required' => ['name'],
+                    'properties' => [
+                        'name' => ['type' => 'string'],
+                        'leaf' => ['$ref' => '#/components/schemas/Leaf'],
+                        'parent' => ['$ref' => '#/components/schemas/Probe'],
+                        'leaves' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Leaf']],
+                        'tags' => ['type' => 'object', 'additionalProperties' => ['type' => 'integer']],
+                    ],
+                ],
+            ];
+        $spec = ['openapi' => '3.1.0', 'info' => ['title' => 'T', 'version' => '1.0.0'], 'components' => ['schemas' => $schemas]];
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => false],
+            actual: $this->verdict($mode, $spec, 'closed-nested-' . $key, $validJson, $invalidJson),
+            message: $mode->value . ': ' . $key,
+        );
+    }
+
+    public static function closedClassWithANestedPropertyCases(): iterable
+    {
+        $cases = [
+            'a referenced class' => [false, '{"name":"a","leaf":{"v":"x"}}', '{"name":"a","leaf":{"v":1}}'],
+            'the class itself' => [false, '{"name":"a","parent":{"name":"b"}}', '{"name":"a","parent":{"name":1}}'],
+            'a nested class two levels down' => [false, '{"name":"a","parent":{"name":"b","leaf":{"v":"x"}}}', '{"name":"a","parent":{"name":"b","leaf":{"v":1}}}'],
+            'a list of classes' => [false, '{"name":"a","leaves":[{"v":"x"}]}', '{"name":"a","leaves":[{"v":1}]}'],
+            'a map' => [false, '{"name":"a","tags":{"k":1}}', '{"name":"a","tags":{"k":"x"}}'],
+            'the only property' => [true, '{"flags":{"a":true}}', '{"flags":{"a":"x"}}'],
+            'the only property, empty' => [true, '{"flags":{}}', '{"flags":{"a":"x"}}'],
+        ];
+        foreach ($cases as $key => [$onlyNested, $valid, $invalid]) {
+            foreach (GenerationMode::cases() as $mode) {
+                yield $key . ' / ' . $mode->value => [$mode, $key, $onlyNested, $valid, $invalid];
+            }
+        }
+    }
+
+    /**
+     * An optional object property with a schema `default` PHP cannot spell as a constant. laravel mode
+     * read "has a default" and declared it non-nullable with nothing to fall back on, so a payload that
+     * left the key out died in `fromValidated()` with a TypeError — every one of them.
+     */
+    #[DataProvider('objectDefaultCases')]
+    public function testAnAbsentObjectWithADefaultIsAccepted(GenerationMode $mode, string $key, string $validJson, string $invalidJson): void
+    {
+        $inner = ['type' => 'object', 'properties' => ['x' => ['type' => 'integer']]];
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Inner' => $inner,
+                    'Probe' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'e' => [...$inner, 'default' => ['x' => 1]],
+                            'g' => ['$ref' => '#/components/schemas/Inner', 'default' => ['x' => 2]],
+                            'n' => ['type' => 'integer', 'default' => 4],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => false],
+            actual: $this->verdict($mode, $spec, 'object-default-' . $key, $validJson, $invalidJson),
+            message: $mode->value . ': ' . $key,
+        );
+    }
+
+    public static function objectDefaultCases(): iterable
+    {
+        $cases = [
+            'every key absent' => ['{}', '{"e":{"x":"s"}}'],
+            'one object sent' => ['{"e":{"x":2}}', '{"g":{"x":"s"}}'],
+            'the referenced one sent' => ['{"g":{"x":2}}', '{"n":"s"}'],
+        ];
+        foreach ($cases as $key => [$valid, $invalid]) {
+            foreach (GenerationMode::cases() as $mode) {
+                yield $key . ' / ' . $mode->value => [$mode, $key, $valid, $invalid];
+            }
+        }
+    }
+
+    /**
+     * The `type: object` wire check (support matrix "a JSON array for a `type: object` property") at
+     * every depth of a self-referring schema, in the modes that make it. The Laravel modes stopped at
+     * the first level that refers back: `{"meta": [1]}` was refused and `{"next": {"meta": [1]}}`
+     * accepted, hydrated as an empty object.
+     */
+    #[DataProvider('wireShapeBelowRecursionCases')]
+    public function testTheWireShapeIsCheckedBelowASelfReferringLevel(
+        GenerationMode $mode,
+        string $key,
+        bool $throughAnotherClass,
+        string $validJson,
+        string $invalidJson,
+    ): void {
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => false],
+            actual: $this->verdict(
+                mode: $mode,
+                spec: $throughAnotherClass ? self::recursionBelowARootSpec() : self::selfReferringSpec(),
+                key: 'wire-below-recursion-' . $key,
+                validJson: $validJson,
+                invalidJson: $invalidJson,
+            ),
+            message: $mode->value . ': ' . $key,
+        );
+    }
+
+    public static function wireShapeBelowRecursionCases(): iterable
+    {
+        $cases = [
+            'top level' => [false, '{"value":1,"shape":{"x":1}}', '{"value":1,"shape":[1]}'],
+            'one level down' => [false, '{"value":1,"child":{"value":1,"shape":{"x":1}}}', '{"value":1,"child":{"value":1,"shape":[1]}}'],
+            'two levels down' => [false, '{"value":1,"child":{"value":1,"child":{"value":1,"shape":{}}}}', '{"value":1,"child":{"value":1,"child":{"value":1,"shape":[1]}}}'],
+            'in a list item' => [false, '{"value":1,"kids":[{"value":1,"shape":{"x":1}}]}', '{"value":1,"kids":[{"value":1,"shape":[1]}]}'],
+            'the self-reference itself' => [false, '{"value":1,"kids":[{"value":1,"kids":[{"value":1}]}]}', '{"value":1,"kids":[{"value":1,"kids":[[5]]}]}'],
+            'below a root' => [true, '{"node":{"next":{"next":{"meta":{"a":1}}}}}', '{"node":{"next":{"next":{"meta":[1]}}}}'],
+            'through a mutual reference' => [true, '{"node":{"other":{"back":{"meta":{"a":1}}}}}', '{"node":{"other":{"back":{"meta":[1]}}}}'],
+        ];
+        // The modes that refuse a JSON array for an object at all; the other two are the documented
+        // divergence of that row, at every depth alike.
+        foreach ($cases as $key => [$throughAnotherClass, $valid, $invalid]) {
+            foreach ([GenerationMode::Runtime, GenerationMode::Laravel, GenerationMode::LaravelData] as $mode) {
+                yield $key . ' / ' . $mode->value => [$mode, $key, $throughAnotherClass, $valid, $invalid];
+            }
+        }
+    }
+
+    /**
+     * Below a self-referring level the Laravel modes report each problem once, under the path it is
+     * about — README.laravel "a violation is reported once" and "an error sits under the field it is
+     * about". The rule that checks such a level folded the inner messages into one error on the outer
+     * key (`child: child.child: child.child: validation.array`), and a mistake the interpreter also saw
+     * came back a second time under its own key.
+     */
+    #[DataProvider('laravelModes')]
+    public function testASelfReferringLevelReportsEachErrorOnceAtItsPath(GenerationMode $mode): void
+    {
+        $cases = [
+            '{"value":"x"}' => ['value' => ['validation.integer']],
+            '{"value":1,"child":{"value":"x"}}' => ['child.value' => ['validation.integer']],
+            '{"value":1,"child":{"value":2,"child":{"value":3,"child":"str"}}}' => ['child.child.child' => ['validation.array']],
+            '{"value":1,"kids":[{"value":1,"kids":[{"value":1},{"value":"x"}]}]}' => ['kids.0.kids.1.value' => ['validation.integer']],
+            '{"value":1,"child":{"value":1,"child":{"value":1,"shape":[1]}}}' => ['child.child.shape' => ['child.child.shape expects object, got array.']],
+            '{"value":1,"child":{"value":1,"child":{"value":1}}}' => [],
+        ];
+        foreach ($cases as $json => $expected) {
+            $this->assertSame(
+                expected: $expected,
+                actual: $this->laravelModeErrors($mode, self::selfReferringSpec(), 'recursive-error-paths', $json),
+                message: $mode->value . ': ' . $json,
+            );
+        }
+    }
+
+    public static function laravelModes(): iterable
+    {
+        yield 'laravel' => [GenerationMode::Laravel];
+        yield 'laravel-data' => [GenerationMode::LaravelData];
+    }
+
+    /**
+     * A JSON number past the float range (`1e400`) decodes to INF. Laravel's `multiple_of` threw
+     * `MathException` on it — a 500 for any client — and `numeric` took it into the DTO, where no JSON
+     * encoder could write it back. Runtime, yii3 and now the Laravel modes refuse it everywhere;
+     * Symfony mode still accepts it for a `type: number` property of the class itself (the serializer
+     * and `DivisibleBy` both take INF) and refuses it in a list or a map, which the interpreter checks —
+     * the support matrix row "a number past the float range".
+     */
+    #[DataProvider('overflowingNumberCases')]
+    public function testANumberPastTheFloatRangeIsRefused(GenerationMode $mode, string $key, string $invalidJson, bool $refused): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Probe' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'step' => ['type' => 'number', 'multipleOf' => 0.01],
+                            'count' => ['type' => 'integer', 'multipleOf' => 3],
+                            'halves' => ['type' => 'array', 'items' => ['type' => 'number', 'multipleOf' => 0.5]],
+                            'weights' => ['type' => 'object', 'additionalProperties' => ['type' => 'number', 'multipleOf' => 0.5]],
+                            'ratio' => ['type' => 'number'],
+                            'limit' => ['type' => 'number', 'maximum' => 10],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => !$refused],
+            actual: $this->verdict(
+                mode: $mode,
+                spec: $spec,
+                key: 'overflowing-number-' . $key,
+                validJson: '{"step":0.02,"count":3,"halves":[0.5],"weights":{"a":1},"ratio":1.5,"limit":-2}',
+                invalidJson: $invalidJson,
+            ),
+            message: $mode->value . ': ' . $key,
+        );
+    }
+
+    public static function overflowingNumberCases(): iterable
+    {
+        // The last column: whether Symfony mode refuses it.
+        $cases = [
+            'multipleOf number' => ['{"step":1e400}', false],
+            'multipleOf integer' => ['{"count":1e400}', true],
+            'multipleOf list item' => ['{"halves":[1e400]}', true],
+            'multipleOf map value' => ['{"weights":{"a":1e400}}', true],
+            'plain number' => ['{"ratio":1e400}', false],
+            'negative beside a maximum' => ['{"limit":-1e400}', false],
+        ];
+        foreach ($cases as $key => [$invalid, $symfonyRefuses]) {
+            foreach (GenerationMode::cases() as $mode) {
+                yield $key . ' / ' . $mode->value => [$mode, $key, $invalid, $mode !== GenerationMode::Symfony || $symfonyRefuses];
+            }
+        }
+    }
+
+    /**
+     * Probe → `child` and `kids[]` back to itself, with an object (`shape`) and a required integer on
+     * every level.
+     *
+     * @return array<string, mixed>
+     */
+    private static function selfReferringSpec(): array
+    {
+        return [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Probe' => [
+                        'type' => 'object',
+                        'required' => ['value'],
+                        'properties' => [
+                            'value' => ['type' => 'integer'],
+                            'shape' => ['type' => 'object', 'properties' => ['x' => ['type' => 'integer']]],
+                            'child' => ['$ref' => '#/components/schemas/Probe'],
+                            'kids' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Probe']],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * A root that does NOT refer to itself, holding a `Node` that does — directly (`next`) and through
+     * another class (`other.back`).
+     *
+     * @return array<string, mixed>
+     */
+    private static function recursionBelowARootSpec(): array
+    {
+        return [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Node' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'meta' => ['type' => 'object'],
+                            'next' => ['$ref' => '#/components/schemas/Node'],
+                            'other' => ['$ref' => '#/components/schemas/Other'],
+                        ],
+                    ],
+                    'Other' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'back' => ['$ref' => '#/components/schemas/Node'],
+                            'n' => ['type' => 'integer'],
+                        ],
+                    ],
+                    'Probe' => [
+                        'type' => 'object',
+                        'properties' => ['node' => ['$ref' => '#/components/schemas/Node']],
+                    ],
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * The errors a Laravel-mode class reports for a payload, the way the application sees them: laravel
+     * through `rules()` and `withValidator()` over the raw body, laravel-data through a request.
+     *
+     * @param array<string, mixed> $spec
+     * @return array<string, array<int, string>>
+     */
+    private function laravelModeErrors(GenerationMode $mode, array $spec, string $key, string $json): array
+    {
+        $fqcn = $this->generate($spec, $this->namespaceFor($mode, $key), $mode->value);
+        if ($mode === GenerationMode::LaravelData) {
+            LaravelDataContainer::boot();
+
+            /** @var array<string, array<int, string>> */
+            return LaravelDataContainer::withRequest(
+                json: $json,
+                work: static function (LaravelRequest $request) use ($fqcn): array {
+                    try {
+                        $fqcn::from($request);
+                    } catch (ValidationException $exception) {
+                        return $exception->errors();
+                    }
+
+                    return [];
+                },
+            );
+        }
+
+        /** @var array<string, array<int, mixed>> $rules */
+        $rules = call_user_func([$fqcn, 'rules']);
+        $validator = (new Factory(new Translator(new ArrayLoader(), 'en')))->make(json_decode($json, true), $rules);
+        call_user_func([$fqcn, 'withValidator'], $validator, $json);
+        $validator->fails();
+
+        /** @var array<string, array<int, string>> */
+        return $validator->errors()->toArray();
     }
 
     /**
@@ -4910,6 +5894,100 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * A union of ONE object branch and a scalar branch, with no discriminator. The object is a class
+     * (a `$ref`) or an inline shape, and either way the verdict must be the schema's: laravel typed the
+     * constructor `Shade|string` and handed it the validated array, a TypeError on every valid object;
+     * laravel-data checked the object's `required` on a string; symfony asked `Type('array')` of the
+     * hydrated class and lost the string to the class; yii3 checked nothing. The list branch beside a
+     * boolean is the same question one keyword over: its items are part of the branch.
+     *
+     * @param array<string, mixed> $property the schema of `f`
+     * @param array<int, string> $validJsons
+     * @param array<int, string> $invalidJsons
+     * @param array<string, array<int, string>> $frameworkDecides payloads a mode's framework judges before
+     *     any generated check runs, keyed by mode — not measured there; README.support-matrix has the rows
+     */
+    #[DataProvider('objectBesideScalarProvider')]
+    public function testAnObjectBranchBesideAScalarBranchIsJudgedByTheBranchItMatches(
+        array $property,
+        array $validJsons,
+        array $invalidJsons,
+        array $frameworkDecides = [],
+    ): void {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = self::probeSpec($property);
+        $spec['components']['schemas']['Shade'] = ['type' => 'object', 'required' => ['hue'], 'properties' => ['hue' => ['type' => 'string']]];
+        $spec['components']['schemas']['Loose'] = ['type' => 'object', 'properties' => ['hue' => ['type' => 'string']]];
+        $key = 'object beside scalar ' . md5((string)json_encode($property));
+
+        $expected = array_fill_keys($validJsons, true) + array_fill_keys($invalidJsons, false);
+        $this->assertEveryModeYields(
+            expected: $expected,
+            observe: function (GenerationMode $mode) use ($spec, $key, $expected, $frameworkDecides): array {
+                $observed = [];
+                foreach ($expected as $json => $verdict) {
+                    $observed[$json] = in_array($json, $frameworkDecides[$mode->value] ?? [], true)
+                        ? $verdict
+                        : $this->verdict(mode: $mode, spec: $spec, key: $key, validJson: $json, invalidJson: $json)['valid'];
+                }
+
+                return $observed;
+            },
+            context: $key,
+        );
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>, 1: array<int, string>, 2: array<int, string>, 3?: array<string, array<int, string>>}>
+     */
+    public static function objectBesideScalarProvider(): iterable
+    {
+        $shade = ['$ref' => '#/components/schemas/Shade'];
+        $loose = ['$ref' => '#/components/schemas/Loose'];
+        $inline = ['type' => 'object', 'required' => ['k'], 'properties' => ['k' => ['type' => 'integer']]];
+
+        foreach (['anyOf', 'oneOf'] as $keyword) {
+            yield $keyword . ': a class or a string' => [
+                [$keyword => [$shade, ['type' => 'string']]],
+                ['{"f":{"hue":"x"}}', '{"f":"ok"}'],
+                ['{"f":5}', '{"f":true}', '{"f":[1]}', '{"f":{}}', '{"f":{"hue":5}}'],
+            ];
+            // A class nothing in it requires can be built from anything. Symfony's serializer tries the
+            // class member first and, on 7.4.10, builds it from a scalar as well ("a scalar for a property
+            // typed as a generated class"); newer releases refuse the scalar and fall through to the
+            // string. A non-empty JSON list is the decoded `{"0":1}` once the framework has decoded it
+            // ("a JSON array for a `type: object` property").
+            yield $keyword . ': a class with nothing required or a string' => [
+                [$keyword => [$loose, ['type' => 'string']]],
+                ['{"f":{"hue":"x"}}', '{"f":{}}', '{"f":"ok"}'],
+                ['{"f":5}', '{"f":true}', '{"f":[1]}', '{"f":{"hue":5}}'],
+                [
+                    GenerationMode::Symfony->value => ['{"f":5}', '{"f":true}', '{"f":[1]}'],
+                    GenerationMode::Yii3->value => ['{"f":[1]}'],
+                ],
+            ];
+            yield $keyword . ': a class or an integer' => [
+                [$keyword => [$shade, ['type' => 'integer']]],
+                ['{"f":{"hue":"x"}}', '{"f":3}'],
+                ['{"f":"x"}', '{"f":{}}', '{"f":true}'],
+            ];
+            yield $keyword . ': an inline object or a string' => [
+                [$keyword => [$inline, ['type' => 'string']]],
+                ['{"f":{"k":1}}', '{"f":"s"}'],
+                ['{"f":5}', '{"f":{}}', '{"f":{"k":"x"}}', '{"f":true}'],
+            ];
+            yield $keyword . ': a list of integers or a boolean' => [
+                [$keyword => [['type' => 'array', 'items' => ['type' => 'integer']], ['type' => 'boolean']]],
+                ['{"f":[1,2]}', '{"f":[]}', '{"f":true}'],
+                ['{"f":["x"]}', '{"f":"x"}', '{"f":5}'],
+            ];
+        }
+    }
+
+    /**
      * A component named after a class the referring file names for something else — Symfony's
      * `Context`, Laravel's `Validator`, PHP's `BackedEnum`. Both meanings sit in Probe's file, and the
      * component's own file declares the name: either the import won and the component's type was the
@@ -6611,6 +7689,27 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * The JSON the runtime writes back for a payload it accepted, or the refusal.
+     *
+     * @param array<string, mixed> $spec
+     */
+    private function runtimeRoundTrip(array $spec, string $key, string $json): string
+    {
+        $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::Runtime, $key), 'runtime');
+        $request = Request::create(
+            uri: '/',
+            method: 'POST',
+            server: ['CONTENT_TYPE' => 'application/json'],
+            content: $json,
+        );
+        try {
+            return (new DtoNormalizer())->validateAndNormalizeToJson((new DtoDeserializer())->deserialize($request, $fqcn));
+        } catch (RuntimeException $e) {
+            return 'refused: ' . $e->getMessage();
+        }
+    }
+
+    /**
      * @param array<string, mixed> $spec
      * @return array{valid: bool, invalid: bool}
      */
@@ -6737,7 +7836,18 @@ final class ValidationParityTest extends TestCase
             mkdir($target, 0o755, true);
         }
 
-        (new GenerateDtoCommand())->generateFromArray($spec, $target, $namespace, $mode);
+        if ($this->siblingDocuments === []) {
+            (new GenerateDtoCommand())->generateFromArray($spec, $target, $namespace, $mode);
+        } else {
+            $documents = $this->outputDirectory . '/documents-' . $namespace;
+            if (!is_dir($documents)) {
+                mkdir($documents, 0o755, true);
+            }
+            foreach (['spec.json' => $spec] + $this->siblingDocuments as $fileName => $document) {
+                file_put_contents($documents . '/' . $fileName, json_encode($document, JSON_THROW_ON_ERROR));
+            }
+            (new GenerateDtoCommand())->generateFromFile($documents . '/spec.json', $target, $namespace, $mode);
+        }
         // An autoloader, as an application has: a class that extends another (`allOf` with one `$ref`)
         // must find its parent whatever order the files are listed in.
         spl_autoload_register(static function (string $class) use ($namespace, $target): void {

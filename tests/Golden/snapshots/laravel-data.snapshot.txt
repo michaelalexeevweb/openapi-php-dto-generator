@@ -1,4 +1,4 @@
-# laravel-data mode — 80 files, 22191 lines
+# laravel-data mode — 80 files, 22279 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -501,6 +501,8 @@ use function array_keys;
 use function array_shift;
 use function is_array;
 use function is_bool;
+use function is_finite;
+use function is_float;
 use function is_string;
 use function json_decode;
 use function ltrim;
@@ -709,7 +711,9 @@ final class ApiTest2PatchRequest extends Data
             // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
             $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
             foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
-                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
+                if ((is_bool($node) || (is_float($node) && !is_finite($node))) && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
                 }
             }
@@ -767,6 +771,8 @@ use function array_keys;
 use function array_shift;
 use function is_array;
 use function is_bool;
+use function is_finite;
+use function is_float;
 use function is_string;
 use function json_decode;
 use function ltrim;
@@ -977,7 +983,9 @@ final class ApiTest2PostRequest extends Data
             // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
             $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
             foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
-                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
+                if ((is_bool($node) || (is_float($node) && !is_finite($node))) && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
                 }
             }
@@ -5974,7 +5982,11 @@ final class ApplicatorRefs extends Data
         }
 
         if (is_array($schema['not'] ?? null) && self::matchesOpenApiNode($value, $schema['not'], $path, $depth + 1)) {
-            $errors[] = sprintf('%s must not match the \'not\' schema', $path);
+            // `not: {}` is how the generator spells the schema `false`, and a document that wrote `false`
+            // never mentioned `not` — the same sentence the runtime validator writes for it.
+            $errors[] = $schema['not'] === []
+                ? sprintf('%s is not allowed by the schema', $path)
+                : sprintf('%s must not match the \'not\' schema', $path);
         }
 
         if (is_array($schema['if'] ?? null)) {
@@ -6010,7 +6022,7 @@ final class ApplicatorRefs extends Data
                 if ($index < $prefixCount) {
                     continue;
                 }
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 
@@ -7569,7 +7581,11 @@ final class ApplicatorRefsPoisonedKey extends Data
         }
 
         if (is_array($schema['not'] ?? null) && self::matchesOpenApiNode($value, $schema['not'], $path, $depth + 1)) {
-            $errors[] = sprintf('%s must not match the \'not\' schema', $path);
+            // `not: {}` is how the generator spells the schema `false`, and a document that wrote `false`
+            // never mentioned `not` — the same sentence the runtime validator writes for it.
+            $errors[] = $schema['not'] === []
+                ? sprintf('%s is not allowed by the schema', $path)
+                : sprintf('%s must not match the \'not\' schema', $path);
         }
 
         return $errors;
@@ -7636,6 +7652,8 @@ use function array_keys;
 use function array_shift;
 use function is_array;
 use function is_bool;
+use function is_finite;
+use function is_float;
 use function is_string;
 use function preg_split;
 use function str_replace;
@@ -7804,7 +7822,9 @@ final class AwkwardNames extends Data
             // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
             $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
             foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
-                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
+                if ((is_bool($node) || (is_float($node) && !is_finite($node))) && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
                 }
             }
@@ -8868,7 +8888,7 @@ final class ChainLink extends Data
 
         if ($listValue && ($schema['items'] ?? null) === false) {
             foreach (array_keys($value) as $index) {
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 
@@ -9407,7 +9427,7 @@ final class ChainMiddle extends Data
 
         if ($listValue && ($schema['items'] ?? null) === false) {
             foreach (array_keys($value) as $index) {
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 
@@ -9622,6 +9642,8 @@ use function array_keys;
 use function array_shift;
 use function is_array;
 use function is_bool;
+use function is_finite;
+use function is_float;
 use function is_string;
 use function preg_split;
 use function str_replace;
@@ -9778,7 +9800,9 @@ final class Circle extends Shape
             // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
             $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
             foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
-                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
+                if ((is_bool($node) || (is_float($node) && !is_finite($node))) && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
                 }
             }
@@ -9840,6 +9864,8 @@ use function explode;
 use function get_object_vars;
 use function is_array;
 use function is_bool;
+use function is_finite;
+use function is_float;
 use function is_string;
 use function json_decode;
 use function preg_split;
@@ -10078,7 +10104,9 @@ final class ContainerAliases extends Data
             // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
             $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
             foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
-                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
+                if ((is_bool($node) || (is_float($node) && !is_finite($node))) && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
                 }
             }
@@ -10638,7 +10666,9 @@ final class Containers extends Data
             // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
             $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
             foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
-                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
+                if ((is_bool($node) || (is_float($node) && !is_finite($node))) && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
                 }
             }
@@ -10979,7 +11009,7 @@ final class Containers extends Data
 
         if ($listValue && ($schema['items'] ?? null) === false) {
             foreach (array_keys($value) as $index) {
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 
@@ -11611,6 +11641,8 @@ use function array_keys;
 use function array_shift;
 use function is_array;
 use function is_bool;
+use function is_finite;
+use function is_float;
 use function is_string;
 use function preg_split;
 use function str_replace;
@@ -11768,7 +11800,9 @@ final class Discriminator1 extends Discriminator
             // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
             $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
             foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
-                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
+                if ((is_bool($node) || (is_float($node) && !is_finite($node))) && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
                 }
             }
@@ -11825,6 +11859,8 @@ use function array_keys;
 use function array_shift;
 use function is_array;
 use function is_bool;
+use function is_finite;
+use function is_float;
 use function is_string;
 use function preg_split;
 use function str_replace;
@@ -11985,7 +12021,9 @@ final class Discriminator2 extends Discriminator
             // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
             $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
             foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
-                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
+                if ((is_bool($node) || (is_float($node) && !is_finite($node))) && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
                 }
             }
@@ -12512,6 +12550,8 @@ use function get_object_vars;
 use function implode;
 use function is_array;
 use function is_bool;
+use function is_finite;
+use function is_float;
 use function is_string;
 use function json_decode;
 use function preg_last_error;
@@ -12784,7 +12824,9 @@ final class ItemBounds extends Data
             // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
             $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
             foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
-                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
+                if ((is_bool($node) || (is_float($node) && !is_finite($node))) && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
                 }
             }
@@ -13004,7 +13046,7 @@ final class ItemBounds extends Data
 
         if ($listValue && ($schema['items'] ?? null) === false) {
             foreach (array_keys($value) as $index) {
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 
@@ -13476,7 +13518,9 @@ final class NestedContainers extends Data
             // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
             $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
             foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
-                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
+                if ((is_bool($node) || (is_float($node) && !is_finite($node))) && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
                 }
             }
@@ -13716,7 +13760,7 @@ final class NestedContainers extends Data
 
         if ($listValue && ($schema['items'] ?? null) === false) {
             foreach (array_keys($value) as $index) {
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 
@@ -13821,6 +13865,8 @@ use function explode;
 use function get_object_vars;
 use function is_array;
 use function is_bool;
+use function is_finite;
+use function is_float;
 use function is_string;
 use function json_decode;
 use function preg_split;
@@ -14057,7 +14103,9 @@ final class NullableContainerValues extends Data
             // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
             $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
             foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
-                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
+                if ((is_bool($node) || (is_float($node) && !is_finite($node))) && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
                 }
             }
@@ -14609,7 +14657,11 @@ final class ObjectWideRules extends Data
         }
 
         if (is_array($schema['not'] ?? null) && self::matchesOpenApiNode($value, $schema['not'], $path, $depth + 1)) {
-            $errors[] = sprintf('%s must not match the \'not\' schema', $path);
+            // `not: {}` is how the generator spells the schema `false`, and a document that wrote `false`
+            // never mentioned `not` — the same sentence the runtime validator writes for it.
+            $errors[] = $schema['not'] === []
+                ? sprintf('%s is not allowed by the schema', $path)
+                : sprintf('%s must not match the \'not\' schema', $path);
         }
 
         if (is_array($schema['if'] ?? null)) {
@@ -14845,6 +14897,8 @@ use function array_slice;
 use function implode;
 use function is_array;
 use function is_bool;
+use function is_finite;
+use function is_float;
 use function is_string;
 use function preg_match;
 use function preg_match_all;
@@ -15062,7 +15116,9 @@ final class ReadOnlyFields extends Data
             // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
             $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
             foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
-                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
+                if ((is_bool($node) || (is_float($node) && !is_finite($node))) && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
                 }
             }
@@ -15216,6 +15272,8 @@ use function array_keys;
 use function array_shift;
 use function is_array;
 use function is_bool;
+use function is_finite;
+use function is_float;
 use function is_string;
 use function preg_split;
 use function str_replace;
@@ -15371,7 +15429,9 @@ final class RetiredShape extends Data
             // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
             $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
             foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
-                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
+                if ((is_bool($node) || (is_float($node) && !is_finite($node))) && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
                 }
             }
@@ -15543,6 +15603,8 @@ use function array_keys;
 use function array_shift;
 use function is_array;
 use function is_bool;
+use function is_finite;
+use function is_float;
 use function is_string;
 use function preg_split;
 use function str_replace;
@@ -15699,7 +15761,9 @@ final class Square extends Shape
             // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
             $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
             foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
-                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
+                if ((is_bool($node) || (is_float($node) && !is_finite($node))) && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
                 }
             }
@@ -15758,6 +15822,8 @@ use function array_shift;
 use function in_array;
 use function is_array;
 use function is_bool;
+use function is_finite;
+use function is_float;
 use function is_string;
 use function preg_split;
 use function str_replace;
@@ -15951,7 +16017,9 @@ final class Tag extends Data
             // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
             $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
             foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
-                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
+                if ((is_bool($node) || (is_float($node) && !is_finite($node))) && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
                 }
             }
@@ -16007,6 +16075,8 @@ use function array_keys;
 use function array_shift;
 use function is_array;
 use function is_bool;
+use function is_finite;
+use function is_float;
 use function is_string;
 use function preg_split;
 use function str_replace;
@@ -16160,7 +16230,9 @@ final class Test extends Data
             // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
             $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
             foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
-                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
+                if ((is_bool($node) || (is_float($node) && !is_finite($node))) && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
                 }
             }
@@ -16237,6 +16309,7 @@ use function implode;
 use function in_array;
 use function is_array;
 use function is_bool;
+use function is_finite;
 use function is_float;
 use function is_int;
 use function is_object;
@@ -16691,7 +16764,9 @@ final class Test2 extends Data
             // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
             $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
             foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
-                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
+                if ((is_bool($node) || (is_float($node) && !is_finite($node))) && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
                 }
             }
@@ -16938,7 +17013,7 @@ final class Test2 extends Data
 
         if ($listValue && ($schema['items'] ?? null) === false) {
             foreach (array_keys($value) as $index) {
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 
@@ -17297,6 +17372,8 @@ use function array_keys;
 use function array_shift;
 use function is_array;
 use function is_bool;
+use function is_finite;
+use function is_float;
 use function is_string;
 use function json_decode;
 use function ltrim;
@@ -17505,7 +17582,9 @@ final class TestPatchRequest extends Data
             // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
             $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
             foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
-                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
+                if ((is_bool($node) || (is_float($node) && !is_finite($node))) && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
                 }
             }
@@ -17854,7 +17933,9 @@ final class TestPostRequest extends Data
             // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
             $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
             foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
-                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
+                if ((is_bool($node) || (is_float($node) && !is_finite($node))) && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
                 }
             }
@@ -20016,7 +20097,7 @@ final class UnionUnderContainer extends Data
 
         if ($listValue && ($schema['items'] ?? null) === false) {
             foreach (array_keys($value) as $index) {
-                $errors[] = sprintf('%s has an item at index %s which the schema does not allow', $path, $index);
+                $errors[] = sprintf('%s[%s] is not allowed by the schema', $path, $index);
             }
         }
 
@@ -20687,6 +20768,7 @@ use function implode;
 use function in_array;
 use function is_array;
 use function is_bool;
+use function is_finite;
 use function is_float;
 use function is_int;
 use function is_object;
@@ -21096,7 +21178,9 @@ final class User extends Data
             // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
             $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
             foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
-                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
+                if ((is_bool($node) || (is_float($node) && !is_finite($node))) && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
                 }
             }
@@ -21515,6 +21599,8 @@ use function implode;
 use function in_array;
 use function is_array;
 use function is_bool;
+use function is_finite;
+use function is_float;
 use function is_object;
 use function is_string;
 use function json_decode;
@@ -21823,7 +21909,9 @@ final class User2 extends Data
             // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
             $segments = str_replace('\\.', '.', preg_split('/(?<!\\\\)\\./', $path) ?: []);
             foreach (self::dataNodesAt($data, $segments, '') as $foundPath => $node) {
-                if (is_bool($node) && !$validator->errors()->has($foundPath)) {
+                // A number past the float range (`1e400`) decodes to INF, which `numeric` takes and no
+                // JSON encoder can write back.
+                if ((is_bool($node) || (is_float($node) && !is_finite($node))) && !$validator->errors()->has($foundPath)) {
                     $validator->addFailure($foundPath, $type === 'number' ? 'numeric' : 'integer');
                 }
             }
