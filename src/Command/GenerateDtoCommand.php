@@ -1064,7 +1064,7 @@ final class GenerateDtoCommand extends Command
         // Before the `$defs` fold: it rewrites pointers by their text, and an anchor or an `$id`
         // reference has to be resolved against the document as written.
         $data = (new SchemaResourceResolver())->resolve(document: $data, documentBase: $this->fileUri($realFilePath));
-        $data = $this->foldJsonSchemaDefs($data);
+        $data = $this->hoistComponentSubschemas($this->foldJsonSchemaDefs($data));
 
         $this->initializeGeneration(
             outputDirectory: $outputDirectory,
@@ -1174,6 +1174,139 @@ final class GenerateDtoCommand extends Command
         }
 
         return true;
+    }
+
+    /**
+     * A `$ref` that points INSIDE a component — `#/components/schemas/Pet/properties/name` — names a
+     * schema no class is written for. It read as a class named `Pet/properties/name` and stopped
+     * generation as unresolvable. Each such schema becomes a component of its own, named after its
+     * path (`PetPropertiesName`), and every reference to it is rewritten there; references to one place
+     * stay one component. A boolean component — `true`, the schema everything satisfies, `false`, the
+     * one nothing does — is written in an object spelling the readers know — see
+     * `booleanSchemaAsObject()`.
+     *
+     * @param array<string, mixed> $openApi
+     * @return array<string, mixed>
+     */
+    private function hoistComponentSubschemas(array $openApi): array
+    {
+        $schemas = $openApi['components']['schemas'] ?? null;
+        if (!is_array($schemas)) {
+            return $openApi;
+        }
+        foreach ($schemas as $name => $schema) {
+            if (is_bool($schema)) {
+                $schemas[$name] = self::booleanSchemaAsObject($schema);
+            }
+        }
+        $openApi['components']['schemas'] = $schemas;
+
+        $prefix = '#/components/schemas/';
+        $hoisted = [];
+        // A hoisted schema may point inside another component in turn; a few rounds reach the end.
+        for ($round = 0; $round < 8; $round++) {
+            $pointers = [];
+            $this->collectComponentSubschemaPointers(node: $openApi, prefix: $prefix, pointers: $pointers);
+            $fresh = array_diff_key($pointers, $hoisted);
+            if ($fresh === []) {
+                break;
+            }
+            /** @var array<string, mixed> $schemas */
+            $schemas = $openApi['components']['schemas'];
+            foreach (array_keys($fresh) as $pointer) {
+                $segments = array_map(
+                    callback: static fn(string $segment): string => str_replace(['~1', '~0'], ['/', '~'], $segment),
+                    array: explode('/', substr($pointer, strlen($prefix))),
+                );
+                $node = $schemas;
+                foreach ($segments as $segment) {
+                    if (!is_array($node) || !array_key_exists($segment, $node)) {
+                        $node = null;
+                        break;
+                    }
+                    $node = $node[$segment];
+                }
+                if (is_bool($node)) {
+                    $node = self::booleanSchemaAsObject($node);
+                }
+                if (!is_array($node)) {
+                    $hoisted[$pointer] = null;
+                    continue;
+                }
+                $base = implode('', array_map(
+                    callback: static fn(string $segment): string => $segment === ''
+                        ? 'Empty'
+                        : ucfirst((string)preg_replace('/[^A-Za-z0-9]+/', '', $segment)),
+                    array: $segments,
+                ));
+                $name = $base === '' ? 'Pointed' : $base;
+                $suffix = 2;
+                while (array_key_exists($name, $schemas)) {
+                    $name = $base . $suffix++;
+                }
+                $schemas[$name] = $node;
+                $hoisted[$pointer] = $name;
+            }
+            $openApi['components']['schemas'] = $schemas;
+            $renames = array_filter($hoisted, is_string(...));
+            $rewritten = $this->rewriteComponentSubschemaPointers(node: $openApi, prefix: $prefix, renames: $renames);
+            $openApi = is_array($rewritten) ? $rewritten : $openApi;
+        }
+
+        return $openApi;
+    }
+
+    /**
+     * A boolean schema in an object spelling. `false` is `{not: {}}`. `true` is not `{}`: an empty
+     * component is how a document names a free-form OBJECT here, and keeps a class — so it is
+     * `{not: {not: {}}}`, which admits every value and, asserting something, is a value of any type
+     * with no class of its own.
+     *
+     * @return array<string, mixed>
+     */
+    private static function booleanSchemaAsObject(bool $schema): array
+    {
+        return $schema ? ['not' => ['not' => []]] : ['not' => []];
+    }
+
+    /**
+     * @param array<string, true> $pointers
+     */
+    private function collectComponentSubschemaPointers(mixed $node, string $prefix, array &$pointers): void
+    {
+        if (!is_array($node)) {
+            return;
+        }
+        $ref = $node['$ref'] ?? null;
+        if (is_string($ref) && str_starts_with($ref, $prefix) && str_contains(substr($ref, strlen($prefix)), '/')) {
+            $pointers[$ref] = true;
+        }
+        foreach ($node as $value) {
+            if (is_array($value)) {
+                $this->collectComponentSubschemaPointers(node: $value, prefix: $prefix, pointers: $pointers);
+            }
+        }
+    }
+
+    /**
+     * @param array<string, string> $renames
+     */
+    private function rewriteComponentSubschemaPointers(mixed $node, string $prefix, array $renames): mixed
+    {
+        if (!is_array($node)) {
+            return $node;
+        }
+        foreach ($node as $key => $value) {
+            if ($key === '$ref' && is_string($value) && array_key_exists($value, $renames)) {
+                $node[$key] = $prefix . $renames[$value];
+                continue;
+            }
+            if (is_array($value)) {
+                $node[$key] = $this->rewriteComponentSubschemaPointers(node: $value, prefix: $prefix, renames: $renames);
+            }
+        }
+
+        return $node;
     }
 
     /**
@@ -1288,7 +1421,7 @@ final class GenerateDtoCommand extends Command
         $this->initializeGeneration(outputDirectory: $outputDirectory, namespace: $namespace, rootSpecFile: null);
         $this->readDocumentLevelFields($openApi);
         $openApi = (new SchemaResourceResolver())->resolve(document: $openApi, documentBase: SchemaResourceResolver::ARRAY_DOCUMENT_BASE);
-        $openApi = $this->foldJsonSchemaDefs($openApi);
+        $openApi = $this->hoistComponentSubschemas($this->foldJsonSchemaDefs($openApi));
         $schemas = $this->extractSchemas($openApi);
         foreach ($this->extractInlineResponseSchemas($openApi) as $name => $schema) {
             $schemas[$name] = $schema;
@@ -3198,7 +3331,7 @@ final class GenerateDtoCommand extends Command
         $data = (new SchemaResourceResolver())->resolve(document: $data, documentBase: $this->fileUri($filePath));
         // Fold this external document's own `$defs` into its components.schemas (and rewrite
         // its internal `#/$defs/` pointers) so cross-file `file#/$defs/X` references resolve.
-        $data = $this->foldJsonSchemaDefs($data);
+        $data = $this->hoistComponentSubschemas($this->foldJsonSchemaDefs($data));
         $this->externalDocuments[$filePath] = $data;
 
         $schemas = $this->extractSchemas($data);

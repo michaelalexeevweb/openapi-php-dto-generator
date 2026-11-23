@@ -554,13 +554,45 @@ final class HostileRequestTest extends TestCase
     }
 
     /**
-     * A form body whose class cannot be found — here a pointer INTO a component, which generates no
-     * class of its own — might arrive as any class, so none is marked JSON-only: refusing a form the
-     * document allows breaks valid traffic, and the unmarked class keeps the lookup it always had.
+     * A form body whose classes cannot all be found — here a union one of whose members points into
+     * `paths`, at no component — might arrive as any class, so none is marked JSON-only:
+     * refusing a form the document allows breaks valid traffic, and the unmarked class keeps the
+     * lookup it always had.
      */
     public function testUnattributableFormBodyLeavesEveryClassPermissive(): void
     {
-        $inner = ['type' => 'object', 'properties' => ['name' => ['type' => 'string']]];
+        $namespace = $this->generate(openApi: [
+            'paths' => [
+                '/widgets' => ['post' => [
+                    'requestBody' => ['content' => ['application/json' => ['schema' => ['$ref' => '#/components/schemas/Widget']]]],
+                    'responses' => ['200' => ['description' => 'ok']],
+                ]],
+                '/widgets/either' => ['post' => [
+                    'requestBody' => ['content' => ['application/x-www-form-urlencoded' => ['schema' => ['oneOf' => [
+                        ['$ref' => '#/components/schemas/Gadget'],
+                        ['$ref' => '#/paths/~1widgets/post/requestBody/content/application~1json/schema'],
+                    ]]]]],
+                    'responses' => ['200' => ['description' => 'ok']],
+                ]],
+            ],
+            'components' => ['schemas' => [
+                'Widget' => ['type' => 'object', 'required' => ['name'], 'properties' => ['name' => ['type' => 'string']]],
+                'Gadget' => ['type' => 'object', 'properties' => ['size' => ['type' => 'integer']]],
+            ]],
+        ]);
+
+        $dto = $this->deserializeForm(class: $namespace . '\Widget', body: 'name=ab', fields: ['name' => 'ab']);
+        $this->assertSame(expected: '{"name":"ab"}', actual: $dto->toJson());
+    }
+
+    /**
+     * A form body that points INTO a component names the schema there, which is a class of its own
+     * since 2.15.140 (`WidgetPropertiesInner`): the body is attributed to it, so that class reads the
+     * form, and the component it was taken from, sent only as JSON, is JSON-only like any other.
+     */
+    public function testAFormBodyPointingIntoAComponentIsItsOwnClass(): void
+    {
+        $inner = ['type' => 'object', 'properties' => ['label' => ['type' => 'string']]];
         $namespace = $this->generate(openApi: [
             'paths' => [
                 '/widgets' => ['post' => [
@@ -577,8 +609,8 @@ final class HostileRequestTest extends TestCase
             ]],
         ]);
 
-        $dto = $this->deserializeForm(class: $namespace . '\Widget', body: 'name=ab', fields: ['name' => 'ab']);
-        $this->assertSame(expected: '{"name":"ab"}', actual: $dto->toJson());
+        $dto = $this->deserializeForm(class: $namespace . '\WidgetPropertiesInner', body: 'label=ab', fields: ['label' => 'ab']);
+        $this->assertSame(expected: '{"label":"ab"}', actual: $dto->toJson());
     }
 
     // --- a pattern the regex engine gives up on, inside the objects of a list ------------------

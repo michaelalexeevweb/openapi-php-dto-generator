@@ -1867,6 +1867,68 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * A `$ref` that points INSIDE a component — at one of its properties, into its `$defs` — names that
+     * schema. It read as a class called `Pet/properties/code` and stopped generation as unresolvable. A
+     * boolean component is the schema it spells: `true` admits every value, `false` none — so for those
+     * two cases both payloads share one verdict.
+     *
+     * @param array<string, mixed> $property
+     * @param array<string, mixed> $extra
+     * @param array{valid: bool, invalid: bool} $expected the verdicts on the first and the second payload
+     */
+    #[DataProvider('componentSubschemaCases')]
+    public function testAReferenceIntoAComponentNamesTheSchemaThere(GenerationMode $mode, string $key, array $property, array $extra, string $first, string $second, array $expected): void
+    {
+        $spec = self::probeSpec($property);
+        $spec['components']['schemas'] = [...$spec['components']['schemas'], ...$extra];
+
+        $this->assertSame(
+            expected: $expected,
+            actual: $this->verdict($mode, $spec, 'component-subschema-' . $key, $first, $second),
+        );
+    }
+
+    public static function componentSubschemaCases(): iterable
+    {
+        $pet = ['type' => 'object', 'properties' => ['code' => ['type' => 'string', 'minLength' => 2]]];
+        $cases = [
+            'property-of-a-component' => [
+                ['$ref' => '#/components/schemas/Pet/properties/code'],
+                ['Pet' => $pet],
+                '{"f":"ab"}',
+                '{"f":"a"}',
+                ['valid' => true, 'invalid' => false],
+            ],
+            'defs-of-a-component' => [
+                ['$ref' => '#/components/schemas/Holder/$defs/level'],
+                ['Holder' => ['type' => 'object', '$defs' => ['level' => ['type' => 'integer', 'minimum' => 1]]]],
+                '{"f":2}',
+                '{"f":0}',
+                ['valid' => true, 'invalid' => false],
+            ],
+            'boolean-false-component' => [
+                ['$ref' => '#/components/schemas/Nothing'],
+                ['Nothing' => false],
+                '{"f":1}',
+                '{"f":{}}',
+                ['valid' => false, 'invalid' => false],
+            ],
+            'boolean-true-component' => [
+                ['$ref' => '#/components/schemas/Anything'],
+                ['Anything' => true],
+                '{"f":[1,"a",null]}',
+                '{"f":"text"}',
+                ['valid' => true, 'invalid' => true],
+            ],
+        ];
+        foreach (GenerationMode::cases() as $mode) {
+            foreach ($cases as $key => [$property, $extra, $first, $second, $expected]) {
+                yield $mode->value . ' ' . $key => [$mode, $key, $property, $extra, $first, $second, $expected];
+            }
+        }
+    }
+
+    /**
      * A component that only names another — beside a `$comment`, an `$id`, its own `$defs` — is that
      * other schema. Read as more than an alias it became an empty class that validated nothing (and
      * yii3 died calling a method that class did not have): `{"bar": 1}` passed a `type: string`.

@@ -352,15 +352,6 @@ return [
                 'yii3' => ['diverges', 'generator: a $ref below an untyped schema, an escaped/encoded pointer or a root pointer is ignored or mis-resolved'],
             ],
         ],
-        'relative pointer ref to object' => [
-            '*' => [
-                'runtime' => ['generation-fails', 'RuntimeException: Unresolvable reference: the document declares no such schema, so the generated code would name a class that is never emitted. #/components/schemas/ProbeF/pro...'],
-                'symfony' => ['generation-fails', 'RuntimeException: Unresolvable reference: the document declares no such schema, so the generated code would name a class that is never emitted. #/components/schemas/ProbeF/pro...'],
-                'laravel' => ['generation-fails', 'RuntimeException: Unresolvable reference: the document declares no such schema, so the generated code would name a class that is never emitted. #/components/schemas/ProbeF/pro...'],
-                'laravel-data' => ['generation-fails', 'RuntimeException: Unresolvable reference: the document declares no such schema, so the generated code would name a class that is never emitted. #/components/schemas/ProbeF/pro...'],
-                'yii3' => ['generation-fails', 'RuntimeException: Unresolvable reference: the document declares no such schema, so the generated code would name a class that is never emitted. #/components/schemas/ProbeF/pro...'],
-            ],
-        ],
         'remote ref, containing refs itself' => [
             '*' => [
                 'runtime' => ['skipped', '$ref "https://json-schema.org/draft/2020-12/schema" needs the json-schema.org metaschema, not resolvable offline'],
@@ -368,24 +359,6 @@ return [
                 'laravel' => ['skipped', '$ref "https://json-schema.org/draft/2020-12/schema" needs the json-schema.org metaschema, not resolvable offline'],
                 'laravel-data' => ['skipped', '$ref "https://json-schema.org/draft/2020-12/schema" needs the json-schema.org metaschema, not resolvable offline'],
                 'yii3' => ['skipped', '$ref "https://json-schema.org/draft/2020-12/schema" needs the json-schema.org metaschema, not resolvable offline'],
-            ],
-        ],
-        '$ref to boolean schema true' => [
-            '*' => [
-                'runtime' => ['generation-fails', 'RuntimeException: Unresolvable reference: the document declares no such schema, so the generated code would name a class that is never emitted. #/components/schemas/bool (woul...'],
-                'symfony' => ['generation-fails', 'RuntimeException: Unresolvable reference: the document declares no such schema, so the generated code would name a class that is never emitted. #/components/schemas/bool (woul...'],
-                'laravel' => ['generation-fails', 'RuntimeException: Unresolvable reference: the document declares no such schema, so the generated code would name a class that is never emitted. #/components/schemas/bool (woul...'],
-                'laravel-data' => ['generation-fails', 'RuntimeException: Unresolvable reference: the document declares no such schema, so the generated code would name a class that is never emitted. #/components/schemas/bool (woul...'],
-                'yii3' => ['generation-fails', 'RuntimeException: Unresolvable reference: the document declares no such schema, so the generated code would name a class that is never emitted. #/components/schemas/bool (woul...'],
-            ],
-        ],
-        '$ref to boolean schema false' => [
-            '*' => [
-                'runtime' => ['generation-fails', 'RuntimeException: Unresolvable reference: the document declares no such schema, so the generated code would name a class that is never emitted. #/components/schemas/bool (woul...'],
-                'symfony' => ['generation-fails', 'RuntimeException: Unresolvable reference: the document declares no such schema, so the generated code would name a class that is never emitted. #/components/schemas/bool (woul...'],
-                'laravel' => ['generation-fails', 'RuntimeException: Unresolvable reference: the document declares no such schema, so the generated code would name a class that is never emitted. #/components/schemas/bool (woul...'],
-                'laravel-data' => ['generation-fails', 'RuntimeException: Unresolvable reference: the document declares no such schema, so the generated code would name a class that is never emitted. #/components/schemas/bool (woul...'],
-                'yii3' => ['generation-fails', 'RuntimeException: Unresolvable reference: the document declares no such schema, so the generated code would name a class that is never emitted. #/components/schemas/bool (woul...'],
             ],
         ],
         'ref creates new scope when adjacent to keywords' => [
@@ -410,15 +383,6 @@ return [
                 'laravel' => ['diverges', 'generator: a $ref below an untyped schema, an escaped/encoded pointer or a root pointer is ignored or mis-resolved'],
                 'laravel-data' => ['diverges', 'generator: a $ref below an untyped schema, an escaped/encoded pointer or a root pointer is ignored or mis-resolved'],
                 'yii3' => ['diverges', 'generator: a $ref below an untyped schema, an escaped/encoded pointer or a root pointer is ignored or mis-resolved'],
-            ],
-        ],
-        'empty tokens in $ref json-pointer' => [
-            '*' => [
-                'runtime' => ['generation-fails', 'RuntimeException: Unresolvable reference: the document declares no such schema, so the generated code would name a class that is never emitted. #/components/schemas//$defs/ (w...'],
-                'symfony' => ['generation-fails', 'RuntimeException: Unresolvable reference: the document declares no such schema, so the generated code would name a class that is never emitted. #/components/schemas//$defs/ (w...'],
-                'laravel' => ['generation-fails', 'RuntimeException: Unresolvable reference: the document declares no such schema, so the generated code would name a class that is never emitted. #/components/schemas//$defs/ (w...'],
-                'laravel-data' => ['generation-fails', 'RuntimeException: Unresolvable reference: the document declares no such schema, so the generated code would name a class that is never emitted. #/components/schemas//$defs/ (w...'],
-                'yii3' => ['generation-fails', 'RuntimeException: Unresolvable reference: the document declares no such schema, so the generated code would name a class that is never emitted. #/components/schemas//$defs/ (w...'],
             ],
         ],
     ],

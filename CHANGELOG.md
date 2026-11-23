@@ -3,6 +3,26 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.140 — 2026-11-23
+
+- refs into a component resolved
+- boolean components generated
+
+JSON-Schema-Test-Suite burn-down: twenty entries fewer (292 → 272) — four groups that stopped generation in every
+mode now generate, and agree with the suite.
+
+Generation:
+
+- a `$ref` that points INSIDE a component — `#/components/schemas/Pet/properties/code`, `…/Holder/$defs/level`,
+  a pointer with an empty token (`#/$defs//$defs/`) — names the schema there. It read as a class called
+  `Pet/properties/code` and stopped generation as unresolvable. Each such schema becomes a component of its own,
+  named after its path (`PetPropertiesCode`); references to one place stay one component. A request body that
+  points into a component is attributed to that class now, so the component it was taken from — when the
+  document sends it only as JSON — is JSON-only like any other (runtime);
+- a boolean component is the schema it spells: `false` admits nothing, `true` everything. `true` is not
+  written as `{}` — an empty component names a free-form object here and keeps a class — but as a value of
+  any type with no class of its own.
+
 ## 2.15.139 — 2026-11-23
 
 - nullable scalar alias unions typed
