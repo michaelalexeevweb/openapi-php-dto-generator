@@ -74,9 +74,40 @@ final class KnownDivergences
                 'modes' => [GenerationMode::Symfony],
                 'category' => 'wrong-accept',
                 'kinds' => ['wrongType:'],
-                // A union with a class member too: the row's "union of such a class and a scalar".
-                'tagsAny' => ['site:dto', 'site:nullable-dto', 'unionClassMember'],
+                'tagsAny' => ['site:dto', 'site:nullable-dto'],
                 'row' => 'support matrix: "a scalar for a property typed as a generated class" (symfony/serializer 7.4.10 builds an empty object)',
+            ],
+            [
+                'modes' => [GenerationMode::Symfony],
+                'category' => 'wrong-accept',
+                // A union with a class member too: the row's "union of such a class and a scalar". Any
+                // scalar the union refuses — the wrong type, or one its own branch refuses (`notInEnum`,
+                // `tooLong`, …) — is built into the class before a constraint runs; the generator
+                // tags only scalar mutations so.
+                'kinds' => [
+                    'wrongType:',
+                    'notInEnum',
+                    'patternMismatch',
+                    'tooShort',
+                    'tooLong',
+                    'belowMinimum',
+                    'aboveMaximum',
+                    'atExclusiveMinimum',
+                    'atExclusiveMaximum',
+                    'notMultipleOf',
+                    'badFormat:',
+                    'impossibleDate:',
+                    'looseDateTime',
+                ],
+                'tagsAll' => ['unionClassMember'],
+                'row' => 'support matrix: "a scalar for a property typed as a generated class" (symfony/serializer 7.4.10 builds an empty object)',
+            ],
+            [
+                'modes' => [GenerationMode::Symfony],
+                'category' => 'wrong-accept',
+                'kinds' => ['nullForbidden', 'wrongType:'],
+                'tagsAny' => ['itemsOf:dto', 'valuesOf:dto'],
+                'row' => 'support matrix: "a non-object ITEM of a list or map of DTOs" (symfony/serializer 7.4.10 builds an empty object when the class requires nothing)',
             ],
             [
                 'modes' => [GenerationMode::Symfony, GenerationMode::Yii3],
@@ -109,8 +140,15 @@ final class KnownDivergences
                 'modes' => [GenerationMode::Yii3],
                 'category' => 'wrong-accept',
                 'kinds' => [''],
-                'tagsAll' => ['unionTemporalBesideArray', 'site:integer'],
+                'tagsAll' => ['unionTemporalBesideArray', 'integerBesideTemporal'],
                 'row' => 'support matrix: "an integer for a `oneOf` of `format: date`, `integer` and … `array`" (yii3 reads it as a timestamp)',
+            ],
+            [
+                'modes' => [GenerationMode::Yii3],
+                'category' => 'wrong-accept',
+                'kinds' => [''],
+                'tagsAll' => ['unionTemporalBesideNull', 'integerBesideTemporal'],
+                'row' => 'support matrix: "an integer for a `oneOf` of `format: date`, `integer` and `null`" (yii3 reads it as a timestamp)',
             ],
             [
                 'modes' => [GenerationMode::Symfony],

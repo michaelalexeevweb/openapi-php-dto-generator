@@ -666,7 +666,15 @@ final class InstanceGenerator
         $withString = in_array('string', array_map(static fn(array $branch): string => $branch['t'], $node['branches']), true);
         // A date beside an `array` branch: yii3 cannot keep an integer sibling from reading as a timestamp.
         $descriptors = array_map(self::descriptor(...), $node['branches']);
-        $temporalBesideArray = in_array('temporal', $descriptors, true) && in_array('array', $descriptors, true);
+        $withTemporal = in_array('temporal', $descriptors, true);
+        $temporalBesideArray = $withTemporal && in_array('array', $descriptors, true);
+        // … nor beside `null`, whether a `type: null` member, a nullable member or the union itself.
+        $temporalBesideNull = $withTemporal && (
+            ($node['nullable'] ?? false)
+            || in_array('null', array_column($node['branches'], 't'), true)
+            || in_array(true, array_map(static fn(array $branch): bool => $branch['nullable'] ?? false, $node['branches']), true)
+        );
+        $classMember = self::classMemberTags($node);
         $mutations = [];
         foreach ($node['branches'] as $index => $branch) {
             $others = [];
@@ -683,10 +691,16 @@ final class InstanceGenerator
                 if (!in_array($type, self::admittedTypes($branch), true) || in_array($type, $others, true)) {
                     continue;
                 }
+                // A scalar sent to a union with a class member meets the framework's class hydration
+                // first, whichever constraint of its own branch it breaks (`notInEnum`, `tooLong`, …).
+                $scalar = !in_array($type, ['object', 'array', 'null'], true);
                 $tags = [
                     'in:union',
                     ...($withString ? ['unionWithString'] : []),
                     ...($temporalBesideArray ? ['unionTemporalBesideArray'] : []),
+                    ...($temporalBesideNull ? ['unionTemporalBesideNull'] : []),
+                    ...($withTemporal && $type === 'integer' ? ['integerBesideTemporal'] : []),
+                    ...($scalar ? $classMember : []),
                     ...$inner['tags'],
                 ];
                 $mutations[] = ['kind' => $inner['kind'], 'value' => $inner['value'], 'tags' => $tags];

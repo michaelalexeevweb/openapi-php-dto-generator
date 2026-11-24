@@ -407,16 +407,12 @@ return [
         'object type matches objects' => [
             'an array is not an object' => [
                 'symfony' => ['diverges', 'documented: the framework hands the body over decoded, [] and {} one empty array (README.support-matrix, empty JSON array row)'],
-                'laravel' => ['diverges', 'documented: the framework hands the body over decoded, [] and {} one empty array (README.support-matrix, empty JSON array row)'],
-                'laravel-data' => ['diverges', 'documented: the framework hands the body over decoded, [] and {} one empty array (README.support-matrix, empty JSON array row)'],
                 'yii3' => ['diverges', 'documented: the framework hands the body over decoded, [] and {} one empty array (README.support-matrix, empty JSON array row)'],
             ],
         ],
         'array type matches arrays' => [
             'an object is not an array' => [
                 'symfony' => ['diverges', 'documented: the framework hands the body over decoded, [] and {} one empty array (README.support-matrix, empty JSON array row)'],
-                'laravel' => ['diverges', 'documented: the framework hands the body over decoded, [] and {} one empty array (README.support-matrix, empty JSON array row)'],
-                'laravel-data' => ['diverges', 'documented: the framework hands the body over decoded, [] and {} one empty array (README.support-matrix, empty JSON array row)'],
                 'yii3' => ['diverges', 'documented: the framework hands the body over decoded, [] and {} one empty array (README.support-matrix, empty JSON array row)'],
             ],
         ],
@@ -480,16 +476,6 @@ return [
         ],
         'cousin unevaluatedProperties, true and false, false with properties' => [
             'with nested unevaluated properties' => [
-                'symfony' => ['diverges', 'documented: a closed object is not enforceable once hydrated (README.support-matrix, closed DTO-shaped schema)'],
-                'yii3' => ['diverges', 'documented: a closed object is not enforceable once hydrated (README.support-matrix, closed DTO-shaped schema)'],
-            ],
-        ],
-        'in-place applicator siblings, allOf has unevaluated' => [
-            'base case: both properties present' => [
-                'symfony' => ['diverges', 'documented: a closed object is not enforceable once hydrated (README.support-matrix, closed DTO-shaped schema)'],
-                'yii3' => ['diverges', 'documented: a closed object is not enforceable once hydrated (README.support-matrix, closed DTO-shaped schema)'],
-            ],
-            'in place applicator siblings, foo is missing' => [
                 'symfony' => ['diverges', 'documented: a closed object is not enforceable once hydrated (README.support-matrix, closed DTO-shaped schema)'],
                 'yii3' => ['diverges', 'documented: a closed object is not enforceable once hydrated (README.support-matrix, closed DTO-shaped schema)'],
             ],

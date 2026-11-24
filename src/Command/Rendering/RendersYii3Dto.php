@@ -265,8 +265,12 @@ trait RendersYii3Dto
                 constraints: $this->withConstraintSourceOf(
                     className: $className,
                     extraction: fn(): array => $this->extractValidationConstraints(
-                        propertySchema: $this->yii3WithMapValuesInlined(
-                            schema: $this->yii3ClassSchemaWithInlineAllOfMerged($this->dtoSchemas[$className] ?? [], $className),
+                        propertySchema: $this->yii3WithHeldArrayBranchesSpelledOut(
+                            schema: $this->yii3WithMapValuesInlined(
+                                schema: $this->yii3ClassSchemaWithInlineAllOfMerged($this->dtoSchemas[$className] ?? [], $className),
+                            ),
+                            className: $className,
+                            properties: $properties,
                         ),
                     ),
                 ),
@@ -2513,7 +2517,7 @@ PHP;
             }
             $types = [];
             foreach ($members as $member) {
-                $type = is_array($member) ? $member['type'] ?? null : null;
+                $type = is_array($member) ? $this->yii3MemberScalarType($member) : null;
                 if (!is_string($type)) {
                     return null;
                 }
@@ -2524,6 +2528,33 @@ PHP;
 
             // A lone member (`anyOf: [{type: string}]`) is that type as much as one beside `null` is.
             return count($types) === 1 ? $types[0] : null;
+        }
+
+        return null;
+    }
+
+    /**
+     * The one `type` a union member names: its own, or the one it reaches through a single-member
+     * `allOf` or a `$ref` to a scalar alias. `anyOf: [{allOf: [{type: integer}]}]` is declared `?int`
+     * like `anyOf: [{type: integer}]`, and without the type rule the caster turned `[2]` into `2`.
+     *
+     * @param array<mixed> $member
+     */
+    private function yii3MemberScalarType(array $member, int $depth = 0): ?string
+    {
+        $type = $member['type'] ?? null;
+        if (is_string($type) || $depth > 8) {
+            return is_string($type) ? $type : null;
+        }
+        $ref = $member['$ref'] ?? null;
+        if (is_string($ref)) {
+            $alias = $this->nestedScalarRefDefinition($ref, $this->constraintSourceFile ?? $this->rootSpecFile);
+
+            return is_array($alias) ? $this->yii3MemberScalarType($alias, $depth + 1) : null;
+        }
+        $allOf = $member['allOf'] ?? null;
+        if (is_array($allOf) && count($allOf) === 1 && is_array($allOf[array_key_first($allOf)])) {
+            return $this->yii3MemberScalarType($allOf[array_key_first($allOf)], $depth + 1);
         }
 
         return null;
@@ -2647,6 +2678,92 @@ PHP;
     }
 
     /**
+     * The class schema with the object branch of every union the hydrator keeps as the decoded array
+     * written out the way a value nothing materializes is: its `allOf` merged into one object and its
+     * enums marked for inline validation.
+     *
+     * A union of a generated class beside `array` or `bool` (`ProbeDingo|bool|array`) is never built
+     * into the class — the native caster takes the array first — so the interpreter judges the array
+     * against the branch. That branch was still read as if the class checked it: an `allOf` of object
+     * fragments was left for the class cascade and reduced to `{type: object}`, and a property enum was
+     * dropped as one its PHP enum type checks. `{"dingo": {"tern": 5}}` and `{"macaw": {"llama": 60}}`
+     * against `enum: [-5]` passed. A `$ref` branch is spelled out already (`unionRefTarget()`).
+     *
+     * @param array<string, mixed> $schema
+     * @param array<int, SchemaProperty> $properties
+     * @return array<string, mixed>
+     */
+    private function yii3WithHeldArrayBranchesSpelledOut(array $schema, string $className, array $properties): array
+    {
+        if (!is_array($schema['properties'] ?? null)) {
+            return $schema;
+        }
+        foreach ($properties as $property) {
+            $name = $property['openApiName'];
+            $propertySchema = $schema['properties'][$name] ?? null;
+            if (!is_array($propertySchema) || !$this->yii3HoldsUnionClassAsArray($property['type'])) {
+                continue;
+            }
+            foreach (['oneOf', 'anyOf'] as $keyword) {
+                if (!is_array($propertySchema[$keyword] ?? null)) {
+                    continue;
+                }
+                foreach ($propertySchema[$keyword] as $index => $branch) {
+                    // A bare `$ref` to a component built by `allOf` is the same branch behind a name:
+                    // spelled out by its reference, the fragments were still left for the class.
+                    $branchRef = is_array($branch) && count($branch) === 1 && is_string($branch['$ref'] ?? null) ? $branch['$ref'] : null;
+                    $referencedClass = $branchRef === null
+                        ? null
+                        : $this->schemaRefToClassName(ref: $branchRef, currentSourceFile: $this->getSchemaSourceFile($className));
+                    if ($branchRef !== null && is_array($this->dtoSchemas[$referencedClass]['allOf'] ?? null)) {
+                        $branch = $this->yii3ResolvedRefSchema($branchRef, $className);
+                    }
+                    if (!is_array($branch) || array_key_exists('$ref', $branch) || $this->interpreterShadowType($branch) !== 'object') {
+                        continue;
+                    }
+                    $propertySchema[$keyword][$index] = $this->inlineNestedContainerValidation(
+                        schema: $this->yii3WithAllOfFragmentsMerged($branch, $className),
+                        belowMaterialization: true,
+                    );
+                }
+            }
+            $schema['properties'][$name] = $propertySchema;
+        }
+
+        return $schema;
+    }
+
+    /**
+     * An object schema with its `allOf` fragments merged into it, fragments of fragments included — the
+     * way `yii3ClassSchemaWithInlineAllOfMerged()` reads a class, as deep as the fragments nest.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<string, mixed>
+     */
+    private function yii3WithAllOfFragmentsMerged(array $schema, string $ownerClass): array
+    {
+        for ($depth = 0; $depth < 8 && is_array($schema['allOf'] ?? null) && $schema['allOf'] !== []; $depth++) {
+            $schema = $this->yii3ClassSchemaWithInlineAllOfMerged($schema, $ownerClass);
+        }
+
+        return $schema;
+    }
+
+    /**
+     * Whether a union's generated class member is never built and the property holds the decoded array
+     * instead: beside an `array` member the hydrator keeps the array as sent, beside a `bool` one the
+     * property is typed with `array` added for the same reason (`yii3UnionClassBesideBool()`).
+     */
+    private function yii3HoldsUnionClassAsArray(string $phpType): bool
+    {
+        $unionClass = $this->unionClassBesideScalars($phpType);
+
+        return $unionClass !== null
+            && !$this->yii3IsUnionInterface($unionClass)
+            && ($this->unionHasArrayMember($phpType) || $this->yii3UnionClassBesideBool($phpType));
+    }
+
+    /**
      * The class schema with every value the hydrator does NOT build written out in place, so the
      * interpreter checks it.
      *
@@ -2675,9 +2792,13 @@ PHP;
                 }
                 $property = $this->yii3WithEnumBranchesInlined($property);
                 // A property `$ref` to a MAP component is the map: its values are held as decoded as
-                // the inline spelling's, and were checked by nothing behind the reference.
+                // the inline spelling's, and were checked by nothing behind the reference. A bare `$ref`
+                // to a LIST component likewise: its items, a discriminated union held as decoded arrays,
+                // were left `type: array` where the inline `items: {$ref: Shape}` got the members. Not
+                // beside sibling keywords, which read the target as an in-place applicator.
                 $mapRef = $this->referenceOrSingleRefAllOf($property);
-                if ($mapRef !== null && $this->mapComponentDefinition($mapRef) !== null) {
+                $bareListRef = $mapRef !== null && array_keys($property) === ['$ref'] && $this->arrayAliasDefinition($mapRef) !== null;
+                if ($mapRef !== null && ($this->mapComponentDefinition($mapRef) !== null || $bareListRef)) {
                     $property = $this->inlineArrayAliasForConstraints($property);
                 }
                 foreach (['items', 'additionalProperties'] as $container) {

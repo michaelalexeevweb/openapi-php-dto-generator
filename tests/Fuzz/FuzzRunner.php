@@ -170,6 +170,15 @@ final class FuzzRunner
                 }
                 $this->stats['failures']++;
                 $row = $category === 'crash' ? null : KnownDivergences::explain(mode: $mode, category: $category, kind: $payload['kind'], tags: $payload['tags']);
+                // The tags say what the mutation meant to break; the schema says what the value meets.
+                if ($row === null && $category === 'wrong-accept' && $payload['property'] !== null) {
+                    $row = self::documentedShapeRow(
+                        document: $document,
+                        property: $payload['property'],
+                        value: json_decode($payload['json'])->{$payload['property']},
+                        mode: $mode,
+                    );
+                }
                 if ($row !== null) {
                     $this->stats['documented']++;
                     $this->documented[$row] = ($this->documented[$row] ?? 0) + 1;
@@ -600,9 +609,14 @@ final class FuzzRunner
         if ($this->referenceAgreed && $this->referenceDisagrees(document: $document, json: $json, expected: $expected)) {
             return false;
         }
-        // Nor into a documented divergence at the top: a JSON array (symfony, yii3) or a scalar (symfony)
-        // where the property now resolves to an object.
-        if ($property !== null && self::landsInDocumentedTopLevel(document: $document, property: $property, value: $value, mode: $mode)) {
+        // Nor into a documented divergence: a JSON array (symfony, yii3) or a scalar (symfony) where the
+        // shrunk schema now has an object member, at the top or below. Those rows all accept, so only a
+        // payload the document refuses can drift into one.
+        if (
+            $property !== null
+            && $expected === PayloadVerdict::Refused
+            && self::landsInDocumentedTopLevel(document: $document, property: $property, value: $value, mode: $mode)
+        ) {
             return false;
         }
         // A removal must not lead into what the generator itself warns about (an undiscriminated union of
@@ -636,27 +650,161 @@ final class FuzzRunner
     }
 
     /**
-     * Whether the payload's top-level value meets a support-matrix row for this mode: a JSON array for an
-     * object ("a JSON array for a `type: object` property": symfony, yii3) or a scalar for an object ("a
-     * scalar for a property typed as a generated class": symfony). The fuzzer never generates those for
-     * these modes; a shrink must not arrive at one either.
+     * Whether the payload's top-level value meets a support-matrix row for this mode — see
+     * {@see documentedShapeRow()}. The fuzzer files those under their row; a shrink must not arrive at
+     * one either.
      *
      * @param array<string, mixed> $document
      */
     private static function landsInDocumentedTopLevel(array $document, string $property, mixed $value, GenerationMode $mode): bool
     {
+        return self::documentedShapeRow(document: $document, property: $property, value: $value, mode: $mode) !== null;
+    }
+
+    /**
+     * The support-matrix row a value meets where it sits in the document, read off the SCHEMA rather than
+     * the mutation's tags — so a shrunk document that changed what the payload hits is still matched:
+     *
+     * - a JSON array where the schema, or a union member of it, is an object ("a JSON array for a
+     *   `type: object` property": symfony, yii3 — a union of an object and a scalar included);
+     * - a scalar where the schema, or a union member of it, is a generated class ("a scalar for a
+     *   property typed as a generated class": symfony);
+     * - `null` or a scalar ITEM of a list, or VALUE of a map, of such classes ("a non-object ITEM of a
+     *   list or map of DTOs": symfony builds an empty object).
+     *
+     * The walk follows the value into the properties, items and map values it sends, and into union
+     * members.
+     *
+     * @param array<string, mixed> $document
+     */
+    private static function documentedShapeRow(array $document, string $property, mixed $value, GenerationMode $mode): ?string
+    {
         if ($mode !== GenerationMode::Symfony && $mode !== GenerationMode::Yii3) {
-            return false;
+            return null;
         }
         $schemas = $document['components']['schemas'];
-        if (!self::isObjectShaped(schema: $schemas['Probe']['properties'][$property] ?? [], schemas: $schemas, depth: 0)) {
-            return false;
+
+        return self::documentedRowAt(
+            schema: $schemas['Probe']['properties'][$property] ?? [],
+            value: $value,
+            schemas: $schemas,
+            mode: $mode,
+            inContainer: false,
+            depth: 0,
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $schemas
+     */
+    private static function documentedRowAt(mixed $schema, mixed $value, array $schemas, GenerationMode $mode, bool $inContainer, int $depth): ?string
+    {
+        if (!is_array($schema) || $depth > 8) {
+            return null;
         }
-        if (is_array($value)) {
-            return true;
+        if (is_string($schema['$ref'] ?? null)) {
+            $schema = $schemas[substr($schema['$ref'], strlen('#/components/schemas/'))] ?? [];
+            if (!is_array($schema)) {
+                return null;
+            }
+        }
+        if (is_array($value) && self::hasMember(schema: $schema, schemas: $schemas, test: self::isObjectShaped(...))) {
+            return 'support matrix: "a JSON array for a `type: object` property"';
+        }
+        $scalar = $value !== null && !is_array($value) && !$value instanceof stdClass;
+        if ($mode === GenerationMode::Symfony && $scalar && self::hasMember(schema: $schema, schemas: $schemas, test: self::isClassShaped(...))) {
+            return 'support matrix: "a scalar for a property typed as a generated class"';
+        }
+        if (
+            $mode === GenerationMode::Symfony
+            && $value === null
+            && $inContainer
+            && self::isClassShaped(schema: $schema, schemas: $schemas, depth: 0)
+            && !($schema['nullable'] ?? false)
+        ) {
+            return 'support matrix: "a non-object ITEM of a list or map of DTOs"';
         }
 
-        return $mode === GenerationMode::Symfony && $value !== null && !$value instanceof stdClass;
+        $children = [];
+        if ($value instanceof stdClass) {
+            $properties = is_array($schema['properties'] ?? null) ? $schema['properties'] : [];
+            foreach (get_object_vars($value) as $key => $inner) {
+                if (array_key_exists($key, $properties)) {
+                    $children[] = [$properties[$key], $inner, false];
+                } elseif (is_array($schema['additionalProperties'] ?? null)) {
+                    $children[] = [$schema['additionalProperties'], $inner, true];
+                }
+            }
+        } elseif (is_array($value) && is_array($schema['items'] ?? null)) {
+            foreach ($value as $inner) {
+                $children[] = [$schema['items'], $inner, true];
+            }
+        }
+        foreach (['anyOf', 'oneOf', 'allOf'] as $keyword) {
+            foreach (is_array($schema[$keyword] ?? null) ? $schema[$keyword] : [] as $member) {
+                $children[] = [$member, $value, $inContainer];
+            }
+        }
+        foreach ($children as [$childSchema, $childValue, $childInContainer]) {
+            $row = self::documentedRowAt(
+                schema: $childSchema,
+                value: $childValue,
+                schemas: $schemas,
+                mode: $mode,
+                inContainer: $childInContainer,
+                depth: $depth + 1,
+            );
+            if ($row !== null) {
+                return $row;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether a schema passes the test itself or through one of its `anyOf`/`oneOf` members.
+     *
+     * @param array<string, mixed> $schema
+     * @param array<string, mixed> $schemas
+     * @param callable(mixed, array<string, mixed>, int): bool $test
+     */
+    private static function hasMember(array $schema, array $schemas, callable $test): bool
+    {
+        if ($test($schema, $schemas, 0)) {
+            return true;
+        }
+        foreach (['anyOf', 'oneOf'] as $keyword) {
+            foreach (is_array($schema[$keyword] ?? null) ? $schema[$keyword] : [] as $member) {
+                if ($test($member, $schemas, 1)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether a schema is one the generator makes a class of: a component object, or an inline object
+     * that declares properties or closes itself. A bare `{type: object}` is a PHP array.
+     *
+     * @param array<string, mixed> $schemas
+     */
+    private static function isClassShaped(mixed $schema, array $schemas, int $depth): bool
+    {
+        if (!is_array($schema) || $depth > 8) {
+            return false;
+        }
+        if (is_string($schema['$ref'] ?? null)) {
+            return self::isObjectShaped(schema: $schema, schemas: $schemas, depth: $depth);
+        }
+        $type = $schema['type'] ?? null;
+        if ($type !== 'object' && !(is_array($type) && in_array('object', $type, true))) {
+            return false;
+        }
+
+        return (is_array($schema['properties'] ?? null) && $schema['properties'] !== []) || ($schema['additionalProperties'] ?? null) === false;
     }
 
     /**

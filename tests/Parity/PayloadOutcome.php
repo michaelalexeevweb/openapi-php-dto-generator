@@ -16,6 +16,7 @@ final readonly class PayloadOutcome
      * @param bool $fromValidationEngine the throwable came out of the framework VALIDATOR itself (Symfony's
      *     `validate()`, Laravel's `fails()`); the boolean parity verdicts have always let such a throwable
      *     surface as a test error rather than count it as a refusal, and `accepted()` keeps that
+     * @param object|null $dto the object an accepted payload was built into, where the mode hands one back
      */
     private function __construct(
         public PayloadVerdict $verdict,
@@ -23,10 +24,11 @@ final readonly class PayloadOutcome
         public ?Throwable $throwable,
         public string $detail,
         public bool $fromValidationEngine,
+        public ?object $dto = null,
     ) {
     }
 
-    public static function accepted(): self
+    public static function accepted(?object $dto = null): self
     {
         return new self(
             verdict: PayloadVerdict::Accepted,
@@ -34,6 +36,7 @@ final readonly class PayloadOutcome
             throwable: null,
             detail: '',
             fromValidationEngine: false,
+            dto: $dto,
         );
     }
 

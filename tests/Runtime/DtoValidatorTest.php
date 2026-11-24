@@ -3907,4 +3907,34 @@ final class DtoValidatorTest extends TestCase
         // Finished checks are untouched.
         self::assertSame([], $this->validator->validate('f', 'x', ['not' => ['const' => 'y']]));
     }
+
+    /**
+     * A nullable `$ref` reads as the class or null: `nullable: true` beside the class lets null in,
+     * as it does beside `type`, and only there.
+     */
+    public function testANullableClassConstraintAdmitsNull(): void
+    {
+        $nullable = ['x-php-instanceof' => stdClass::class, 'nullable' => true];
+
+        self::assertSame([], $this->validator->validate('f', null, $nullable));
+        self::assertSame([], $this->validator->validate('f', new stdClass(), $nullable));
+        self::assertNotSame([], $this->validator->validate('f', 'x', $nullable));
+        self::assertNotSame([], $this->validator->validate('f', null, ['x-php-instanceof' => stdClass::class]));
+        self::assertNotSame([], $this->validator->validate('f', null, ['x-php-instanceof' => stdClass::class, 'nullable' => false]));
+    }
+
+    /**
+     * A union whose every branch, through nested `anyOf`/`oneOf`, admits only an object holds `{}` as
+     * an empty PHP list; one level deep was not enough to see it.
+     */
+    public function testANestedObjectOnlyUnionAdmitsTheObjectContainerOnly(): void
+    {
+        self::assertTrue(DtoValidator::admitsObjectContainerOnly(['oneOf' => [['oneOf' => [['type' => 'object']]]]]));
+        self::assertTrue(DtoValidator::admitsObjectContainerOnly(['anyOf' => [['anyOf' => [['type' => 'object']]], ['type' => 'string']]]));
+        self::assertTrue(DtoValidator::admitsObjectContainerOnly(['oneOf' => [['type' => 'object']]]));
+        self::assertFalse(DtoValidator::admitsObjectContainerOnly(['oneOf' => [['oneOf' => [['type' => 'object'], ['type' => 'array']]]]]));
+        self::assertFalse(DtoValidator::admitsObjectContainerOnly(['oneOf' => [['oneOf' => [['type' => 'object'], []]]]]));
+        self::assertFalse(DtoValidator::admitsObjectContainerOnly(['oneOf' => [['allOf' => [['type' => 'object']], 'oneOf' => [['type' => 'object']]]]]));
+        self::assertFalse(DtoValidator::admitsObjectContainerOnly(['oneOf' => [['type' => 'string']]]));
+    }
 }

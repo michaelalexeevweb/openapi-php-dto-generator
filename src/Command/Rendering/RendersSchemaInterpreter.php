@@ -620,7 +620,8 @@ PHP
 
 {$oneOfCheckedByClass}                if (is_string(\$branchClass = \$branch['x-php-instanceof'] ?? null) && \$branchClass !== '') {
                     \$branchFqcn = __NAMESPACE__ . '\\\\' . ltrim(\$branchClass, '\\\\');
-                    if (is_object(\$value) && \$value instanceof \$branchFqcn) {
+                    // `{\$ref: X, nullable: true}`: X or null.
+                    if ((is_object(\$value) && \$value instanceof \$branchFqcn) || (\$value === null && (\$branch['nullable'] ?? false) === true)) {
                         \$matchingBranches++;
                     }
                     continue;
@@ -1309,7 +1310,8 @@ PHP
                 if (is_string($branchClass = $branch['x-php-instanceof'] ?? null) && $branchClass !== '') {
                     $branchFqcn = __NAMESPACE__ . '\\' . ltrim($branchClass, '\\');
                     $rawObject = (is_array($value) && ($value === [] || !array_is_list($value))) || $value instanceof \stdClass;
-                    if ((is_object($value) && $value instanceof $branchFqcn) || ($rawObject && !enum_exists($branchFqcn))) {
+                    $nullBranch = $value === null && ($branch['nullable'] ?? false) === true;
+                    if ((is_object($value) && $value instanceof $branchFqcn) || ($rawObject && !enum_exists($branchFqcn)) || $nullBranch) {
                         $anyOfMatched = true;
                         break;
                     }

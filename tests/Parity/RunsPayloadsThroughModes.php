@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Tests\Parity;
 
+use Composer\InstalledVersions;
 use Illuminate\Http\Request as LaravelRequest;
 use Illuminate\Translation\ArrayLoader;
 use Illuminate\Translation\Translator;
@@ -21,6 +22,7 @@ use Symfony\Component\PropertyInfo\Extractor\PhpDocExtractor;
 use Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
 use Symfony\Component\PropertyInfo\PropertyInfoExtractor;
 use Symfony\Component\Serializer\Encoder\JsonEncoder;
+use Symfony\Component\Serializer\Exception\ExtraAttributesException;
 use Symfony\Component\Serializer\Exception\InvalidArgumentException as SerializerInvalidArgumentException;
 use Symfony\Component\Serializer\Exception\NotEncodableValueException;
 use Symfony\Component\Serializer\Exception\PartialDenormalizationException;
@@ -119,6 +121,17 @@ trait RunsPayloadsThroughModes
     }
 
     /**
+     * Whether the installed symfony/serializer refuses a scalar as a member of a union of objects
+     * itself (7.4.23 and 8.1.11 do), rather than casting it to `[0 => value]` for the object normalizer.
+     */
+    private static function symfonySerializerGuardsUnionMembers(): bool
+    {
+        $version = (string)InstalledVersions::getVersion('symfony/serializer');
+
+        return version_compare($version, str_starts_with($version, '7.') ? '7.4.23' : '8.1.11', '>=');
+    }
+
+    /**
      * The serializer, then the validator — what `#[MapRequestPayload]` does. A serializer exception is a
      * refusal only where `RequestPayloadValueResolver` turns it into a 4xx; any other one escapes it as a
      * 500, and so does anything the validator throws.
@@ -153,6 +166,16 @@ trait RunsPayloadsThroughModes
             return PayloadOutcome::refused(stage: 'deserialize', detail: implode('; ', $messages), throwable: $refusal);
         } catch (SerializerInvalidArgumentException | UnexpectedPropertyException | NotEncodableValueException $refusal) {
             return PayloadOutcome::refused(stage: 'deserialize', detail: $refusal->getMessage(), throwable: $refusal);
+        } catch (ExtraAttributesException $refusal) {
+            // A scalar for a union of `array` and a generated class, on a serializer without the
+            // union-member guard: README.support-matrix documents the 500 it is there, and
+            // `ValidationParityTest::testSymfonyRefusesAScalarBesideAListAndAClass` pins it. A newer
+            // serializer refuses the scalar outright, so anywhere else this is a crash.
+            if (self::symfonySerializerGuardsUnionMembers()) {
+                return PayloadOutcome::crashed(stage: 'deserialize', throwable: $refusal);
+            }
+
+            return PayloadOutcome::refused(stage: 'deserialize', detail: 'a 500 on this serializer: ' . $refusal->getMessage(), throwable: $refusal);
         } catch (Throwable $crash) {
             return PayloadOutcome::crashed(stage: 'deserialize', throwable: $crash);
         }
@@ -171,7 +194,7 @@ trait RunsPayloadsThroughModes
             return PayloadOutcome::refused(stage: 'validate', detail: implode('; ', $messages));
         }
 
-        return PayloadOutcome::accepted();
+        return PayloadOutcome::accepted($dto);
     }
 
     /**

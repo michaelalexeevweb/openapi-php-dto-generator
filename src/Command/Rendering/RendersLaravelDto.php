@@ -128,11 +128,17 @@ trait RendersLaravelDto
         $checksPaths = $nestedVars['checksObjectPaths'] || $nestedVars['checksScalarPaths'];
 
         $interpreterConstraints = $this->laravelInterpreterConstraints($properties, $className);
+        $recursiveSchemas = array_filter($this->laravelRecursiveFolds, static fn(mixed $fold): bool => $fold !== []);
         $interpreter = $this->renderLaravelInterpreterBlock(
             constraints: $interpreterConstraints,
             // A class whose fold carries no assertion needs no entry: the marker pointing at it resolves
             // to nothing, which is what "nothing left to check here" means.
-            recursiveSchemas: array_filter($this->laravelRecursiveFolds, static fn(mixed $fold): bool => $fold !== []),
+            recursiveSchemas: $recursiveSchemas,
+        );
+        $readsEmptyContainers = $readsRawBody && $this->laravelReadsEmptyContainers(
+            className: $className,
+            interpreterConstraints: $interpreterConstraints,
+            recursiveSchemas: $recursiveSchemas,
         );
         $hasWithValidator = $interpreter['methods'] !== '' || $checksPaths;
         $this->laravelClassesWithInterpreter[$className] = $hasWithValidator;
@@ -142,7 +148,7 @@ trait RendersLaravelDto
         $this->importLibraryClass(fqcn: 'Illuminate\Validation\Validator', namespace: $namespace, useStatements: $useStatements);
         // The template spells `\stdClass` out; the import shortens it unless the document owns a
         // `StdClass` here, where the import would be a fatal and the full name is the only safe one.
-        if ($checksPaths && !$this->namespaceDeclaresClass('stdClass', $namespace)) {
+        if (($checksPaths || $readsEmptyContainers) && !$this->namespaceDeclaresClass('stdClass', $namespace)) {
             $useStatements[] = 'stdClass';
         }
 
@@ -196,6 +202,7 @@ trait RendersLaravelDto
             'scalarCoercionHelpers' => $this->laravelScalarCoercionHelpers($params),
             'objectShapePaths' => $objectShapePaths,
             'scalarTypePaths' => $scalarTypePaths,
+            'readsEmptyContainers' => $readsEmptyContainers,
             'laravelFormRequest' => $this->laravelFormRequest,
             'rawPathsEscapeDots' => $nestedVars['nestedPathsEscapeDots'] || array_filter(
                 array: [...$objectShapePaths, ...array_keys($scalarTypePaths)],

@@ -127,6 +127,88 @@ final class CompositionClassesLoadTest extends TestCase
     }
 
     /**
+     * Union branches that each become a type of their own are named apart — `<Prop>OneOfN` /
+     * `<Prop>AnyOfN` — whichever spelling brings them there: bare, wrapped in a one-member `allOf`, or a
+     * `$ref` with keywords beside it. One such branch keeps the property's name, as it always had.
+     *
+     * @param array<string, mixed> $schemas
+     * @param list<string> $expectedFiles
+     * @param list<string> $absentFiles
+     */
+    #[DataProvider('unionBranchNames')]
+    public function testUnionBranchesNamingATypeEachAreNamedApart(array $schemas, array $expectedFiles, array $absentFiles = []): void
+    {
+        $namespace = 'UnionBranchNames' . substr(md5((string)json_encode($schemas)), 0, 10);
+        $target = $this->outputDirectory . '/' . $namespace;
+        mkdir($target, 0o755, true);
+
+        (new GenerateDtoCommand())->generateFromArray(
+            openApi: [
+                'openapi' => '3.0.3',
+                'info' => ['title' => 'T', 'version' => '1.0.0'],
+                'components' => ['schemas' => $schemas],
+            ],
+            outputDirectory: $target,
+            namespace: $namespace,
+            mode: GenerationMode::Runtime->value,
+        );
+
+        $listed = scandir($target);
+        $this->assertIsArray($listed);
+        foreach ($expectedFiles as $file) {
+            $this->assertContains($file, $listed);
+        }
+        foreach ($absentFiles as $file) {
+            $this->assertNotContains($file, $listed);
+        }
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>, 1: list<string>, 2?: list<string>}>
+     */
+    public static function unionBranchNames(): iterable
+    {
+        $hueObject = ['type' => 'object', 'properties' => ['hue' => ['type' => 'integer']]];
+        $lime = ['Lime' => ['type' => 'object']];
+
+        yield 'one object beside a scalar keeps the property name' => [
+            self::probe(['oneOf' => [$hueObject, ['type' => 'integer']]]),
+            ['ProbeF.php'],
+            ['ProbeFOneOf1.php'],
+        ];
+        yield 'one allOf-wrapped object beside a scalar keeps the property name' => [
+            self::probe(['anyOf' => [['allOf' => [$hueObject]], ['type' => 'integer']]]),
+            ['ProbeF.php'],
+            ['ProbeFAnyOf1.php'],
+        ];
+        yield 'an object and an enum' => [
+            self::probe(['oneOf' => [$hueObject, ['type' => 'string', 'enum' => ['red']]]]),
+            ['ProbeFOneOf1.php', 'ProbeFOneOf2.php'],
+        ];
+        yield 'an object and an allOf-wrapped enum' => [
+            self::probe(['oneOf' => [$hueObject, ['allOf' => [['type' => 'string', 'enum' => ['red']]]]]]),
+            ['ProbeFOneOf1.php', 'ProbeFOneOf2.php'],
+        ];
+        yield 'an allOf-wrapped object and an enum' => [
+            self::probe(['anyOf' => [['allOf' => [$hueObject]], ['type' => 'string', 'enum' => ['red']]]]),
+            ['ProbeFAnyOf1.php', 'ProbeFAnyOf2.php'],
+        ];
+        yield 'a $ref with siblings and an enum' => [
+            [...self::probe(['anyOf' => [['$ref' => '#/components/schemas/Lime', 'properties' => ['hue' => ['type' => 'integer']]], ['type' => 'integer', 'enum' => [-6]]]]), ...$lime],
+            ['ProbeFAnyOf1.php', 'ProbeFAnyOf2.php', 'Lime.php'],
+        ];
+        yield 'a plain $ref and an enum keeps the property name for the enum' => [
+            [...self::probe(['anyOf' => [['$ref' => '#/components/schemas/Lime'], ['type' => 'integer', 'enum' => [-6]]]]), ...$lime],
+            ['ProbeF.php', 'Lime.php'],
+            ['ProbeFAnyOf2.php'],
+        ];
+        yield 'two allOf-wrapped enums' => [
+            self::probe(['anyOf' => [['allOf' => [['type' => 'string', 'enum' => ['red']]]], ['allOf' => [['type' => 'integer', 'enum' => [3]]]]]]),
+            ['ProbeFAnyOf1.php', 'ProbeFAnyOf2.php'],
+        ];
+    }
+
+    /**
      * @param array<string, mixed> $propertySchema
      * @return array<string, mixed>
      */

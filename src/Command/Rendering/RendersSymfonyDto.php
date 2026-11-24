@@ -158,15 +158,21 @@ trait RendersSymfonyDto
             }
         }
 
+        $extractedClassConstraints = $this->symfonyExtractedClassConstraints(
+            className: $className,
+            schemaDefinition: $schemaDefinition,
+            mixedProperties: $this->mixedPropertyNames($properties),
+        );
         $validationConstraints = $this->filterInterpreterConstraints(
-            constraints: $this->symfonyExtractedClassConstraints(
-                className: $className,
-                schemaDefinition: $schemaDefinition,
-                mixedProperties: $this->mixedPropertyNames($properties),
-            ),
+            constraints: $extractedClassConstraints,
             allowScalarKeywords: false,
             forceScalarOnProperties: $forceRootCallbackBounds,
             unmaterializedProperties: $this->mixedPropertyNames($properties),
+        );
+        $validationConstraints = $this->symfonyWithClassLevelAnyOf(
+            filtered: $validationConstraints,
+            className: $className,
+            extracted: $extractedClassConstraints,
         );
         $validationConstraints = $this->symfonyWithoutUncountableMinProperties($validationConstraints);
 
@@ -269,7 +275,20 @@ trait RendersSymfonyDto
             }
         }
         $implementedInterfaces = [];
-        foreach ($this->implementedUnionInterfaces($className, $extends) as $unionInterface) {
+        // A member two discriminated unions share has no one base to extend, so it implements each
+        // interface whose own mapping names it (`symfonyDiscriminatedMembers()`).
+        $unionInterfaces = $this->implementedUnionInterfaces($className, $extends);
+        foreach ($this->discriminatorSchemas as $baseClass => $meta) {
+            if (
+                $baseClass !== $className
+                && $this->isOneOfDiscriminatorBase($baseClass)
+                && in_array($className, $meta['mapping'], true)
+                && !in_array($baseClass, $unionInterfaces, true)
+            ) {
+                $unionInterfaces[] = $baseClass;
+            }
+        }
+        foreach ($unionInterfaces as $unionInterface) {
             $this->appendImportForClass($useStatements, $unionInterface, $namespace, $className);
             $implementedInterfaces[] = $this->formatClassNameForNamespace($unionInterface, $namespace);
         }
@@ -373,16 +392,42 @@ trait RendersSymfonyDto
         // `false` is the default, and it is spelled out on purpose: it is the contrasting half of
         // the argument below. Scalar keywords are OFF everywhere and ON for exactly these
         // properties — dropping the `false` leaves the reader to guess what is being overridden.
-        return $this->symfonyWithoutUncountableMinProperties($this->filterInterpreterConstraints(
-            constraints: $this->symfonyExtractedClassConstraints(
-                className: $className,
-                schemaDefinition: $schemaDefinition,
-                mixedProperties: $mixedProperties,
+        $extracted = $this->symfonyExtractedClassConstraints(
+            className: $className,
+            schemaDefinition: $schemaDefinition,
+            mixedProperties: $mixedProperties,
+        );
+
+        return $this->symfonyWithoutUncountableMinProperties($this->symfonyWithClassLevelAnyOf(
+            filtered: $this->filterInterpreterConstraints(
+                constraints: $extracted,
+                allowScalarKeywords: false,
+                forceScalarOnProperties: $forceRootCallbackBounds,
+                unmaterializedProperties: $mixedProperties,
             ),
-            allowScalarKeywords: false,
-            forceScalarOnProperties: $forceRootCallbackBounds,
-            unmaterializedProperties: $mixedProperties,
+            className: $className,
+            extracted: $extracted,
         ));
+    }
+
+    /**
+     * The class-level `anyOf` beside the `allOf` the class is built from. The filter leaves an `anyOf`
+     * to the property's `AtLeastOneOf`, and at the class level there is no property to carry one, so
+     * it was checked by nothing: `{allOf: [$ref Base, …], anyOf: [{required: [a]}, {required: [b]}]}`
+     * accepted `{}`. The callback carries it, as it already carries a `oneOf` there.
+     *
+     * @param array<string, mixed> $filtered
+     * @param array<string, mixed> $extracted
+     * @return array<string, mixed>
+     */
+    private function symfonyWithClassLevelAnyOf(array $filtered, string $className, array $extracted): array
+    {
+        $anyOf = $this->classLevelUnionsBesideAllOf(className: $className, extracted: $extracted)['anyOf'] ?? null;
+        if (!is_array($anyOf)) {
+            return $filtered;
+        }
+
+        return [...$filtered, ...$this->filterInterpreterConstraints(constraints: ['anyOf' => $anyOf], allowScalarKeywords: true)];
     }
 
     /**
@@ -772,7 +817,7 @@ PHP;
                 $imports[] = 'DateTimeImmutable';
             }
         }
-        $memberNames = $unionTypes !== [] ? $unionTypes : $this->discriminatorMembers($className);
+        $memberNames = $unionTypes !== [] ? $unionTypes : $this->symfonyDiscriminatedMembers($className, $discriminator);
         foreach ($memberNames as $member) {
             $this->appendImportForClass($imports, $member, $namespace, $className);
         }
@@ -830,6 +875,29 @@ PHP;
             'interfaceGetters' => $interfaceGetters,
             'discriminatorMap' => $discriminatorMap,
         ]);
+    }
+
+    /**
+     * The members of a discriminated interface: the schemas its OWN mapping names, in schema order.
+     *
+     * Not `discriminatorMembers()` alone: that asks each schema for its one base, and a schema two
+     * discriminated unions share (`ShapeA` and `ShapeB` both `oneOf: [Circle, Square]`) has none, so
+     * the interface had no members, rendered as a class and failed on variables only a class has.
+     *
+     * @param array{propertyName: string, mapping: array<string, string>}|null $discriminator
+     * @return array<int, string>
+     */
+    private function symfonyDiscriminatedMembers(string $className, ?array $discriminator): array
+    {
+        $mapped = $discriminator === null ? [] : array_values($discriminator['mapping']);
+        $members = [];
+        foreach (array_keys($this->dtoSchemas) as $candidate) {
+            if ($candidate !== $className && in_array($candidate, $mapped, true)) {
+                $members[] = $candidate;
+            }
+        }
+
+        return $members !== [] ? $members : $this->discriminatorMembers($className);
     }
 
     /**
@@ -1110,6 +1178,8 @@ PHP;
                 name: $property['name'],
                 skipNullValues: $schemaNullable || ($phpType === 'mixed' && !$this->symfonyUntypedValueRefusesNull($property)) ? false : ($declaredNullable ? true : null),
                 temporalFormatter: $this->symfonyTemporalFormatter($property),
+                refuseExtraAttributes: $this->unionClassBesideScalars($property['type']) !== null
+                    && $this->unionHasArrayMember($property['type']),
             ),
         ];
     }
@@ -1223,9 +1293,21 @@ PHP;
     /**
      * The one #[Context] a property carries, or null when it needs none: its own null policy and,
      * for a date, the DTO's formatter as the serializer callback.
+     *
+     * A union of `array` and one generated class (`array|Lime`) also refuses extra attributes while it
+     * is read: the serializer tries the class first, and the object normalizer takes ANY PHP array, so
+     * every JSON list became an empty class — an invalid list accepted, a valid one losing its items.
+     * With extra attributes refused a list fails the class (its keys `0`, `1`, … are none of the
+     * class's) and falls through to the `array` member; the interpreter then judges what the member
+     * holds. A JSON object with an undeclared key takes the same way, and an empty `[]` still becomes
+     * the class (README.support-matrix, the EMPTY JSON array row).
      */
-    private function symfonyContextAttribute(string $name, ?bool $skipNullValues, ?string $temporalFormatter): ?string
-    {
+    private function symfonyContextAttribute(
+        string $name,
+        ?bool $skipNullValues,
+        ?string $temporalFormatter,
+        bool $refuseExtraAttributes,
+    ): ?string {
         $entries = [];
         if ($skipNullValues !== null) {
             $entries[] = '\Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer::SKIP_NULL_VALUES => ' . ($skipNullValues ? 'true' : 'false');
@@ -1237,16 +1319,29 @@ PHP;
                 var_export($temporalFormatter, true),
             );
         }
+        $denormalization = $refuseExtraAttributes
+            ? '\Symfony\Component\Serializer\Normalizer\AbstractNormalizer::ALLOW_EXTRA_ATTRIBUTES => false'
+            : null;
 
-        if ($entries === []) {
+        if ($entries === [] && $denormalization === null) {
             return null;
         }
-        if ($temporalFormatter === null) {
+        if ($temporalFormatter === null && $denormalization === null) {
             return '#[\Symfony\Component\Serializer\Attribute\Context(normalizationContext: [' . implode(', ', $entries) . '])]';
         }
 
-        // With a callback the line runs long; one entry per line, as php-cs-fixer would lay it out.
-        return "#[\\Symfony\\Component\\Serializer\\Attribute\\Context(normalizationContext: [\n        " . implode(",\n        ", $entries) . ",\n    ])]";
+        if ($denormalization === null) {
+            // With a callback the line runs long; one entry per line, as php-cs-fixer would lay it out.
+            return "#[\\Symfony\\Component\\Serializer\\Attribute\\Context(normalizationContext: [\n        " . implode(",\n        ", $entries) . ",\n    ])]";
+        }
+
+        $arguments = [];
+        if ($entries !== []) {
+            $arguments[] = "normalizationContext: [\n            " . implode(",\n            ", $entries) . ",\n        ]";
+        }
+        $arguments[] = "denormalizationContext: [\n            " . $denormalization . ",\n        ]";
+
+        return "#[\\Symfony\\Component\\Serializer\\Attribute\\Context(\n        " . implode(",\n        ", $arguments) . ",\n    )]";
     }
 
     /**

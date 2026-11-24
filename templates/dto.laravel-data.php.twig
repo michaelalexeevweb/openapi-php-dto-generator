@@ -491,7 +491,8 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
     ];
 {% endif %}
 {% set checksScalarPaths = checksScalarPaths|default(false) %}
-{% if interpreterMethodsBlock is not empty or checksObjectPaths or checksScalarPaths or rootIsObject|default(false) %}
+{% set readsEmptyContainers = readsEmptyContainers|default(false) %}
+{% if interpreterMethodsBlock is not empty or checksObjectPaths or checksScalarPaths or rootIsObject|default(false) or readsEmptyContainers %}
 
     /**
 {% if interpreterMethodsBlock is not empty %}
@@ -519,12 +520,22 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
     public static function withValidator({{ validatorRef }} $validator): void
     {
         $validator->after(static function ({{ validatorRef }} $validator): void {
+{% if readsEmptyContainers %}
+            $rawJson = self::rawRequestBody($validator);
+            $rawBody = $rawJson !== null && $rawJson !== '' ? json_decode($rawJson, false) : null;
+{% if interpreterMethodsBlock is not empty %}
+
+{% endif %}
+{% endif %}
 {% if interpreterMethodsBlock is not empty %}
             // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema and the
             // client name them literally, and an error under a dotted map key was reported at a random
             // `__dot__…` path. Laravel mode undoes them the same way.
             /** @var array<string, mixed> $payload */
             $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+{% if readsEmptyContainers %}
+            $payload = self::withRawEmptyObjects($payload, $rawBody);
+{% endif %}
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -565,11 +576,21 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
 {% endif %}
             self::assertNoBooleanNumbers($validator);
 {% endif %}
+{% if readsEmptyContainers %}
+{% if interpreterMethodsBlock is not empty or checksScalarPaths %}
+
+{% endif %}
+            self::assertRawEmptyLists($validator, $rawBody, '');
+{% endif %}
 {% if checksObjectPaths or rootIsObject|default(false) %}
+{% if not readsEmptyContainers %}
 {% if interpreterMethodsBlock is not empty or checksScalarPaths %}
 
 {% endif %}
             $rawJson = self::rawRequestBody($validator);
+{% else %}
+
+{% endif %}
 {% if checksObjectPaths %}
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
@@ -577,8 +598,8 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
 {% endif %}
 {% if rootIsObject|default(false) %}
             // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
-            // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty object, as it is
-            // nested: `json_encode([])` is how every PHP client sends one, `postJson()` with no data too.
+            // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty body
+            // `postJson()` sends with no data, and stands for the empty object here.
             if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
                 $decoded = json_decode($rawJson, false);
                 if (is_array($decoded) && $decoded !== []) {
@@ -590,7 +611,60 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
         });
     }
 {% endif %}
-{% if checksObjectPaths or rootIsObject|default(false) %}
+{% if readsEmptyContainers %}
+
+    /**
+     * The payload with every EMPTY JSON object of the raw body a `\stdClass` again. Decoded, `{}` is the
+     * empty PHP array `[]` is, so the interpreter matched `{}` against the `array` member of a union;
+     * as an object it can only be the object.
+     *
+     * @param array<array-key, mixed> $data
+     * @return array<array-key, mixed>
+     */
+    private static function withRawEmptyObjects(array $data, mixed $raw): array
+    {
+        if (!$raw instanceof {{ stdClassRef }} && !is_array($raw)) {
+            return $data;
+        }
+
+        foreach (is_array($raw) ? $raw : get_object_vars($raw) as $key => $member) {
+            if (!array_key_exists($key, $data)) {
+                continue;
+            }
+            if ($member instanceof {{ stdClassRef }} && get_object_vars($member) === [] && $data[$key] === []) {
+                $data[$key] = new {{ stdClassRef }}();
+            } elseif (is_array($data[$key])) {
+                $data[$key] = self::withRawEmptyObjects($data[$key], $member);
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * Adds an error for every `{}` the raw body sent where a `list` rule asks for a list. Decoded, the
+     * empty object is the empty list, and the rule took it.
+     */
+    private static function assertRawEmptyLists({{ validatorRef }} $validator, mixed $raw, string $path): void
+    {
+        if ($raw instanceof {{ stdClassRef }}) {
+            $members = get_object_vars($raw);
+            $pathRules = $validator->getRules()[$path] ?? [];
+            if ($members === [] && $path !== '' && is_array($pathRules) && in_array('list', $pathRules, true) && !$validator->errors()->has($path)) {
+                $validator->addFailure($path, 'list');
+            }
+        } elseif (is_array($raw)) {
+            $members = $raw;
+        } else {
+            return;
+        }
+
+        foreach ($members as $key => $member) {
+            self::assertRawEmptyLists($validator, $member, $path === '' ? (string)$key : $path . '.' . $key);
+        }
+    }
+{% endif %}
+{% if checksObjectPaths or rootIsObject|default(false) or readsEmptyContainers %}
 
     /**
      * The undecoded request body — or null when there is no request, or when what the validator holds is
@@ -706,8 +780,8 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
 
         foreach ({% if reachesRecursion %}[...{{ objectPathsExpression }}, ...self::openApiRecursivePaths($decoded)['objectPaths']]{% else %}{{ objectPathsExpression }}{% endif %} as $path) {
             foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
-                // `[]` is how PHP encodes an empty array, so it is the empty object a PHP client sends.
-                if (is_array($node) && $node !== []) {
+                // `[]` too: the raw body says it is an empty LIST, and the schema asks for an object.
+                if (is_array($node)) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
             }

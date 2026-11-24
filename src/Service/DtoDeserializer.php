@@ -4518,7 +4518,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
      * A branch that is a union itself — `oneOf: [{anyOf: [integer, object]}]` — stands for ITS branches,
      * and an untyped branch takes the type of its first typed `allOf` member: read one level deep, the
      * object member was never seen and a JSON object was refused as "expects array, got object". A
-     * branch naming a generated object class is an object.
+     * branch naming a generated object class is `class`, which admits no PHP array.
      *
      * @param array<string, mixed> $constraints
      * @return list<list<string>>
@@ -4568,9 +4568,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
         if ($types !== []) {
             return $types;
         }
+        // A generated class is its own branch, not an `object` one: the class takes a JSON object
+        // itself, and counted as an object it let an `array` member beside it read that object as a
+        // map, so the class's rules were never checked.
         $className = $schema['x-php-instanceof'] ?? null;
         if (is_string($className) && class_exists($className) && !enum_exists($className)) {
-            return ['object'];
+            return ['class'];
         }
         if ($depth < self::MAX_UNION_BRANCH_DEPTH) {
             foreach (is_array($schema['allOf'] ?? null) ? $schema['allOf'] : [] as $member) {

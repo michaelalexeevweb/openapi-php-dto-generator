@@ -3298,4 +3298,69 @@ trait RendersLaravelValidation
 
         return $this->laravelReachableCache[$className] = $reached;
     }
+
+    /**
+     * Whether `withValidator()` has to tell an EMPTY JSON object from an empty JSON array.
+     *
+     * Decoded, `{}` and `[]` are one PHP array, so a list rule took `{"ant": {}}` and the `array` member
+     * of `oneOf: [{type: object, required: [zebu]}, {type: array}]` took `{"bee": {}}`. The raw body
+     * still says which it was: a `list` rule anywhere the class reaches, or an `array` type the
+     * interpreter judges, is where the answer matters. A parameter class reads no JSON body.
+     *
+     * @param array<string, mixed> $interpreterConstraints
+     * @param array<string, mixed> $recursiveSchemas
+     */
+    private function laravelReadsEmptyContainers(string $className, array $interpreterConstraints, array $recursiveSchemas): bool
+    {
+        if (array_key_exists($className, $this->parameterPayloadClasses)) {
+            return false;
+        }
+
+        return $this->laravelSchemaNamesArrayType($interpreterConstraints)
+            || $this->laravelSchemaNamesArrayType($recursiveSchemas)
+            || $this->laravelReachesListRule($className);
+    }
+
+    /**
+     * Whether a list rule is written for the class or for any class its rules reach.
+     */
+    private function laravelReachesListRule(string $className): bool
+    {
+        foreach ([$className, ...array_keys($this->laravelReachableClasses($className))] as $class) {
+            foreach ($this->getSchemaProperties($class) as $property) {
+                $ruleSets = [
+                    $this->laravelRulesForProperty($property, false),
+                    ...array_values($this->laravelItemRulesForProperty($property)),
+                ];
+                foreach ($ruleSets as $rules) {
+                    if (in_array("'list'", $rules, true)) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether a `type: array` (alone or in a type list) appears anywhere in a constraint tree.
+     */
+    private function laravelSchemaNamesArrayType(mixed $schema): bool
+    {
+        if (!is_array($schema)) {
+            return false;
+        }
+        $type = $schema['type'] ?? null;
+        if ($type === 'array' || (is_array($type) && in_array('array', $type, true))) {
+            return true;
+        }
+        foreach ($schema as $value) {
+            if ($this->laravelSchemaNamesArrayType($value)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }

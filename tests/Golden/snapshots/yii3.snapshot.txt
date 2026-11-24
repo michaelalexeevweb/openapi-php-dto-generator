@@ -1,4 +1,4 @@
-# yii3 mode — 80 files, 37009 lines
+# yii3 mode — 80 files, 37012 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -32546,7 +32546,8 @@ final class TestPostRequest extends AbstractInput implements DataSetInterface, R
 
                 if (is_string($branchClass = $branch['x-php-instanceof'] ?? null) && $branchClass !== '') {
                     $branchFqcn = __NAMESPACE__ . '\\' . ltrim($branchClass, '\\');
-                    if (is_object($value) && $value instanceof $branchFqcn) {
+                    // `{$ref: X, nullable: true}`: X or null.
+                    if ((is_object($value) && $value instanceof $branchFqcn) || ($value === null && ($branch['nullable'] ?? false) === true)) {
                         $matchingBranches++;
                     }
                     continue;
@@ -33391,7 +33392,8 @@ final class TreeNode extends AbstractInput implements DataSetInterface, RulesPro
 
                 if (is_string($branchClass = $branch['x-php-instanceof'] ?? null) && $branchClass !== '') {
                     $branchFqcn = __NAMESPACE__ . '\\' . ltrim($branchClass, '\\');
-                    if (is_object($value) && $value instanceof $branchFqcn) {
+                    // `{$ref: X, nullable: true}`: X or null.
+                    if ((is_object($value) && $value instanceof $branchFqcn) || ($value === null && ($branch['nullable'] ?? false) === true)) {
                         $matchingBranches++;
                     }
                     continue;
@@ -34263,7 +34265,8 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
 
                 if (is_string($branchClass = $branch['x-php-instanceof'] ?? null) && $branchClass !== '') {
                     $branchFqcn = __NAMESPACE__ . '\\' . ltrim($branchClass, '\\');
-                    if (is_object($value) && $value instanceof $branchFqcn) {
+                    // `{$ref: X, nullable: true}`: X or null.
+                    if ((is_object($value) && $value instanceof $branchFqcn) || ($value === null && ($branch['nullable'] ?? false) === true)) {
                         $matchingBranches++;
                     }
                     continue;

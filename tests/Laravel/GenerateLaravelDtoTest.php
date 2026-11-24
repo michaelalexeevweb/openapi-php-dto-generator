@@ -577,8 +577,10 @@ final class GenerateLaravelDtoTest extends TestCase
         // A JSON object whose keys are 0..n-1 is still an object — the check must not overreach.
         $this->assertSame([], $verdict('{"flags":{"0":1,"1":2}}'));
         $this->assertSame(['flags expects object, got array.'], $verdict('{"flags":[1,2]}'));
-        // `[]` is the empty object PHP clients send (`json_encode([])`); runtime and Symfony accept it.
-        $this->assertSame([], $verdict('{"flags":[]}'));
+        // `[]` is an empty LIST on the wire, and the raw body still says so: refused as runtime refuses
+        // it. The empty object is `{}`.
+        $this->assertSame(['flags expects object, got array.'], $verdict('{"flags":[]}'));
+        $this->assertSame([], $verdict('{"flags":{}}'));
     }
 
     private function generateEndpointSpec(string $namespace): string

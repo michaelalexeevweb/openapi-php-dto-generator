@@ -2594,6 +2594,14 @@ final class GenerateDtoCommand extends Command
             if (!is_array($value)) {
                 continue;
             }
+            // Beside properties of its own the object is a class, not a map: its `additionalProperties`
+            // are the class's extra keys, and the class stored under its own name keeps them as written.
+            // Rewritten here only, the owner's copy of the inline object no longer equalled the stored
+            // one — a name collision that stopped generation in every mode.
+            if ($key === 'additionalProperties' && !$this->isMapLikeObjectSchema($schema)) {
+                $schema[$key] = $this->canonicalNullableRefContainers($value);
+                continue;
+            }
             foreach (['anyOf', 'oneOf'] as $unionKey) {
                 $branches = $value[$unionKey] ?? null;
                 if (!is_array($branches) || count($branches) !== 2) {
@@ -5031,6 +5039,30 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * The `anyOf` / `oneOf` written beside the `allOf` a class is built from, as extracted. Such a class
+     * is analyzed through its `allOf` (`analyzeSchema()`), so the union beside it is not a union type:
+     * it judges the object as a whole, and only a class-level check can carry it.
+     *
+     * @param array<string, mixed> $extracted
+     * @return array<string, mixed>
+     */
+    private function classLevelUnionsBesideAllOf(string $className, array $extracted): array
+    {
+        $schema = $this->dtoSchemas[$className] ?? [];
+        if (!is_array($schema['allOf'] ?? null) || $schema['allOf'] === []) {
+            return [];
+        }
+        $unions = [];
+        foreach (['anyOf', 'oneOf'] as $keyword) {
+            if (is_array($schema[$keyword] ?? null) && is_array($extracted[$keyword] ?? null)) {
+                $unions[$keyword] = $extracted[$keyword];
+            }
+        }
+
+        return $unions;
+    }
+
+    /**
      * @param array<string, mixed> $schemaDefinition
      * @return SchemaMetadata
      */
@@ -5109,6 +5141,15 @@ final class GenerateDtoCommand extends Command
                     $allProperties[] = $property;
                 }
             }
+
+            $allProperties = [
+                ...$allProperties,
+                ...$this->unionBranchOnlyProperties(
+                    schemaDefinition: $schemaDefinition,
+                    className: $className,
+                    declared: [...$allProperties, ...($extends === null ? [] : $this->getSchemaProperties($extends))],
+                ),
+            ];
 
             // Several branches may declare the same property: each narrows it, so they are merged, and
             // only types no value can satisfy at once are refused.
@@ -5447,14 +5488,23 @@ final class GenerateDtoCommand extends Command
             $itemsTemporalFormat = $this->resolveItemsTemporalPhpDocFormat($propertySchema);
             // A `$ref` the extraction resolves is relative to the file that declares this property; an
             // inline object has no file of its own and keeps the one it was found in.
+            //
+            // A property is the ROOT of its own extraction, even when its class is read in the middle of
+            // another one — Laravel spells a `$ref` union member out from its class's properties while the
+            // union is still being extracted. Read as a nested entry, the property skipped the inlining,
+            // and a `$ref` to a list alias kept `type: array` and lost its `items.maxLength`.
             $sourceFileBefore = $this->constraintSourceFile;
+            $rootUnmaterializedBefore = $this->constraintRootUnmaterialized;
+            $extractionDepthBefore = $this->constraintExtractionDepth;
             $this->constraintSourceFile = $this->getSchemaSourceFile($ownerClassName) ?? $sourceFileBefore;
             $this->constraintRootUnmaterialized = ltrim($type, '?') === 'mixed';
+            $this->constraintExtractionDepth = 0;
             try {
                 $constraints = $this->extractValidationConstraints($propertySchema);
             } finally {
                 $this->constraintSourceFile = $sourceFileBefore;
-                $this->constraintRootUnmaterialized = false;
+                $this->constraintRootUnmaterialized = $rootUnmaterializedBefore;
+                $this->constraintExtractionDepth = $extractionDepthBefore;
             }
 
             $paramIn = $propertySchema['x-parameter-in'] ?? null;
@@ -6311,12 +6361,17 @@ final class GenerateDtoCommand extends Command
             }
         }
         if (array_key_exists('x-php-instanceof', $target)) {
-            // `{$ref: X, nullable: true}` keeps its old reading: the class check refuses the null the
-            // permission admits. An OBJECT beside asserting siblings is typed by a class of its own,
-            // which need not extend X, so it is not "is X" either: that class checks itself.
+            // `{$ref: X, nullable: true}` is "X or null": the class check stays, and the `nullable`
+            // beside it lets the null through. Reduced to the bare `nullable`, the branch admitted any
+            // value — a `oneOf` then refused every value of its other branch as matching twice.
+            if ($asserting === []) {
+                return [...$target, ...$beside];
+            }
+            // An OBJECT beside asserting siblings is typed by a class of its own, which need not extend
+            // X, so it is not "is X" either: that class checks itself.
             $isObjectClass = array_key_exists($this->schemaRefToClassName($ref, $this->constraintSourceFile ?? $this->rootSpecFile), $this->dtoSchemas);
 
-            return $asserting === [] || $isObjectClass ? $beside : [...$beside, ...$target];
+            return $isObjectClass ? $beside : [...$beside, ...$target];
         }
         if ($asserting === []) {
             return [...$target, ...$beside];
@@ -6647,7 +6702,8 @@ final class GenerateDtoCommand extends Command
                         belowMaterialization: $belowMaterialization
                             || $depth >= 1
                             || $evaluatesInPlace
-                            || ($unionKey !== 'allOf' && $this->isContainerBranch($branch)),
+                            || ($unionKey !== 'allOf' && $this->isContainerBranch($branch))
+                            || ($unionKey !== 'allOf' && $this->laravelValidatesInlineBranch($branch)),
                         refInlineBudget: $refInlineBudget,
                         seenRefs: $seenRefs,
                     );
@@ -6744,6 +6800,22 @@ final class GenerateDtoCommand extends Command
         }
 
         return $this->foldNullableReferenceAllOf($schema);
+    }
+
+    /**
+     * Whether an INLINE `oneOf`/`anyOf` branch is checked from its spelled-out schema rather than by the
+     * class it becomes. Laravel validates the raw payload before anything is hydrated, and it never runs
+     * a union member's own rules, so the branch class checks nothing: an inline `{type: object,
+     * properties: {hue: {enum: [amber]}}}` moved its enum into the PHP enum type, the map kept `type:
+     * string`, and `{"hue": "teal"}` reached the enum cast — a 500. A `$ref` branch is spelled out by
+     * `unionRefTarget()` already.
+     *
+     * @param array<string, mixed> $branch
+     */
+    private function laravelValidatesInlineBranch(array $branch): bool
+    {
+        return in_array($this->attributeMode, [self::ATTRIBUTE_MODE_LARAVEL, self::ATTRIBUTE_MODE_LARAVEL_DATA], true)
+            && $this->referenceOrSingleRefAllOf($branch) === null;
     }
 
     /**
@@ -7862,18 +7934,14 @@ final class GenerateDtoCommand extends Command
 
         $nullable = (bool)($propertySchema['nullable'] ?? false);
         $types = [];
-        $branchesNamingATypeOfTheirOwn = count(array_filter(
-            array: $variants,
-            callback: fn(mixed $variant): bool => is_array($variant) && $this->unionBranchNamesATypeOfItsOwn($variant),
-        ));
+        $branchKinds = [];
+        foreach ($variants as $index => $variant) {
+            $branchKinds[$index] = is_array($variant) ? $this->unionBranchTypeOfItsOwn($variant, $ownerClassName) : null;
+        }
+        $branchesNamingATypeOfTheirOwn = count(array_filter($branchKinds, static fn(?string $kind): bool => $kind !== null));
         // Two inline OBJECTS are an undiscriminated union of classes, which no mode can hydrate; that
         // keeps failing on the shared name rather than generating classes nothing can pick between.
-        $objectBranches = count(array_filter(
-            array: $variants,
-            callback: fn(mixed $variant): bool => is_array($variant)
-                && $this->unionBranchNamesATypeOfItsOwn($variant)
-                && !$this->isEnumBranch($variant),
-        ));
+        $objectBranches = count(array_filter($branchKinds, static fn(?string $kind): bool => $kind === 'class'));
         $nameBranchesApart = $branchesNamingATypeOfTheirOwn > 1 && $objectBranches <= 1;
 
         foreach ($variants as $index => $variant) {
@@ -7886,7 +7954,7 @@ final class GenerateDtoCommand extends Command
             // collision that stopped generation in every mode. Then each takes the branch's own name,
             // as a nested union member does (`collectUnionTypes()`); one such branch keeps the
             // property's name, as it always had.
-            $branchPropertyName = $nameBranchesApart && $this->unionBranchNamesATypeOfItsOwn($variant)
+            $branchPropertyName = $nameBranchesApart && $branchKinds[$index] !== null
                 ? $propertyName . ($keyword === 'oneOf' ? 'OneOf' : 'AnyOf') . ((int)$index + 1)
                 : $propertyName;
 
@@ -7935,37 +8003,69 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
-     * Whether an inline union branch is typed by a class or enum synthesized under the property's name:
-     * an enum that becomes a backed enum, or an object with keys of its own. A `$ref` names its own type,
-     * and a map or a scalar is typed by PHP's own types.
+     * The type an inline union branch synthesizes under the name it is handed — `'enum'` for a backed
+     * enum, `'class'` for an object with keys of its own — or null when it names none. A plain `$ref`
+     * names its own type, and a map or a scalar is typed by PHP's own types; a `$ref` with keywords
+     * beside it (written as an `allOf` by `objectReferenceWithItsSiblings()`, or shared with an
+     * `unevaluatedProperties`) and an `allOf` around one object are classes of their own, merged
+     * under the property's name like the bare object spelling.
      *
      * @param array<mixed> $branch
+     * @return 'enum'|'class'|null
      */
-    private function unionBranchNamesATypeOfItsOwn(array $branch, int $depth = 0): bool
+    private function unionBranchTypeOfItsOwn(array $branch, string $ownerClassName, int $depth = 0): ?string
     {
+        /** @var array<string, mixed> $branch */
         if (array_key_exists('$ref', $branch)) {
-            return false;
+            return $this->referencedObjectSharedWithSiblings($branch, $ownerClassName) !== null ? 'class' : null;
         }
-        if (array_key_exists('allOf', $branch)) {
+        if (is_array($branch['allOf'] ?? null)) {
+            if ($depth >= self::SHAPE_PROBE_DEPTH) {
+                return null;
+            }
             // `allOf: [{type: integer, enum: [3, 4]}]` merges into the enum it wraps, and
             // `resolvePropertyType()` registers that enum under the name it is handed — so it is named
             // apart like the bare spelling, or it took the property's name beside another enum branch
             // and generation stopped on the collision.
-            /** @var array<string, mixed> $branch */
             $merged = $this->normalizeAllOfPropertySchema($branch);
+            if ($merged !== null) {
+                return array_key_exists('allOf', $merged) ? null : $this->unionBranchTypeOfItsOwn($merged, $ownerClassName, $depth + 1);
+            }
 
-            return $merged !== null
-                && !array_key_exists('allOf', $merged)
-                && $depth < self::SHAPE_PROBE_DEPTH
-                && $this->unionBranchNamesATypeOfItsOwn($merged, $depth + 1);
+            return $this->allOfBranchMergesIntoAClass($branch) ? 'class' : null;
         }
         if ($this->isEnumBranch($branch)) {
-            return true;
+            return 'enum';
         }
 
         return $this->soleTypeBesidesNull($branch['type'] ?? null) === 'object'
             && !$this->isMapLikeObjectSchema($branch)
-            && !$this->isPatternPropertiesOnlyObjectSchema($branch);
+            && !$this->isPatternPropertiesOnlyObjectSchema($branch)
+            ? 'class'
+            : null;
+    }
+
+    /**
+     * Whether `resolvePropertyType()` merges an `allOf` it cannot flatten into a class registered under
+     * the property's name — the same steps it takes: not one `$ref` (typed as the target), not one union
+     * (typed as the union), and describing an object.
+     *
+     * @param array<string, mixed> $branch
+     */
+    private function allOfBranchMergesIntoAClass(array $branch): bool
+    {
+        $members = array_values(array_filter(
+            array: is_array($branch['allOf'] ?? null) ? $branch['allOf'] : [],
+            callback: static fn(mixed $member): bool => is_array($member),
+        ));
+        if ($members === []) {
+            return false;
+        }
+        if (count($members) === 1 && (array_key_exists('$ref', $members[0]) || array_key_exists('oneOf', $members[0]) || array_key_exists('anyOf', $members[0]))) {
+            return false;
+        }
+
+        return $this->shapesAnObject($branch);
     }
 
     /**
@@ -10576,6 +10676,11 @@ final class GenerateDtoCommand extends Command
                 }
             }
 
+            $allProperties = [
+                ...$allProperties,
+                ...$this->unionBranchOnlyProperties(schemaDefinition: $schemaDefinition, className: $className, declared: $allProperties),
+            ];
+
             return $this->dedupeCaseInsensitivePropertyNames(properties: $this->mergeRestatedProperties(
                 properties: $this->withSiblingRequired($allProperties, $schemaDefinition),
                 className: $className,
@@ -10583,6 +10688,44 @@ final class GenerateDtoCommand extends Command
         }
 
         return $this->extractProperties($schemaDefinition, $className);
+    }
+
+    /**
+     * The keys only an `anyOf` / `oneOf` beside the `allOf` names — in a branch's `properties` or its
+     * `required` — as optional properties of any value. The union judges the object as a whole
+     * (`classLevelUnionsBesideAllOf()`), and a key the class does not declare is dropped on hydration
+     * before it runs: `anyOf: [{properties: {a: {minLength: 3}}}, {required: [z]}]` refused
+     * `{"a": "x", "z": 2}`, its `z` gone. Typed by nothing here: which branch holds is the union's to say.
+     *
+     * @param array<string, mixed> $schemaDefinition
+     * @param array<int, SchemaProperty> $declared
+     * @return array<int, SchemaProperty>
+     */
+    private function unionBranchOnlyProperties(array $schemaDefinition, string $className, array $declared): array
+    {
+        $declaredNames = array_map(static fn(array $property): string => $property['openApiName'], $declared);
+        $names = [];
+        foreach (['anyOf', 'oneOf'] as $keyword) {
+            foreach (is_array($schemaDefinition[$keyword] ?? null) ? $schemaDefinition[$keyword] : [] as $branch) {
+                if (!is_array($branch) || array_key_exists('$ref', $branch)) {
+                    continue;
+                }
+                $branchNames = [
+                    ...array_keys(is_array($branch['properties'] ?? null) ? $branch['properties'] : []),
+                    ...array_values(is_array($branch['required'] ?? null) ? $branch['required'] : []),
+                ];
+                foreach ($branchNames as $name) {
+                    if (is_string($name) && !in_array($name, $declaredNames, true)) {
+                        $names[$name] = [];
+                    }
+                }
+            }
+        }
+        if ($names === []) {
+            return [];
+        }
+
+        return $this->extractProperties(schemaDefinition: ['type' => 'object', 'properties' => $names], ownerClassName: $className);
     }
 
     /**

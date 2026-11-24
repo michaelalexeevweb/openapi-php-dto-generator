@@ -1210,6 +1210,11 @@ trait RendersRuntimeDto
             }
         }
 
+        // An `anyOf` / `oneOf` beside the `allOf` the class is built from judges the object as a whole,
+        // and nothing else carried it: `{allOf: [$ref Base, …], anyOf: [{required: [a]}, {required: [b]}]}`
+        // accepted `{}`.
+        $objectConstraints = [...$objectConstraints, ...$this->classLevelUnionsBesideAllOf(className: $className, extracted: $extracted)];
+
         // A SCHEMA for the keys the class does not declare: each such value must match it. Not
         // emitted, an `{"a":1,"b":2}` against `additionalProperties: {type: string}` was accepted.
         if (!$closed && is_array($schema['additionalProperties'] ?? null) && is_array($extracted['additionalProperties'] ?? null)) {

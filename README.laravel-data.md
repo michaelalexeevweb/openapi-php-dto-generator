@@ -289,9 +289,11 @@ strings — `"1"` was no int-backed enum case. A path parameter comes in later, 
 `#[FromRouteParameter]`, so a path LIST is not split this way.
 
 A request body sent as a non-empty JSON array is refused under `payload` with `JSON body must be an
-object, got array.`; it decodes to the PHP array an object keyed 0..n-1 does. `[]` is the empty object,
-at the root as nested — `json_encode([])` is how a PHP client sends one. Runtime mode refuses `[]` wherever
-an object is asked for, at the root and nested alike.
+object, got array.`; it decodes to the PHP array an object keyed 0..n-1 does. At the root `[]` is the
+empty object, what `postJson()` sends with no data. Nested, the raw body decides since 2.15.147: `[]` is
+refused for a `type: object` property, `{}` for a list, and `{}` for a union of an object and an `array`
+member is judged as the object. Runtime mode refuses `[]` wherever an object is asked for, at the root
+and nested alike.
 
 
 ## Divergences from the other modes

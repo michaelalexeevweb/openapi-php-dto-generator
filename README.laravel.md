@@ -248,12 +248,12 @@ UserPostRequest::withValidator($validator, $this->getContent());
 
 The generated FormRequest passes it for you. With the raw body in hand, a non-empty JSON array sent
 for a `type: object` property is refused (`flags expects object, got array.`) while a JSON object keyed
-`0..n-1` still passes. An EMPTY array passes as the empty object: it is what `json_encode([])` writes,
-so every PHP client sends `[]` for `{}`, and Symfony, laravel-data and yii3 mode accept it too. Runtime
-mode is the exception — it decodes the body itself and keeps every JSON object a `stdClass`, so it still
-tells `[]` from `{}` and refuses `[]` where an object is asked for (see the
-[support matrix](README.support-matrix.md#divergences)). Omit the argument and only that one check is
-skipped — everything else runs.
+`0..n-1` still passes. Since 2.15.147 the EMPTY containers are told apart the same way, as runtime mode
+does: `[]` is refused for a `type: object` property, `{}` for a list, and `{}` for a union of an object
+and an `array` member is judged as the object. A PHP client sends the empty object as
+`json_encode(new \stdClass())` (or `(object)[]`); `json_encode([])` is the empty LIST. Symfony and yii3
+mode accept `[]` for an object — see the [support matrix](README.support-matrix.md#divergences). Omit the
+argument and these checks are skipped — everything else runs.
 
 ### Closed objects are enforced
 
@@ -387,8 +387,8 @@ $validator = Validator::make($data, WidgetsQueryParams::rules());
 
 A request body sent as a non-empty JSON array is refused under `payload` with `JSON body must be an
 object, got array.` It decodes to the PHP array an object keyed 0..n-1 does, so with every property
-optional it passed before 2.15.101. `[]` is the empty object, at the root as nested: `json_encode([])` is
-how a PHP client sends one, and Laravel's `postJson()` with no data sends it too. Runtime mode refuses
+optional it passed before 2.15.101. At the root `[]` is the empty object: Laravel's `postJson()` with no
+data sends it. Nested, `[]` is refused where an object is asked for (see above). Runtime mode refuses
 `[]` wherever an object is asked for, at the root and nested alike — it decodes the body itself and still
 tells `[]` from `{}`.
 

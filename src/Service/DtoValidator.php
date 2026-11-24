@@ -88,6 +88,11 @@ final class DtoValidator implements DtoValidatorInterface
     private const int MAX_VALIDATION_DEPTH = 256;
 
     /**
+     * How many `anyOf`/`oneOf` levels {@see admitsObjectContainerOnly()} reads through.
+     */
+    private const int MAX_NESTED_UNION_DEPTH = 16;
+
+    /**
      * How a check that `preg_match()` could not finish reads: the subject exhausted the backtrack limit,
      * the recursion limit or the JIT stack. Not a mismatch — the engine gave no answer — so every
      * keyword that turns "has errors" into "did not match" must treat it as unfinished, and a container
@@ -519,12 +524,15 @@ final class DtoValidator implements DtoValidatorInterface
      * `type` decides when it is there. Without it, a property-level `anyOf`/`oneOf` decides: every
      * branch other than `type: null` that admits a container admits an object, and none admits an
      * array — `[{type: object}, {type: null}]`, `[map, string]`. A branch naming no type admits
-     * either, so it answers no. The deserializer, the normalizer and the emitted `toArray()` read a
-     * hydrated union value by it, the way they read a `type: object` map.
+     * either, so it answers no. A branch that is a union itself — `oneOf: [{oneOf: [{type: object}]}]`
+     * — answers by ITS branches: read one level deep, the nested object member was an untyped branch,
+     * and `{}` held as `[]` was refused as "expected object, got array". The deserializer, the
+     * normalizer and the emitted `toArray()` read a hydrated union value by it, the way they read a
+     * `type: object` map.
      *
      * @param array<array-key, mixed> $constraints
      */
-    public static function admitsObjectContainerOnly(array $constraints): bool
+    public static function admitsObjectContainerOnly(array $constraints, int $depth = 0): bool
     {
         if (array_key_exists('type', $constraints)) {
             $type = $constraints['type'];
@@ -545,6 +553,14 @@ final class DtoValidator implements DtoValidatorInterface
                 }
                 $type = $branch['type'] ?? null;
                 $types = is_string($type) ? [$type] : (is_array($type) ? $type : []);
+                if ($types === [] && self::isBareUnion($branch) && $depth < self::MAX_NESTED_UNION_DEPTH) {
+                    if (!self::admitsObjectContainerOnly($branch, $depth + 1)) {
+                        return false;
+                    }
+                    $sawObject = true;
+
+                    continue;
+                }
                 if ($types === [] || in_array('array', $types, true)) {
                     return false;
                 }
@@ -553,6 +569,19 @@ final class DtoValidator implements DtoValidatorInterface
         }
 
         return $sawObject;
+    }
+
+    /**
+     * Whether a branch names no type and is a union: an `anyOf`/`oneOf` and nothing that could admit
+     * a container on its own.
+     *
+     * @param array<array-key, mixed> $branch
+     */
+    private static function isBareUnion(array $branch): bool
+    {
+        return (array_key_exists('anyOf', $branch) || array_key_exists('oneOf', $branch))
+            && !array_key_exists('allOf', $branch)
+            && !array_key_exists('x-php-instanceof', $branch);
     }
 
     /**
@@ -757,8 +786,13 @@ final class DtoValidator implements DtoValidatorInterface
 
         // The union branch a `$ref` to a generated class stands for: the value is that class, which
         // checked itself while it was hydrated. A scalar can never be one — that is what keeps the
-        // scalar branches beside it honest.
-        if (array_key_exists('x-php-instanceof', $constraints) && is_string($constraints['x-php-instanceof'])) {
+        // scalar branches beside it honest. `nullable: true` beside it — a nullable `$ref` — lets null
+        // in, as it does beside `type`.
+        if (
+            array_key_exists('x-php-instanceof', $constraints)
+            && is_string($constraints['x-php-instanceof'])
+            && !($value === null && ($constraints['nullable'] ?? false) === true)
+        ) {
             if (!$this->isInstanceOfBranchClass(value: $value, className: $constraints['x-php-instanceof'])) {
                 $errors[] = sprintf('%s must be %s', $subject, $this->describeBranchClass($constraints['x-php-instanceof']));
             }

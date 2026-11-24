@@ -1,4 +1,4 @@
-# laravel-data mode — 80 files, 22442 lines
+# laravel-data mode — 80 files, 23255 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -642,8 +642,8 @@ final class ApiTest2PatchRequest extends Data
 
             $rawJson = self::rawRequestBody($validator);
             // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
-            // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty object, as it is
-            // nested: `json_encode([])` is how every PHP client sends one, `postJson()` with no data too.
+            // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty body
+            // `postJson()` sends with no data, and stands for the empty object here.
             if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
                 $decoded = json_decode($rawJson, false);
                 if (is_array($decoded) && $decoded !== []) {
@@ -914,8 +914,8 @@ final class ApiTest2PostRequest extends Data
 
             $rawJson = self::rawRequestBody($validator);
             // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
-            // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty object, as it is
-            // nested: `json_encode([])` is how every PHP client sends one, `postJson()` with no data too.
+            // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty body
+            // `postJson()` sends with no data, and stands for the empty object here.
             if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
                 $decoded = json_decode($rawJson, false);
                 if (is_array($decoded) && $decoded !== []) {
@@ -2118,8 +2118,8 @@ final class ApiTestFilePostRequest extends Data
         $validator->after(static function (Validator $validator): void {
             $rawJson = self::rawRequestBody($validator);
             // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
-            // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty object, as it is
-            // nested: `json_encode([])` is how every PHP client sends one, `postJson()` with no data too.
+            // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty body
+            // `postJson()` sends with no data, and stands for the empty object here.
             if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
                 $decoded = json_decode($rawJson, false);
                 if (is_array($decoded) && $decoded !== []) {
@@ -2680,8 +2680,8 @@ final class ApiTestJobsPostRequest extends Data
         $validator->after(static function (Validator $validator): void {
             $rawJson = self::rawRequestBody($validator);
             // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
-            // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty object, as it is
-            // nested: `json_encode([])` is how every PHP client sends one, `postJson()` with no data too.
+            // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty body
+            // `postJson()` sends with no data, and stands for the empty object here.
             if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
                 $decoded = json_decode($rawJson, false);
                 if (is_array($decoded) && $decoded !== []) {
@@ -3197,8 +3197,8 @@ final class ApiTestLegacyPostRequest extends Data
         $validator->after(static function (Validator $validator): void {
             $rawJson = self::rawRequestBody($validator);
             // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
-            // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty object, as it is
-            // nested: `json_encode([])` is how every PHP client sends one, `postJson()` with no data too.
+            // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty body
+            // `postJson()` sends with no data, and stands for the empty object here.
             if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
                 $decoded = json_decode($rawJson, false);
                 if (is_array($decoded) && $decoded !== []) {
@@ -3635,8 +3635,8 @@ final class ApiTestRepresentationsPostRequest extends Data
         $validator->after(static function (Validator $validator): void {
             $rawJson = self::rawRequestBody($validator);
             // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
-            // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty object, as it is
-            // nested: `json_encode([])` is how every PHP client sends one, `postJson()` with no data too.
+            // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty body
+            // `postJson()` sends with no data, and stands for the empty object here.
             if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
                 $decoded = json_decode($rawJson, false);
                 if (is_array($decoded) && $decoded !== []) {
@@ -3825,8 +3825,8 @@ final class ApiTestRepresentationsPostRequestForm extends Data
         $validator->after(static function (Validator $validator): void {
             $rawJson = self::rawRequestBody($validator);
             // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
-            // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty object, as it is
-            // nested: `json_encode([])` is how every PHP client sends one, `postJson()` with no data too.
+            // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty body
+            // `postJson()` sends with no data, and stands for the empty object here.
             if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
                 $decoded = json_decode($rawJson, false);
                 if (is_array($decoded) && $decoded !== []) {
@@ -4015,8 +4015,8 @@ final class ApiTestRepresentationsPostRequestXml extends Data
         $validator->after(static function (Validator $validator): void {
             $rawJson = self::rawRequestBody($validator);
             // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
-            // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty object, as it is
-            // nested: `json_encode([])` is how every PHP client sends one, `postJson()` with no data too.
+            // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty body
+            // `postJson()` sends with no data, and stands for the empty object here.
             if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
                 $decoded = json_decode($rawJson, false);
                 if (is_array($decoded) && $decoded !== []) {
@@ -4560,8 +4560,8 @@ final class ApiTestSerializationGetQueryParams extends Data
 
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
             foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
-                // `[]` is how PHP encodes an empty array, so it is the empty object a PHP client sends.
-                if (is_array($node) && $node !== []) {
+                // `[]` too: the raw body says it is an empty LIST, and the schema asks for an object.
+                if (is_array($node)) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
             }
@@ -5696,11 +5696,15 @@ final class ApplicatorRefs extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            $rawJson = self::rawRequestBody($validator);
+            $rawBody = $rawJson !== null && $rawJson !== '' ? json_decode($rawJson, false) : null;
+
             // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema and the
             // client name them literally, and an error under a dotted map key was reported at a random
             // `__dot__…` path. Laravel mode undoes them the same way.
             /** @var array<string, mixed> $payload */
             $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+            $payload = self::withRawEmptyObjects($payload, $rawBody);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -5712,11 +5716,63 @@ final class ApplicatorRefs extends Data
                 }
             }
 
-            $rawJson = self::rawRequestBody($validator);
+            self::assertRawEmptyLists($validator, $rawBody, '');
+
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
             }
         });
+    }
+
+    /**
+     * The payload with every EMPTY JSON object of the raw body a `\stdClass` again. Decoded, `{}` is the
+     * empty PHP array `[]` is, so the interpreter matched `{}` against the `array` member of a union;
+     * as an object it can only be the object.
+     *
+     * @param array<array-key, mixed> $data
+     * @return array<array-key, mixed>
+     */
+    private static function withRawEmptyObjects(array $data, mixed $raw): array
+    {
+        if (!$raw instanceof stdClass && !is_array($raw)) {
+            return $data;
+        }
+
+        foreach (is_array($raw) ? $raw : get_object_vars($raw) as $key => $member) {
+            if (!array_key_exists($key, $data)) {
+                continue;
+            }
+            if ($member instanceof stdClass && get_object_vars($member) === [] && $data[$key] === []) {
+                $data[$key] = new stdClass();
+            } elseif (is_array($data[$key])) {
+                $data[$key] = self::withRawEmptyObjects($data[$key], $member);
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * Adds an error for every `{}` the raw body sent where a `list` rule asks for a list. Decoded, the
+     * empty object is the empty list, and the rule took it.
+     */
+    private static function assertRawEmptyLists(Validator $validator, mixed $raw, string $path): void
+    {
+        if ($raw instanceof stdClass) {
+            $members = get_object_vars($raw);
+            $pathRules = $validator->getRules()[$path] ?? [];
+            if ($members === [] && $path !== '' && is_array($pathRules) && in_array('list', $pathRules, true) && !$validator->errors()->has($path)) {
+                $validator->addFailure($path, 'list');
+            }
+        } elseif (is_array($raw)) {
+            $members = $raw;
+        } else {
+            return;
+        }
+
+        foreach ($members as $key => $member) {
+            self::assertRawEmptyLists($validator, $member, $path === '' ? (string)$key : $path . '.' . $key);
+        }
     }
 
     /**
@@ -5770,8 +5826,8 @@ final class ApplicatorRefs extends Data
 
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
             foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
-                // `[]` is how PHP encodes an empty array, so it is the empty object a PHP client sends.
-                if (is_array($node) && $node !== []) {
+                // `[]` too: the raw body says it is an empty LIST, and the schema asks for an object.
+                if (is_array($node)) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
             }
@@ -8022,8 +8078,8 @@ final class CallbackJobDonePostRequest extends Data
         $validator->after(static function (Validator $validator): void {
             $rawJson = self::rawRequestBody($validator);
             // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
-            // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty object, as it is
-            // nested: `json_encode([])` is how every PHP client sends one, `postJson()` with no data too.
+            // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty body
+            // `postJson()` sends with no data, and stands for the empty object here.
             if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
                 $decoded = json_decode($rawJson, false);
                 if (is_array($decoded) && $decoded !== []) {
@@ -8212,8 +8268,8 @@ final class CallbackJobFailedPostRequest extends Data
         $validator->after(static function (Validator $validator): void {
             $rawJson = self::rawRequestBody($validator);
             // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
-            // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty object, as it is
-            // nested: `json_encode([])` is how every PHP client sends one, `postJson()` with no data too.
+            // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty body
+            // `postJson()` sends with no data, and stands for the empty object here.
             if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
                 $decoded = json_decode($rawJson, false);
                 if (is_array($decoded) && $decoded !== []) {
@@ -8664,11 +8720,15 @@ final class ChainLink extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            $rawJson = self::rawRequestBody($validator);
+            $rawBody = $rawJson !== null && $rawJson !== '' ? json_decode($rawJson, false) : null;
+
             // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema and the
             // client name them literally, and an error under a dotted map key was reported at a random
             // `__dot__…` path. Laravel mode undoes them the same way.
             /** @var array<string, mixed> $payload */
             $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+            $payload = self::withRawEmptyObjects($payload, $rawBody);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -8680,11 +8740,63 @@ final class ChainLink extends Data
                 }
             }
 
-            $rawJson = self::rawRequestBody($validator);
+            self::assertRawEmptyLists($validator, $rawBody, '');
+
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
             }
         });
+    }
+
+    /**
+     * The payload with every EMPTY JSON object of the raw body a `\stdClass` again. Decoded, `{}` is the
+     * empty PHP array `[]` is, so the interpreter matched `{}` against the `array` member of a union;
+     * as an object it can only be the object.
+     *
+     * @param array<array-key, mixed> $data
+     * @return array<array-key, mixed>
+     */
+    private static function withRawEmptyObjects(array $data, mixed $raw): array
+    {
+        if (!$raw instanceof stdClass && !is_array($raw)) {
+            return $data;
+        }
+
+        foreach (is_array($raw) ? $raw : get_object_vars($raw) as $key => $member) {
+            if (!array_key_exists($key, $data)) {
+                continue;
+            }
+            if ($member instanceof stdClass && get_object_vars($member) === [] && $data[$key] === []) {
+                $data[$key] = new stdClass();
+            } elseif (is_array($data[$key])) {
+                $data[$key] = self::withRawEmptyObjects($data[$key], $member);
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * Adds an error for every `{}` the raw body sent where a `list` rule asks for a list. Decoded, the
+     * empty object is the empty list, and the rule took it.
+     */
+    private static function assertRawEmptyLists(Validator $validator, mixed $raw, string $path): void
+    {
+        if ($raw instanceof stdClass) {
+            $members = get_object_vars($raw);
+            $pathRules = $validator->getRules()[$path] ?? [];
+            if ($members === [] && $path !== '' && is_array($pathRules) && in_array('list', $pathRules, true) && !$validator->errors()->has($path)) {
+                $validator->addFailure($path, 'list');
+            }
+        } elseif (is_array($raw)) {
+            $members = $raw;
+        } else {
+            return;
+        }
+
+        foreach ($members as $key => $member) {
+            self::assertRawEmptyLists($validator, $member, $path === '' ? (string)$key : $path . '.' . $key);
+        }
     }
 
     /**
@@ -8738,8 +8850,8 @@ final class ChainLink extends Data
 
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
             foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
-                // `[]` is how PHP encodes an empty array, so it is the empty object a PHP client sends.
-                if (is_array($node) && $node !== []) {
+                // `[]` too: the raw body says it is an empty LIST, and the schema asks for an object.
+                if (is_array($node)) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
             }
@@ -9191,11 +9303,15 @@ final class ChainMiddle extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            $rawJson = self::rawRequestBody($validator);
+            $rawBody = $rawJson !== null && $rawJson !== '' ? json_decode($rawJson, false) : null;
+
             // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema and the
             // client name them literally, and an error under a dotted map key was reported at a random
             // `__dot__…` path. Laravel mode undoes them the same way.
             /** @var array<string, mixed> $payload */
             $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+            $payload = self::withRawEmptyObjects($payload, $rawBody);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -9207,11 +9323,63 @@ final class ChainMiddle extends Data
                 }
             }
 
-            $rawJson = self::rawRequestBody($validator);
+            self::assertRawEmptyLists($validator, $rawBody, '');
+
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
             }
         });
+    }
+
+    /**
+     * The payload with every EMPTY JSON object of the raw body a `\stdClass` again. Decoded, `{}` is the
+     * empty PHP array `[]` is, so the interpreter matched `{}` against the `array` member of a union;
+     * as an object it can only be the object.
+     *
+     * @param array<array-key, mixed> $data
+     * @return array<array-key, mixed>
+     */
+    private static function withRawEmptyObjects(array $data, mixed $raw): array
+    {
+        if (!$raw instanceof stdClass && !is_array($raw)) {
+            return $data;
+        }
+
+        foreach (is_array($raw) ? $raw : get_object_vars($raw) as $key => $member) {
+            if (!array_key_exists($key, $data)) {
+                continue;
+            }
+            if ($member instanceof stdClass && get_object_vars($member) === [] && $data[$key] === []) {
+                $data[$key] = new stdClass();
+            } elseif (is_array($data[$key])) {
+                $data[$key] = self::withRawEmptyObjects($data[$key], $member);
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * Adds an error for every `{}` the raw body sent where a `list` rule asks for a list. Decoded, the
+     * empty object is the empty list, and the rule took it.
+     */
+    private static function assertRawEmptyLists(Validator $validator, mixed $raw, string $path): void
+    {
+        if ($raw instanceof stdClass) {
+            $members = get_object_vars($raw);
+            $pathRules = $validator->getRules()[$path] ?? [];
+            if ($members === [] && $path !== '' && is_array($pathRules) && in_array('list', $pathRules, true) && !$validator->errors()->has($path)) {
+                $validator->addFailure($path, 'list');
+            }
+        } elseif (is_array($raw)) {
+            $members = $raw;
+        } else {
+            return;
+        }
+
+        foreach ($members as $key => $member) {
+            self::assertRawEmptyLists($validator, $member, $path === '' ? (string)$key : $path . '.' . $key);
+        }
     }
 
     /**
@@ -9265,8 +9433,8 @@ final class ChainMiddle extends Data
 
         foreach ([...self::OPENAPI_OBJECT_PATHS, ...self::openApiNestedParts()['objectPaths']] as $path) {
             foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
-                // `[]` is how PHP encodes an empty array, so it is the empty object a PHP client sends.
-                if (is_array($node) && $node !== []) {
+                // `[]` too: the raw body says it is an empty LIST, and the schema asks for an object.
+                if (is_array($node)) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
             }
@@ -9892,6 +10060,7 @@ use function array_keys;
 use function array_shift;
 use function explode;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_bool;
 use function is_finite;
@@ -10067,13 +10236,67 @@ final class ContainerAliases extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            $rawJson = self::rawRequestBody($validator);
+            $rawBody = $rawJson !== null && $rawJson !== '' ? json_decode($rawJson, false) : null;
             self::assertNoBooleanNumbers($validator);
 
-            $rawJson = self::rawRequestBody($validator);
+            self::assertRawEmptyLists($validator, $rawBody, '');
+
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
             }
         });
+    }
+
+    /**
+     * The payload with every EMPTY JSON object of the raw body a `\stdClass` again. Decoded, `{}` is the
+     * empty PHP array `[]` is, so the interpreter matched `{}` against the `array` member of a union;
+     * as an object it can only be the object.
+     *
+     * @param array<array-key, mixed> $data
+     * @return array<array-key, mixed>
+     */
+    private static function withRawEmptyObjects(array $data, mixed $raw): array
+    {
+        if (!$raw instanceof stdClass && !is_array($raw)) {
+            return $data;
+        }
+
+        foreach (is_array($raw) ? $raw : get_object_vars($raw) as $key => $member) {
+            if (!array_key_exists($key, $data)) {
+                continue;
+            }
+            if ($member instanceof stdClass && get_object_vars($member) === [] && $data[$key] === []) {
+                $data[$key] = new stdClass();
+            } elseif (is_array($data[$key])) {
+                $data[$key] = self::withRawEmptyObjects($data[$key], $member);
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * Adds an error for every `{}` the raw body sent where a `list` rule asks for a list. Decoded, the
+     * empty object is the empty list, and the rule took it.
+     */
+    private static function assertRawEmptyLists(Validator $validator, mixed $raw, string $path): void
+    {
+        if ($raw instanceof stdClass) {
+            $members = get_object_vars($raw);
+            $pathRules = $validator->getRules()[$path] ?? [];
+            if ($members === [] && $path !== '' && is_array($pathRules) && in_array('list', $pathRules, true) && !$validator->errors()->has($path)) {
+                $validator->addFailure($path, 'list');
+            }
+        } elseif (is_array($raw)) {
+            $members = $raw;
+        } else {
+            return;
+        }
+
+        foreach ($members as $key => $member) {
+            self::assertRawEmptyLists($validator, $member, $path === '' ? (string)$key : $path . '.' . $key);
+        }
     }
 
     /**
@@ -10186,8 +10409,8 @@ final class ContainerAliases extends Data
 
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
             foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
-                // `[]` is how PHP encodes an empty array, so it is the empty object a PHP client sends.
-                if (is_array($node) && $node !== []) {
+                // `[]` too: the raw body says it is an empty LIST, and the schema asks for an object.
+                if (is_array($node)) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
             }
@@ -10614,11 +10837,15 @@ final class Containers extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            $rawJson = self::rawRequestBody($validator);
+            $rawBody = $rawJson !== null && $rawJson !== '' ? json_decode($rawJson, false) : null;
+
             // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema and the
             // client name them literally, and an error under a dotted map key was reported at a random
             // `__dot__…` path. Laravel mode undoes them the same way.
             /** @var array<string, mixed> $payload */
             $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+            $payload = self::withRawEmptyObjects($payload, $rawBody);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -10632,11 +10859,63 @@ final class Containers extends Data
 
             self::assertNoBooleanNumbers($validator);
 
-            $rawJson = self::rawRequestBody($validator);
+            self::assertRawEmptyLists($validator, $rawBody, '');
+
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
             }
         });
+    }
+
+    /**
+     * The payload with every EMPTY JSON object of the raw body a `\stdClass` again. Decoded, `{}` is the
+     * empty PHP array `[]` is, so the interpreter matched `{}` against the `array` member of a union;
+     * as an object it can only be the object.
+     *
+     * @param array<array-key, mixed> $data
+     * @return array<array-key, mixed>
+     */
+    private static function withRawEmptyObjects(array $data, mixed $raw): array
+    {
+        if (!$raw instanceof stdClass && !is_array($raw)) {
+            return $data;
+        }
+
+        foreach (is_array($raw) ? $raw : get_object_vars($raw) as $key => $member) {
+            if (!array_key_exists($key, $data)) {
+                continue;
+            }
+            if ($member instanceof stdClass && get_object_vars($member) === [] && $data[$key] === []) {
+                $data[$key] = new stdClass();
+            } elseif (is_array($data[$key])) {
+                $data[$key] = self::withRawEmptyObjects($data[$key], $member);
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * Adds an error for every `{}` the raw body sent where a `list` rule asks for a list. Decoded, the
+     * empty object is the empty list, and the rule took it.
+     */
+    private static function assertRawEmptyLists(Validator $validator, mixed $raw, string $path): void
+    {
+        if ($raw instanceof stdClass) {
+            $members = get_object_vars($raw);
+            $pathRules = $validator->getRules()[$path] ?? [];
+            if ($members === [] && $path !== '' && is_array($pathRules) && in_array('list', $pathRules, true) && !$validator->errors()->has($path)) {
+                $validator->addFailure($path, 'list');
+            }
+        } elseif (is_array($raw)) {
+            $members = $raw;
+        } else {
+            return;
+        }
+
+        foreach ($members as $key => $member) {
+            self::assertRawEmptyLists($validator, $member, $path === '' ? (string)$key : $path . '.' . $key);
+        }
     }
 
     /**
@@ -10749,8 +11028,8 @@ final class Containers extends Data
 
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
             foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
-                // `[]` is how PHP encodes an empty array, so it is the empty object a PHP client sends.
-                if (is_array($node) && $node !== []) {
+                // `[]` too: the raw body says it is an empty LIST, and the schema asks for an object.
+                if (is_array($node)) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
             }
@@ -10924,7 +11203,8 @@ final class Containers extends Data
 
                 if (is_string($branchClass = $branch['x-php-instanceof'] ?? null) && $branchClass !== '') {
                     $branchFqcn = __NAMESPACE__ . '\\' . ltrim($branchClass, '\\');
-                    if (is_object($value) && $value instanceof $branchFqcn) {
+                    // `{$ref: X, nullable: true}`: X or null.
+                    if ((is_object($value) && $value instanceof $branchFqcn) || ($value === null && ($branch['nullable'] ?? false) === true)) {
                         $matchingBranches++;
                     }
                     continue;
@@ -12525,8 +12805,8 @@ final class FileRequest extends Data
         $validator->after(static function (Validator $validator): void {
             $rawJson = self::rawRequestBody($validator);
             // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
-            // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty object, as it is
-            // nested: `json_encode([])` is how every PHP client sends one, `postJson()` with no data too.
+            // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty body
+            // `postJson()` sends with no data, and stands for the empty object here.
             if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
                 $decoded = json_decode($rawJson, false);
                 if (is_array($decoded) && $decoded !== []) {
@@ -12602,6 +12882,7 @@ use function array_slice;
 use function explode;
 use function get_object_vars;
 use function implode;
+use function in_array;
 use function is_array;
 use function is_bool;
 use function is_finite;
@@ -12795,11 +13076,15 @@ final class ItemBounds extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            $rawJson = self::rawRequestBody($validator);
+            $rawBody = $rawJson !== null && $rawJson !== '' ? json_decode($rawJson, false) : null;
+
             // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema and the
             // client name them literally, and an error under a dotted map key was reported at a random
             // `__dot__…` path. Laravel mode undoes them the same way.
             /** @var array<string, mixed> $payload */
             $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+            $payload = self::withRawEmptyObjects($payload, $rawBody);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -12813,11 +13098,63 @@ final class ItemBounds extends Data
 
             self::assertNoBooleanNumbers($validator);
 
-            $rawJson = self::rawRequestBody($validator);
+            self::assertRawEmptyLists($validator, $rawBody, '');
+
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
             }
         });
+    }
+
+    /**
+     * The payload with every EMPTY JSON object of the raw body a `\stdClass` again. Decoded, `{}` is the
+     * empty PHP array `[]` is, so the interpreter matched `{}` against the `array` member of a union;
+     * as an object it can only be the object.
+     *
+     * @param array<array-key, mixed> $data
+     * @return array<array-key, mixed>
+     */
+    private static function withRawEmptyObjects(array $data, mixed $raw): array
+    {
+        if (!$raw instanceof stdClass && !is_array($raw)) {
+            return $data;
+        }
+
+        foreach (is_array($raw) ? $raw : get_object_vars($raw) as $key => $member) {
+            if (!array_key_exists($key, $data)) {
+                continue;
+            }
+            if ($member instanceof stdClass && get_object_vars($member) === [] && $data[$key] === []) {
+                $data[$key] = new stdClass();
+            } elseif (is_array($data[$key])) {
+                $data[$key] = self::withRawEmptyObjects($data[$key], $member);
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * Adds an error for every `{}` the raw body sent where a `list` rule asks for a list. Decoded, the
+     * empty object is the empty list, and the rule took it.
+     */
+    private static function assertRawEmptyLists(Validator $validator, mixed $raw, string $path): void
+    {
+        if ($raw instanceof stdClass) {
+            $members = get_object_vars($raw);
+            $pathRules = $validator->getRules()[$path] ?? [];
+            if ($members === [] && $path !== '' && is_array($pathRules) && in_array('list', $pathRules, true) && !$validator->errors()->has($path)) {
+                $validator->addFailure($path, 'list');
+            }
+        } elseif (is_array($raw)) {
+            $members = $raw;
+        } else {
+            return;
+        }
+
+        foreach ($members as $key => $member) {
+            self::assertRawEmptyLists($validator, $member, $path === '' ? (string)$key : $path . '.' . $key);
+        }
     }
 
     /**
@@ -12930,8 +13267,8 @@ final class ItemBounds extends Data
 
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
             foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
-                // `[]` is how PHP encodes an empty array, so it is the empty object a PHP client sends.
-                if (is_array($node) && $node !== []) {
+                // `[]` too: the raw body says it is an empty LIST, and the schema asks for an object.
+                if (is_array($node)) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
             }
@@ -13494,11 +13831,15 @@ final class NestedContainers extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            $rawJson = self::rawRequestBody($validator);
+            $rawBody = $rawJson !== null && $rawJson !== '' ? json_decode($rawJson, false) : null;
+
             // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema and the
             // client name them literally, and an error under a dotted map key was reported at a random
             // `__dot__…` path. Laravel mode undoes them the same way.
             /** @var array<string, mixed> $payload */
             $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+            $payload = self::withRawEmptyObjects($payload, $rawBody);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -13512,11 +13853,63 @@ final class NestedContainers extends Data
 
             self::assertNoBooleanNumbers($validator);
 
-            $rawJson = self::rawRequestBody($validator);
+            self::assertRawEmptyLists($validator, $rawBody, '');
+
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
             }
         });
+    }
+
+    /**
+     * The payload with every EMPTY JSON object of the raw body a `\stdClass` again. Decoded, `{}` is the
+     * empty PHP array `[]` is, so the interpreter matched `{}` against the `array` member of a union;
+     * as an object it can only be the object.
+     *
+     * @param array<array-key, mixed> $data
+     * @return array<array-key, mixed>
+     */
+    private static function withRawEmptyObjects(array $data, mixed $raw): array
+    {
+        if (!$raw instanceof stdClass && !is_array($raw)) {
+            return $data;
+        }
+
+        foreach (is_array($raw) ? $raw : get_object_vars($raw) as $key => $member) {
+            if (!array_key_exists($key, $data)) {
+                continue;
+            }
+            if ($member instanceof stdClass && get_object_vars($member) === [] && $data[$key] === []) {
+                $data[$key] = new stdClass();
+            } elseif (is_array($data[$key])) {
+                $data[$key] = self::withRawEmptyObjects($data[$key], $member);
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * Adds an error for every `{}` the raw body sent where a `list` rule asks for a list. Decoded, the
+     * empty object is the empty list, and the rule took it.
+     */
+    private static function assertRawEmptyLists(Validator $validator, mixed $raw, string $path): void
+    {
+        if ($raw instanceof stdClass) {
+            $members = get_object_vars($raw);
+            $pathRules = $validator->getRules()[$path] ?? [];
+            if ($members === [] && $path !== '' && is_array($pathRules) && in_array('list', $pathRules, true) && !$validator->errors()->has($path)) {
+                $validator->addFailure($path, 'list');
+            }
+        } elseif (is_array($raw)) {
+            $members = $raw;
+        } else {
+            return;
+        }
+
+        foreach ($members as $key => $member) {
+            self::assertRawEmptyLists($validator, $member, $path === '' ? (string)$key : $path . '.' . $key);
+        }
     }
 
     /**
@@ -13629,8 +14022,8 @@ final class NestedContainers extends Data
 
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
             foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
-                // `[]` is how PHP encodes an empty array, so it is the empty object a PHP client sends.
-                if (is_array($node) && $node !== []) {
+                // `[]` too: the raw body says it is an empty LIST, and the schema asks for an object.
+                if (is_array($node)) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
             }
@@ -13927,6 +14320,7 @@ use function array_keys;
 use function array_shift;
 use function explode;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_bool;
 use function is_finite;
@@ -14100,13 +14494,67 @@ final class NullableContainerValues extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            $rawJson = self::rawRequestBody($validator);
+            $rawBody = $rawJson !== null && $rawJson !== '' ? json_decode($rawJson, false) : null;
             self::assertNoBooleanNumbers($validator);
 
-            $rawJson = self::rawRequestBody($validator);
+            self::assertRawEmptyLists($validator, $rawBody, '');
+
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
             }
         });
+    }
+
+    /**
+     * The payload with every EMPTY JSON object of the raw body a `\stdClass` again. Decoded, `{}` is the
+     * empty PHP array `[]` is, so the interpreter matched `{}` against the `array` member of a union;
+     * as an object it can only be the object.
+     *
+     * @param array<array-key, mixed> $data
+     * @return array<array-key, mixed>
+     */
+    private static function withRawEmptyObjects(array $data, mixed $raw): array
+    {
+        if (!$raw instanceof stdClass && !is_array($raw)) {
+            return $data;
+        }
+
+        foreach (is_array($raw) ? $raw : get_object_vars($raw) as $key => $member) {
+            if (!array_key_exists($key, $data)) {
+                continue;
+            }
+            if ($member instanceof stdClass && get_object_vars($member) === [] && $data[$key] === []) {
+                $data[$key] = new stdClass();
+            } elseif (is_array($data[$key])) {
+                $data[$key] = self::withRawEmptyObjects($data[$key], $member);
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * Adds an error for every `{}` the raw body sent where a `list` rule asks for a list. Decoded, the
+     * empty object is the empty list, and the rule took it.
+     */
+    private static function assertRawEmptyLists(Validator $validator, mixed $raw, string $path): void
+    {
+        if ($raw instanceof stdClass) {
+            $members = get_object_vars($raw);
+            $pathRules = $validator->getRules()[$path] ?? [];
+            if ($members === [] && $path !== '' && is_array($pathRules) && in_array('list', $pathRules, true) && !$validator->errors()->has($path)) {
+                $validator->addFailure($path, 'list');
+            }
+        } elseif (is_array($raw)) {
+            $members = $raw;
+        } else {
+            return;
+        }
+
+        foreach ($members as $key => $member) {
+            self::assertRawEmptyLists($validator, $member, $path === '' ? (string)$key : $path . '.' . $key);
+        }
     }
 
     /**
@@ -14219,8 +14667,8 @@ final class NullableContainerValues extends Data
 
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
             foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
-                // `[]` is how PHP encodes an empty array, so it is the empty object a PHP client sends.
-                if (is_array($node) && $node !== []) {
+                // `[]` too: the raw body says it is an empty LIST, and the schema asks for an object.
+                if (is_array($node)) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
             }
@@ -16764,11 +17212,15 @@ final class Test2 extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            $rawJson = self::rawRequestBody($validator);
+            $rawBody = $rawJson !== null && $rawJson !== '' ? json_decode($rawJson, false) : null;
+
             // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema and the
             // client name them literally, and an error under a dotted map key was reported at a random
             // `__dot__…` path. Laravel mode undoes them the same way.
             /** @var array<string, mixed> $payload */
             $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+            $payload = self::withRawEmptyObjects($payload, $rawBody);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -16782,11 +17234,63 @@ final class Test2 extends Data
 
             self::assertNoBooleanNumbers($validator);
 
-            $rawJson = self::rawRequestBody($validator);
+            self::assertRawEmptyLists($validator, $rawBody, '');
+
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
             }
         });
+    }
+
+    /**
+     * The payload with every EMPTY JSON object of the raw body a `\stdClass` again. Decoded, `{}` is the
+     * empty PHP array `[]` is, so the interpreter matched `{}` against the `array` member of a union;
+     * as an object it can only be the object.
+     *
+     * @param array<array-key, mixed> $data
+     * @return array<array-key, mixed>
+     */
+    private static function withRawEmptyObjects(array $data, mixed $raw): array
+    {
+        if (!$raw instanceof stdClass && !is_array($raw)) {
+            return $data;
+        }
+
+        foreach (is_array($raw) ? $raw : get_object_vars($raw) as $key => $member) {
+            if (!array_key_exists($key, $data)) {
+                continue;
+            }
+            if ($member instanceof stdClass && get_object_vars($member) === [] && $data[$key] === []) {
+                $data[$key] = new stdClass();
+            } elseif (is_array($data[$key])) {
+                $data[$key] = self::withRawEmptyObjects($data[$key], $member);
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * Adds an error for every `{}` the raw body sent where a `list` rule asks for a list. Decoded, the
+     * empty object is the empty list, and the rule took it.
+     */
+    private static function assertRawEmptyLists(Validator $validator, mixed $raw, string $path): void
+    {
+        if ($raw instanceof stdClass) {
+            $members = get_object_vars($raw);
+            $pathRules = $validator->getRules()[$path] ?? [];
+            if ($members === [] && $path !== '' && is_array($pathRules) && in_array('list', $pathRules, true) && !$validator->errors()->has($path)) {
+                $validator->addFailure($path, 'list');
+            }
+        } elseif (is_array($raw)) {
+            $members = $raw;
+        } else {
+            return;
+        }
+
+        foreach ($members as $key => $member) {
+            self::assertRawEmptyLists($validator, $member, $path === '' ? (string)$key : $path . '.' . $key);
+        }
     }
 
     /**
@@ -16899,8 +17403,8 @@ final class Test2 extends Data
 
         foreach ([...self::OPENAPI_OBJECT_PATHS, ...self::openApiNestedParts()['objectPaths']] as $path) {
             foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
-                // `[]` is how PHP encodes an empty array, so it is the empty object a PHP client sends.
-                if (is_array($node) && $node !== []) {
+                // `[]` too: the raw body says it is an empty LIST, and the schema asks for an object.
+                if (is_array($node)) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
             }
@@ -17601,8 +18105,8 @@ final class TestPatchRequest extends Data
 
             $rawJson = self::rawRequestBody($validator);
             // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
-            // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty object, as it is
-            // nested: `json_encode([])` is how every PHP client sends one, `postJson()` with no data too.
+            // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty body
+            // `postJson()` sends with no data, and stands for the empty object here.
             if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
                 $decoded = json_decode($rawJson, false);
                 if (is_array($decoded) && $decoded !== []) {
@@ -17953,8 +18457,8 @@ final class TestPostRequest extends Data
 
             $rawJson = self::rawRequestBody($validator);
             // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
-            // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty object, as it is
-            // nested: `json_encode([])` is how every PHP client sends one, `postJson()` with no data too.
+            // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty body
+            // `postJson()` sends with no data, and stands for the empty object here.
             if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
                 $decoded = json_decode($rawJson, false);
                 if (is_array($decoded) && $decoded !== []) {
@@ -18181,7 +18685,8 @@ final class TestPostRequest extends Data
 
                 if (is_string($branchClass = $branch['x-php-instanceof'] ?? null) && $branchClass !== '') {
                     $branchFqcn = __NAMESPACE__ . '\\' . ltrim($branchClass, '\\');
-                    if (is_object($value) && $value instanceof $branchFqcn) {
+                    // `{$ref: X, nullable: true}`: X or null.
+                    if ((is_object($value) && $value instanceof $branchFqcn) || ($value === null && ($branch['nullable'] ?? false) === true)) {
                         $matchingBranches++;
                     }
                     continue;
@@ -18567,6 +19072,82 @@ final class TreeNode extends Data
                                                                         ],
                                                                         'children' => [
                                                                             'type' => 'object',
+                                                                            'additionalProperties' => [
+                                                                                'oneOf' => [
+                                                                                    [
+                                                                                        'type' => 'object',
+                                                                                        'required' => [
+                                                                                            'label',
+                                                                                            'children',
+                                                                                        ],
+                                                                                        'properties' => [
+                                                                                            'label' => [
+                                                                                                'type' => 'string',
+                                                                                                'minLength' => 1,
+                                                                                            ],
+                                                                                            'children' => [
+                                                                                                'type' => 'object',
+                                                                                                'additionalProperties' => [
+                                                                                                    'oneOf' => [
+                                                                                                        [
+                                                                                                            'type' => 'object',
+                                                                                                            'required' => [
+                                                                                                                'label',
+                                                                                                                'children',
+                                                                                                            ],
+                                                                                                            'properties' => [
+                                                                                                                'label' => [
+                                                                                                                    'type' => 'string',
+                                                                                                                    'minLength' => 1,
+                                                                                                                ],
+                                                                                                                'children' => [
+                                                                                                                    'type' => 'object',
+                                                                                                                ],
+                                                                                                            ],
+                                                                                                        ],
+                                                                                                        [
+                                                                                                            'type' => 'object',
+                                                                                                            'additionalProperties' => [
+                                                                                                                'type' => 'object',
+                                                                                                                'required' => [
+                                                                                                                    'id',
+                                                                                                                    'name',
+                                                                                                                ],
+                                                                                                                'properties' => [
+                                                                                                                    'id' => [
+                                                                                                                        'type' => 'integer',
+                                                                                                                    ],
+                                                                                                                    'name' => [
+                                                                                                                        'type' => 'string',
+                                                                                                                    ],
+                                                                                                                ],
+                                                                                                            ],
+                                                                                                        ],
+                                                                                                    ],
+                                                                                                ],
+                                                                                            ],
+                                                                                        ],
+                                                                                    ],
+                                                                                    [
+                                                                                        'type' => 'object',
+                                                                                        'additionalProperties' => [
+                                                                                            'type' => 'object',
+                                                                                            'required' => [
+                                                                                                'id',
+                                                                                                'name',
+                                                                                            ],
+                                                                                            'properties' => [
+                                                                                                'id' => [
+                                                                                                    'type' => 'integer',
+                                                                                                ],
+                                                                                                'name' => [
+                                                                                                    'type' => 'string',
+                                                                                                ],
+                                                                                            ],
+                                                                                        ],
+                                                                                    ],
+                                                                                ],
+                                                                            ],
                                                                         ],
                                                                     ],
                                                                     'required' => [
@@ -18881,8 +19462,8 @@ final class TreeNode extends Data
 
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
             foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
-                // `[]` is how PHP encodes an empty array, so it is the empty object a PHP client sends.
-                if (is_array($node) && $node !== []) {
+                // `[]` too: the raw body says it is an empty LIST, and the schema asks for an object.
+                if (is_array($node)) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
             }
@@ -19050,7 +19631,8 @@ final class TreeNode extends Data
 
                 if (is_string($branchClass = $branch['x-php-instanceof'] ?? null) && $branchClass !== '') {
                     $branchFqcn = __NAMESPACE__ . '\\' . ltrim($branchClass, '\\');
-                    if (is_object($value) && $value instanceof $branchFqcn) {
+                    // `{$ref: X, nullable: true}`: X or null.
+                    if ((is_object($value) && $value instanceof $branchFqcn) || ($value === null && ($branch['nullable'] ?? false) === true)) {
                         $matchingBranches++;
                     }
                     continue;
@@ -19595,6 +20177,82 @@ final class UnionUnderContainer extends Data
                                                                             ],
                                                                             'children' => [
                                                                                 'type' => 'object',
+                                                                                'additionalProperties' => [
+                                                                                    'oneOf' => [
+                                                                                        [
+                                                                                            'type' => 'object',
+                                                                                            'required' => [
+                                                                                                'label',
+                                                                                                'children',
+                                                                                            ],
+                                                                                            'properties' => [
+                                                                                                'label' => [
+                                                                                                    'type' => 'string',
+                                                                                                    'minLength' => 1,
+                                                                                                ],
+                                                                                                'children' => [
+                                                                                                    'type' => 'object',
+                                                                                                    'additionalProperties' => [
+                                                                                                        'oneOf' => [
+                                                                                                            [
+                                                                                                                'type' => 'object',
+                                                                                                                'required' => [
+                                                                                                                    'label',
+                                                                                                                    'children',
+                                                                                                                ],
+                                                                                                                'properties' => [
+                                                                                                                    'label' => [
+                                                                                                                        'type' => 'string',
+                                                                                                                        'minLength' => 1,
+                                                                                                                    ],
+                                                                                                                    'children' => [
+                                                                                                                        'type' => 'object',
+                                                                                                                    ],
+                                                                                                                ],
+                                                                                                            ],
+                                                                                                            [
+                                                                                                                'type' => 'object',
+                                                                                                                'additionalProperties' => [
+                                                                                                                    'type' => 'object',
+                                                                                                                    'required' => [
+                                                                                                                        'id',
+                                                                                                                        'name',
+                                                                                                                    ],
+                                                                                                                    'properties' => [
+                                                                                                                        'id' => [
+                                                                                                                            'type' => 'integer',
+                                                                                                                        ],
+                                                                                                                        'name' => [
+                                                                                                                            'type' => 'string',
+                                                                                                                        ],
+                                                                                                                    ],
+                                                                                                                ],
+                                                                                                            ],
+                                                                                                        ],
+                                                                                                    ],
+                                                                                                ],
+                                                                                            ],
+                                                                                        ],
+                                                                                        [
+                                                                                            'type' => 'object',
+                                                                                            'additionalProperties' => [
+                                                                                                'type' => 'object',
+                                                                                                'required' => [
+                                                                                                    'id',
+                                                                                                    'name',
+                                                                                                ],
+                                                                                                'properties' => [
+                                                                                                    'id' => [
+                                                                                                        'type' => 'integer',
+                                                                                                    ],
+                                                                                                    'name' => [
+                                                                                                        'type' => 'string',
+                                                                                                    ],
+                                                                                                ],
+                                                                                            ],
+                                                                                        ],
+                                                                                    ],
+                                                                                ],
                                                                             ],
                                                                         ],
                                                                         'required' => [
@@ -19834,11 +20492,15 @@ final class UnionUnderContainer extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            $rawJson = self::rawRequestBody($validator);
+            $rawBody = $rawJson !== null && $rawJson !== '' ? json_decode($rawJson, false) : null;
+
             // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema and the
             // client name them literally, and an error under a dotted map key was reported at a random
             // `__dot__…` path. Laravel mode undoes them the same way.
             /** @var array<string, mixed> $payload */
             $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+            $payload = self::withRawEmptyObjects($payload, $rawBody);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -19850,11 +20512,63 @@ final class UnionUnderContainer extends Data
                 }
             }
 
-            $rawJson = self::rawRequestBody($validator);
+            self::assertRawEmptyLists($validator, $rawBody, '');
+
             if ($rawJson !== null && $rawJson !== '') {
                 self::assertRawObjectShapes($validator, $rawJson);
             }
         });
+    }
+
+    /**
+     * The payload with every EMPTY JSON object of the raw body a `\stdClass` again. Decoded, `{}` is the
+     * empty PHP array `[]` is, so the interpreter matched `{}` against the `array` member of a union;
+     * as an object it can only be the object.
+     *
+     * @param array<array-key, mixed> $data
+     * @return array<array-key, mixed>
+     */
+    private static function withRawEmptyObjects(array $data, mixed $raw): array
+    {
+        if (!$raw instanceof stdClass && !is_array($raw)) {
+            return $data;
+        }
+
+        foreach (is_array($raw) ? $raw : get_object_vars($raw) as $key => $member) {
+            if (!array_key_exists($key, $data)) {
+                continue;
+            }
+            if ($member instanceof stdClass && get_object_vars($member) === [] && $data[$key] === []) {
+                $data[$key] = new stdClass();
+            } elseif (is_array($data[$key])) {
+                $data[$key] = self::withRawEmptyObjects($data[$key], $member);
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * Adds an error for every `{}` the raw body sent where a `list` rule asks for a list. Decoded, the
+     * empty object is the empty list, and the rule took it.
+     */
+    private static function assertRawEmptyLists(Validator $validator, mixed $raw, string $path): void
+    {
+        if ($raw instanceof stdClass) {
+            $members = get_object_vars($raw);
+            $pathRules = $validator->getRules()[$path] ?? [];
+            if ($members === [] && $path !== '' && is_array($pathRules) && in_array('list', $pathRules, true) && !$validator->errors()->has($path)) {
+                $validator->addFailure($path, 'list');
+            }
+        } elseif (is_array($raw)) {
+            $members = $raw;
+        } else {
+            return;
+        }
+
+        foreach ($members as $key => $member) {
+            self::assertRawEmptyLists($validator, $member, $path === '' ? (string)$key : $path . '.' . $key);
+        }
     }
 
     /**
@@ -19908,8 +20622,8 @@ final class UnionUnderContainer extends Data
 
         foreach ([...self::OPENAPI_OBJECT_PATHS, ...self::openApiNestedParts()['objectPaths']] as $path) {
             foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
-                // `[]` is how PHP encodes an empty array, so it is the empty object a PHP client sends.
-                if (is_array($node) && $node !== []) {
+                // `[]` too: the raw body says it is an empty LIST, and the schema asks for an object.
+                if (is_array($node)) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
             }
@@ -20083,7 +20797,8 @@ final class UnionUnderContainer extends Data
 
                 if (is_string($branchClass = $branch['x-php-instanceof'] ?? null) && $branchClass !== '') {
                     $branchFqcn = __NAMESPACE__ . '\\' . ltrim($branchClass, '\\');
-                    if (is_object($value) && $value instanceof $branchFqcn) {
+                    // `{$ref: X, nullable: true}`: X or null.
+                    if ((is_object($value) && $value instanceof $branchFqcn) || ($value === null && ($branch['nullable'] ?? false) === true)) {
                         $matchingBranches++;
                     }
                     continue;
@@ -20454,12 +21169,15 @@ declare(strict_types=1);
 namespace GoldenCorpus;
 
 use Closure;
+use Illuminate\Container\Container;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
+use Illuminate\Http\Request;
 use Illuminate\Validation\Validator;
 use LogicException;
 use OverflowException;
 use Spatie\LaravelData\Data;
+use stdClass;
 
 use function array_is_list;
 use function array_key_exists;
@@ -20477,6 +21195,7 @@ use function is_float;
 use function is_int;
 use function is_object;
 use function is_string;
+use function json_decode;
 use function ksort;
 use function pack;
 use function preg_match;
@@ -20619,11 +21338,15 @@ final class UniqueScalars extends Data
     public static function withValidator(Validator $validator): void
     {
         $validator->after(static function (Validator $validator): void {
+            $rawJson = self::rawRequestBody($validator);
+            $rawBody = $rawJson !== null && $rawJson !== '' ? json_decode($rawJson, false) : null;
+
             // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the schema and the
             // client name them literally, and an error under a dotted map key was reported at a random
             // `__dot__…` path. Laravel mode undoes them the same way.
             /** @var array<string, mixed> $payload */
             $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+            $payload = self::withRawEmptyObjects($payload, $rawBody);
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
                 if (!array_key_exists($property, $payload)) {
@@ -20634,7 +21357,97 @@ final class UniqueScalars extends Data
                     self::addOpenApiFieldError($validator, $property, $payload[$property], $error);
                 }
             }
+
+            self::assertRawEmptyLists($validator, $rawBody, '');
         });
+    }
+
+    /**
+     * The payload with every EMPTY JSON object of the raw body a `\stdClass` again. Decoded, `{}` is the
+     * empty PHP array `[]` is, so the interpreter matched `{}` against the `array` member of a union;
+     * as an object it can only be the object.
+     *
+     * @param array<array-key, mixed> $data
+     * @return array<array-key, mixed>
+     */
+    private static function withRawEmptyObjects(array $data, mixed $raw): array
+    {
+        if (!$raw instanceof stdClass && !is_array($raw)) {
+            return $data;
+        }
+
+        foreach (is_array($raw) ? $raw : get_object_vars($raw) as $key => $member) {
+            if (!array_key_exists($key, $data)) {
+                continue;
+            }
+            if ($member instanceof stdClass && get_object_vars($member) === [] && $data[$key] === []) {
+                $data[$key] = new stdClass();
+            } elseif (is_array($data[$key])) {
+                $data[$key] = self::withRawEmptyObjects($data[$key], $member);
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * Adds an error for every `{}` the raw body sent where a `list` rule asks for a list. Decoded, the
+     * empty object is the empty list, and the rule took it.
+     */
+    private static function assertRawEmptyLists(Validator $validator, mixed $raw, string $path): void
+    {
+        if ($raw instanceof stdClass) {
+            $members = get_object_vars($raw);
+            $pathRules = $validator->getRules()[$path] ?? [];
+            if ($members === [] && $path !== '' && is_array($pathRules) && in_array('list', $pathRules, true) && !$validator->errors()->has($path)) {
+                $validator->addFailure($path, 'list');
+            }
+        } elseif (is_array($raw)) {
+            $members = $raw;
+        } else {
+            return;
+        }
+
+        foreach ($members as $key => $member) {
+            self::assertRawEmptyLists($validator, $member, $path === '' ? (string)$key : $path . '.' . $key);
+        }
+    }
+
+    /**
+     * The undecoded request body — or null when there is no request, or when what the validator holds is
+     * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
+     * this same method while a request is bound, and its body says nothing about their data: a request
+     * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
+     * input, which is the body merged with the query, so every key of the body is there unchanged.
+     */
+    private static function rawRequestBody(Validator $validator): ?string
+    {
+        $container = Container::getInstance();
+        if (!$container->bound('request')) {
+            return null;
+        }
+
+        $request = $container->make('request');
+        if (!$request instanceof Request) {
+            return null;
+        }
+
+        $content = $request->getContent();
+        $body = json_decode($content, true);
+        if (!is_array($body)) {
+            return null;
+        }
+
+        // `getData()` holds every `.` and `*` of a key as a placeholder; the body spells them literally.
+        /** @var array<array-key, mixed> $data */
+        $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
+        foreach ($body as $key => $value) {
+            if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+
+        return $content;
     }
 
     /**
@@ -21383,8 +22196,8 @@ final class User extends Data
 
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
             foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
-                // `[]` is how PHP encodes an empty array, so it is the empty object a PHP client sends.
-                if (is_array($node) && $node !== []) {
+                // `[]` too: the raw body says it is an empty LIST, and the schema asks for an object.
+                if (is_array($node)) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
             }
@@ -22119,8 +22932,8 @@ final class User2 extends Data
 
         foreach (self::OPENAPI_OBJECT_PATHS as $path) {
             foreach (self::rawNodesAt($decoded, explode('.', $path), '') as $foundPath => $node) {
-                // `[]` is how PHP encodes an empty array, so it is the empty object a PHP client sends.
-                if (is_array($node) && $node !== []) {
+                // `[]` too: the raw body says it is an empty LIST, and the schema asks for an object.
+                if (is_array($node)) {
                     $validator->errors()->add($foundPath, sprintf('%s expects object, got array.', $foundPath));
                 }
             }
@@ -22635,8 +23448,8 @@ final class WebhookOrderPlacedPostRequest extends Data
         $validator->after(static function (Validator $validator): void {
             $rawJson = self::rawRequestBody($validator);
             // The body is an object: a non-empty JSON array at the root is refused — it decodes to the PHP
-            // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty object, as it is
-            // nested: `json_encode([])` is how every PHP client sends one, `postJson()` with no data too.
+            // array an object keyed 0..n-1 does, so no rule can see it. `[]` is the empty body
+            // `postJson()` sends with no data, and stands for the empty object here.
             if ($rawJson !== null && str_starts_with(ltrim($rawJson), '[')) {
                 $decoded = json_decode($rawJson, false);
                 if (is_array($decoded) && $decoded !== []) {

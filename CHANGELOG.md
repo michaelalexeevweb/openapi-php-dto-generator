@@ -3,6 +3,47 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.147 — 2026-11-25
+
+- fuzz round three: 24 fixes
+- union branches named apart
+- class member beats array member
+- nullable $ref branch keeps class
+- shared discriminated members generate
+- union member enums checked
+
+The third fuzz round took the round-two leftovers and 107 findings from fresh seeds: 23 root causes, 24 fixes,
+each with a test that failed before, and 9 framework limits documented. The JSON-Schema-Test-Suite harness
+lost 14 divergences on the way. A fresh run on new seeds is down to 45 findings, from 107.
+
+**Regenerate after upgrading, in every mode.**
+
+Generation (every mode):
+
+- an inline `anyOf` / `oneOf` whose branches each become a type — an inline object, an enum, a one-member
+  `allOf` around either, a `$ref` with keywords beside it — names them `<Prop>OneOfN` / `<Prop>AnyOfN`;
+  generation used to stop on a name collision;
+- `additionalProperties: {oneOf: [$ref X, {type: null}]}` beside named properties generates;
+- two discriminated unions that share members generate: each interface lists the members its own mapping
+  names, and a shared member implements both;
+- a component built from `allOf` with an `anyOf` / `oneOf` beside it checks that union on the whole object,
+  and keys only a branch names are kept.
+
+Validation:
+
+- runtime: in a union of an `array` member and a generated class, a JSON object goes to the class — the array
+  member took it as a map and nothing of the class was checked; `{}` below a nested union of objects is
+  accepted again; `{$ref: X, nullable: true}` as a union branch means "X or null", not "anything";
+- symfony: a list beside a class member stays a list (its items checked) instead of an empty object;
+- laravel, laravel-data: an enum on a property of an object union branch is checked (it was a 500); `[]` for
+  an object and `{}` for a list are refused, judged by the raw body;
+- yii3: an `allOf` class branch held as an array is checked with its enums; one-member unions get their type
+  rule; a `$ref` to a list of a discriminated union checks its items.
+
+Documented: symfony serializer before 7.4.23 / 8.1.11 answers a scalar for an `array|Class` union with a 500,
+and builds a `null` or scalar item of a list of DTOs into an empty object; laravel-data builds the first member
+of overlapping inline discriminated members.
+
 ## 2.15.146 — 2026-11-24
 
 - fuzz round two: 52 fixes

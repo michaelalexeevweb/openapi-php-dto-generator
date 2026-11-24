@@ -244,9 +244,15 @@ trait RendersLaravelDataDto
                 && array_filter($params, static fn(array $param): bool => $param['nullableWithDefault']) === []);
 
         $interpreterConstraints = $this->laravelInterpreterConstraints($properties, $className);
+        $recursiveSchemas = array_filter($this->laravelRecursiveFolds, static fn(mixed $fold): bool => $fold !== []);
         $interpreter = $this->renderLaravelInterpreterBlock(
             constraints: $interpreterConstraints,
-            recursiveSchemas: array_filter($this->laravelRecursiveFolds, static fn(mixed $fold): bool => $fold !== []),
+            recursiveSchemas: $recursiveSchemas,
+        );
+        $readsEmptyContainers = $this->laravelReadsEmptyContainers(
+            className: $className,
+            interpreterConstraints: $interpreterConstraints,
+            recursiveSchemas: $recursiveSchemas,
         );
         // A request body is an object, and only the raw body still says whether `[]` was sent for it.
         $rootIsObject = array_key_exists($className, $this->requestPayloadClasses)
@@ -254,7 +260,8 @@ trait RendersLaravelDataDto
         $hasWithValidator = $interpreter['methods'] !== ''
             || $nestedVars['checksObjectPaths']
             || $nestedVars['checksScalarPaths']
-            || $rootIsObject;
+            || $rootIsObject
+            || $readsEmptyContainers;
 
         $validatorRef = $hasWithValidator
             ? $this->libraryClassRef('Illuminate\Validation\Validator', $namespace, $useStatements)
@@ -262,11 +269,11 @@ trait RendersLaravelDataDto
         $containerRef = null;
         $requestRef = null;
         $stdClassRef = null;
-        if ($nestedVars['checksObjectPaths'] || $rootIsObject) {
+        if ($nestedVars['checksObjectPaths'] || $rootIsObject || $readsEmptyContainers) {
             $containerRef = $this->libraryClassRef('Illuminate\Container\Container', $namespace, $useStatements);
             $requestRef = $this->libraryClassRef('Illuminate\Http\Request', $namespace, $useStatements);
         }
-        if ($nestedVars['checksObjectPaths']) {
+        if ($nestedVars['checksObjectPaths'] || $readsEmptyContainers) {
             $stdClassRef = $this->libraryClassRef('stdClass', $namespace, $useStatements);
         }
 
@@ -323,6 +330,7 @@ trait RendersLaravelDataDto
             'morphGuard' => $morphGuard,
             ...$nestedVars,
             'rootIsObject' => $rootIsObject,
+            'readsEmptyContainers' => $readsEmptyContainers,
             'unionMembers' => null,
             'interfaceExtends' => [],
             'discriminatorProperty' => null,
