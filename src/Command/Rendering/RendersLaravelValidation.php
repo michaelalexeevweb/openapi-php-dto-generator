@@ -1981,15 +1981,42 @@ trait RendersLaravelValidation
         $schema = $pruneByOwnRules
             ? $this->laravelPruneRuleCoveredKeywords(schema: $constraints, property: $property, patternAsRule: $ownProperty)
             : $constraints;
+        // Inside a fold no rule asserts what the PHP type pins, so the schema says it: a `$ref` to an
+        // object or to a list alias carried no `type` of its own, and a discriminated member took
+        // `{"toy": 7}` and `{"nums": "x"}` to hydration — a TypeError, a 500.
+        if ($insideRecursiveFold) {
+            $schema = $this->laravelWithPhpPinnedType(
+                schema: $schema,
+                phpType: $property['type'],
+                nullable: ($property['schemaNullable'] ?? false) === true,
+            );
+        }
 
         $nestedClass = $this->laravelDtoClass($property);
         $itemClass = $nestedClass === null ? $this->laravelDtoItemClass($property) : null;
         $target = $nestedClass ?? $itemClass;
 
         if ($target !== null && $itemClass !== null && $this->laravelIsEnumClass($target)) {
-            return $this->laravelItemEnumIsRuleChecked($property)
+            // Inside a fold no `field.*` rule checks the items, so the members do.
+            return $pruneByOwnRules && $this->laravelItemEnumIsRuleChecked($property)
                 ? $this->laravelWithoutItemEnumKeywords($schema, $property)
                 : $this->laravelWithItemEnumMembers($schema, $property, $target);
+        }
+
+        $enumClass = $this->laravelBaseTypeName($property['type']);
+        if ($enumClass !== null && !$pruneByOwnRules && $this->laravelIsEnumClass($enumClass)) {
+            // Inside a fold no dotted rule names this field, so its enum class checks nothing before
+            // hydration casts the value: `{"hue": "zzq"}` in a spelled-out union branch was a ValueError.
+            // The members are the check, and null with them where the property admits it.
+            if (array_key_exists('enum', $schema)) {
+                return $schema;
+            }
+            $members = array_values($this->enumSchemas[$enumClass]['values']);
+            if ($property['nullable'] && ($property['schemaNullable'] ?? false) === true) {
+                $members[] = null;
+            }
+
+            return [...$schema, 'enum' => $members];
         }
 
         if ($target === null || $this->laravelIsEnumClass($target)) {
@@ -2006,7 +2033,13 @@ trait RendersLaravelValidation
             $this->laravelRecordRecursiveFold($target);
 
             return $nestedClass !== null
-                ? $this->laravelWithNullableNestedMarker(schema: $schema, property: $property, target: $target, className: $target)
+                ? $this->laravelWithNullableNestedMarker(
+                    schema: $schema,
+                    property: $property,
+                    target: $target,
+                    className: $target,
+                    insideRecursiveFold: $insideRecursiveFold,
+                )
                 : [...$schema, $this->laravelContainerValueKey($property) => ['x-openapi-recurse' => $target]];
         }
 
@@ -2021,7 +2054,13 @@ trait RendersLaravelValidation
                 return $schema;
             }
             if ($nestedClass !== null) {
-                return $this->laravelWithNullableNestedMarker(schema: $schema, property: $property, target: $shared['key'], className: $target);
+                return $this->laravelWithNullableNestedMarker(
+                    schema: $schema,
+                    property: $property,
+                    target: $shared['key'],
+                    className: $target,
+                    insideRecursiveFold: $insideRecursiveFold,
+                );
             }
             $containerKey = $this->laravelContainerValueKey($property);
             $schema[$containerKey] = [
@@ -2039,7 +2078,11 @@ trait RendersLaravelValidation
 
         if ($nestedClass !== null) {
             $merged = [...$schema, ...$nested];
-            $admitsNull = $this->laravelNestedValueAdmitsNull(property: $property, className: $target);
+            $admitsNull = $this->laravelNestedValueAdmitsNull(
+                property: $property,
+                className: $target,
+                insideRecursiveFold: $insideRecursiveFold,
+            );
             if ($admitsNull && $this->laravelFoldIsUnion($nested)) {
                 return $this->laravelUnionOrNull($merged);
             }
@@ -2063,6 +2106,63 @@ trait RendersLaravelValidation
             : $nested;
 
         return $schema;
+    }
+
+    /**
+     * A schema with the JSON type its PHP type pins spelled out where the schema names none: an object
+     * for a generated class, an array of the item type for a list, an object of the value type for a
+     * map, and the scalar's type. A union, an enum or `mixed` pins nothing here.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<string, mixed>
+     */
+    private function laravelWithPhpPinnedType(array $schema, string $phpType, bool $nullable): array
+    {
+        foreach (['type', '$ref', 'allOf', 'anyOf', 'oneOf', 'enum', 'const', 'x-openapi-recurse'] as $keyword) {
+            if (array_key_exists($keyword, $schema)) {
+                return $schema;
+            }
+        }
+        $members = $this->unionMembersBesideNull($phpType);
+        if (count($members) !== 1) {
+            return $schema;
+        }
+        $member = $members[0];
+        $short = $this->shortClassName($member);
+        $pinned = match (true) {
+            $member === 'int' => ['type' => 'integer'],
+            $member === 'float' => ['type' => 'number'],
+            $member === 'string' => ['type' => 'string'],
+            $member === 'bool' => ['type' => 'boolean'],
+            preg_match('/^array<string, (.+)>$/s', $member, $map) === 1 => [
+                'type' => 'object',
+                'additionalProperties' => $this->laravelWithPhpPinnedType(
+                    schema: is_array($schema['additionalProperties'] ?? null) ? $schema['additionalProperties'] : [],
+                    phpType: $map[1],
+                    nullable: str_starts_with($map[1], '?') || str_contains($map[1], 'null'),
+                ),
+            ],
+            preg_match('/^array<(?:int, )?(.+)>$/s', $member, $list) === 1 => [
+                'type' => 'array',
+                'items' => $this->laravelWithPhpPinnedType(
+                    schema: is_array($schema['items'] ?? null) ? $schema['items'] : [],
+                    phpType: $list[1],
+                    nullable: str_starts_with($list[1], '?') || str_contains($list[1], 'null'),
+                ),
+            ],
+            array_key_exists($short, $this->dtoSchemas)
+                && !array_key_exists('oneOf', $this->dtoSchemas[$short])
+                && !array_key_exists('anyOf', $this->dtoSchemas[$short]) => ['type' => 'object'],
+            default => [],
+        };
+        if ($pinned === []) {
+            return $schema;
+        }
+        if ($nullable) {
+            $pinned['nullable'] = true;
+        }
+
+        return [...$schema, ...$pinned];
     }
 
     /**
@@ -2164,10 +2264,19 @@ trait RendersLaravelValidation
      * @param string $className the class behind that fold
      * @return array<string, mixed>
      */
-    private function laravelWithNullableNestedMarker(array $schema, array $property, string $target, string $className): array
-    {
+    private function laravelWithNullableNestedMarker(
+        array $schema,
+        array $property,
+        string $target,
+        string $className,
+        bool $insideRecursiveFold = false,
+    ): array {
         $marked = [...$schema, 'x-openapi-recurse' => $target];
-        $admitsNull = $this->laravelNestedValueAdmitsNull(property: $property, className: $className);
+        $admitsNull = $this->laravelNestedValueAdmitsNull(
+            property: $property,
+            className: $className,
+            insideRecursiveFold: $insideRecursiveFold,
+        );
         if ($admitsNull && $this->laravelFoldIsUnion($this->laravelRecursiveFolds[$target] ?? [])) {
             return $this->laravelUnionOrNull($marked);
         }
@@ -2188,10 +2297,11 @@ trait RendersLaravelValidation
      *
      * @param SchemaProperty $property
      */
-    private function laravelNestedValueAdmitsNull(array $property, string $className): bool
+    private function laravelNestedValueAdmitsNull(array $property, string $className, bool $insideRecursiveFold = false): bool
     {
         $definition = $this->dtoSchemas[$className] ?? [];
-        if (array_key_exists('oneOf', $definition) || array_key_exists('anyOf', $definition)) {
+        // Inside a fold there is no `array` rule to refuse the null either: only the schema may allow it.
+        if ($insideRecursiveFold || array_key_exists('oneOf', $definition) || array_key_exists('anyOf', $definition)) {
             return ($property['schemaNullable'] ?? $property['nullable']) === true;
         }
 
@@ -2508,11 +2618,13 @@ trait RendersLaravelValidation
         $itemDtoClass = $itemClass !== null && !$this->laravelIsEnumClass($itemClass) ? $itemClass : null;
 
         $paths = [];
-        // `Shade|string` too: an array there can only be the class, so a JSON list is refused as one.
+        // `Shade|string` too: an array there can only be the class, so a JSON list is refused as one —
+        // not beside an `array` member, where the list is the other member.
         if (
             $nestedClass !== null
             || $this->laravelSchemaIsObject($constraints)
-            || $this->unionClassBesideScalars($property['type']) !== null
+            || ($this->unionClassBesideScalars($property['type']) !== null && !$this->unionHasArrayMember($property['type']))
+            || $this->laravelUnionAdmitsObjectButNoArray($constraints)
         ) {
             $paths[] = $path;
         }
@@ -2528,9 +2640,25 @@ trait RendersLaravelValidation
             $paths[] = $path . '.*';
         }
 
+        // Each member of a discriminated union, at the union's own path: `{"kind": "cat", "bag": [2]}`
+        // reached a cat's `type: object` property unasked. A path the variant sent does not have is
+        // skipped by the raw check, so the members' paths sit side by side.
+        if ($recurse) {
+            foreach ($this->laravelDiscriminatedMemberClasses($property, $nestedClass) as $memberClass) {
+                if (in_array($memberClass, $visitedClasses, true)) {
+                    continue;
+                }
+                foreach ($this->getSchemaProperties($memberClass) as $childProperty) {
+                    foreach ($this->laravelObjectShapePaths($childProperty, $path, [...$visitedClasses, $memberClass]) as $childPath) {
+                        $paths[] = $childPath;
+                    }
+                }
+            }
+        }
+
         $recurseClass = $nestedClass ?? $itemDtoClass;
         if (!$recurse || $recurseClass === null || in_array($recurseClass, $visitedClasses, true)) {
-            return $paths;
+            return array_values(array_unique($paths));
         }
 
         $visitedClasses[] = $recurseClass;
@@ -2541,7 +2669,34 @@ trait RendersLaravelValidation
             }
         }
 
-        return $paths;
+        return array_values(array_unique($paths));
+    }
+
+    /**
+     * The member classes of a discriminated union a property holds as one value: written inline on the
+     * property, or a union component it references.
+     *
+     * @param SchemaProperty $property
+     * @return array<int, string>
+     */
+    private function laravelDiscriminatedMemberClasses(array $property, ?string $nestedClass): array
+    {
+        // The map beside a union laravel mode did not dispatch — laravel-data keeps the `oneOf` too.
+        $mapping = $this->laravelConstraintsFor($property)['x-discriminator-map'] ?? null;
+        if ($mapping === null && $nestedClass !== null) {
+            $definition = $this->dtoSchemas[$nestedClass] ?? [];
+            $isUnion = array_key_exists('oneOf', $definition) || array_key_exists('anyOf', $definition);
+            $mapping = $isUnion ? ($this->discriminatorSchemas[$nestedClass]['mapping'] ?? null) : null;
+        }
+        $classes = [];
+        foreach (is_array($mapping) ? $mapping : [] as $class) {
+            $short = $this->shortClassName((string)$class);
+            if (array_key_exists($short, $this->dtoSchemas)) {
+                $classes[] = $short;
+            }
+        }
+
+        return array_values(array_unique($classes));
     }
 
     /**
@@ -2585,6 +2740,44 @@ trait RendersLaravelValidation
             }
 
             return $objectMembers > 0;
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether a `oneOf` / `anyOf` has an object member and no member a JSON array could match:
+     * `anyOf: [{type: object}, {type: string}]`. Decoded, `[2]` satisfied the object member there, so
+     * the raw body is asked instead, as for a plain `type: object`. A member that names no type admits
+     * an array, and so does one that names `array`: such a union stays the interpreter's.
+     *
+     * @param array<array-key, mixed> $schema
+     */
+    private function laravelUnionAdmitsObjectButNoArray(array $schema): bool
+    {
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            $members = $schema[$keyword] ?? null;
+            if (!is_array($members) || $members === []) {
+                continue;
+            }
+            $hasObjectMember = false;
+            foreach ($members as $member) {
+                if (!is_array($member)) {
+                    return false;
+                }
+                if ($this->laravelSchemaIsObject($member)) {
+                    $hasObjectMember = true;
+
+                    continue;
+                }
+                $type = $member['type'] ?? null;
+                $types = is_array($type) ? $type : [$type];
+                if ($type === null || $type === [] || in_array('array', $types, true) || in_array('object', $types, true)) {
+                    return false;
+                }
+            }
+
+            return $hasObjectMember;
         }
 
         return false;

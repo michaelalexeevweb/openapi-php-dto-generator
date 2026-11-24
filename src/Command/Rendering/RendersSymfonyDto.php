@@ -159,11 +159,10 @@ trait RendersSymfonyDto
         }
 
         $validationConstraints = $this->filterInterpreterConstraints(
-            constraints: $this->withConstraintSourceOf(
+            constraints: $this->symfonyExtractedClassConstraints(
                 className: $className,
-                extraction: fn(): array => $this->extractValidationConstraints($this->symfonyWithDiscriminatedUnionPropertiesSpelledOut(
-                    $this->classSchemaWithInlineAllOfMerged(schemaDefinition: $schemaDefinition, className: $className),
-                )),
+                schemaDefinition: $schemaDefinition,
+                mixedProperties: $this->mixedPropertyNames($properties),
             ),
             allowScalarKeywords: false,
             forceScalarOnProperties: $forceRootCallbackBounds,
@@ -196,7 +195,11 @@ trait RendersSymfonyDto
             $existing = is_array($validationConstraints['properties'][$openApiName] ?? null)
                 ? $validationConstraints['properties'][$openApiName]
                 : [];
-            if (!array_key_exists('type', $existing)) {
+            // A union's other members are values too: only the null is refused there.
+            $isUnion = count($this->unionMembersBesideNull($param['declaredType'])) > 1;
+            if ($isUnion && !array_key_exists('not', $existing)) {
+                $validationConstraints['properties'][$openApiName] = ['not' => ['type' => 'null']] + $existing;
+            } elseif (!$isUnion && !array_key_exists('type', $existing)) {
                 $validationConstraints['properties'][$openApiName] = ['type' => 'object'] + $existing;
             }
         }
@@ -371,16 +374,38 @@ trait RendersSymfonyDto
         // the argument below. Scalar keywords are OFF everywhere and ON for exactly these
         // properties — dropping the `false` leaves the reader to guess what is being overridden.
         return $this->symfonyWithoutUncountableMinProperties($this->filterInterpreterConstraints(
-            constraints: $this->withConstraintSourceOf(
+            constraints: $this->symfonyExtractedClassConstraints(
                 className: $className,
-                extraction: fn(): array => $this->extractValidationConstraints($this->symfonyWithDiscriminatedUnionPropertiesSpelledOut(
-                    $this->classSchemaWithInlineAllOfMerged(schemaDefinition: $schemaDefinition, className: $className),
-                )),
+                schemaDefinition: $schemaDefinition,
+                mixedProperties: $mixedProperties,
             ),
             allowScalarKeywords: false,
             forceScalarOnProperties: $forceRootCallbackBounds,
             unmaterializedProperties: $mixedProperties,
         ));
+    }
+
+    /**
+     * The constraints of a whole class, before the callback filter. A `$ref` union branch under a
+     * property typed `mixed` names a class nothing hydrates, so those properties are spelled out rather
+     * than checked as "is that class".
+     *
+     * @param array<string, mixed> $schemaDefinition
+     * @param array<string, true> $mixedProperties
+     * @return array<string, mixed>
+     */
+    private function symfonyExtractedClassConstraints(string $className, array $schemaDefinition, array $mixedProperties): array
+    {
+        return $this->withConstraintSourceOf(
+            className: $className,
+            extraction: function () use ($className, $schemaDefinition, $mixedProperties): array {
+                $this->constraintUnmaterializedProperties = $mixedProperties;
+
+                return $this->extractValidationConstraints($this->symfonyWithDiscriminatedUnionPropertiesSpelledOut(
+                    $this->classSchemaWithInlineAllOfMerged(schemaDefinition: $schemaDefinition, className: $className),
+                ));
+            },
+        );
     }
 
     /**
@@ -979,6 +1004,14 @@ PHP;
         $targetType = $this->dtoSchemas[ltrim($property['type'], '?\\')]['type'] ?? null;
         $targetPinsObject = $targetType === 'object'
             || (is_array($targetType) && in_array('object', $targetType, true) && !in_array('null', $targetType, true));
+        // A union with a class member (`string|Leaf`) is read the same way: the serializer turned the
+        // null into `new Leaf()` — the optional case only, a required union keeps its typed parameter.
+        $unionClass = $this->unionClassBesideScalars($property['type']);
+        $unionTargetType = $unionClass === null ? null : ($this->dtoSchemas[$unionClass]['type'] ?? null);
+        if (!$schemaNullable && !$required && $defaultLiteral === ' = null' && $unionTargetType === 'object') {
+            $inputType = $this->composePhpTypeHint($phpType, true);
+            $nullRefusedByCallback = true;
+        }
         if (!$schemaNullable && $targetPinsObject) {
             if ($required) {
                 $untypedRequiredObject = true;
@@ -1228,6 +1261,16 @@ PHP;
             $format = $property['temporalFormat'] ?? null;
         } elseif ($this->propertyHasTemporalItems($property)) {
             $format = $property['itemsTemporalFormat'] ?? null;
+        } elseif (in_array('DateTimeImmutable', array_map($this->shortClassName(...), $this->unionMembersBesideNull($property['type'])), true)) {
+            // A date beside other members — `DateTimeImmutable|Shade`, `int|DateTimeImmutable` — went out
+            // as the serializer's RFC 3339 timestamp, `2024-01-02T00:00:00+00:00` for a `format: date`.
+            // The formatter passes every other value through.
+            $unionFormats = $property['unionTemporalFormats'] ?? [];
+            $format = match ($unionFormats) {
+                ['date'] => 'Y-m-d',
+                ['date-time'] => 'c',
+                default => null,
+            };
         }
         if (!is_string($format)) {
             return null;
@@ -1249,6 +1292,23 @@ PHP;
     }
 
     /**
+     * The constraints the attributes are read from: scalar `allOf` folded, and without the keywords the
+     * PHP type does not pin.
+     *
+     * @param SchemaProperty $property
+     * @return array<string, mixed>
+     */
+    private function symfonyAttributeConstraints(array $property): array
+    {
+        return $this->withoutKeywordsTheTypeDoesNotPin(
+            schema: $this->foldScalarAllOfConstraints(
+                constraints: is_array($property['constraints'] ?? null) ? $property['constraints'] : [],
+            ),
+            phpType: $property['type'],
+        );
+    }
+
+    /**
      * Maps OpenAPI constraints to Symfony Validator attribute lines. Covers the common scalar,
      * string, numeric and array constraints plus cascade validation. Complex schema keywords that
      * need cross-field logic are handled by the class-level callback block emitted separately.
@@ -1260,12 +1320,7 @@ PHP;
     {
         // A keyword the property's type does not pin is the callback's, which applies it to its own
         // type only — see `shouldForceRootCallbackForProperty()`.
-        $constraints = $this->withoutKeywordsTheTypeDoesNotPin(
-            schema: $this->foldScalarAllOfConstraints(
-                constraints: is_array($property['constraints'] ?? null) ? $property['constraints'] : [],
-            ),
-            phpType: $property['type'],
-        );
+        $constraints = $this->symfonyAttributeConstraints($property);
         $attributes = [];
 
         // A schema with no `type` admits null like any other JSON value — the runtime rule since
@@ -1339,60 +1394,11 @@ PHP;
             $attributes[] = '#[Assert\All([new Assert\Type(' . $mapValueTypeExpression . ')])]';
         }
 
-        // anyOf — the value must satisfy at least one branch.
-        // Not on a `mixed` property: the callback owns its `anyOf` — see `shouldForceRootCallbackForProperty()`.
-        $anyOf = $constraints['anyOf'] ?? null;
-        if (
-            is_array($anyOf)
-            && count($anyOf) >= 2
-            && !$this->anyOfBranchCarriesPattern($anyOf)
-            && !$this->anyOfBranchOutgrowsItsAttribute($anyOf)
-            && !$this->anyOfBranchCarriesUnspelledEnum(property: $property, branches: $anyOf)
-            && $property['type'] !== 'mixed'
-        ) {
-            $branches = [];
-            $allBranchesValidatable = true;
-            foreach ($anyOf as $branch) {
-                // An inline enum branch is hydrated into the PHP enum generated for it, so holding
-                // that enum is the member check — `Type('string')` beside a `Choice` refused every
-                // member, because by then it was no string.
-                $enumClass = is_array($branch) ? $this->symfonyAnyOfEnumBranchClass(property: $property, branch: $branch) : null;
-                // A `{type: null}` branch beside two others — `anyOf: [Code, null, integer]` — is the
-                // `null` the nullable PHP type admits. It had no expression, the whole attribute was
-                // dropped, and the other branches' keywords with it: `"a"` passed a `minLength: 2`.
-                $isNullBranch = is_array($branch) && in_array($branch['type'] ?? null, ['null', ['null']], true) && count($branch) === 1;
-                // An inline object branch beside scalars is hydrated into the class generated for it,
-                // as a `$ref` one is: `Type('array')` refused every valid object, which by then was no
-                // array. The class checks its own keywords through the union cascade.
-                $inlineClass = is_array($branch) && ($branch['type'] ?? null) === 'object' && !array_key_exists('x-php-instanceof', $branch)
-                    ? $this->unionClassBesideScalars($property['type'])
-                    : null;
-                // A `format: date` / `date-time` branch is hydrated into the `DateTimeImmutable` the PHP
-                // type names, so holding one IS the branch: `Type('string')` refused every valid date,
-                // because by then it was no string — `anyOf: [{format: date-time}, {type: null}]` with it.
-                $isTemporalBranch = is_array($branch)
-                    && in_array($branch['type'] ?? 'string', ['string', ['string']], true)
-                    && in_array($branch['format'] ?? null, ['date', 'date-time', 'datetime'], true)
-                    && in_array('DateTimeImmutable', explode('|', ltrim($property['type'], '?')), true);
-                $expressions = match (true) {
-                    $isNullBranch => ['new Assert\IsNull()'],
-                    $isTemporalBranch => ['new Assert\Type(DateTimeImmutable::class)'],
-                    $enumClass !== null => ['new Assert\Type(' . $enumClass . '::class)'],
-                    $inlineClass !== null => ['new Assert\Type(' . $inlineClass . '::class)'],
-                    is_array($branch) => $this->valueConstraintExpressions($branch),
-                    default => [],
-                };
-                if ($expressions === []) {
-                    $allBranchesValidatable = false;
-                    break;
-                }
-                $branches[] = count($expressions) === 1
-                    ? $expressions[0]
-                    : 'new Assert\Sequentially([' . implode(', ', $expressions) . '])';
-            }
-            if ($allBranchesValidatable && count($branches) >= 2) {
-                $attributes[] = '#[Assert\AtLeastOneOf([' . implode(', ', $branches) . '])]';
-            }
+        // anyOf — the value must satisfy at least one branch. Where no `Assert\AtLeastOneOf` spells it,
+        // the callback owns it — see `shouldForceRootCallbackForProperty()`.
+        $atLeastOneOf = $this->symfonyAtLeastOneOf(property: $property, constraints: $constraints);
+        if ($atLeastOneOf !== null) {
+            $attributes[] = $atLeastOneOf;
         }
 
         // Per-item constraints for arrays of enums and dates (array of DTOs cascades via Valid instead).
@@ -1905,7 +1911,9 @@ PHP;
      */
     private function symfonyTypeIsContainer(array $property): bool
     {
-        return str_starts_with(ltrim($property['type'], '?'), 'array');
+        // `array|string|Fox` is a union that may hold an array, not a container: read as one, it kept
+        // `#[Assert\Valid]`, which Symfony 8 refuses to point at the string member (a 500).
+        return preg_match('/^array(?:<.*>)?$/', ltrim($property['type'], '?')) === 1;
     }
 
     /**
@@ -2085,6 +2093,18 @@ PHP;
         ) {
             return true;
         }
+        // An `anyOf` no `Assert\AtLeastOneOf` spells — one branch, a branch with no `Assert\*`
+        // expression (an `allOf`, a `multipleOf`) — was dropped by the attribute and skipped by the
+        // callback: `{"egret": 25}` passed `anyOf: [{maximum: 20}]`.
+        // Not on a property held as a generated class: there the branches describe keys the built object
+        // may no longer carry, and checked against it a valid payload was refused.
+        if (
+            is_array($constraints['anyOf'] ?? null)
+            && !array_key_exists($this->shortClassName(ltrim($property['type'], '?')), $this->dtoSchemas)
+            && $this->symfonyAtLeastOneOf(property: $property, constraints: $this->symfonyAttributeConstraints($property)) === null
+        ) {
+            return true;
+        }
         if (is_array($constraints['anyOf'] ?? null) && $this->anyOfBranchCarriesPattern($constraints['anyOf'])) {
             return true;
         }
@@ -2109,7 +2129,8 @@ PHP;
             return true;
         }
 
-        $format = $constraints['format'] ?? null;
+        // Read folded, as the attributes read it: a format inside `allOf` has no attribute either.
+        $format = $folded['format'] ?? $constraints['format'] ?? null;
         if (is_string($format) && $this->isCallbackOnlyStringFormat($format)) {
             return true;
         }
@@ -2128,6 +2149,71 @@ PHP;
         return is_string($constraints['pattern'] ?? null)
             && $constraints['pattern'] !== ''
             && !$this->patternCompiles($constraints['pattern']);
+    }
+
+    /**
+     * The `Assert\AtLeastOneOf` attribute a property-level `anyOf` is checked by, or null when none
+     * spells it: a single branch, a branch with no `Assert\*` expression, a pattern, a container
+     * keyword or an unspelled enum — and on a `mixed` property. Such an `anyOf` is the callback's.
+     *
+     * @param SchemaProperty $property
+     * @param array<string, mixed> $constraints the folded constraints `resolveSymfonyAttributes()` reads
+     */
+    private function symfonyAtLeastOneOf(array $property, array $constraints): ?string
+    {
+        $anyOf = $constraints['anyOf'] ?? null;
+        if (
+            !is_array($anyOf)
+            || count($anyOf) < 2
+            || $this->anyOfBranchCarriesPattern($anyOf)
+            || $this->anyOfBranchOutgrowsItsAttribute($anyOf)
+            || $this->anyOfBranchCarriesUnspelledEnum(property: $property, branches: $anyOf)
+            || $property['type'] === 'mixed'
+        ) {
+            return null;
+        }
+
+        $branches = [];
+        foreach ($anyOf as $branch) {
+            // An inline enum branch is hydrated into the PHP enum generated for it, so holding
+            // that enum is the member check — `Type('string')` beside a `Choice` refused every
+            // member, because by then it was no string.
+            $enumClass = is_array($branch) ? $this->symfonyAnyOfEnumBranchClass(property: $property, branch: $branch) : null;
+            // A `{type: null}` branch beside two others — `anyOf: [Code, null, integer]` — is the
+            // `null` the nullable PHP type admits. It had no expression, the whole attribute was
+            // dropped, and the other branches' keywords with it: `"a"` passed a `minLength: 2`.
+            $isNullBranch = is_array($branch) && in_array($branch['type'] ?? null, ['null', ['null']], true) && count($branch) === 1;
+            // An inline object branch beside scalars is hydrated into the class generated for it,
+            // as a `$ref` one is: `Type('array')` refused every valid object, which by then was no
+            // array. The class checks its own keywords through the union cascade.
+            // Beside nothing but `null` (`?ProbeLemur`), the class is the type itself.
+            $inlineClass = is_array($branch) && ($branch['type'] ?? null) === 'object' && !array_key_exists('x-php-instanceof', $branch)
+                ? $this->unionClassBesideScalars($property['type']) ?? $this->symfonyLoneDtoClass($property['type'])
+                : null;
+            // A `format: date` / `date-time` branch is hydrated into the `DateTimeImmutable` the PHP
+            // type names, so holding one IS the branch: `Type('string')` refused every valid date,
+            // because by then it was no string — `anyOf: [{format: date-time}, {type: null}]` with it.
+            $isTemporalBranch = is_array($branch)
+                && in_array($branch['type'] ?? 'string', ['string', ['string']], true)
+                && in_array($branch['format'] ?? null, ['date', 'date-time', 'datetime'], true)
+                && in_array('DateTimeImmutable', explode('|', ltrim($property['type'], '?')), true);
+            $expressions = match (true) {
+                $isNullBranch => ['new Assert\IsNull()'],
+                $isTemporalBranch => ['new Assert\Type(DateTimeImmutable::class)'],
+                $enumClass !== null => ['new Assert\Type(' . $enumClass . '::class)'],
+                $inlineClass !== null => ['new Assert\Type(' . $inlineClass . '::class)'],
+                is_array($branch) => $this->valueConstraintExpressions($branch),
+                default => [],
+            };
+            if ($expressions === []) {
+                return null;
+            }
+            $branches[] = count($expressions) === 1
+                ? $expressions[0]
+                : 'new Assert\Sequentially([' . implode(', ', $expressions) . '])';
+        }
+
+        return count($branches) >= 2 ? '#[Assert\AtLeastOneOf([' . implode(', ', $branches) . '])]' : null;
     }
 
     /**
@@ -2307,5 +2393,19 @@ PHP;
             ],
             strict: true,
         );
+    }
+
+    /**
+     * The generated class a type names on its own (`?ProbeLemur`), or null for anything else.
+     */
+    private function symfonyLoneDtoClass(string $phpType): ?string
+    {
+        $members = $this->unionMembersBesideNull($phpType);
+        if (count($members) !== 1) {
+            return null;
+        }
+        $short = $this->shortClassName($members[0]);
+
+        return array_key_exists($short, $this->dtoSchemas) ? $short : null;
     }
 }

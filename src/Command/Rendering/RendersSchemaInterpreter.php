@@ -438,7 +438,8 @@ PHP;
             // `properties`, `dependentRequired` refused `[1, 2, 3]` as an object missing its keys. Only
             // where `type` pins `object` is a list a map keyed 0..n-1. The empty array stays an object
             // — decoded, `[]` and `{}` are one value, and `json_encode([])` is how a PHP client sends
-            // the empty object.
+            // the empty object. A list that survives is that object, so every key below is a NAME:
+            // `{"0": 1, "1": 2}` skipped `additionalProperties` as list indexes and passed unchecked.
             $prologue[] = <<<'PHP'
         if (
             is_array($structuredValue)
@@ -591,16 +592,33 @@ PHP
             $temporalMatchFold = $canHoldTemporal
                 ? "\n\n            if (\$temporalBranchMatched) {\n                \$matchingBranches++;\n            }"
                 : '';
+            // A branch a generated class checks, which the interpreter cannot judge: a value of its
+            // type may be it. Counted apart, it neither fails the union nor makes a second match.
+            $usesCheckedByClass = $this->schemaUsesKeyword($constraints, 'x-php-checked-by-class');
+            $oneOfCheckedByClass = $usesCheckedByClass
+                ? <<<'PHP'
+                if (($branch['x-php-checked-by-class'] ?? false) === true) {
+                    if ($this->openApiValueFitsCheckedByClassBranch($value, $branch, $path, $depth)) {
+                        $undecidedBranches++;
+                    }
+                    continue;
+                }
+
+
+PHP
+                : '';
+            $undecidedInit = $usesCheckedByClass ? "\n            \$undecidedBranches = 0;" : '';
+            $noMatchCondition = $usesCheckedByClass ? '$matchingBranches === 0 && $undecidedBranches === 0' : '$matchingBranches === 0';
             $sections[] = <<<PHP
         if (is_array(\$schema['oneOf'] ?? null)) {
-            \$matchingBranches = 0;{$temporalMatchInit}{$nullableInit}
+            \$matchingBranches = 0;{$temporalMatchInit}{$nullableInit}{$undecidedInit}
             \$branchErrors = [];
             foreach (\$schema['oneOf'] as \$branch) {
                 if (!is_array(\$branch)) {
                     continue;
                 }
 
-                if (is_string(\$branchClass = \$branch['x-php-instanceof'] ?? null) && \$branchClass !== '') {
+{$oneOfCheckedByClass}                if (is_string(\$branchClass = \$branch['x-php-instanceof'] ?? null) && \$branchClass !== '') {
                     \$branchFqcn = __NAMESPACE__ . '\\\\' . ltrim(\$branchClass, '\\\\');
                     if (is_object(\$value) && \$value instanceof \$branchFqcn) {
                         \$matchingBranches++;
@@ -621,7 +639,7 @@ PHP
 
             if (\$matchingBranches > 1) {
                 \$errors[] = sprintf('%s matches more than one allowed oneOf branch', \$path);
-            } elseif (\$matchingBranches === 0) {
+            } elseif ({$noMatchCondition}) {
                 \$errors = \$branchErrors === []
                     ? [...\$errors, \$this->describeOpenApiUnionMismatch(\$path, 'oneOf', \$schema['oneOf'], \$value)]
                     : [...\$errors, ...array_values(array_unique(\$branchErrors))];
@@ -1042,10 +1060,6 @@ PHP;
                     continue;
                 }
                 foreach (\$structuredValue as \$propertyName => \$propertyValue) {
-                    // A JSON key "42" is the PHP int 42. Only a LIST's int keys are indexes, not names.
-                    if (is_int(\$propertyName) && array_is_list(\$structuredValue)) {
-                        continue;
-                    }
                     \$propertyName = (string)\$propertyName;
                     \$matched = preg_match(\$regex, \$propertyName);
                     // A key the engine ran out of resources on is undecided, not unmatched: its value
@@ -1070,10 +1084,6 @@ PHP;
             $sections[] = <<<'PHP'
         if (is_array($schema['propertyNames'] ?? null) && is_array($structuredValue)) {
             foreach (array_keys($structuredValue) as $propertyName) {
-                // A JSON key "42" is the PHP int 42. Only a LIST's int keys are indexes, not names.
-                if (is_int($propertyName) && array_is_list($structuredValue)) {
-                    continue;
-                }
                 $propertyName = (string)$propertyName;
                 $errors = [
                     ...$errors,
@@ -1290,18 +1300,34 @@ PHP
                 : '';
             // A branch naming a generated class (Symfony mode only) is "is that class": the class checked
             // itself. Without this arm the branch had no keyword to fail and matched every value, so it
-            // took the scalar branches beside it along. A raw array or object nothing turned into the
-            // class cannot be told from it and is not judged — the runtime validator's rule.
+            // took the scalar branches beside it along. A raw object nothing turned into an object
+            // class cannot be told from it and is not judged — the runtime validator's rule. No array
+            // is an enum case, and a non-empty list is no object: `[""]` matched `anyOf: [$ref
+            // EnumClass, {type: array, items: {minLength: 1}}]` through the class branch.
             $anyOfClassBranch = $this->schemaUsesKeyword($constraints, 'x-php-instanceof')
                 ? <<<'PHP'
                 if (is_string($branchClass = $branch['x-php-instanceof'] ?? null) && $branchClass !== '') {
                     $branchFqcn = __NAMESPACE__ . '\\' . ltrim($branchClass, '\\');
-                    if (is_array($value) || $value instanceof \stdClass || (is_object($value) && $value instanceof $branchFqcn)) {
+                    $rawObject = (is_array($value) && ($value === [] || !array_is_list($value))) || $value instanceof \stdClass;
+                    if ((is_object($value) && $value instanceof $branchFqcn) || ($rawObject && !enum_exists($branchFqcn))) {
                         $anyOfMatched = true;
                         break;
                     }
                     continue;
                 }
+
+PHP
+                : '';
+            $anyOfCheckedByClass = $this->schemaUsesKeyword($constraints, 'x-php-checked-by-class')
+                ? <<<'PHP'
+                if (($branch['x-php-checked-by-class'] ?? false) === true) {
+                    if ($this->openApiValueFitsCheckedByClassBranch($value, $branch, $path, $depth)) {
+                        $anyOfMatched = true;
+                        break;
+                    }
+                    continue;
+                }
+
 
 PHP
                 : '';
@@ -1314,7 +1340,7 @@ PHP
                     continue;
                 }
 
-{$anyOfClassBranch}{$anyOfTypeGate}                \$errorsForBranch = \$this->validateOpenApiNode(\$value, \$branch, \$path, \$depth + 1);
+{$anyOfCheckedByClass}{$anyOfClassBranch}{$anyOfTypeGate}                \$errorsForBranch = \$this->validateOpenApiNode(\$value, \$branch, \$path, \$depth + 1);
                 if (\$errorsForBranch === []) {
                     \$anyOfMatched = true;
                     break;
@@ -1399,7 +1425,7 @@ PHP;
                 $sections[] = <<<PHP
             if (\$extraPropertySchema === false || is_array(\$extraPropertySchema)) {
                 foreach (\$structuredValue as \$propertyName => \$propertyValue) {
-                    if ((is_int(\$propertyName) && array_is_list(\$structuredValue)) || array_key_exists(\$propertyName, \$evaluatedProperties)) {
+                    if (array_key_exists(\$propertyName, \$evaluatedProperties)) {
                         continue;
                     }
                     \$propertyName = (string)\$propertyName;
@@ -1424,7 +1450,7 @@ PHP;
                     <<<'PHP'
             if ($unevaluatedProperties === false) {
                 foreach ($structuredValue as $propertyName => $_propertyValue) {
-                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if (array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
                     $propertyName = (string)$propertyName;
@@ -1434,7 +1460,7 @@ PHP;
                 }
             } elseif (is_array($unevaluatedProperties)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if (array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
                     $propertyName = (string)$propertyName;
@@ -1625,6 +1651,29 @@ PHP;
         }
 
         return false;
+    }
+PHP;
+        }
+
+        if ($this->schemaUsesKeyword($constraints, 'x-php-checked-by-class')) {
+            // A union branch a generated class checks: the interpreter can only ask whether the value
+            // is of the branch's type. A non-empty list is an array and nothing else.
+            $sections[] = <<<'PHP'
+
+    /**
+     * @param array<array-key, mixed> $branch
+     */
+    private function openApiValueFitsCheckedByClassBranch(mixed $value, array $branch, string $path, int $depth): bool
+    {
+        if (!array_key_exists('type', $branch)) {
+            return true;
+        }
+        $types = is_array($branch['type']) ? $branch['type'] : [$branch['type']];
+        if (is_array($value) && $value !== [] && array_is_list($value) && !in_array('array', $types, true)) {
+            return false;
+        }
+
+        return $this->validateOpenApiNode($value, ['type' => $branch['type']], $path, $depth + 1) === [];
     }
 PHP;
         }
@@ -3107,6 +3156,66 @@ PHP;
     }
 
     /**
+     * The JSON type a union branch admits, read from the branch as the document wrote it: its own
+     * `type`, the first typed `allOf` member, every member of a nested `oneOf`/`anyOf`, or `object`
+     * for a branch made of object keywords. Null when nothing says.
+     *
+     * @param array<mixed> $branch
+     * @return string|list<string>|null
+     */
+    private function interpreterShadowType(array $branch): string|array|null
+    {
+        $type = $branch['type'] ?? null;
+        if (is_string($type)) {
+            return $type;
+        }
+        if (is_array($type)) {
+            $typeNames = array_values(array_filter($type, is_string(...)));
+            if ($typeNames !== []) {
+                return $typeNames;
+            }
+        }
+        foreach (is_array($branch['allOf'] ?? null) ? $branch['allOf'] : [] as $member) {
+            $memberType = is_array($member) ? $this->interpreterShadowType($member) : null;
+            if ($memberType !== null) {
+                return $memberType;
+            }
+        }
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            if (!is_array($branch[$keyword] ?? null) || $branch[$keyword] === []) {
+                continue;
+            }
+            $types = [];
+            foreach ($branch[$keyword] as $member) {
+                $memberType = is_array($member) ? $this->interpreterShadowType($member) : null;
+                if ($memberType === null) {
+                    return null;
+                }
+                $types = [...$types, ...(array)$memberType];
+            }
+
+            return array_values(array_unique($types));
+        }
+        foreach (['properties', 'required', 'additionalProperties', 'patternProperties', 'propertyNames'] as $objectKeyword) {
+            if (array_key_exists($objectKeyword, $branch)) {
+                return 'object';
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether a `type` names `object` and nothing else beside `null`.
+     */
+    private function declaresObjectOnly(mixed $type): bool
+    {
+        $types = is_array($type) ? array_values(array_diff($type, ['null'])) : [$type];
+
+        return $types === ['object'];
+    }
+
+    /**
      * Keeps only the Symfony-mode keywords that need the callback path. Supported scalar / count /
      * regex constraints are intentionally removed here so the callback does not duplicate
      * attribute-based violations.
@@ -3285,6 +3394,7 @@ PHP;
                         break;
                     }
                     $branches = [];
+                    $checkedByClassBranches = [];
                     foreach ($value as $branch) {
                         // A boolean branch is not noise. `oneOf: [true, {type: string}]` refuses every
                         // string — `true` matches it as well, so TWO branches match and `oneOf` wants
@@ -3305,9 +3415,20 @@ PHP;
                         );
                         if ($nested !== []) {
                             $branches[] = $nested;
+                        } elseif ($key !== 'allOf') {
+                            // Filtered to nothing, a `oneOf`/`anyOf` branch is still an alternative: the
+                            // class it hydrates into checks it. Dropped, the union shrank to its other
+                            // branches and refused the very object this one admits — `oneOf: [{type:
+                            // string}, {allOf: [object, object]}]` refused every object. It stays as a
+                            // branch nobody here can judge, typed where its type is known.
+                            $checkedByClassBranches[] = count($branches);
+                            $shadowType = $this->interpreterShadowType($branch);
+                            $branches[] = ['x-php-checked-by-class' => true, ...($shadowType === null ? [] : ['type' => $shadowType])];
                         }
                     }
-                    if ($branches !== []) {
+                    // Only a union with a branch the interpreter judges is emitted at all: one made of
+                    // undecidable branches alone says nothing, as before.
+                    if ($branches !== [] && count($checkedByClassBranches) < count($branches)) {
                         $filtered[$key] = $branches;
                     }
                     break;
@@ -3398,11 +3519,25 @@ PHP;
                     $filtered[$key] = $value;
                     break;
                 case 'x-php-instanceof':
+                case 'x-php-checked-by-class':
                 case 'x-discriminator-property':
                 case 'x-discriminator-php-property':
                 case 'x-discriminator-map':
                     $filtered[$key] = $value;
                     break;
+            }
+        }
+
+        // The key keywords read a value as an OBJECT only where `type` says so: a decoded `{"0": 1}` is
+        // the PHP list `[1]`, and without the type the interpreter took it for a JSON array and skipped
+        // `additionalProperties` altogether. The attribute that checks the type does not tell it.
+        if (!array_key_exists('type', $filtered) && $this->declaresObjectOnly($constraints['type'] ?? null)) {
+            foreach (['additionalProperties', 'unevaluatedProperties', 'patternProperties', 'propertyNames'] as $keyKeyword) {
+                if (array_key_exists($keyKeyword, $filtered)) {
+                    $filtered['type'] = $constraints['type'];
+
+                    break;
+                }
             }
         }
 

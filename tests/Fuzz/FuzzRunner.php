@@ -61,6 +61,12 @@ final class FuzzRunner
     /** How many generation warnings the case being shrunk had before any removal. */
     private int $originalWarnings = 0;
 
+    /**
+     * Whether the reference oracle agreed with the case's expectation on the unshrunk document. Only
+     * then is it asked after each shrink step: where it misjudges the original it has nothing to say.
+     */
+    private bool $referenceAgreed = false;
+
     private readonly LoadChecker $loadChecker;
 
     /** @var array<string, int> */
@@ -432,6 +438,8 @@ final class FuzzRunner
             $value = $property === null ? null : json_decode($payload['json'])->{$property};
             $document = $spec->document([$suspect]);
             $this->originalWarnings = count($this->generateChecked(document: $document, mode: $mode)['warnings']);
+            $this->referenceAgreed = $payload['expected'] !== PayloadVerdict::Crashed
+                && (new ReferenceOracle($document))->accepts($property === null ? '{}' : FuzzSpec::payload($property, $value)) === ($payload['expected'] === PayloadVerdict::Accepted);
             if (!$stillFails($document, $property, $value)) {
                 continue;
             }
@@ -474,6 +482,7 @@ final class FuzzRunner
         }
 
         $this->originalWarnings = PHP_INT_MAX;
+        $this->referenceAgreed = false;
         if (!$found) {
             // Fails only beside other properties — usually collateral of a property that breaks the
             // whole class, which is then reported on its own. Kept, unshrunk, so nothing is lost.
@@ -584,6 +593,13 @@ final class FuzzRunner
             // payload's meaning from one that changes it.
             return true;
         }
+        // The expectation must still hold on the SHRUNK document, by a judge that is no generation mode:
+        // the oracles share the generator, so a removal they all misread — the `enum` behind a
+        // `notInEnum` gone, a component shrunk to `{}` that admits everything — was kept, and the
+        // payload drifted to one the shrunk document admits.
+        if ($this->referenceAgreed && $this->referenceDisagrees(document: $document, json: $json, expected: $expected)) {
+            return false;
+        }
         // Nor into a documented divergence at the top: a JSON array (symfony, yii3) or a scalar (symfony)
         // where the property now resolves to an object.
         if ($property !== null && self::landsInDocumentedTopLevel(document: $document, property: $property, value: $value, mode: $mode)) {
@@ -610,6 +626,16 @@ final class FuzzRunner
     }
 
     /**
+     * @param array<string, mixed> $document
+     */
+    private function referenceDisagrees(array $document, string $json, PayloadVerdict $expected): bool
+    {
+        $verdict = (new ReferenceOracle($document))->accepts($json);
+
+        return $verdict !== null && $verdict !== ($expected === PayloadVerdict::Accepted);
+    }
+
+    /**
      * Whether the payload's top-level value meets a support-matrix row for this mode: a JSON array for an
      * object ("a JSON array for a `type: object` property": symfony, yii3) or a scalar for an object ("a
      * scalar for a property typed as a generated class": symfony). The fuzzer never generates those for
@@ -623,13 +649,7 @@ final class FuzzRunner
             return false;
         }
         $schemas = $document['components']['schemas'];
-        $schema = $schemas['Probe']['properties'][$property] ?? [];
-        for ($hops = 0; $hops < 8 && is_array($schema) && is_string($schema['$ref'] ?? null); $hops++) {
-            $schema = $schemas[substr($schema['$ref'], strlen('#/components/schemas/'))] ?? [];
-        }
-        $type = is_array($schema) ? ($schema['type'] ?? null) : null;
-        $objectShaped = $type === 'object' || (is_array($type) && in_array('object', $type, true));
-        if (!$objectShaped) {
+        if (!self::isObjectShaped(schema: $schemas['Probe']['properties'][$property] ?? [], schemas: $schemas, depth: 0)) {
             return false;
         }
         if (is_array($value)) {
@@ -637,6 +657,50 @@ final class FuzzRunner
         }
 
         return $mode === GenerationMode::Symfony && $value !== null && !$value instanceof stdClass;
+    }
+
+    /**
+     * Whether a schema resolves to an object: through `$ref` hops, a single-member `anyOf`/`oneOf`
+     * wrapper, or a union whose every non-null member is an object — the shapes symfony and yii3 type
+     * as the class, so the class rows of the support matrix speak for them.
+     *
+     * @param array<string, mixed> $schemas
+     */
+    private static function isObjectShaped(mixed $schema, array $schemas, int $depth): bool
+    {
+        if (!is_array($schema) || $depth > 8) {
+            return false;
+        }
+        if (is_string($schema['$ref'] ?? null)) {
+            return self::isObjectShaped(
+                schema: $schemas[substr($schema['$ref'], strlen('#/components/schemas/'))] ?? [],
+                schemas: $schemas,
+                depth: $depth + 1,
+            );
+        }
+        $type = $schema['type'] ?? null;
+        if ($type !== null) {
+            return $type === 'object' || (is_array($type) && in_array('object', $type, true));
+        }
+        foreach (['anyOf', 'oneOf'] as $keyword) {
+            if (!is_array($schema[$keyword] ?? null)) {
+                continue;
+            }
+            $objectMembers = 0;
+            foreach ($schema[$keyword] as $member) {
+                if (is_array($member) && ($member['type'] ?? null) === 'null') {
+                    continue;
+                }
+                if (!self::isObjectShaped(schema: $member, schemas: $schemas, depth: $depth + 1)) {
+                    return false;
+                }
+                $objectMembers++;
+            }
+
+            return $objectMembers > 0;
+        }
+
+        return false;
     }
 
     /**

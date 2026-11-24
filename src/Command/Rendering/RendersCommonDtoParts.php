@@ -194,17 +194,31 @@ trait RendersCommonDtoParts
 
     /**
      * A union of `DateTimeImmutable` and members none of which is `string` — `oneOf: [{type: integer},
-     * {format: date-time}]` typed `int|DateTimeImmutable`, or a plain `array` beside the date. A string
-     * the validator let through can then only be the date, and any other value is one of the others,
-     * never something to parse.
+     * {format: date-time}]` typed `int|DateTimeImmutable`, a plain `array`, a generated class or a
+     * non-string enum beside the date. A string the validator let through can then only be the date,
+     * and any other value is one of the others, never something to parse.
      */
     private function isTemporalScalarUnion(string $type): bool
     {
-        $members = array_values(array_diff(explode('|', ltrim($type, '?')), ['null']));
+        $members = array_map(
+            fn(string $member): string => $this->shortClassName($member),
+            $this->unionMembersBesideNull($type),
+        );
+        if (count($members) < 2 || !in_array('DateTimeImmutable', $members, true)) {
+            return false;
+        }
+        foreach ($members as $member) {
+            $isScalarOrDate = in_array($member, ['DateTimeImmutable', 'int', 'float', 'bool', 'array'], true);
+            // An enum or a generated class beside the date arrives as an int or an array — never as
+            // a string, so the string is still the date.
+            $isClass = ($this->enumSchemas[$member]['type'] ?? 'string') !== 'string'
+                || array_key_exists($member, $this->dtoSchemas);
+            if (!$isScalarOrDate && !$isClass) {
+                return false;
+            }
+        }
 
-        return count($members) >= 2
-            && in_array('DateTimeImmutable', $members, true)
-            && array_diff($members, ['DateTimeImmutable', 'int', 'float', 'bool', 'array']) === [];
+        return true;
     }
 
     /**
@@ -857,26 +871,27 @@ trait RendersCommonDtoParts
     }
 
     /**
-     * The one generated class in a union whose other members are scalars (or enums) — `Shade|string`,
-     * `Shade|int|null` — or null for any other type. On the wire such a value is the object exactly
-     * when it is a JSON object, so that alone decides which member it is; a second class, or an `array`
-     * member beside the class, would make the question ambiguous and is left alone.
+     * The one generated class in a union whose other members are scalars, enums, `array` or
+     * `DateTimeImmutable` — `Shade|string`, `Shade|int|null`, `DateTimeImmutable|Shade`,
+     * `Level|Shade`, `array|Shade` — or null for any other type. On the wire such a value is the
+     * object exactly when it is a JSON object (beside an `array` member: a non-list one), so that alone
+     * decides which member it is. A second class makes the question ambiguous and is left alone, and so
+     * is a type that is the class alone — that is a plain nested DTO, not a union.
      */
     private function unionClassBesideScalars(string $phpType): ?string
     {
-        $members = array_values(array_diff(explode('|', str_replace('?', '', $phpType)), ['null']));
+        $members = $this->unionMembersBesideNull($phpType);
         if (count($members) < 2) {
             return null;
         }
 
         $classes = [];
         foreach ($members as $member) {
-            $member = trim($member);
-            if (in_array($member, ['string', 'int', 'float', 'bool'], true)) {
+            if (in_array($member, ['string', 'int', 'float', 'bool', 'array', 'DateTimeImmutable'], true)) {
                 continue;
             }
             $short = $this->shortClassName($member);
-            if (array_key_exists($short, $this->enumSchemas)) {
+            if ($short === 'DateTimeImmutable' || array_key_exists($short, $this->enumSchemas)) {
                 continue;
             }
             if (!array_key_exists($short, $this->dtoSchemas)) {
@@ -886,5 +901,46 @@ trait RendersCommonDtoParts
         }
 
         return count($classes) === 1 ? $classes[0] : null;
+    }
+
+    /**
+     * Whether a union also holds a plain `array` beside its members — the list a JSON array arrives as,
+     * which a class member must then tell apart from a JSON object by its keys.
+     */
+    private function unionHasArrayMember(string $phpType): bool
+    {
+        return in_array('array', $this->unionMembersBesideNull($phpType), true);
+    }
+
+    /**
+     * The top-level members of a PHP type, without `null` — generics (`array<int, X|Y>`) stay whole.
+     *
+     * @return list<string>
+     */
+    private function unionMembersBesideNull(string $phpType): array
+    {
+        $members = [];
+        $depth = 0;
+        $current = '';
+        foreach (str_split(ltrim(trim($phpType), '?')) as $character) {
+            $depth += match ($character) {
+                '<' => 1,
+                '>' => -1,
+                default => 0,
+            };
+            if ($character === '|' && $depth === 0) {
+                $members[] = trim($current);
+                $current = '';
+
+                continue;
+            }
+            $current .= $character;
+        }
+        $members[] = trim($current);
+
+        return array_values(array_filter(
+            $members,
+            static fn(string $member): bool => $member !== '' && $member !== 'null',
+        ));
     }
 }

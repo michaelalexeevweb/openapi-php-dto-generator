@@ -16801,7 +16801,7 @@ final class Containers implements JsonSerializable
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if (array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
                     $propertyName = (string)$propertyName;
@@ -17276,7 +17276,7 @@ final class CountMap implements JsonSerializable
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if (array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
                     $propertyName = (string)$propertyName;
@@ -26852,7 +26852,7 @@ final class TreeNode implements JsonSerializable
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if (array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
                     $propertyName = (string)$propertyName;
@@ -28031,7 +28031,7 @@ final class UnionUnderContainer implements JsonSerializable
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if (array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
                     $propertyName = (string)$propertyName;

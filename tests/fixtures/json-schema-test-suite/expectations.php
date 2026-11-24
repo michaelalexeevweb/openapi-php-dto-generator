@@ -335,14 +335,12 @@ return [
         'root pointer ref' => [
             'match' => [
                 'runtime' => ['diverges', 'documented: a schema with properties and no type is an object here, so false is no value for it (README.support-matrix, declared divergence)'],
-                'symfony' => ['diverges', 'documented: a schema with properties and no type is an object here, so false is no value for it (README.support-matrix, declared divergence)'],
                 'laravel' => ['diverges', 'documented: a schema with properties and no type is an object here, so false is no value for it (README.support-matrix, declared divergence)'],
                 'laravel-data' => ['diverges', 'documented: a schema with properties and no type is an object here, so false is no value for it (README.support-matrix, declared divergence)'],
                 'yii3' => ['diverges', 'documented: a schema with properties and no type is an object here, so false is no value for it (README.support-matrix, declared divergence)'],
             ],
             'recursive match' => [
                 'runtime' => ['diverges', 'documented: a schema with properties and no type is an object here, so false is no value for it (README.support-matrix, declared divergence)'],
-                'symfony' => ['diverges', 'documented: a schema with properties and no type is an object here, so false is no value for it (README.support-matrix, declared divergence)'],
                 'laravel' => ['diverges', 'documented: a schema with properties and no type is an object here, so false is no value for it (README.support-matrix, declared divergence)'],
                 'laravel-data' => ['diverges', 'documented: a schema with properties and no type is an object here, so false is no value for it (README.support-matrix, declared divergence)'],
                 'yii3' => ['diverges', 'documented: a schema with properties and no type is an object here, so false is no value for it (README.support-matrix, declared divergence)'],
@@ -352,6 +350,7 @@ return [
                 'yii3' => ['diverges', 'documented: a schema with properties and no type is an object here, so false is no value for it (README.support-matrix, declared divergence)'],
             ],
             'recursive mismatch' => [
+                'symfony' => ['diverges', 'documented: a closed object is not enforceable once hydrated (README.support-matrix, closed DTO-shaped schema)'],
                 'yii3' => ['diverges', 'documented: a closed object is not enforceable once hydrated (README.support-matrix, closed DTO-shaped schema)'],
             ],
         ],

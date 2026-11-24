@@ -3,6 +3,54 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.146 — 2026-11-24
+
+- fuzz round two: 52 fixes
+- one-object unions typed as member
+- $ref siblings merged everywhere
+- union branches checked at depth
+- union class beside dates, enums
+- symfony 8 union cascade fixed
+
+The second fuzz round ran 96 harder seeds (12 properties each) through all five modes. Its 440 findings came
+down to 76 root causes; 52 are fixed here, each with a test that failed before, and 6 are framework limits now
+documented in README.support-matrix (35 divergences). The rest are taken up in the next round.
+
+**Regenerate after upgrading, in every mode.**
+
+Generation (every mode):
+
+- an enum branch wrapped in `allOf` beside another enum no longer stops generation on a name collision;
+- a scalar alias reached through a nested or single-branch union is its scalar, not a class never written;
+- a union component whose only non-null member is one object is typed as that object, nullable — it was an
+  interface no mode could hydrate; the "no mode can hydrate" warning stays for unions of several objects;
+- a union whose `allOf` branches fold to scalars is a scalar union, not an empty class;
+- a `$ref` with sibling keywords below an inline object or in a union branch becomes the merged class;
+- a union member extending a component no longer extends a `final` class;
+- a discriminated union made nullable by a `null` branch dispatches like the plain one;
+- a map value `{type: array}` without `items` is a list (`array<mixed>`), not a map;
+- a declared `$ref` property of an inline object with `additionalProperties` is no longer called extra.
+
+Validation:
+
+- runtime: a raw array beside a class branch is checked against every branch; an enum branch never matches an
+  array; nested `anyOf` / `oneOf` / `allOf` branches give up their object type and date format; numeric keys
+  are checked against `additionalProperties`;
+- symfony: an `anyOf` Assert cannot spell (one branch, `allOf`, `multipleOf`) is checked by the callback; a
+  `format` inside `allOf` is checked; an optional union with a class member refuses `null`; a date inside a
+  union is written as a date; a union of an array, a scalar and a class no longer keeps `#[Assert\Valid]`,
+  which Symfony 8 turned into a 500 on the scalar;
+- laravel: a date or enum beside an object member is built per member (string → date, array → class); a
+  discriminated member's own enum, list and object properties are checked;
+- laravel-data: a `Data` class beside an enum, a date or a list is built; a JSON array is refused for a union
+  of an object and scalars;
+- yii3: single-member scalar unions get their type rule; `array|Class`, enum/date `|Class` and `bool|Class`
+  unions are checked and the class validated; a list of objects refuses a JSON object; a `required` name
+  beside a `$ref` is asked of the raw value.
+
+Fuzz harness: union sites with a class member fall under the class rows of the documented divergences, and
+the shrinker checks each step against an independent reference evaluator, so a shrunk finding keeps its cause.
+
 ## 2.15.145 — 2026-11-24
 
 - fuzz harness added

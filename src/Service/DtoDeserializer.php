@@ -106,6 +106,10 @@ final class DtoDeserializer implements DtoDeserializerInterface
     // Not an OpenAPI format: it only ever travels from resolveOpenApiFormat() to the temporal parser.
     private const string FORMAT_DATE_OR_DATE_TIME = 'date|date-time';
 
+    // How deep the union readers below follow a branch into its own `allOf`/`oneOf`/`anyOf`: far
+    // beyond any document written by hand, and a bound on a schema that nests without end.
+    private const int MAX_UNION_BRANCH_DEPTH = 16;
+
     /**
      * The characters PHP's request parser turns into `_` in a top-level name, for `$_GET`, `$_POST`
      * and `$_COOKIE` alike: `page.size` arrives as `page_size`.
@@ -1316,13 +1320,23 @@ final class DtoDeserializer implements DtoDeserializerInterface
             $arrayItemType = in_array('array', $typeNames, true)
                 ? $this->resolveArrayItemType(reflection: $reflection, paramName: $paramName)
                 : null;
-            $nestedArrayItemType = $arrayItemType === 'array' || $arrayItemType === 'list'
+            $nestedArrayItemType = in_array($arrayItemType, ['array', 'list', 'container'], true)
                 ? $this->resolveNestedArrayItemType(reflection: $reflection, paramName: $paramName)
                 : null;
             $arrayItemsNullable = $this->resolveArrayItemsNullable($fieldConstraints);
             // One hop further: the `?Node` of `array<array<?Node>>`. Without it the inner null was cast
             // as an object and refused before the constraints, which allow it, were ever read.
             $itemSchema = $fieldConstraints['items'] ?? $fieldConstraints['additionalProperties'] ?? null;
+            // An item the schema lets be EITHER container — `anyOf: [{type: array}, {type: object}]` — is
+            // read as either, whichever form the declaration spelled: `array<mixed>` refused the object.
+            if (
+                in_array($arrayItemType, ['array', 'list'], true)
+                && is_array($itemSchema)
+                && $this->allowsAssociativeArray($itemSchema)
+                && !DtoValidator::admitsObjectContainerOnly($itemSchema)
+            ) {
+                $arrayItemType = 'container';
+            }
             $nestedArrayItemsNullable = is_array($itemSchema) && $this->resolveArrayItemsNullable($itemSchema);
 
             // Pre-compute temporal format for DateTimeImmutable fields.
@@ -2813,6 +2827,8 @@ final class DtoDeserializer implements DtoDeserializerInterface
             // The LIST form of a nested container. Same cast as `array`, different wire shape: its
             // items must arrive as JSON arrays, not objects.
             'list' => 'list',
+            // A bare `array` item: either container, as the declaration says nothing more.
+            'container' => 'container',
             'mixed' => 'mixed',
             DateTimeImmutable::class => 'datetime',
             UploadedFile::class => 'file',
@@ -3253,13 +3269,13 @@ final class DtoDeserializer implements DtoDeserializerInterface
         // per array element.
         $kind = $this->resolveTypeKind($arrayItemType);
 
-        if (in_array($kind, ['int', 'float', 'string', 'bool', 'array', 'list', 'mixed'], true)) {
+        if (in_array($kind, ['int', 'float', 'string', 'bool', 'array', 'list', 'container', 'mixed'], true)) {
             return $this->castValue(
                 value: $itemValue,
                 paramName: $itemPath,
-                // `list` is not a PHP type: it is this method's name for the shape, and the cast that
-                // follows is the `array` one either way.
-                typeName: $kind === 'list' ? 'array' : $arrayItemType,
+                // `list` and `container` are not PHP types: they are this method's names for the shape,
+                // and the cast that follows is the `array` one either way.
+                typeName: in_array($kind, ['list', 'container'], true) ? 'array' : $arrayItemType,
                 allowsNull: false,
                 source: $source,
                 // NOT $arrayItemType: that one names THIS item, and forwarding it would cast the
@@ -3274,7 +3290,10 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 // JSON decodes a map to stdClass, so the item must accept one and must not be a JSON
                 // array. A `list` item is the opposite: `array<array<int>>` items arrive as JSON
                 // arrays, and it is `resolveTypeKind()` that tells the two apart now.
-                allowsAssociativeArray: $kind === 'array',
+                allowsAssociativeArray: $kind === 'array' || $kind === 'container',
+                // A bare `array` item names no shape, so a JSON array is as good as an object: forced
+                // into the map form, `{"ka": ["blue"]}` was refused as "expects object, got array".
+                alsoAllowsJsonList: $kind === 'container',
             );
         }
 
@@ -3581,6 +3600,38 @@ final class DtoDeserializer implements DtoDeserializerInterface
     }
 
     /**
+     * The `date` / `date-time` format a union branch carries, itself or through the members of an
+     * `allOf`, `oneOf` or `anyOf` inside it: `oneOf: [{allOf: [{type: string, format: date}]}]` is a
+     * date, and read one level deep it was parsed as a date-time and every date refused.
+     *
+     * @param array<mixed> $branch
+     * @return array<string, true>
+     */
+    private function temporalBranchFormats(array $branch, int $depth = 0): array
+    {
+        if (($branch['type'] ?? 'string') !== 'string') {
+            return [];
+        }
+        $branchFormat = $branch['format'] ?? null;
+        if (in_array($branchFormat, ['date', 'date-time'], true)) {
+            return [$branchFormat => true];
+        }
+        if ($depth >= self::MAX_UNION_BRANCH_DEPTH) {
+            return [];
+        }
+        $formats = [];
+        foreach (['allOf', 'oneOf', 'anyOf'] as $keyword) {
+            foreach (is_array($branch[$keyword] ?? null) ? $branch[$keyword] : [] as $member) {
+                if (is_array($member)) {
+                    $formats += $this->temporalBranchFormats($member, $depth + 1);
+                }
+            }
+        }
+
+        return $formats;
+    }
+
+    /**
      * The format of a `oneOf`/`anyOf` whose every non-null branch is a `format: date` or `format: date-time`
      * string — the shape that hydrates into a single DateTimeImmutable. Any other branch means the union is
      * not purely temporal, and the answer is null, as before.
@@ -3601,11 +3652,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             }
             // A branch of another kind — `integer`, `boolean` — is tried by the union cast on its own;
             // it used to make the whole union "not temporal", and a date was then parsed as date-time.
-            $branchFormat = $branch['format'] ?? null;
-            if (($branch['type'] ?? 'string') !== 'string' || !in_array($branchFormat, ['date', 'date-time'], true)) {
-                continue;
-            }
-            $formats[$branchFormat] = true;
+            $formats += $this->temporalBranchFormats($branch);
         }
 
         if (count($formats) === 2) {
@@ -3790,7 +3837,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
      */
     private function qualifyDocTypeName(ReflectionClass $reflection, string $rawType): string
     {
-        if (in_array($rawType, ['int', 'float', 'string', 'bool', 'array', 'list', 'mixed'], true)) {
+        if (in_array($rawType, ['int', 'float', 'string', 'bool', 'array', 'list', 'container', 'mixed'], true)) {
             return $rawType;
         }
 
@@ -3910,6 +3957,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
         if (preg_match('/^\??(?:array|list)</i', $inner) === 1) {
             return $this->nestedContainerItemTypeName($inner);
         }
+        if (strtolower(ltrim($inner, '?')) === 'array') {
+            return 'container';
+        }
 
         return preg_match('/^\??([A-Za-z_\\\][A-Za-z0-9_\\\]*)$/D', $inner, $matches) === 1
             ? $matches[1]
@@ -3951,7 +4001,8 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 }
                 $depth--;
             } elseif ($character === ',' && $depth === 0) {
-                return 'array';
+                // `array<int, V>` is keyed by position: the list form, as `array<V>` is.
+                return strtolower(trim(substr($nestedType, $open + 1, $i - $open - 1))) === 'int' ? 'list' : 'array';
             }
         }
 
@@ -4442,7 +4493,8 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return false;
         }
 
-        if (($constraints['type'] ?? null) === 'object') {
+        $type = $constraints['type'] ?? null;
+        if ($type === 'object' || (is_array($type) && in_array('object', $type, true))) {
             return true;
         }
 
@@ -4463,10 +4515,15 @@ final class DtoDeserializer implements DtoDeserializerInterface
      * The types each `anyOf`/`oneOf` branch names, an empty list for a branch that names none; a
      * `type: null` branch is left out, it admits neither container.
      *
+     * A branch that is a union itself — `oneOf: [{anyOf: [integer, object]}]` — stands for ITS branches,
+     * and an untyped branch takes the type of its first typed `allOf` member: read one level deep, the
+     * object member was never seen and a JSON object was refused as "expects array, got object". A
+     * branch naming a generated object class is an object.
+     *
      * @param array<string, mixed> $constraints
      * @return list<list<string>>
      */
-    private function unionBranchTypes(array $constraints): array
+    private function unionBranchTypes(array $constraints, int $depth = 0): array
     {
         $branchTypes = [];
         foreach (['anyOf', 'oneOf'] as $keyword) {
@@ -4478,8 +4535,16 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 if (!is_array($branch)) {
                     continue;
                 }
-                $type = $branch['type'] ?? null;
-                $types = is_string($type) ? [$type] : (is_array($type) ? array_values(array_filter($type, is_string(...))) : []);
+                $types = $this->declaredBranchTypes($branch);
+                if ($types === [] && $depth < self::MAX_UNION_BRANCH_DEPTH) {
+                    /** @var array<string, mixed> $branch */
+                    $nested = $this->unionBranchTypes($branch, $depth + 1);
+                    if ($nested !== []) {
+                        $branchTypes = [...$branchTypes, ...$nested];
+
+                        continue;
+                    }
+                }
                 if ($types === ['null']) {
                     continue;
                 }
@@ -4488,6 +4553,35 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         return $branchTypes;
+    }
+
+    /**
+     * The types a schema names itself, through its `allOf` members or as the generated class it is.
+     *
+     * @param array<mixed> $schema
+     * @return list<string>
+     */
+    private function declaredBranchTypes(array $schema, int $depth = 0): array
+    {
+        $type = $schema['type'] ?? null;
+        $types = is_string($type) ? [$type] : (is_array($type) ? array_values(array_filter($type, is_string(...))) : []);
+        if ($types !== []) {
+            return $types;
+        }
+        $className = $schema['x-php-instanceof'] ?? null;
+        if (is_string($className) && class_exists($className) && !enum_exists($className)) {
+            return ['object'];
+        }
+        if ($depth < self::MAX_UNION_BRANCH_DEPTH) {
+            foreach (is_array($schema['allOf'] ?? null) ? $schema['allOf'] : [] as $member) {
+                $memberTypes = is_array($member) ? $this->declaredBranchTypes($member, $depth + 1) : [];
+                if ($memberTypes !== []) {
+                    return $memberTypes;
+                }
+            }
+        }
+
+        return [];
     }
 
     /**

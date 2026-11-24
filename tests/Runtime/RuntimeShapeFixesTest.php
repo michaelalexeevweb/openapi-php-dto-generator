@@ -55,6 +55,41 @@ final class RuntimeShapeFixesTest extends TestCase
         $this->assertRejected(class: $class, body: '{"tone":"blue"}', message: 'Allowed: red, green');
     }
 
+    /**
+     * The container an item of a nested generic must arrive as: a positional key is the list form, a
+     * bare `array` names no form and takes either, a string key is the map form.
+     */
+    public function testNestedGenericItemNamesItsContainer(): void
+    {
+        $method = new ReflectionMethod(DtoDeserializer::class, 'itemTypeFromDocComment');
+        $deserializer = new DtoDeserializer();
+
+        $this->assertSame('list', $method->invoke($deserializer, 'array<string, array<int, mixed>>'));
+        $this->assertSame('list', $method->invoke($deserializer, 'array<string, list<mixed>>'));
+        $this->assertSame('list', $method->invoke($deserializer, 'array<string, array<mixed>>'));
+        $this->assertSame('array', $method->invoke($deserializer, 'array<string, array<string, mixed>>'));
+        $this->assertSame('container', $method->invoke($deserializer, 'array<string, array>'));
+        $this->assertSame('container', $method->invoke($deserializer, 'list<array>'));
+    }
+
+    /**
+     * A map whose values are an `anyOf` of both containers takes a JSON array and a JSON object, and a
+     * date below `oneOf` → `allOf` is a date.
+     */
+    public function testNestedUnionShapesAreReadBelowTheirFirstLevel(): void
+    {
+        $class = $this->generate(properties: [
+            'tray' => ['type' => 'object', 'additionalProperties' => ['anyOf' => [['type' => 'array'], ['type' => 'object']]]],
+            'day' => ['oneOf' => [['allOf' => [['type' => 'string', 'format' => 'date']]]]],
+            'knob' => ['oneOf' => [['anyOf' => [['type' => 'integer'], ['type' => 'object']]]]],
+        ], openapi: '3.1.0');
+
+        $dto = $this->deserialize(class: $class, body: '{"tray":{"ka":[1],"kb":{"a":1}},"day":"2012-03-26","knob":{"k":true}}');
+        $this->assertSame([1], $dto->getTray()['ka'] ?? null);
+        $this->assertSame('2012-03-26', $dto->getDay()?->format('Y-m-d'));
+        $this->assertRejected(class: $class, body: '{"tray":{"ka":5}}', message: 'tray');
+    }
+
     public function testDateOrNullUnionAcceptsADate(): void
     {
         foreach (['oneOf', 'anyOf'] as $keyword) {

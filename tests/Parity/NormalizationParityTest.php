@@ -1118,6 +1118,52 @@ final class NormalizationParityTest extends TestCase
                 'runtime' => ["is\u{200B}Admin" => true, "role\u{202E}" => 'owl'],
                 'symfony' => ["is\u{200B}Admin" => true, "role\u{202E}" => 'owl'],
             ],
+            // A union with one class member beside a free-form object, a date or an enum: the object goes
+            // out as an object, the date as its string and the enum case as its value.
+            'free-form object branch beside a string' => [
+                'schema' => self::object(['bag' => ['anyOf' => [['type' => 'object'], ['type' => 'string']]]]),
+                'json' => '{"bag":{"a":1}}',
+                'runtime' => ['bag' => ['#object' => ['a' => 1]]],
+                'symfony' => ['bag' => ['a' => 1]],
+                'reason' => 'runtime holds a free-form object as stdClass so it always encodes as a JSON '
+                    . 'object, Symfony keeps the PHP array — identical JSON while the object has keys',
+                'diverges' => [
+                    'laravel-data' => [
+                        'like' => 'symfony',
+                        'reason' => 'laravel-data keeps the PHP array for the same reason Symfony does',
+                    ],
+                    'yii3' => [
+                        'like' => 'symfony',
+                        'reason' => 'a free-form object is held as a PHP array, as Symfony holds it',
+                    ],
+                ],
+            ],
+            'date beside an object member' => [
+                'schema' => self::object([
+                    'day' => ['anyOf' => [['type' => 'string', 'format' => 'date'], self::object(['hour' => ['type' => 'integer']])]],
+                    'eve' => ['anyOf' => [['type' => 'string', 'format' => 'date'], self::object(['hour' => ['type' => 'integer']])]],
+                ]),
+                'json' => '{"day":"2024-01-02","eve":{"hour":3}}',
+                'runtime' => ['day' => '2024-01-02', 'eve' => ['hour' => 3]],
+                'symfony' => ['day' => '2024-01-02', 'eve' => ['hour' => 3]],
+                'diverges' => [
+                    'laravel-data' => [
+                        'expected' => ['day' => '2024-01-02T00:00:00+00:00', 'eve' => ['hour' => 3]],
+                        'reason' => 'a date inside a union goes out through laravel-data\'s global '
+                            . 'DateTimeInterface transformer (config data.date_format): a property '
+                            . 'transformer would be handed the union\'s other members as well',
+                    ],
+                ],
+            ],
+            'enum beside an object member' => [
+                'schema' => self::object([
+                    'cow' => ['oneOf' => [['type' => 'integer', 'enum' => [-24]], self::object(['ant' => ['type' => 'integer']])]],
+                    'yak' => ['oneOf' => [['type' => 'integer', 'enum' => [-24]], self::object(['ant' => ['type' => 'integer']])]],
+                ]),
+                'json' => '{"cow":-24,"yak":{"ant":5}}',
+                'runtime' => ['cow' => -24, 'yak' => ['ant' => 5]],
+                'symfony' => ['cow' => -24, 'yak' => ['ant' => 5]],
+            ],
         ];
 
         // A component named after a class some mode's file names — a serializer attribute, the validator

@@ -67,7 +67,7 @@ final class UnhydratableUnionParityTest extends TestCase
     }
 
     /**
-     * The three shapes that DO hydrate must stay silent, or the warning becomes noise nobody reads.
+     * The shapes that DO hydrate must stay silent, or the warning becomes noise nobody reads.
      */
     public function testTheShapesThatHydrateAreNotWarnedAbout(): void
     {
@@ -77,6 +77,8 @@ final class UnhydratableUnionParityTest extends TestCase
             $this->assertStringNotContainsString('Property "ok"', $warnings, 'a plain nested class hydrates');
             $this->assertStringNotContainsString('Property "either"', $warnings, 'a scalar union is a PHP union type');
             $this->assertStringNotContainsString('Property "animal"', $warnings, 'a discriminated union resolves');
+            $this->assertStringNotContainsString('Property "cup"', $warnings, 'one object member or null is that object');
+            $this->assertStringNotContainsString('Property "pet"', $warnings, 'one referenced member or null is that member');
         }
     }
 
@@ -280,6 +282,9 @@ final class UnhydratableUnionParityTest extends TestCase
                             'ok' => ['$ref' => '#/components/schemas/Circle'],
                             'either' => ['oneOf' => [['type' => 'integer'], ['type' => 'string']]],
                             'animal' => ['$ref' => '#/components/schemas/Animal'],
+                            // A union with ONE object member is that object: nothing to choose between.
+                            'cup' => ['$ref' => '#/components/schemas/Cup'],
+                            'pet' => ['$ref' => '#/components/schemas/MaybeCircle'],
                         ],
                     ],
                     'Shape' => [
@@ -288,6 +293,8 @@ final class UnhydratableUnionParityTest extends TestCase
                             ['$ref' => '#/components/schemas/Square'],
                         ],
                     ],
+                    'Cup' => ['oneOf' => [['type' => 'object', 'properties' => ['size' => ['type' => 'number']]], ['type' => 'null']]],
+                    'MaybeCircle' => ['oneOf' => [['$ref' => '#/components/schemas/Circle'], ['type' => 'null']]],
                     'Circle' => ['type' => 'object', 'required' => ['r'], 'properties' => ['r' => ['type' => 'integer']]],
                     'Square' => ['type' => 'object', 'required' => ['a'], 'properties' => ['a' => ['type' => 'integer']]],
                     'Animal' => [

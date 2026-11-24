@@ -1,4 +1,4 @@
-# yii3 mode — 80 files, 36890 lines
+# yii3 mode — 80 files, 37009 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -12361,7 +12361,7 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if (array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
                     $propertyName = (string)$propertyName;
@@ -19009,9 +19009,9 @@ final class ChainLink extends AbstractInput implements DataSetInterface, RulesPr
     public readonly string $code;
 
     /** @var ?array<ChainTag> */
-    #[Collection(ChainTag::class)]
     #[Each(new Nested(), skipOnEmpty: new WhenNull())]
-    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an array. {type} given.', skipOnEmpty: new WhenNull()))]
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an array. {type} given.', skipOnEmpty: new WhenNull()), new Callback(callback: [self::class, 'validateOpenApiListShape'], skipOnEmpty: new WhenNull(), skipOnError: true))]
+    #[Collection(ChainTag::class)]
     public readonly ?array $tags;
 
     public function getCode(): string
@@ -19398,6 +19398,20 @@ final class ChainLink extends AbstractInput implements DataSetInterface, RulesPr
             ? sprintf('field "%s"', $propertyName)
             : $path . '.' . $propertyName;
     }
+
+    /**
+     * Whether a list of objects arrived as a JSON array: the hydrator builds the members of a JSON
+     * object into the same list, and its keys are gone before any other check sees them.
+     */
+    public static function validateOpenApiListShape(mixed $value, Callback $rule, ValidationContext $context): Result
+    {
+        $result = new Result();
+        if (is_array($value) && !array_is_list($value)) {
+            $result->addError('{Property} must be an array. Object given.', ['Property' => $context->getCapitalizedTranslatedProperty()]);
+        }
+
+        return $result;
+    }
 }
 
 ===== ChainMiddle.php =====
@@ -19478,9 +19492,9 @@ final class ChainMiddle extends AbstractInput implements DataSetInterface, Rules
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     /** @var array<ChainLink> */
-    #[Collection(ChainLink::class)]
     #[Each(new Nested(), skipOnEmpty: new WhenNull())]
-    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an array. {type} given.', skipOnEmpty: new WhenMissing()))]
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an array. {type} given.', skipOnEmpty: new WhenMissing()), new Callback(callback: [self::class, 'validateOpenApiListShape'], skipOnEmpty: new WhenMissing(), skipOnError: true))]
+    #[Collection(ChainLink::class)]
     public readonly array $links;
 
     /** @return array<ChainLink> */
@@ -19815,6 +19829,20 @@ final class ChainMiddle extends AbstractInput implements DataSetInterface, Rules
         return $path === 'payload'
             ? sprintf('field "%s"', $propertyName)
             : $path . '.' . $propertyName;
+    }
+
+    /**
+     * Whether a list of objects arrived as a JSON array: the hydrator builds the members of a JSON
+     * object into the same list, and its keys are gone before any other check sees them.
+     */
+    public static function validateOpenApiListShape(mixed $value, Callback $rule, ValidationContext $context): Result
+    {
+        $result = new Result();
+        if (is_array($value) && !array_is_list($value)) {
+            $result->addError('{Property} must be an array. Object given.', ['Property' => $context->getCapitalizedTranslatedProperty()]);
+        }
+
+        return $result;
     }
 }
 
@@ -20778,7 +20806,7 @@ final class ContainerAliases extends AbstractInput implements DataSetInterface, 
     public readonly ?array $listOfMaps;
 
     /** @var ?array<string, array<string>> */
-    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenMissing()))]
     public readonly ?array $mapOfLists;
 
     /** @var ?array<string> */
@@ -21172,7 +21200,7 @@ final class ContainerAliases extends AbstractInput implements DataSetInterface, 
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if (array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
                     $propertyName = (string)$propertyName;
@@ -21532,7 +21560,7 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
     public readonly array $dates;
 
     /** @var ?array<string, string> */
-    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenMissing()))]
     public readonly ?array $datesByDay;
 
     /** @var ?array<string> */
@@ -21544,7 +21572,7 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
     public readonly array $shapes;
 
     /** @var ?array<string, Tag|array<string, mixed>> */
-    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenMissing()))]
     public readonly ?array $tagsByKey;
 
     /** @return array<string> */
@@ -21987,7 +22015,7 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if (array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
                     $propertyName = (string)$propertyName;
@@ -22487,7 +22515,7 @@ final class CountMap extends AbstractInput implements DataSetInterface, RulesPro
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if (array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
                     $propertyName = (string)$propertyName;
@@ -25062,7 +25090,7 @@ final class ItemBounds extends AbstractInput implements DataSetInterface, RulesP
     public readonly array $scores;
 
     /** @var ?array<string, int> */
-    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenMissing()))]
     public readonly ?array $scoresByKey;
 
     /** @var ?array<string> */
@@ -25455,7 +25483,7 @@ final class ItemBounds extends AbstractInput implements DataSetInterface, RulesP
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if (array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
                     $propertyName = (string)$propertyName;
@@ -25878,11 +25906,11 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
     public readonly array $rowsOfMaps;
 
     /** @var ?array<string, array<string>> */
-    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenMissing()))]
     public readonly ?array $listsByKey;
 
     /** @var ?array<string, array<string, int>> */
-    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenMissing()))]
     public readonly ?array $mapsByKey;
 
     /** @var ?array<array<string>> */
@@ -25890,6 +25918,7 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
     public readonly ?array $dateRows;
 
     /** @var ?array<array<float|int>> */
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an array. {type} given.', skipOnEmpty: new WhenNull()))]
     public readonly ?array $numRows;
 
     /** @var ?array<array<string>> */
@@ -26382,7 +26411,7 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if (array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
                     $propertyName = (string)$propertyName;
@@ -26696,7 +26725,7 @@ final class NullableContainerValues extends AbstractInput implements DataSetInte
     public readonly array $listOfNullable;
 
     /** @var ?array<string, ?int> */
-    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenMissing()))]
     public readonly ?array $mapOfNullable;
 
     /** @var ?array<?string> */
@@ -26704,7 +26733,7 @@ final class NullableContainerValues extends AbstractInput implements DataSetInte
     public readonly ?array $listOfNullable31;
 
     /** @var ?array<string, ?int> */
-    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenMissing()))]
     public readonly ?array $mapOfNullable31;
 
     /** @return array<?string> */
@@ -27094,7 +27123,7 @@ final class NullableContainerValues extends AbstractInput implements DataSetInte
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if (array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
                     $propertyName = (string)$propertyName;
@@ -30671,9 +30700,9 @@ final class Test2 extends AbstractInput implements DataSetInterface, RulesProvid
     public readonly string $name;
 
     /** @var array<Tag> */
-    #[Collection(Tag::class)]
     #[Each(new Nested(), skipOnEmpty: new WhenNull())]
-    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an array. {type} given.', skipOnEmpty: new WhenMissing()))]
+    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an array. {type} given.', skipOnEmpty: new WhenMissing()), new Callback(callback: [self::class, 'validateOpenApiListShape'], skipOnEmpty: new WhenMissing(), skipOnError: true))]
+    #[Collection(Tag::class)]
     public readonly array $tags;
 
     #[Nested(skipOnEmpty: new WhenNull())]
@@ -31151,6 +31180,20 @@ final class Test2 extends AbstractInput implements DataSetInterface, RulesProvid
         return $path === 'payload'
             ? sprintf('field "%s"', $propertyName)
             : $path . '.' . $propertyName;
+    }
+
+    /**
+     * Whether a list of objects arrived as a JSON array: the hydrator builds the members of a JSON
+     * object into the same list, and its keys are gone before any other check sees them.
+     */
+    public static function validateOpenApiListShape(mixed $value, Callback $rule, ValidationContext $context): Result
+    {
+        $result = new Result();
+        if (is_array($value) && !array_is_list($value)) {
+            $result->addError('{Property} must be an array. Object given.', ['Property' => $context->getCapitalizedTranslatedProperty()]);
+        }
+
+        return $result;
     }
 }
 
@@ -32981,6 +33024,82 @@ final class TreeNode extends AbstractInput implements DataSetInterface, RulesPro
                                                     ],
                                                     'children' => [
                                                         'type' => 'object',
+                                                        'additionalProperties' => [
+                                                            'oneOf' => [
+                                                                [
+                                                                    'type' => 'object',
+                                                                    'required' => [
+                                                                        'label',
+                                                                        'children',
+                                                                    ],
+                                                                    'properties' => [
+                                                                        'label' => [
+                                                                            'type' => 'string',
+                                                                            'minLength' => 1,
+                                                                        ],
+                                                                        'children' => [
+                                                                            'type' => 'object',
+                                                                            'additionalProperties' => [
+                                                                                'oneOf' => [
+                                                                                    [
+                                                                                        'type' => 'object',
+                                                                                        'required' => [
+                                                                                            'label',
+                                                                                            'children',
+                                                                                        ],
+                                                                                        'properties' => [
+                                                                                            'label' => [
+                                                                                                'type' => 'string',
+                                                                                                'minLength' => 1,
+                                                                                            ],
+                                                                                            'children' => [
+                                                                                                'type' => 'object',
+                                                                                            ],
+                                                                                        ],
+                                                                                    ],
+                                                                                    [
+                                                                                        'type' => 'object',
+                                                                                        'additionalProperties' => [
+                                                                                            'type' => 'object',
+                                                                                            'required' => [
+                                                                                                'id',
+                                                                                                'name',
+                                                                                            ],
+                                                                                            'properties' => [
+                                                                                                'id' => [
+                                                                                                    'type' => 'integer',
+                                                                                                ],
+                                                                                                'name' => [
+                                                                                                    'type' => 'string',
+                                                                                                ],
+                                                                                            ],
+                                                                                        ],
+                                                                                    ],
+                                                                                ],
+                                                                            ],
+                                                                        ],
+                                                                    ],
+                                                                ],
+                                                                [
+                                                                    'type' => 'object',
+                                                                    'additionalProperties' => [
+                                                                        'type' => 'object',
+                                                                        'required' => [
+                                                                            'id',
+                                                                            'name',
+                                                                        ],
+                                                                        'properties' => [
+                                                                            'id' => [
+                                                                                'type' => 'integer',
+                                                                            ],
+                                                                            'name' => [
+                                                                                'type' => 'string',
+                                                                            ],
+                                                                        ],
+                                                                    ],
+                                                                ],
+                                                            ],
+                                                        ],
                                                     ],
                                                 ],
                                             ],
@@ -33411,7 +33530,7 @@ final class TreeNode extends AbstractInput implements DataSetInterface, RulesPro
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if (array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
                     $propertyName = (string)$propertyName;

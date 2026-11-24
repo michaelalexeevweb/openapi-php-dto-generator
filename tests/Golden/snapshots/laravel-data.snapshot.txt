@@ -11069,7 +11069,7 @@ final class Containers extends Data
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if (array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
                     $propertyName = (string)$propertyName;
@@ -11470,7 +11470,7 @@ final class CountMap extends Data
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if (array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
                     $propertyName = (string)$propertyName;
@@ -19186,7 +19186,7 @@ final class TreeNode extends Data
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if (array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
                     $propertyName = (string)$propertyName;
@@ -20285,7 +20285,7 @@ final class UnionUnderContainer extends Data
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if (array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
                     $propertyName = (string)$propertyName;

@@ -913,6 +913,22 @@ trait RendersLaravelDataDto
                 $enumItemClass,
             );
         }
+        // A `Data` class beside an enum, a date or a list — `Level|Shade`, `DateTimeImmutable|Shade`,
+        // `array|Shade` — is a union laravel-data does not cast: the payload array reached the
+        // constructor as it came, a TypeError on every valid object. It is built here from the array
+        // that only the class can be (beside a list: the array with keys), as the enum gets its case.
+        $unionDataClass = $enumItemClass === null ? $this->laravelDataUnionClassToBuild($property['type']) : null;
+        if ($unionDataClass !== null) {
+            $enumCast = sprintf(
+                '%s ? %s::from(%s) : (%s)',
+                $this->unionHasArrayMember($property['type'])
+                    ? sprintf('is_array(%1$s) && !array_is_list(%1$s)', $variable)
+                    : sprintf('is_array(%s)', $variable),
+                $unionDataClass,
+                $variable,
+                $enumCast,
+            );
+        }
         $propertyType = $declaredType;
         $parameterType = $declaredType;
         if ($enumCast !== $variable) {
@@ -926,6 +942,9 @@ trait RendersLaravelDataDto
         }
         if ($enumCast !== $variable && $enumItemClass === null) {
             $parameterType = $this->laravelDataWithEnumBackingTypes($declaredType);
+        }
+        if ($unionDataClass !== null && !in_array('array', explode('|', $parameterType), true)) {
+            $parameterType .= '|array';
         }
 
         return [
@@ -989,6 +1008,26 @@ trait RendersLaravelDataDto
         }
 
         return implode('|', array_unique($widened));
+    }
+
+    /**
+     * The one `Data` class of a union laravel-data leaves uncast: beside it another class (an enum, a
+     * `DateTimeImmutable`) or a plain `array`. Beside scalars alone (`Shade|string`) laravel-data casts
+     * the class member itself, and null is returned.
+     */
+    private function laravelDataUnionClassToBuild(string $phpType): ?string
+    {
+        $dataClass = $this->unionClassBesideScalars($phpType);
+        if ($dataClass === null) {
+            return null;
+        }
+        foreach ($this->unionMembersBesideNull($phpType) as $member) {
+            if (!in_array($member, ['string', 'int', 'float', 'bool'], true) && $this->shortClassName($member) !== $dataClass) {
+                return $dataClass;
+            }
+        }
+
+        return null;
     }
 
     /**

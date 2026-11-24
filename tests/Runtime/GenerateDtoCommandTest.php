@@ -639,6 +639,31 @@ final class GenerateDtoCommandTest extends TestCase
     }
 
     /**
+     * `{$ref: Shape, required: [bee]}` names a key neither the reference nor the keywords beside it
+     * declare, so the class is generated without it — warned about as a closed object's undeclared
+     * name is. A name the referenced schema does declare is no warning.
+     */
+    public function testARequiredNameBesideAReferenceThatNoSchemaDeclaresIsWarnedAbout(): void
+    {
+        $spec = static fn(string $required): array => [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Shape' => ['type' => 'object', 'properties' => ['ant' => ['type' => 'boolean']]],
+                'Probe' => ['type' => 'object', 'properties' => ['owl' => ['$ref' => '#/components/schemas/Shape', 'required' => [$required]]]],
+            ]],
+        ];
+
+        $this->generator->generateFromArray($spec('bee'), $this->outputDirectory, 'RequiredBesideRef');
+        $warnings = $this->generator->getGenerationWarnings();
+        $this->assertCount(1, $warnings);
+        $this->assertStringContainsString('lists "bee" in `required`', $warnings[0]);
+
+        $this->generator->generateFromArray($spec('ant'), $this->outputDirectory, 'RequiredBesideRefDeclared');
+        $this->assertSame([], $this->generator->getGenerationWarnings());
+    }
+
+    /**
      * A relative `$ref` inside an `allOf` resolves against the file that WROTE it, in every mode.
      *
      * `sub/child.yaml` naming `../common/base.yaml#/…` means a sibling of `sub/`. yii3 mode resolved it

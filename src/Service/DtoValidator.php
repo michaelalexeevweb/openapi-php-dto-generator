@@ -916,18 +916,8 @@ final class DtoValidator implements DtoValidatorInterface
             // A union carries the format on its branches. A date written as ATOM matched no `date`
             // branch, so `oneOf: [{format: date}, {type: 'null'}]` refused every date — and an
             // `allOf: [{format: date}]` refused it the same way.
-            $branchFormats = [];
-            $branches = [];
-            foreach (['allOf', 'oneOf', 'anyOf'] as $keyword) {
-                if (is_array($constraints[$keyword] ?? null)) {
-                    $branches = [...$branches, ...$constraints[$keyword]];
-                }
-            }
-            foreach ($branches as $branch) {
-                if (is_array($branch) && is_string($branch['format'] ?? null)) {
-                    $branchFormats[$branch['format']] = true;
-                }
-            }
+            // `oneOf: [{allOf: [{format: date}]}]` too: the format may sit any number of levels down.
+            $branchFormats = $this->nestedBranchFormats($constraints);
 
             return array_key_exists('date', $branchFormats) && !array_key_exists('date-time', $branchFormats)
                 ? $value->format('Y-m-d')
@@ -941,19 +931,45 @@ final class DtoValidator implements DtoValidatorInterface
     }
 
     /**
+     * Every `format` the `allOf` / `oneOf` / `anyOf` members of a schema carry, at any depth.
+     *
+     * @param array<mixed> $constraints
+     * @return array<string, true>
+     */
+    private function nestedBranchFormats(array $constraints, int $depth = 0): array
+    {
+        $formats = [];
+        if ($depth > 16) {
+            return $formats;
+        }
+        foreach (['allOf', 'oneOf', 'anyOf'] as $keyword) {
+            foreach (is_array($constraints[$keyword] ?? null) ? $constraints[$keyword] : [] as $branch) {
+                if (!is_array($branch)) {
+                    continue;
+                }
+                if (is_string($branch['format'] ?? null)) {
+                    $formats[$branch['format']] = true;
+                }
+                $formats += $this->nestedBranchFormats($branch, $depth + 1);
+            }
+        }
+
+        return $formats;
+    }
+
+    /**
      * @param array<int, mixed> $branches
      * @return array<string>
      */
     private function validateUnionBranches(string $subject, mixed $value, array $branches, bool $isOneOf, int $depth): array
     {
-        // A class branch is judged on the hydrated value. A payload still raw here — an object
-        // nothing turned into the class, an array or a `stdClass` — cannot be told from it, so the
-        // union is not judged at all, which is what it was before class branches were spelled out.
-        if ((is_array($value) || $value instanceof stdClass) && $this->hasClassBranch($branches)) {
-            return [];
-        }
-
         $validBranches = 0;
+        // A class branch is judged on the hydrated value. A payload still raw here — an object-shaped
+        // array or a `stdClass` nothing turned into a generated object class — cannot be told from
+        // that class, so the branch neither matches nor fails: it is undecided. Every other branch is
+        // judged as usual. The whole union used to be skipped instead, so `oneOf: [$ref EnumClass,
+        // {type: object, additionalProperties: {type: string}}]` let `{"k": 1}` through.
+        $undecidedBranches = 0;
         $nullableBranchAdmitsNull = false;
         $errors = [];
 
@@ -974,6 +990,12 @@ final class DtoValidator implements DtoValidatorInterface
             // Type-gate: a branch whose declared type can't match the value would fail its
             // own type check anyway, so skip it. Branches without a type are always evaluated.
             if (!$this->matchesOpenApiType(value: $value, type: $branch['type'] ?? null)) {
+                continue;
+            }
+
+            if ($this->rawValueLeavesClassBranchUndecided(value: $value, branch: $branch)) {
+                $undecidedBranches++;
+
                 continue;
             }
 
@@ -1006,6 +1028,12 @@ final class DtoValidator implements DtoValidatorInterface
         }
 
         if ($validBranches === 0 && $nullableBranchAdmitsNull) {
+            return [];
+        }
+
+        // Only a branch nobody can judge is left: the value may be that class, as it always could.
+        // Beside exactly one match it is not counted against `oneOf` either — it may not be one.
+        if ($undecidedBranches > 0 && $validBranches <= 1) {
             return [];
         }
 
@@ -1073,27 +1101,48 @@ final class DtoValidator implements DtoValidatorInterface
             : [sprintf('%s discriminator %s must match concrete class', $subject, $propertyName)];
     }
 
-    /**
-     * @param array<int, mixed> $branches
-     */
-    private function hasClassBranch(array $branches): bool
+    private function isNonEmptyList(mixed $value): bool
     {
-        foreach ($branches as $branch) {
-            if (is_array($branch) && array_key_exists('x-php-instanceof', $branch)) {
-                return true;
-            }
-        }
-
-        return false;
+        return is_array($value) && $value !== [] && array_is_list($value);
     }
 
     /**
-     * A raw payload is not judged: see {@see validateUnionBranches()}. A backed enum is also met as its
+     * Whether the branch names a generated object class and the value is a raw object nothing hydrated
+     * into it: an object-shaped array or a `stdClass`. A backed enum is never undecided — no array is
+     * one of its cases — and neither is a non-empty JSON list, which is no object.
+     *
+     * @param array<mixed> $branch
+     */
+    private function rawValueLeavesClassBranchUndecided(mixed $value, array $branch): bool
+    {
+        $className = $branch['x-php-instanceof'] ?? null;
+
+        return is_string($className)
+            && $this->isRawObjectFor(value: $value, className: $className);
+    }
+
+    private function isRawObjectFor(mixed $value, string $className): bool
+    {
+        if (!is_array($value) && !$value instanceof stdClass) {
+            return false;
+        }
+        if ($this->isNonEmptyList($value) || is_subclass_of($className, BackedEnum::class)) {
+            return false;
+        }
+
+        return !enum_exists($className);
+    }
+
+    /**
+     * A raw object is not judged: see {@see validateUnionBranches()}. A backed enum is also met as its
      * wire value where nothing hydrated it, and that value is one of its cases or not.
      */
     private function isInstanceOfBranchClass(mixed $value, string $className): bool
     {
-        if (is_array($value) || $value instanceof stdClass || $value instanceof $className) {
+        // A non-empty JSON list is never an object nor an enum case, whatever class the branch names:
+        // taken for one, a list of lists matched `oneOf: [{$ref: Shape}, {type: array, items: …}]`.
+        // Nor is any array an enum case: `[""]` matched `anyOf: [$ref EnumClass, …]`.
+        if ($value instanceof $className || $this->isRawObjectFor(value: $value, className: $className)) {
             return true;
         }
 

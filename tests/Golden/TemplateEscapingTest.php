@@ -85,6 +85,7 @@ final class TemplateEscapingTest extends TestCase
             'param.createValue|raw' => 'the create() assignment expression: sanitized parameter names and fixed code',
             'interpreterMethodsBlock|raw' => 'the emitted interpreter methods (RendersSchemaInterpreter), fixed code around sanitized names',
             'standalonePayloadBlock|raw' => 'the standalone payload methods: fixed code around sanitized names',
+            'listShapeBlock|raw' => 'the list-shape check method: fixed code, library names via yii3Lib()',
         ],
         'laravel.nested-validation.php.twig' => [
             'rule.rules|raw' => 'a Laravel rules array literal from laravelRulesLiteral(), strings via phpStringLiteral()',

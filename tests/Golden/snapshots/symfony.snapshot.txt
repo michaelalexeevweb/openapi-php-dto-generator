@@ -1,4 +1,4 @@
-# symfony mode — 77 files, 13398 lines
+# symfony mode — 77 files, 13411 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -1461,6 +1461,7 @@ final class ApiTestSerializationGetQueryParams
                 'additionalProperties' => [
                     'type' => 'string',
                 ],
+                'type' => 'object',
             ],
             'flag' => [],
             'strict' => [],
@@ -2061,7 +2062,7 @@ final class ApiTestSerializationGetQueryParams
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if (array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
                     $propertyName = (string)$propertyName;
@@ -5391,6 +5392,7 @@ final class ContainerAliases
                         'minLength' => 2,
                     ],
                 ],
+                'type' => 'object',
             ],
             'plain' => [
                 'items' => [
@@ -5738,7 +5740,7 @@ final class ContainerAliases
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if (array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
                     $propertyName = (string)$propertyName;
@@ -5909,7 +5911,6 @@ use function array_map;
 use function get_object_vars;
 use function in_array;
 use function is_array;
-use function is_int;
 use function is_object;
 use function is_string;
 use function method_exists;
@@ -5945,6 +5946,7 @@ final class Containers
                     'type' => 'string',
                     'format' => 'date',
                 ],
+                'type' => 'object',
             ],
             'timestamps' => [
                 'items' => [
@@ -6348,7 +6350,7 @@ final class Containers
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if (array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
                     $propertyName = (string)$propertyName;
@@ -6380,6 +6382,7 @@ final class Containers
 
         return match ($type) {
             'string' => is_string($value),
+            'object' => is_array($value) || is_object($value),
             default => true,
         };
     }
@@ -6567,6 +6570,7 @@ final class CountMap
             'type' => 'integer',
             'minimum' => 0,
         ],
+        'type' => 'object',
     ];
 
     private const array OPENAPI_PHP_TO_NAME_MAP = [];
@@ -6684,7 +6688,7 @@ final class CountMap
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if (array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
                     $propertyName = (string)$propertyName;
@@ -6716,6 +6720,7 @@ final class CountMap
 
         return match ($type) {
             'integer' => is_int($value) || (is_float($value) && is_finite($value) && floor($value) === $value),
+            'object' => is_array($value) || is_object($value),
             default => true,
         };
     }
@@ -7247,6 +7252,7 @@ final class ItemBounds
                     'type' => 'integer',
                     'minimum' => 5,
                 ],
+                'type' => 'object',
             ],
             'codes' => [
                 'items' => [
@@ -7567,7 +7573,7 @@ final class ItemBounds
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if (array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
                     $propertyName = (string)$propertyName;
@@ -7600,6 +7606,7 @@ final class ItemBounds
         return match ($type) {
             'integer' => is_int($value) || (is_float($value) && is_finite($value) && floor($value) === $value),
             'string' => is_string($value),
+            'object' => is_array($value) || is_object($value),
             default => true,
         };
     }
@@ -7877,6 +7884,7 @@ final class NestedContainers
                         'type' => 'string',
                     ],
                 ],
+                'type' => 'object',
             ],
             'mapsByKey' => [
                 'additionalProperties' => [
@@ -7885,6 +7893,7 @@ final class NestedContainers
                         'type' => 'integer',
                     ],
                 ],
+                'type' => 'object',
             ],
             'dateRows' => [
                 'items' => [
@@ -8462,7 +8471,7 @@ final class NestedContainers
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if (array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
                     $propertyName = (string)$propertyName;
@@ -8722,6 +8731,7 @@ final class NullableContainerValues
                     'nullable' => true,
                     'minimum' => 5,
                 ],
+                'type' => 'object',
             ],
             'listOfNullable31' => [
                 'items' => [
@@ -8734,6 +8744,7 @@ final class NullableContainerValues
                     'type' => 'integer',
                     'nullable' => true,
                 ],
+                'type' => 'object',
             ],
         ],
     ];
@@ -9072,7 +9083,7 @@ final class NullableContainerValues
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if (array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
                     $propertyName = (string)$propertyName;
@@ -9105,6 +9116,7 @@ final class NullableContainerValues
         return match ($type) {
             'integer' => is_int($value) || (is_float($value) && is_finite($value) && floor($value) === $value),
             'string' => is_string($value),
+            'object' => is_array($value) || is_object($value),
             default => true,
         };
     }
@@ -11571,6 +11583,7 @@ final class TreeNode
                         ],
                     ],
                 ],
+                'type' => 'object',
             ],
         ],
     ];
@@ -11847,7 +11860,7 @@ final class TreeNode
 
             if ($extraPropertySchema === false || is_array($extraPropertySchema)) {
                 foreach ($structuredValue as $propertyName => $propertyValue) {
-                    if ((is_int($propertyName) && array_is_list($structuredValue)) || array_key_exists($propertyName, $evaluatedProperties)) {
+                    if (array_key_exists($propertyName, $evaluatedProperties)) {
                         continue;
                     }
                     $propertyName = (string)$propertyName;

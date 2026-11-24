@@ -357,5 +357,9 @@ final class {{ className }} extends {{ libAbstractInput }} implements {{ impleme
 
 {{ standalonePayloadBlock|raw }}
 {% endif %}
+{% if listShapeBlock|default('') is not empty %}
+
+{{ listShapeBlock|raw }}
+{% endif %}
 }
 {% endif %}

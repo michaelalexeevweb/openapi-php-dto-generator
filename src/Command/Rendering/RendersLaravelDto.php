@@ -544,8 +544,11 @@ trait RendersLaravelDto
         // 500 on every valid object.
         $unionDtoMember = $this->unionClassBesideScalars($param['declaredType']);
         if ($unionDtoMember !== null) {
+            // Beside an `array` member the class is the array with keys — a list stays the list.
             $raw = sprintf(
-                '(is_array(%1$s) ? %2$s : (%3$s))',
+                $this->unionHasArrayMember($param['declaredType'])
+                    ? '(is_array(%1$s) && !array_is_list(%1$s) ? %2$s : (%3$s))'
+                    : '(is_array(%1$s) ? %2$s : (%3$s))',
                 sprintf('$data[%s]', $key),
                 $this->laravelNestedDtoExpression(
                     dtoClass: $unionDtoMember,
@@ -901,6 +904,11 @@ trait RendersLaravelDto
         if ($this->laravelDescribesList($property)) {
             // `array|bool`: the list is one member, and `array_values()` on the other was a TypeError.
             $topLevelMembers = array_diff(explode('|', ltrim((string)preg_replace('/<.*>/s', '', $property['type']), '?')), ['null']);
+            // `anyOf: [{type: object}, {type: string}]`: the array is the OBJECT member, and
+            // `array_values()` wrote `{"a": 1}` back as `[1]`.
+            if (count($topLevelMembers) > 1 && $this->laravelUnionAdmitsObjectButNoArray($this->laravelConstraintsFor($property))) {
+                return sprintf('is_array(%1$s) ? (object)%1$s : %1$s', $propertyAccess);
+            }
             if (count($topLevelMembers) > 1) {
                 return sprintf('is_array(%1$s) ? array_values(%1$s) : %1$s', $propertyAccess);
             }
@@ -913,16 +921,26 @@ trait RendersLaravelDto
         // A union with one class member writes the object the way a plain nested DTO is written; the
         // scalar members go out as they are.
         $unionDtoMember = $this->unionClassBesideScalars($property['type']);
-        if ($unionDtoMember !== null) {
-            return sprintf(
+        $wire = $unionDtoMember === null
+            ? $this->laravelUnionEnumToWire($property, $propertyAccess)
+            : sprintf(
                 '%1$s instanceof %2$s ? (%1$s->toArray() ?: (object)[]) : (%3$s)',
                 $propertyAccess,
                 $this->shortClassName($unionDtoMember),
                 $this->laravelUnionEnumToWire($property, $propertyAccess),
             );
+
+        // A date beside other members — `DateTimeImmutable|Shade`, `int|DateTimeImmutable` — went out as
+        // the PHP object, which `json_encode()` writes as `{"date": …, "timezone_type": 3}`.
+        if (str_contains($property['type'], '|') && in_array('DateTimeImmutable', array_map($this->shortClassName(...), $this->unionMembersBesideNull($property['type'])), true)) {
+            $formatted = ($property['unionTemporalFormats'] ?? []) === ['date']
+                ? sprintf("%s->format('Y-m-d')", $propertyAccess)
+                : sprintf("(%1\$s->format('u') === '000000' ? %1\$s->format('c') : %1\$s->format('Y-m-d\\TH:i:s.uP'))", $propertyAccess);
+
+            return sprintf('%1$s instanceof DateTimeImmutable ? %2$s : (%3$s)', $propertyAccess, $formatted, $wire);
         }
 
-        return $this->laravelUnionEnumToWire($property, $propertyAccess);
+        return $wire;
     }
 
     /**

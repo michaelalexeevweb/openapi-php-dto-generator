@@ -65,14 +65,17 @@ final class KnownDivergences
                 'modes' => [GenerationMode::Symfony, GenerationMode::Yii3],
                 'category' => 'wrong-accept',
                 'kinds' => ['wrongType:array'],
-                'tagsAny' => ['site:dto', 'site:nullable-dto', 'site:map', 'site:nullable-map', 'site:discriminated', 'site:nullable-discriminated'],
+                // `unionClassMember`: the row's own last sentence — a union of a class and a scalar is
+                // read the same way, the JSON array built into the class.
+                'tagsAny' => ['site:dto', 'site:nullable-dto', 'site:map', 'site:nullable-map', 'site:discriminated', 'site:nullable-discriminated', 'unionClassMember'],
                 'row' => 'support matrix: "a JSON array for a `type: object` property" (symfony, yii3 accept)',
             ],
             [
                 'modes' => [GenerationMode::Symfony],
                 'category' => 'wrong-accept',
                 'kinds' => ['wrongType:'],
-                'tagsAny' => ['site:dto', 'site:nullable-dto'],
+                // A union with a class member too: the row's "union of such a class and a scalar".
+                'tagsAny' => ['site:dto', 'site:nullable-dto', 'unionClassMember'],
                 'row' => 'support matrix: "a scalar for a property typed as a generated class" (symfony/serializer 7.4.10 builds an empty object)',
             ],
             [

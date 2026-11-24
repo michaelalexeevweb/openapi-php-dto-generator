@@ -112,6 +112,18 @@ final class CompositionClassesLoadTest extends TestCase
                 ...$components,
             ]];
         }
+
+        // A union member that extends a component: the component is a parent, so it cannot be emitted
+        // `final` — `Class PetAnyOf2 cannot extend final class Base`. The parents were listed before the
+        // union members were registered, so a member's `allOf` was never counted.
+        $base = ['$ref' => '#/components/schemas/Base'];
+        foreach (['empty' => ['type' => 'object'], 'with properties' => ['type' => 'object', ...$beta]] as $name => $baseSchema) {
+            yield 'union member extending a component ' . $name => ['union member extending a component ' . $name, [
+                'Base' => $baseSchema,
+                'Pet' => ['anyOf' => [['type' => 'object', ...$alpha], ['type' => 'object', 'allOf' => [$base]]]],
+                'Holder' => ['type' => 'object', 'properties' => ['pet' => ['$ref' => '#/components/schemas/Pet']]],
+            ]];
+        }
     }
 
     /**

@@ -394,16 +394,39 @@ final class InstanceGenerator
         if (!($node['nullable'] ?? false) && $node['t'] !== 'null') {
             $common[] = ['kind' => 'nullForbidden', 'value' => null, 'tags' => [$site]];
         }
-        $common = [...$common, ...$this->wrongTypes($node, $site)];
+        $common = [...$common, ...$this->wrongTypes($node, $site, self::classMemberTags($node))];
 
         return $this->random->sample([...$common, ...$own], self::MUTATIONS_PER_NODE);
     }
 
     /**
+     * `unionClassMember` for a union one of whose members is a generated class (an object or a
+     * discriminated union): a wrong-typed value there meets the framework's class hydration first, as
+     * at a `site:dto`, so the support-matrix rows about a class property speak for it too.
+     *
      * @param array<string, mixed> $node
+     * @return array<int, string>
+     */
+    public static function classMemberTags(array $node): array
+    {
+        if ($node['t'] !== 'union') {
+            return [];
+        }
+        foreach ($node['branches'] as $branch) {
+            if (in_array($branch['t'], ['object', 'discriminated'], true)) {
+                return ['unionClassMember'];
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @param array<string, mixed> $node
+     * @param array<int, string> $extraTags
      * @return array<int, array{kind: string, value: mixed, tags: array<int, string>}>
      */
-    private function wrongTypes(array $node, string $site): array
+    private function wrongTypes(array $node, string $site, array $extraTags = []): array
     {
         $admitted = self::admittedTypes($node);
         $object = new stdClass();
@@ -414,7 +437,7 @@ final class InstanceGenerator
             if (in_array($type, $admitted, true) || ($type === 'integer' && in_array('number', $admitted, true))) {
                 continue;
             }
-            $mutations[] = ['kind' => 'wrongType:' . $type, 'value' => $pool[$type], 'tags' => [$site]];
+            $mutations[] = ['kind' => 'wrongType:' . $type, 'value' => $pool[$type], 'tags' => [$site, ...$extraTags]];
             if (count($mutations) === 2) {
                 break;
             }
