@@ -833,9 +833,13 @@ trait RendersRuntimeDto
             // …except when the union's only container IS an object — `anyOf: [{type: object}, {type:
             // null}]`, `[map, string]`: then a PHP array in it can only be that object, and goes out
             // as one, as a `type: object` map does. Raw, `{}` came back as `[]`.
+            // Only where the PHP type can hold an array at all: a union typed by its one class
+            // (`type: object, oneOf: [$ref Item], nullable: true` is `?Item`) holds the object, never
+            // an array, and the check would be dead code in every such class.
             'arraysAreObjects' => ($property['isShapeUnion'] ?? false) === true
                 && is_array($property['constraints'] ?? null)
-                && DtoValidator::admitsObjectContainerOnly($property['constraints']),
+                && DtoValidator::admitsObjectContainerOnly($property['constraints'])
+                && preg_match('/(?<![A-Za-z0-9_\\\])(array|mixed)(?![A-Za-z0-9_])/', $property['type']) === 1,
             'hasArrayAdder' => str_starts_with($property['type'], 'array'),
             'arrayAdderMethodName' => 'addItemTo' . ucfirst($property['name']),
             'arrayAdderItemType' => $this->resolveArrayItemPhpType($property['type']),

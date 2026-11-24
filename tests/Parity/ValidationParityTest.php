@@ -2262,6 +2262,44 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * The value of a key that `additionalProperties: {schema}` admits beside named properties is judged
+     * against that schema where the raw body is reachable — runtime and both Laravel modes. The Symfony
+     * serializer and the yii3 hydrator drop the undeclared key before any validator runs, so neither
+     * sees the value: pinned as accepted there (README.support-matrix), to notice if that ever changes.
+     *
+     * @param array<string, mixed> $property
+     */
+    #[DataProvider('additionalKeyCases')]
+    public function testTheValueOfAnAdditionalKeyBesideNamedProperties(GenerationMode $mode, string $key, array $property): void
+    {
+        $spec = self::probeSpec($property);
+        $spec['components']['schemas']['Bag'] = [
+            'type' => 'object',
+            'properties' => ['a' => ['type' => 'integer']],
+            'additionalProperties' => ['type' => 'string', 'maxLength' => 3],
+        ];
+        $frameworkDrops = in_array($mode, [GenerationMode::Symfony, GenerationMode::Yii3], true);
+
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => $frameworkDrops],
+            actual: $this->verdict($mode, $spec, 'additional-key-' . $key, '{"f":{"a":1,"k":"abc"}}', '{"f":{"a":1,"k":"abcd"}}'),
+        );
+    }
+
+    public static function additionalKeyCases(): iterable
+    {
+        $cases = [
+            'inline' => ['type' => 'object', 'properties' => ['a' => ['type' => 'integer']], 'additionalProperties' => ['type' => 'string', 'maxLength' => 3]],
+            'component' => ['$ref' => '#/components/schemas/Bag'],
+        ];
+        foreach (GenerationMode::cases() as $mode) {
+            foreach ($cases as $key => $property) {
+                yield $mode->value . ' ' . $key => [$mode, $key, $property];
+            }
+        }
+    }
+
+    /**
      * A schema that holds itself — a tree — is checked at every depth the data reaches. Laravel's rules
      * are written out ahead of the data, so the cycle guard stopped them one level down: a wrong value
      * deeper than that passed validation and failed in hydration — a 500 (`fromValidated(): Argument #1

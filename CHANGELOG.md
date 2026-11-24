@@ -3,6 +3,21 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.144 — 2026-11-24
+
+- no dead array check on class unions
+- additional-key docs corrected
+
+Runtime: a union typed by its one class — `type: object, oneOf: [{$ref: Stamp}], nullable: true` is `?Stamp` —
+was written out with `is_array($this->x) ? (object)$this->x : $this->x` in `toArray()`. The property never
+holds an array, so the check was dead code in every such class. It is emitted only where the PHP type can hold
+an array (`array`, `mixed`); a union such as `[map, string]` keeps it. Output is unchanged.
+
+Docs: README.support-matrix said every mode checks the value of a key `additionalProperties: {schema}` admits
+beside named properties. Runtime and both Laravel modes do; the Symfony serializer and the yii3 hydrator drop
+the undeclared key before any validator runs, so an invalid value passes there too. The row says so now, and a
+test pins it.
+
 ## 2.15.143 — 2026-11-23
 
 - scalar aliases resolved everywhere
