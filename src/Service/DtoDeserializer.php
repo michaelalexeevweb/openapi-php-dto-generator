@@ -3577,7 +3577,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return $format;
         }
 
-        return $this->resolveTemporalUnionFormat($constraints['oneOf'] ?? $constraints['anyOf'] ?? null);
+        return $this->resolveTemporalUnionFormat($constraints['oneOf'] ?? $constraints['anyOf'] ?? $constraints['allOf'] ?? null);
     }
 
     /**
@@ -3635,6 +3635,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
             if ($typeConstraint === 'null' || (is_array($typeConstraint) && in_array('null', $typeConstraint, true))) {
                 return true;
             }
+            // A `oneOf` / `anyOf` member that admits null — `{type: number, nullable: true}`, `{type: null}`
+            // — admits it for the union. An OPTIONAL property was read as "just optional" and its explicit
+            // null refused as `expects string, got null`, where the same union on a required one took it.
+            if ($this->aUnionMemberAdmitsNull($fieldConstraints)) {
+                return true;
+            }
         }
 
         $requiredMethodName = 'is' . ucfirst($paramName) . 'Required';
@@ -3646,6 +3652,33 @@ final class DtoDeserializer implements DtoDeserializerInterface
         // not required + PHP-nullable → just optional → null is NOT valid in JSON.
         return $this->invokeRequiredMethod($reflection, $requiredMethodName)
             ?? $phpAllowsNull;
+    }
+
+    /**
+     * Whether a member of the schema's `oneOf` / `anyOf` admits null: OpenAPI 3.0 `nullable: true`, or a
+     * `null` type of its own.
+     *
+     * @param array<array-key, mixed> $fieldConstraints
+     */
+    private function aUnionMemberAdmitsNull(array $fieldConstraints): bool
+    {
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            $members = $fieldConstraints[$keyword] ?? null;
+            if (!is_array($members)) {
+                continue;
+            }
+            foreach ($members as $member) {
+                if (!is_array($member)) {
+                    continue;
+                }
+                $type = $member['type'] ?? null;
+                if (($member['nullable'] ?? false) === true || $type === 'null' || (is_array($type) && in_array('null', $type, true))) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**

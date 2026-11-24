@@ -1,4 +1,4 @@
-# yii3 mode — 80 files, 36851 lines
+# yii3 mode — 80 files, 36890 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -22747,7 +22747,7 @@ final class Discriminator1 extends AbstractInput implements Discriminator, DataS
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Validate(new In(['discriminator1', 'discriminator2'], strict: true, skipOnEmpty: new WhenMissing()))]
-    public readonly DiscriminatorType $type;
+    public readonly DiscriminatorType|array $type;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
     #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
@@ -23233,7 +23233,7 @@ final class Discriminator2 extends AbstractInput implements Discriminator, DataS
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Validate(new In(['discriminator1', 'discriminator2'], strict: true, skipOnEmpty: new WhenMissing()))]
-    public readonly DiscriminatorType $type;
+    public readonly DiscriminatorType|array $type;
 
     #[StringValue(skipOnEmpty: new WhenNull())]
     #[Validate(new StringValue(skipOnEmpty: new WhenNull()))]
@@ -30685,7 +30685,7 @@ final class Test2 extends AbstractInput implements DataSetInterface, RulesProvid
     public readonly ?Test2UserType $userType;
 
     #[Validate(new In(['cat', 'dog'], strict: true, skipOnEmpty: new WhenMissing()))]
-    public readonly Test2Types $types;
+    public readonly Test2Types|array $types;
 
     public function getId(): int
     {
@@ -32563,6 +32563,10 @@ final class TestPostRequest extends AbstractInput implements DataSetInterface, R
                     } else {
                         $discriminatorValue = $discriminatorCarrier[$discriminatorProperty]
                             ?? (property_exists($value, $phpProperty) ? $value->{$phpProperty} : null);
+                        // A variant whose discriminator is a one-value `enum` holds it as its enum case.
+                        if ($discriminatorValue instanceof BackedEnum) {
+                            $discriminatorValue = $discriminatorValue->value;
+                        }
                         $mapKey = is_scalar($discriminatorValue) ? (string)$discriminatorValue : null;
                         if ($mapKey === null || !array_key_exists($mapKey, $discriminatorMap)) {
                             $errors[] = sprintf(
@@ -33328,6 +33332,10 @@ final class TreeNode extends AbstractInput implements DataSetInterface, RulesPro
                     } else {
                         $discriminatorValue = $discriminatorCarrier[$discriminatorProperty]
                             ?? (property_exists($value, $phpProperty) ? $value->{$phpProperty} : null);
+                        // A variant whose discriminator is a one-value `enum` holds it as its enum case.
+                        if ($discriminatorValue instanceof BackedEnum) {
+                            $discriminatorValue = $discriminatorValue->value;
+                        }
                         $mapKey = is_scalar($discriminatorValue) ? (string)$discriminatorValue : null;
                         if ($mapKey === null || !array_key_exists($mapKey, $discriminatorMap)) {
                             $errors[] = sprintf(
@@ -34150,6 +34158,9 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
                 if (array_key_exists('type', $branch) && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
                     continue;
                 }
+                if ($this->openApiListBelongsToArrayBranch($normalizedValue, $schema['oneOf'], $branch)) {
+                    continue;
+                }
                 // Keep why each branch failed: with no match at all those reasons are far more
                 // useful than "does not match any oneOf branch".
                 $errorsForBranch = $this->validateOpenApiNode($value, $branch, $path, $depth + 1);
@@ -34196,6 +34207,10 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
                     } else {
                         $discriminatorValue = $discriminatorCarrier[$discriminatorProperty]
                             ?? (property_exists($value, $phpProperty) ? $value->{$phpProperty} : null);
+                        // A variant whose discriminator is a one-value `enum` holds it as its enum case.
+                        if ($discriminatorValue instanceof BackedEnum) {
+                            $discriminatorValue = $discriminatorValue->value;
+                        }
                         $mapKey = is_scalar($discriminatorValue) ? (string)$discriminatorValue : null;
                         if ($mapKey === null || !array_key_exists($mapKey, $discriminatorMap)) {
                             $errors[] = sprintf(
@@ -34307,6 +34322,9 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
                 ) {
                     continue;
                 }
+                if ($this->openApiListBelongsToArrayBranch($normalizedValue, $schema['anyOf'], $branch)) {
+                    continue;
+                }
                 $errorsForBranch = $this->validateOpenApiNode($value, $branch, $path, $depth + 1);
                 if ($errorsForBranch === []) {
                     $anyOfMatched = true;
@@ -34398,6 +34416,27 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
             'object' => is_array($value) || is_object($value),
             default => true,
         };
+    }
+
+    /**
+     * @param array<array-key, mixed> $branches
+     * @param array<array-key, mixed> $branch
+     */
+    private function openApiListBelongsToArrayBranch(mixed $value, array $branches, array $branch): bool
+    {
+        $typesOf = static fn(mixed $type): array => is_string($type) ? [$type] : (is_array($type) ? $type : []);
+        $branchTypes = $typesOf($branch['type'] ?? null);
+        if (!is_array($value) || !array_is_list($value) || !in_array('object', $branchTypes, true) || in_array('array', $branchTypes, true)) {
+            return false;
+        }
+
+        foreach ($branches as $sibling) {
+            if (is_array($sibling) && in_array('array', $typesOf($sibling['type'] ?? null), true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function normalizeOpenApiStructuralValue(mixed $value): mixed

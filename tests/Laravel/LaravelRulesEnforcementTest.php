@@ -2320,11 +2320,17 @@ final class LaravelRulesEnforcementTest extends TestCase
             ]],
         );
 
-        foreach ([$fqcn, $shapeFqcn] as $class) {
-            foreach (['hello', 5, null] as $invalid) {
-                $validator = $this->validatorFactory()->make(['f' => $invalid], call_user_func([$class, 'rules']));
-                $this->assertTrue($validator->fails(), sprintf('%s: %s must be refused', $class, json_encode($invalid)));
-            }
+        // The union names a string branch of its own, so a string is a valid `Choice` since 2.15.145: the
+        // reference is written out where it is used, and the union's own check (not a rule) judges it.
+        foreach (['5', 'null'] as $invalid) {
+            $this->assertNotSame([], $this->rawBodyErrors(fqcn: $fqcn, json: '{"f":' . $invalid . '}'), $invalid . ' must be refused');
+        }
+        $this->assertSame([], $this->rawBodyErrors(fqcn: $fqcn, json: '{"f":"hello"}'));
+        $this->assertSame('hello', call_user_func([$fqcn, 'fromValidated'], ['f' => 'hello'])->getF());
+
+        foreach (['hello', 5, null] as $invalid) {
+            $validator = $this->validatorFactory()->make(['f' => $invalid], call_user_func([$shapeFqcn, 'rules']));
+            $this->assertTrue($validator->fails(), sprintf('%s: %s must be refused', $shapeFqcn, json_encode($invalid)));
         }
         $validator = $this->validatorFactory()->make(['f' => ['a' => 'x']], call_user_func([$shapeFqcn, 'rules']));
         $this->assertFalse($validator->fails());
@@ -2356,12 +2362,14 @@ final class LaravelRulesEnforcementTest extends TestCase
             extraSchemas: [...$leaves, 'Contact' => ['oneOf' => [['$ref' => '#/components/schemas/Em'], ['type' => 'string']]]],
         );
 
-        foreach ([$objectsOnly, $withScalar] as $fqcn) {
-            foreach (['"x"', '5', 'null'] as $invalid) {
+        // `"x"` matches the string branch of the second union, so only the first refuses it.
+        foreach ([$objectsOnly => ['"x"', '5', 'null'], $withScalar => ['5', 'null']] as $fqcn => $invalidValues) {
+            foreach ($invalidValues as $invalid) {
                 $errors = $this->rawBodyErrors(fqcn: $fqcn, json: '{"f":' . $invalid . '}');
                 $this->assertCount(1, $errors['f'] ?? [], sprintf('%s %s: %s', $fqcn, $invalid, json_encode($errors)));
             }
         }
+        $this->assertSame([], $this->rawBodyErrors(fqcn: $withScalar, json: '{"f":"x"}'));
         $valid = '{"f":{"type":"em","e":"a"}}';
         $this->assertSame([], $this->rawBodyErrors(fqcn: $objectsOnly, json: $valid));
         $this->assertNotNull(call_user_func([$objectsOnly, 'fromValidated'], json_decode($valid, true))->getF());

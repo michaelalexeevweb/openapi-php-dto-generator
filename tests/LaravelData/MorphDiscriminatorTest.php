@@ -206,7 +206,7 @@ final class MorphDiscriminatorTest extends TestCase
         );
 
         $this->assertIsArray($errors, 'refused as a validation error: ' . $json);
-        $this->assertSame($errorKeys, array_keys($errors), $json);
+        $this->assertSame($errorKeys, array_keys($errors), $json . ' ' . json_encode($errors));
 
         // The array path goes through the same validation.
         try {

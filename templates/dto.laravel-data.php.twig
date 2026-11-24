@@ -153,7 +153,9 @@ abstract class {{ className }} extends {{ morphBase.dataBase }} implements {{ mo
      * reads the discriminator out of that value before any rule runs, and a string or a number there was
      * a `TypeError` from `array_key_exists()` — a 500 — where a plain object property answers 422. A
      * property's null is read as an empty payload and left to the rules; a list item or map value is
-     * read as it is, null included.
+     * read as it is, null included. The discriminator itself is read the same way, by its wire name and
+     * by the property's, and anything but a string or a number there — an object, a list, a boolean —
+     * broke laravel-data's own `DataMorphClassResolver::normalizeValue()` with a `TypeError`.
      *
      * @internal called by the classes that hold this union
      * @return array<string, string>
@@ -163,6 +165,12 @@ abstract class {{ className }} extends {{ morphBase.dataBase }} implements {{ mo
         if (!is_array($value)) {
             return $value === null && !$isItem ? [] : [$path => sprintf('%s expects object, got %s.', $path, get_debug_type($value))];
         }
+{% for key in morphBase.discriminatorKeys %}
+        $discriminator = $value['{{ key|php_string }}'] ?? null;
+        if ($discriminator !== null && !is_string($discriminator) && !is_int($discriminator) && !is_float($discriminator)) {
+            return [$path . '.{{ key|php_string }}' => sprintf('%s.{{ key|php_string }} expects string, got %s.', $path, get_debug_type($discriminator))];
+        }
+{% endfor %}
 {% if morphBase.reachingMembers is empty %}
 
         return [];
@@ -300,6 +308,30 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
     public static function prepareForPipeline(array $properties): array
     {
 {% include 'laravel.parameters.php.twig' with {parameterVariable: 'properties'} %}
+{% endif %}
+{% if temporalUnionCast|default(null) is not null %}
+
+    /**
+     * laravel-data's own pipeline, with one change: a property typed a date beside another scalar
+     * (`int|DateTimeImmutable`) is cast only when a string arrives. Its date cast is otherwise handed
+     * every value — `true` and `-27` included — and throws on each, a 500 for a payload the rules accepted.
+     */
+    public static function pipeline(): {{ temporalUnionCast.pipelineRef }}
+    {
+        return parent::pipeline()->replace(
+            pipe: {{ temporalUnionCast.castPipeRef }}::class,
+            replacement: new class({{ temporalUnionCast.containerRef }}::getInstance()->make({{ temporalUnionCast.configRef }}::class)) extends {{ temporalUnionCast.castPipeRef }} {
+                protected function shouldBeCasted({{ temporalUnionCast.propertyRef }} $property, mixed $value): bool
+                {
+                    if (!is_string($value) && in_array($property->name, {{ temporalUnionCast.namesLiteral|raw }}, true)) {
+                        return false;
+                    }
+
+                    return parent::shouldBeCasted($property, $value);
+                }
+            },
+        );
+    }
 {% endif %}
 {% if wireNameRestore|default(null) is not null %}
 
@@ -785,6 +817,11 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
         // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
         // a union that holds a scalar branch carries `array` — is one mistake, reported once.
         if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
+            return;
+        }
+        // The same for a union whose member's rules already failed below it: `null` for a discriminated
+        // union is `pet.kind` required, and "pet does not match any oneOf branch" beside it said it twice.
+        if (str_starts_with($claim, 'does not match any ') && $validator->errors()->has($path . '.*')) {
             return;
         }
 

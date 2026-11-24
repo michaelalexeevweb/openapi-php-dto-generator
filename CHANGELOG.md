@@ -3,6 +3,79 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.145 — 2026-11-24
+
+- fuzz harness added
+- union components generate
+- discriminators checked by value
+- dates inside composition read
+- union members judged per type
+- prefixItems, maps, lists fixed
+- laravel-data nested unions refuse
+
+A property-based fuzz harness (`tests/Fuzz/`) now generates random specs and payloads, runs every payload
+through all five modes and checks that each one either accepts or refuses it — never crashes — and that the
+modes agree, apart from the documented divergences. A fixed set of seeds runs in CI; `tests/Fuzz/fuzz-long.sh`
+runs as many as you like. Its first runs found 25 defects; all are fixed or, where the framework decides,
+documented.
+
+**Regenerate after upgrading, in every mode.** In symfony and yii3 an inline discriminated union of `$ref`s on
+a property is now an interface `<Schema><Property>`: its getter returns that interface instead of `Circle|Oval`.
+
+Generation (every mode):
+
+- `anyOf: [{enum: [green]}, {type: integer, enum: [-20]}]` and an object-or-enum `oneOf` generated nothing:
+  the enums of the branches were named alike ("Enum schema name collision");
+- a map of `allOf: [{$ref: Num}]`, an array alias of a boolean alias, and a map of inline objects inside a
+  component named classes that were never written — every request a 500 in both Laravel modes;
+- a 3.1 scalar component with a type list (`type: [integer, "null"]`) was read as a class: every number was
+  refused, and symfony accepted a string;
+- a component union with a value branch (`oneOf: [{type: integer}, {type: object, …}]`, `[list, string]`)
+  was a class no value could be: it is written out where it is used, as the inline spelling always was. A
+  union that names itself stays a class. A string for `oneOf: [$ref Leaf, {type: string}]` is accepted;
+- `allOf: [{$ref: ScalarAlias}]` inside a union is that scalar.
+
+Discriminators:
+
+- a tag declared as a one-value `enum` is compared by value; symfony and yii3 refused a valid member;
+- `anyOf` with a discriminator is dispatched by its tag too (laravel crashed on valid payloads);
+- runtime refuses a tag the mapping does not name, and a member whose tag names another member;
+- laravel refuses `null` for a non-nullable discriminated union; laravel-data answers an object, list or
+  boolean tag with a 422, not a 500;
+- symfony checks that a hand-built member's tag names its own class for a `$ref` to a discriminated union
+  too (a response DTO `new Holder(pet: new Cat(kind: 'dog'))` was written out as a dog); laravel-data
+  reports `null` for such a union once, not twice.
+
+Formats and enums:
+
+- `format: date` / `date-time` inside `allOf`, `anyOf` and `oneOf` is read as a date in runtime, yii3 and
+  laravel-data, beside an integer or boolean branch too; symfony accepts a valid 3.1 nullable date-time;
+- yii3 answers an object or list sent for an enum with a 422 instead of "Cannot instantiate enum".
+
+Unions:
+
+- a branch's keywords judge only values of its own type: yii3 applied a string's `minLength` to a number;
+- runtime accepts an enum case beside an object branch, and a `null` on a 3.0 `nullable` branch;
+- a list beside a map branch is judged as a list in every mode;
+- an `enum` inside a union branch is checked in symfony and yii3; yii3 keeps an int in a `string|float`
+  union and type-checks an `X`-or-`null` union;
+- laravel refuses a JSON list for an all-object `anyOf`.
+
+Containers:
+
+- `prefixItems` positions are no longer judged by `items` (runtime, laravel, laravel-data), nor typed by
+  it in a list of tuples (Symfony 8's serializer refused the leading member);
+- the Laravel modes no longer apply an `additionalProperties` schema to declared properties;
+- a map of a nullable enum admits `null` values;
+- a 3.1 `$ref` to a map with sibling `minProperties` / `maxProperties` stays a map (symfony, yii3);
+- yii3 keeps the items of an array alias of a string alias;
+- symfony refuses a JSON object for `type: array` (`#[Assert\Type('list')]`).
+
+laravel-data: a union of classes inside an inline object's property was built as its first member without
+being checked as one, so an unknown or second-member tag was a `CannotCastEnum` 500. It is now checked as its
+first member, as on the root — the documented limit of this mode (write the union as a component with a
+discriminator). Framework limits that remain are in README.support-matrix.
+
 ## 2.15.144 — 2026-11-24
 
 - no dead array check on class unions

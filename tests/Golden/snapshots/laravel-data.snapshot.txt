@@ -1,4 +1,4 @@
-# laravel-data mode — 80 files, 22279 lines
+# laravel-data mode — 80 files, 22442 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -5863,6 +5863,11 @@ final class ApplicatorRefs extends Data
         if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
+        // The same for a union whose member's rules already failed below it: `null` for a discriminated
+        // union is `pet.kind` required, and "pet does not match any oneOf branch" beside it said it twice.
+        if (str_starts_with($claim, 'does not match any ') && $validator->errors()->has($path . '.*')) {
+            return;
+        }
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -6546,6 +6551,11 @@ final class ApplicatorRefsConditional extends Data
         if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
+        // The same for a union whose member's rules already failed below it: `null` for a discriminated
+        // union is `pet.kind` required, and "pet does not match any oneOf branch" beside it said it twice.
+        if (str_starts_with($claim, 'does not match any ') && $validator->errors()->has($path . '.*')) {
+            return;
+        }
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -7041,6 +7051,11 @@ final class ApplicatorRefsKeyed extends Data
         if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
+        // The same for a union whose member's rules already failed below it: `null` for a discriminated
+        // union is `pet.kind` required, and "pet does not match any oneOf branch" beside it said it twice.
+        if (str_starts_with($claim, 'does not match any ') && $validator->errors()->has($path . '.*')) {
+            return;
+        }
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -7509,6 +7524,11 @@ final class ApplicatorRefsPoisonedKey extends Data
         // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
         // a union that holds a scalar branch carries `array` — is one mistake, reported once.
         if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
+            return;
+        }
+        // The same for a union whose member's rules already failed below it: `null` for a discriminated
+        // union is `pet.kind` required, and "pet does not match any oneOf branch" beside it said it twice.
+        if (str_starts_with($claim, 'does not match any ') && $validator->errors()->has($path . '.*')) {
             return;
         }
 
@@ -8811,6 +8831,11 @@ final class ChainLink extends Data
         if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
+        // The same for a union whose member's rules already failed below it: `null` for a discriminated
+        // union is `pet.kind` required, and "pet does not match any oneOf branch" beside it said it twice.
+        if (str_starts_with($claim, 'does not match any ') && $validator->errors()->has($path . '.*')) {
+            return;
+        }
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -9331,6 +9356,11 @@ final class ChainMiddle extends Data
         // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
         // a union that holds a scalar branch carries `array` — is one mistake, reported once.
         if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
+            return;
+        }
+        // The same for a union whose member's rules already failed below it: `null` for a discriminated
+        // union is `pet.kind` required, and "pet does not match any oneOf branch" beside it said it twice.
+        if (str_starts_with($claim, 'does not match any ') && $validator->errors()->has($path . '.*')) {
             return;
         }
 
@@ -10212,6 +10242,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use BackedEnum;
 use Closure;
 use DateTimeImmutable;
 use Illuminate\Container\Container;
@@ -10811,6 +10842,11 @@ final class Containers extends Data
         if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
+        // The same for a union whose member's rules already failed below it: `null` for a discriminated
+        // union is `pet.kind` required, and "pet does not match any oneOf branch" beside it said it twice.
+        if (str_starts_with($claim, 'does not match any ') && $validator->errors()->has($path . '.*')) {
+            return;
+        }
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -10948,6 +10984,10 @@ final class Containers extends Data
                     } else {
                         $discriminatorValue = $discriminatorCarrier[$discriminatorProperty]
                             ?? (property_exists($value, $phpProperty) ? $value->{$phpProperty} : null);
+                        // A variant whose discriminator is a one-value `enum` holds it as its enum case.
+                        if ($discriminatorValue instanceof BackedEnum) {
+                            $discriminatorValue = $discriminatorValue->value;
+                        }
                         $mapKey = is_scalar($discriminatorValue) ? (string)$discriminatorValue : null;
                         if ($mapKey === null || !array_key_exists($mapKey, $discriminatorMap)) {
                             $errors[] = sprintf(
@@ -11321,6 +11361,11 @@ final class CountMap extends Data
         if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
+        // The same for a union whose member's rules already failed below it: `null` for a discriminated
+        // union is `pet.kind` required, and "pet does not match any oneOf branch" beside it said it twice.
+        if (str_starts_with($claim, 'does not match any ') && $validator->errors()->has($path . '.*')) {
+            return;
+        }
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -11520,6 +11565,9 @@ use Spatie\LaravelData\Data;
 
 use function get_debug_type;
 use function is_array;
+use function is_float;
+use function is_int;
+use function is_string;
 use function sprintf;
 
 /**
@@ -11607,7 +11655,9 @@ abstract class Discriminator extends Data implements PropertyMorphableData
      * reads the discriminator out of that value before any rule runs, and a string or a number there was
      * a `TypeError` from `array_key_exists()` — a 500 — where a plain object property answers 422. A
      * property's null is read as an empty payload and left to the rules; a list item or map value is
-     * read as it is, null included.
+     * read as it is, null included. The discriminator itself is read the same way, by its wire name and
+     * by the property's, and anything but a string or a number there — an object, a list, a boolean —
+     * broke laravel-data's own `DataMorphClassResolver::normalizeValue()` with a `TypeError`.
      *
      * @internal called by the classes that hold this union
      * @return array<string, string>
@@ -11616,6 +11666,10 @@ abstract class Discriminator extends Data implements PropertyMorphableData
     {
         if (!is_array($value)) {
             return $value === null && !$isItem ? [] : [$path => sprintf('%s expects object, got %s.', $path, get_debug_type($value))];
+        }
+        $discriminator = $value['type'] ?? null;
+        if ($discriminator !== null && !is_string($discriminator) && !is_int($discriminator) && !is_float($discriminator)) {
+            return [$path . '.type' => sprintf('%s.type expects string, got %s.', $path, get_debug_type($discriminator))];
         }
 
         return [];
@@ -12969,6 +13023,11 @@ final class ItemBounds extends Data
         if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
+        // The same for a union whose member's rules already failed below it: `null` for a discriminated
+        // union is `pet.kind` required, and "pet does not match any oneOf branch" beside it said it twice.
+        if (str_starts_with($claim, 'does not match any ') && $validator->errors()->has($path . '.*')) {
+            return;
+        }
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -13661,6 +13720,11 @@ final class NestedContainers extends Data
         // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
         // a union that holds a scalar branch carries `array` — is one mistake, reported once.
         if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
+            return;
+        }
+        // The same for a union whose member's rules already failed below it: `null` for a discriminated
+        // union is `pet.kind` required, and "pet does not match any oneOf branch" beside it said it twice.
+        if (str_starts_with($claim, 'does not match any ') && $validator->errors()->has($path . '.*')) {
             return;
         }
 
@@ -14489,6 +14553,11 @@ final class ObjectWideRules extends Data
         if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
+        // The same for a union whose member's rules already failed below it: `null` for a discriminated
+        // union is `pet.kind` required, and "pet does not match any oneOf branch" beside it said it twice.
+        if (str_starts_with($claim, 'does not match any ') && $validator->errors()->has($path . '.*')) {
+            return;
+        }
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -15199,6 +15268,11 @@ final class ReadOnlyFields extends Data
         if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
+        // The same for a union whose member's rules already failed below it: `null` for a discriminated
+        // union is `pet.kind` required, and "pet does not match any oneOf branch" beside it said it twice.
+        if (str_starts_with($claim, 'does not match any ') && $validator->errors()->has($path . '.*')) {
+            return;
+        }
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -15485,6 +15559,9 @@ use Spatie\LaravelData\Data;
 
 use function get_debug_type;
 use function is_array;
+use function is_float;
+use function is_int;
+use function is_string;
 use function sprintf;
 
 /**
@@ -15570,7 +15647,9 @@ abstract class Shape extends Data implements PropertyMorphableData
      * reads the discriminator out of that value before any rule runs, and a string or a number there was
      * a `TypeError` from `array_key_exists()` — a 500 — where a plain object property answers 422. A
      * property's null is read as an empty payload and left to the rules; a list item or map value is
-     * read as it is, null included.
+     * read as it is, null included. The discriminator itself is read the same way, by its wire name and
+     * by the property's, and anything but a string or a number there — an object, a list, a boolean —
+     * broke laravel-data's own `DataMorphClassResolver::normalizeValue()` with a `TypeError`.
      *
      * @internal called by the classes that hold this union
      * @return array<string, string>
@@ -15579,6 +15658,10 @@ abstract class Shape extends Data implements PropertyMorphableData
     {
         if (!is_array($value)) {
             return $value === null && !$isItem ? [] : [$path => sprintf('%s expects object, got %s.', $path, get_debug_type($value))];
+        }
+        $discriminator = $value['kind'] ?? null;
+        if ($discriminator !== null && !is_string($discriminator) && !is_int($discriminator) && !is_float($discriminator)) {
+            return [$path . '.kind' => sprintf('%s.kind expects string, got %s.', $path, get_debug_type($discriminator))];
         }
 
         return [];
@@ -16909,6 +16992,11 @@ final class Test2 extends Data
         if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
+        // The same for a union whose member's rules already failed below it: `null` for a discriminated
+        // union is `pet.kind` required, and "pet does not match any oneOf branch" beside it said it twice.
+        if (str_starts_with($claim, 'does not match any ') && $validator->errors()->has($path . '.*')) {
+            return;
+        }
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -17628,6 +17716,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use BackedEnum;
 use Closure;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -18016,6 +18105,11 @@ final class TestPostRequest extends Data
         if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
+        // The same for a union whose member's rules already failed below it: `null` for a discriminated
+        // union is `pet.kind` required, and "pet does not match any oneOf branch" beside it said it twice.
+        if (str_starts_with($claim, 'does not match any ') && $validator->errors()->has($path . '.*')) {
+            return;
+        }
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -18147,6 +18241,10 @@ final class TestPostRequest extends Data
                     } else {
                         $discriminatorValue = $discriminatorCarrier[$discriminatorProperty]
                             ?? (property_exists($value, $phpProperty) ? $value->{$phpProperty} : null);
+                        // A variant whose discriminator is a one-value `enum` holds it as its enum case.
+                        if ($discriminatorValue instanceof BackedEnum) {
+                            $discriminatorValue = $discriminatorValue->value;
+                        }
                         $mapKey = is_scalar($discriminatorValue) ? (string)$discriminatorValue : null;
                         if ($mapKey === null || !array_key_exists($mapKey, $discriminatorMap)) {
                             $errors[] = sprintf(
@@ -18362,6 +18460,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use BackedEnum;
 use Closure;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -18668,6 +18767,7 @@ final class TreeNode extends Data
                 ],
                 'objectPaths' => [
                     $prefix . '.children',
+                    $prefix . '.children.*',
                 ],
                 'scalarPaths' => [
                 ],
@@ -18688,6 +18788,7 @@ final class TreeNode extends Data
      */
     private const array OPENAPI_OBJECT_PATHS = [
         'children',
+        'children.*',
     ];
 
     /**
@@ -18873,6 +18974,11 @@ final class TreeNode extends Data
         if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
+        // The same for a union whose member's rules already failed below it: `null` for a discriminated
+        // union is `pet.kind` required, and "pet does not match any oneOf branch" beside it said it twice.
+        if (str_starts_with($claim, 'does not match any ') && $validator->errors()->has($path . '.*')) {
+            return;
+        }
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -19004,6 +19110,10 @@ final class TreeNode extends Data
                     } else {
                         $discriminatorValue = $discriminatorCarrier[$discriminatorProperty]
                             ?? (property_exists($value, $phpProperty) ? $value->{$phpProperty} : null);
+                        // A variant whose discriminator is a one-value `enum` holds it as its enum case.
+                        if ($discriminatorValue instanceof BackedEnum) {
+                            $discriminatorValue = $discriminatorValue->value;
+                        }
                         $mapKey = is_scalar($discriminatorValue) ? (string)$discriminatorValue : null;
                         if ($mapKey === null || !array_key_exists($mapKey, $discriminatorMap)) {
                             $errors[] = sprintf(
@@ -19239,6 +19349,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use BackedEnum;
 use Closure;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -19704,6 +19815,7 @@ final class UnionUnderContainer extends Data
      */
     private const array OPENAPI_OBJECT_PATHS = [
         'tree',
+        'chain.*',
     ];
 
     /**
@@ -19889,6 +20001,11 @@ final class UnionUnderContainer extends Data
         if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
+        // The same for a union whose member's rules already failed below it: `null` for a discriminated
+        // union is `pet.kind` required, and "pet does not match any oneOf branch" beside it said it twice.
+        if (str_starts_with($claim, 'does not match any ') && $validator->errors()->has($path . '.*')) {
+            return;
+        }
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -19980,6 +20097,9 @@ final class UnionUnderContainer extends Data
                 if (array_key_exists('type', $branch) && !self::matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
                     continue;
                 }
+                if (self::openApiListBelongsToArrayBranch($normalizedValue, $schema['oneOf'], $branch)) {
+                    continue;
+                }
                 // Keep why each branch failed: with no match at all those reasons are far more
                 // useful than "does not match any oneOf branch".
                 $errorsForBranch = self::validateOpenApiNode($value, $branch, $path, $depth + 1);
@@ -20026,6 +20146,10 @@ final class UnionUnderContainer extends Data
                     } else {
                         $discriminatorValue = $discriminatorCarrier[$discriminatorProperty]
                             ?? (property_exists($value, $phpProperty) ? $value->{$phpProperty} : null);
+                        // A variant whose discriminator is a one-value `enum` holds it as its enum case.
+                        if ($discriminatorValue instanceof BackedEnum) {
+                            $discriminatorValue = $discriminatorValue->value;
+                        }
                         $mapKey = is_scalar($discriminatorValue) ? (string)$discriminatorValue : null;
                         if ($mapKey === null || !array_key_exists($mapKey, $discriminatorMap)) {
                             $errors[] = sprintf(
@@ -20133,6 +20257,9 @@ final class UnionUnderContainer extends Data
                     && !($normalizedValue === null && ($branch['nullable'] ?? false) === true)
                     && !self::matchesOpenApiCallbackType($normalizedValue, $branch['type'])
                 ) {
+                    continue;
+                }
+                if (self::openApiListBelongsToArrayBranch($normalizedValue, $schema['anyOf'], $branch)) {
                     continue;
                 }
                 $errorsForBranch = self::validateOpenApiNode($value, $branch, $path, $depth + 1);
@@ -20250,6 +20377,27 @@ final class UnionUnderContainer extends Data
             'object' => is_array($value) || is_object($value),
             default => true,
         };
+    }
+
+    /**
+     * @param array<array-key, mixed> $branches
+     * @param array<array-key, mixed> $branch
+     */
+    private static function openApiListBelongsToArrayBranch(mixed $value, array $branches, array $branch): bool
+    {
+        $typesOf = static fn(mixed $type): array => is_string($type) ? [$type] : (is_array($type) ? $type : []);
+        $branchTypes = $typesOf($branch['type'] ?? null);
+        if (!is_array($value) || !array_is_list($value) || !in_array('object', $branchTypes, true) || in_array('array', $branchTypes, true)) {
+            return false;
+        }
+
+        foreach ($branches as $sibling) {
+            if (is_array($sibling) && in_array('array', $typesOf($sibling['type'] ?? null), true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static function normalizeOpenApiStructuralValue(mixed $value): mixed
@@ -20532,6 +20680,11 @@ final class UniqueScalars extends Data
         // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
         // a union that holds a scalar branch carries `array` — is one mistake, reported once.
         if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
+            return;
+        }
+        // The same for a union whose member's rules already failed below it: `null` for a discriminated
+        // union is `pet.kind` required, and "pet does not match any oneOf branch" beside it said it twice.
+        if (str_starts_with($claim, 'does not match any ') && $validator->errors()->has($path . '.*')) {
             return;
         }
 
@@ -21323,6 +21476,11 @@ final class User extends Data
         if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
             return;
         }
+        // The same for a union whose member's rules already failed below it: `null` for a discriminated
+        // union is `pet.kind` required, and "pet does not match any oneOf branch" beside it said it twice.
+        if (str_starts_with($claim, 'does not match any ') && $validator->errors()->has($path . '.*')) {
+            return;
+        }
 
         $rule = match ($claim) {
             'is required' => 'present',
@@ -22052,6 +22210,11 @@ final class User2 extends Data
         // A field a rule has already failed — `kind` of a discriminated value carries `Rule::enum()`,
         // a union that holds a scalar branch carries `array` — is one mistake, reported once.
         if ($validator->errors()->has($path) && ($segments !== [] || str_starts_with($claim, 'does not match any '))) {
+            return;
+        }
+        // The same for a union whose member's rules already failed below it: `null` for a discriminated
+        // union is `pet.kind` required, and "pet does not match any oneOf branch" beside it said it twice.
+        if (str_starts_with($claim, 'does not match any ') && $validator->errors()->has($path . '.*')) {
             return;
         }
 

@@ -265,6 +265,12 @@ PHP,
         // known here as well: only the branches those values can reach are worth emitting.
         $usedTypes = $this->collectSchemaKeywordStrings($constraints, 'type');
         $hasUnionType = $this->schemaKeywordHasListValue($constraints, 'type');
+        // A union with a list member and an object member: a PHP list there is read as the JSON array it
+        // almost always was, not also as an object keyed 0..n-1 — see openApiListBelongsToArrayBranch().
+        $needsListBranchGate = $needsTypeMatcher
+            && ($hasOneOf || $hasAnyOf)
+            && in_array('array', $usedTypes, true)
+            && in_array('object', $usedTypes, true);
         $usedFormats = $this->collectSchemaKeywordStrings($constraints, 'format');
         $usedContentEncodings = array_map('strtolower', $this->collectSchemaKeywordStrings($constraints, 'contentEncoding'));
         $usedNumericFormats = array_values(array_intersect($usedFormats, self::OPENAPI_NUMERIC_FORMATS));
@@ -492,6 +498,55 @@ PHP;
 PHP;
         }
 
+        // The discriminator picks the variant, whichever keyword lists them: a value of one variant
+        // carrying another's tag — or a tag the mapping does not name — is refused. Under `oneOf` once
+        // the union itself has matched; under `anyOf` on its own, since the branches of a property-level
+        // one may live elsewhere (Symfony's `Assert\AtLeastOneOf`) and only the mapping stays here.
+        $discriminatorCheck = <<<'PHP'
+                $discriminatorProperty = is_string($schema['x-discriminator-property'] ?? null)
+                    ? $schema['x-discriminator-property']
+                    : null;
+                $discriminatorPhpProperty = is_string($schema['x-discriminator-php-property'] ?? null)
+                    ? $schema['x-discriminator-php-property']
+                    : null;
+                $discriminatorMap = is_array($schema['x-discriminator-map'] ?? null)
+                    ? $schema['x-discriminator-map']
+                    : null;
+
+                if ($discriminatorProperty !== null && $discriminatorMap !== null && is_object($value)) {
+                    $phpProperty = $discriminatorPhpProperty ?? $discriminatorProperty;
+                    // The DTO keeps its state private: read the discriminator from the payload it
+                    // reports, keyed by the OpenAPI name, and fall back to a public property for a
+                    // hand-written object.
+                    $discriminatorPayload = $this->normalizeOpenApiStructuralValue($value);
+                    $discriminatorCarrier = is_array($discriminatorPayload) ? $discriminatorPayload : [];
+                    if (!array_key_exists($discriminatorProperty, $discriminatorCarrier) && !property_exists($value, $phpProperty)) {
+                        $errors[] = sprintf('%s discriminator property %s is required', $path, $discriminatorProperty);
+                    } else {
+                        $discriminatorValue = $discriminatorCarrier[$discriminatorProperty]
+                            ?? (property_exists($value, $phpProperty) ? $value->{$phpProperty} : null);
+                        // A variant whose discriminator is a one-value `enum` holds it as its enum case.
+                        if ($discriminatorValue instanceof \BackedEnum) {
+                            $discriminatorValue = $discriminatorValue->value;
+                        }
+                        $mapKey = is_scalar($discriminatorValue) ? (string)$discriminatorValue : null;
+                        if ($mapKey === null || !array_key_exists($mapKey, $discriminatorMap)) {
+                            $errors[] = sprintf(
+                                '%s discriminator %s must be one of: %s',
+                                $path,
+                                $discriminatorProperty,
+                                implode(', ', array_keys($discriminatorMap)),
+                            );
+                        } elseif (is_string($expectedClass = $discriminatorMap[$mapKey]) && $expectedClass !== '') {
+                            $expectedFqcn = __NAMESPACE__ . '\\' . ltrim($expectedClass, '\\');
+                            if (!$value instanceof $expectedFqcn) {
+                                $errors[] = sprintf('%s discriminator %s must match concrete class', $path, $discriminatorProperty);
+                            }
+                        }
+                    }
+                }
+PHP;
+
         if ($hasOneOf) {
             // Mirror the runtime validator: a branch whose declared type cannot match is skipped
             // instead of contributing a misleading "must be of type ..." reason.
@@ -503,6 +558,14 @@ PHP;
                     continue;
                 }
                 if (array_key_exists('type', $branch) && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
+                    continue;
+                }
+
+PHP
+                : '';
+            $oneOfTypeGate .= $needsListBranchGate
+                ? <<<'PHP'
+                if ($this->openApiListBelongsToArrayBranch($normalizedValue, $schema['oneOf'], $branch)) {
                     continue;
                 }
 
@@ -565,44 +628,7 @@ PHP
             }
 
             if (\$matchingBranches === 1) {
-                \$discriminatorProperty = is_string(\$schema['x-discriminator-property'] ?? null)
-                    ? \$schema['x-discriminator-property']
-                    : null;
-                \$discriminatorPhpProperty = is_string(\$schema['x-discriminator-php-property'] ?? null)
-                    ? \$schema['x-discriminator-php-property']
-                    : null;
-                \$discriminatorMap = is_array(\$schema['x-discriminator-map'] ?? null)
-                    ? \$schema['x-discriminator-map']
-                    : null;
-
-                if (\$discriminatorProperty !== null && \$discriminatorMap !== null && is_object(\$value)) {
-                    \$phpProperty = \$discriminatorPhpProperty ?? \$discriminatorProperty;
-                    // The DTO keeps its state private: read the discriminator from the payload it
-                    // reports, keyed by the OpenAPI name, and fall back to a public property for a
-                    // hand-written object.
-                    \$discriminatorPayload = \$this->normalizeOpenApiStructuralValue(\$value);
-                    \$discriminatorCarrier = is_array(\$discriminatorPayload) ? \$discriminatorPayload : [];
-                    if (!array_key_exists(\$discriminatorProperty, \$discriminatorCarrier) && !property_exists(\$value, \$phpProperty)) {
-                        \$errors[] = sprintf('%s discriminator property %s is required', \$path, \$discriminatorProperty);
-                    } else {
-                        \$discriminatorValue = \$discriminatorCarrier[\$discriminatorProperty]
-                            ?? (property_exists(\$value, \$phpProperty) ? \$value->{\$phpProperty} : null);
-                        \$mapKey = is_scalar(\$discriminatorValue) ? (string)\$discriminatorValue : null;
-                        if (\$mapKey === null || !array_key_exists(\$mapKey, \$discriminatorMap)) {
-                            \$errors[] = sprintf(
-                                '%s discriminator %s must be one of: %s',
-                                \$path,
-                                \$discriminatorProperty,
-                                implode(', ', array_keys(\$discriminatorMap)),
-                            );
-                        } elseif (is_string(\$expectedClass = \$discriminatorMap[\$mapKey]) && \$expectedClass !== '') {
-                            \$expectedFqcn = __NAMESPACE__ . '\\\\' . ltrim(\$expectedClass, '\\\\');
-                            if (!\$value instanceof \$expectedFqcn) {
-                                \$errors[] = sprintf('%s discriminator %s must match concrete class', \$path, \$discriminatorProperty);
-                            }
-                        }
-                    }
-                }
+{$discriminatorCheck}
             }
         }
 PHP;
@@ -1254,6 +1280,14 @@ PHP;
 
 PHP
                 : '';
+            $anyOfTypeGate .= $needsListBranchGate
+                ? <<<'PHP'
+                if ($this->openApiListBelongsToArrayBranch($normalizedValue, $schema['anyOf'], $branch)) {
+                    continue;
+                }
+
+PHP
+                : '';
             // A branch naming a generated class (Symfony mode only) is "is that class": the class checked
             // itself. Without this arm the branch had no keyword to fail and matched every value, so it
             // took the scalar branches beside it along. A raw array or object nothing turned into the
@@ -1294,6 +1328,15 @@ PHP
                     ? [...\$errors, \$this->describeOpenApiUnionMismatch(\$path, 'anyOf', \$schema['anyOf'], \$value)]
                     : [...\$errors, ...array_values(array_unique(\$anyOfErrors))];
             }
+        }
+PHP;
+        }
+
+        if ($this->discriminatorStandsWithoutOneOf($constraints)) {
+            $standaloneDiscriminatorCheck = (string)preg_replace('/^    /m', '', $discriminatorCheck);
+            $sections[] = <<<PHP
+        if (!is_array(\$schema['oneOf'] ?? null)) {
+{$standaloneDiscriminatorCheck}
         }
 PHP;
         }
@@ -1553,6 +1596,35 @@ PHP
 {$enumUnwrapInMatcher}        return match (\$type) {
 {$typeArms}            default => true,
         };
+    }
+PHP;
+        }
+
+        if ($needsListBranchGate) {
+            // Any PHP array satisfies `object` (a dense-key map is a list), so a union of a map and a list
+            // let `[7]` through as a map of numbers, and counted `["ab"]` twice under `oneOf`. Beside a
+            // branch that admits a list, a list is that list: an object-only branch is skipped for it.
+            $sections[] = <<<'PHP'
+
+    /**
+     * @param array<array-key, mixed> $branches
+     * @param array<array-key, mixed> $branch
+     */
+    private function openApiListBelongsToArrayBranch(mixed $value, array $branches, array $branch): bool
+    {
+        $typesOf = static fn(mixed $type): array => is_string($type) ? [$type] : (is_array($type) ? $type : []);
+        $branchTypes = $typesOf($branch['type'] ?? null);
+        if (!is_array($value) || !array_is_list($value) || !in_array('object', $branchTypes, true) || in_array('array', $branchTypes, true)) {
+            return false;
+        }
+
+        foreach ($branches as $sibling) {
+            if (is_array($sibling) && in_array('array', $typesOf($sibling['type'] ?? null), true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 PHP;
         }
@@ -2843,6 +2915,32 @@ PHP,
         }
 
         return $constraints;
+    }
+
+    /**
+     * Whether some schema in the tree carries a discriminator mapping with no `oneOf` beside it — an
+     * `anyOf` one, or one whose branches went to a framework attribute — so the check runs on its own.
+     * Laravel's dispatched union, an `allOf` of the variants, needs none.
+     *
+     * @param array<mixed> $constraints
+     */
+    private function discriminatorStandsWithoutOneOf(array $constraints): bool
+    {
+        // Laravel's dispatched union (`allOf` of `if`/`then` per value) already says what the mapping does.
+        if (
+            array_key_exists('x-discriminator-map', $constraints)
+            && !array_key_exists('oneOf', $constraints)
+            && !array_key_exists('allOf', $constraints)
+        ) {
+            return true;
+        }
+        foreach ($constraints as $value) {
+            if (is_array($value) && $this->discriminatorStandsWithoutOneOf($value)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

@@ -619,6 +619,12 @@ public function show(#[MapRequestPayload] ShapeRequest $request): Response
 }
 ```
 
+A discriminated `oneOf` / `anyOf` of `$ref`s written INLINE on a component's property gets the same
+treatment: it becomes an interface of its own, named after the schema and the property (`Probe.shape` →
+`ProbeShape`), and the property is typed by it. Typed `Circle|Oval` instead, the serializer would build
+the first member every time under `#[MapRequestPayload]`, which collects that member's failures rather
+than trying the next one.
+
 An `anyOf` branch that is purely `{type: null}` causes the whole `#[Assert\AtLeastOneOf]` to be
 dropped (the field stays nullable).
 

@@ -161,7 +161,9 @@ trait RendersSymfonyDto
         $validationConstraints = $this->filterInterpreterConstraints(
             constraints: $this->withConstraintSourceOf(
                 className: $className,
-                extraction: fn(): array => $this->extractValidationConstraints($this->classSchemaWithInlineAllOfMerged(schemaDefinition: $schemaDefinition, className: $className)),
+                extraction: fn(): array => $this->extractValidationConstraints($this->symfonyWithDiscriminatedUnionPropertiesSpelledOut(
+                    $this->classSchemaWithInlineAllOfMerged(schemaDefinition: $schemaDefinition, className: $className),
+                )),
             ),
             allowScalarKeywords: false,
             forceScalarOnProperties: $forceRootCallbackBounds,
@@ -335,8 +337,10 @@ trait RendersSymfonyDto
             foreach ($this->getSchemaProperties($className) as $property) {
                 foreach ($this->generatedClassNamesInType($property['type']) as $referenced) {
                     $reachable[$referenced] = true;
-                    // A property typed as a union interface holds one of its members at runtime.
-                    foreach ($this->unionMembersOf($referenced) as $member) {
+                    // A property typed as a union interface holds one of its members at runtime. The
+                    // interface map is filled while the classes are written, after this runs, so the
+                    // members are also read straight off the union's `$ref` branches.
+                    foreach ([...$this->unionMembersOf($referenced), ...$this->symfonyUnionRefMembers($referenced)] as $member) {
                         $reachable[$member] = true;
                     }
                 }
@@ -369,7 +373,9 @@ trait RendersSymfonyDto
         return $this->symfonyWithoutUncountableMinProperties($this->filterInterpreterConstraints(
             constraints: $this->withConstraintSourceOf(
                 className: $className,
-                extraction: fn(): array => $this->extractValidationConstraints($this->classSchemaWithInlineAllOfMerged(schemaDefinition: $schemaDefinition, className: $className)),
+                extraction: fn(): array => $this->extractValidationConstraints($this->symfonyWithDiscriminatedUnionPropertiesSpelledOut(
+                    $this->classSchemaWithInlineAllOfMerged(schemaDefinition: $schemaDefinition, className: $className),
+                )),
             ),
             allowScalarKeywords: false,
             forceScalarOnProperties: $forceRootCallbackBounds,
@@ -439,6 +445,88 @@ trait RendersSymfonyDto
         }
 
         return $names;
+    }
+
+    /**
+     * The class schema with each of its properties that names a discriminated union spelled out, see
+     * `symfonyDiscriminatedUnionSpelledOut()`.
+     *
+     * @param array<string, mixed> $classSchema
+     * @return array<string, mixed>
+     */
+    private function symfonyWithDiscriminatedUnionPropertiesSpelledOut(array $classSchema): array
+    {
+        if (!is_array($classSchema['properties'] ?? null)) {
+            return $classSchema;
+        }
+        $properties = [];
+        foreach ($classSchema['properties'] as $name => $propertySchema) {
+            $properties[$name] = is_array($propertySchema) ? $this->symfonyDiscriminatedUnionSpelledOut($propertySchema) : $propertySchema;
+        }
+
+        return ['properties' => $properties] + $classSchema;
+    }
+
+    /**
+     * Symfony: a `$ref` to a discriminated union component is checked like the same union written
+     * inline — each branch "is that class", plus "the tag names the class it sits in". The serializer
+     * always builds the class the tag names, so only an object built by hand can disagree, and a
+     * response DTO is exactly that: `new Holder(pet: new Cat(kind: 'dog'))` was written out as a dog.
+     * The inline spelling had the check until 2.15.145 turned it into an interface of its own.
+     *
+     * A class's own properties only: two containers down the serializer leaves the value an array (the
+     * type there is `mixed`), and a branch "is that class" refused every valid one.
+     *
+     * @param array<string, mixed> $propertySchema
+     * @return array<string, mixed>
+     */
+    private function symfonyDiscriminatedUnionSpelledOut(array $propertySchema): array
+    {
+        $ref = $propertySchema['$ref'] ?? null;
+        if (!is_string($ref) || !str_starts_with($ref, '#/components/schemas/')) {
+            return $propertySchema;
+        }
+        $target = $this->dtoSchemas[$this->schemaClassName($this->componentNameInPointer($ref))] ?? null;
+        if (!is_array($target) || !is_array($target['discriminator'] ?? null) || !is_array($target['discriminator']['mapping'] ?? null)) {
+            return $propertySchema;
+        }
+        $unionKey = is_array($target['oneOf'] ?? null) ? 'oneOf' : (is_array($target['anyOf'] ?? null) ? 'anyOf' : null);
+        if ($unionKey === null) {
+            return $propertySchema;
+        }
+        $spelled = [];
+        foreach ($propertySchema as $keyword => $value) {
+            if ($keyword !== '$ref') {
+                $spelled[$keyword] = $value;
+            }
+        }
+
+        return [...$spelled, $unionKey => $target[$unionKey], 'discriminator' => $target['discriminator']];
+    }
+
+    /**
+     * The generated classes a union schema names through its `oneOf` / `anyOf` `$ref` branches.
+     *
+     * @return array<int, string>
+     */
+    private function symfonyUnionRefMembers(string $className): array
+    {
+        $schema = $this->dtoSchemas[$className] ?? [];
+        $members = [];
+        foreach (['oneOf', 'anyOf'] as $unionKey) {
+            foreach (is_array($schema[$unionKey] ?? null) ? $schema[$unionKey] : [] as $branch) {
+                $ref = is_array($branch) ? ($branch['$ref'] ?? null) : null;
+                if (!is_string($ref)) {
+                    continue;
+                }
+                $member = $this->schemaRefToClassName($ref);
+                if (array_key_exists($member, $this->dtoSchemas)) {
+                    $members[] = $member;
+                }
+            }
+        }
+
+        return $members;
     }
 
     /**
@@ -1220,6 +1308,13 @@ PHP;
             $countMin ??= $constraints['minProperties'] ?? null;
             $countMax ??= $constraints['maxProperties'] ?? null;
         }
+        // A JSON OBJECT for a `type: array` property: the serializer hands `{"zz": 1}` over as the PHP
+        // array `['zz' => 1]`, which an `array` parameter holds and the callback, that leaves `type`
+        // to the PHP type, never questioned — the one mode accepting it. Its keys still say what it was.
+        if ($this->symfonySchemaIsAList($constraints, $property['type'])) {
+            $attributes[] = "#[Assert\\Type('list')]";
+        }
+
         $countMin = $this->symfonyIntegralCount($countMin);
         $countMax = $this->symfonyIntegralCount($countMax);
         if ($countMin !== null) {
@@ -1252,6 +1347,7 @@ PHP;
             && count($anyOf) >= 2
             && !$this->anyOfBranchCarriesPattern($anyOf)
             && !$this->anyOfBranchOutgrowsItsAttribute($anyOf)
+            && !$this->anyOfBranchCarriesUnspelledEnum(property: $property, branches: $anyOf)
             && $property['type'] !== 'mixed'
         ) {
             $branches = [];
@@ -1271,8 +1367,16 @@ PHP;
                 $inlineClass = is_array($branch) && ($branch['type'] ?? null) === 'object' && !array_key_exists('x-php-instanceof', $branch)
                     ? $this->unionClassBesideScalars($property['type'])
                     : null;
+                // A `format: date` / `date-time` branch is hydrated into the `DateTimeImmutable` the PHP
+                // type names, so holding one IS the branch: `Type('string')` refused every valid date,
+                // because by then it was no string — `anyOf: [{format: date-time}, {type: null}]` with it.
+                $isTemporalBranch = is_array($branch)
+                    && in_array($branch['type'] ?? 'string', ['string', ['string']], true)
+                    && in_array($branch['format'] ?? null, ['date', 'date-time', 'datetime'], true)
+                    && in_array('DateTimeImmutable', explode('|', ltrim($property['type'], '?')), true);
                 $expressions = match (true) {
                     $isNullBranch => ['new Assert\IsNull()'],
+                    $isTemporalBranch => ['new Assert\Type(DateTimeImmutable::class)'],
                     $enumClass !== null => ['new Assert\Type(' . $enumClass . '::class)'],
                     $inlineClass !== null => ['new Assert\Type(' . $inlineClass . '::class)'],
                     is_array($branch) => $this->valueConstraintExpressions($branch),
@@ -1906,6 +2010,19 @@ PHP;
     }
 
     /**
+     * Whether the schema is `type: array` (null aside) on a property the PHP type holds as an array.
+     *
+     * @param array<string, mixed> $constraints
+     */
+    private function symfonySchemaIsAList(array $constraints, string $phpType): bool
+    {
+        $arrayType = ltrim($phpType, '?');
+
+        return $this->soleTypeBesidesNull($constraints['type'] ?? null) === 'array'
+            && ($arrayType === 'array' || str_starts_with($arrayType, 'array<'));
+    }
+
+    /**
      * Whether the property's PHP type is a non-nullable array — a list or a map.
      *
      * @param SchemaProperty $property
@@ -1974,6 +2091,9 @@ PHP;
         if (is_array($constraints['anyOf'] ?? null) && $this->anyOfBranchOutgrowsItsAttribute($constraints['anyOf'])) {
             return true;
         }
+        if (is_array($constraints['anyOf'] ?? null) && $this->anyOfBranchCarriesUnspelledEnum(property: $property, branches: $constraints['anyOf'])) {
+            return true;
+        }
         // A BOOLEAN branch has no `Assert\*` spelling, so `Assert\AtLeastOneOf` is not emitted for such an
         // `anyOf` at all — and the callback skipped it too, expecting the attribute. `anyOf: [false,
         // false]` was then checked by nothing and accepted every value the document refuses.
@@ -2034,6 +2154,34 @@ PHP;
             }
             $items = $branch['items'] ?? null;
             if (is_array($items) && array_diff(array_keys($items), ['type']) !== []) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether a property-level `anyOf` has an `enum` branch no `Assert\*` expression spells: a NUMERIC
+     * member list is compared by JSON value (`5` and `5.0` are one member), which `Choice` cannot say, and
+     * no PHP enum holds a float. `valueConstraintExpressions()` left the `enum` out, so
+     * `anyOf: [{type: number, enum: [5]}, {type: string}]` took `6` as "a number". Such an `anyOf` is the
+     * callback's, which reads the branch's `enum` the way every other mode does.
+     *
+     * @param SchemaProperty $property
+     * @param array<mixed> $branches
+     */
+    private function anyOfBranchCarriesUnspelledEnum(array $property, array $branches): bool
+    {
+        foreach ($branches as $branch) {
+            if (!is_array($branch) || !is_array($branch['enum'] ?? null) || $branch['enum'] === []) {
+                continue;
+            }
+            // Hydrated into a PHP enum: holding the case is the member check.
+            if (is_string($branch['x-php-instanceof'] ?? null) || $this->symfonyAnyOfEnumBranchClass(property: $property, branch: $branch) !== null) {
+                continue;
+            }
+            if (!in_array('enum', $this->scalarConstraintSpecList($branch, inAnyOfBranch: true)['covered'], true)) {
                 return true;
             }
         }

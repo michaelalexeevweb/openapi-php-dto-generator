@@ -193,6 +193,21 @@ trait RendersCommonDtoParts
     }
 
     /**
+     * A union of `DateTimeImmutable` and members none of which is `string` — `oneOf: [{type: integer},
+     * {format: date-time}]` typed `int|DateTimeImmutable`, or a plain `array` beside the date. A string
+     * the validator let through can then only be the date, and any other value is one of the others,
+     * never something to parse.
+     */
+    private function isTemporalScalarUnion(string $type): bool
+    {
+        $members = array_values(array_diff(explode('|', ltrim($type, '?')), ['null']));
+
+        return count($members) >= 2
+            && in_array('DateTimeImmutable', $members, true)
+            && array_diff($members, ['DateTimeImmutable', 'int', 'float', 'bool', 'array']) === [];
+    }
+
+    /**
      * Whether a `oneOf`/`anyOf` is made of a `format: date` string and a `format: date-time` string, with
      * at most a null branch beside them — one `DateTimeImmutable` property with two wire shapes, and no
      * single `format` to parse it by.

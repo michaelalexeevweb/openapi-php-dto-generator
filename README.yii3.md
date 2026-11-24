@@ -75,6 +75,12 @@ new Hydrator(
 );
 ```
 
+An enum property is declared with `array` beside the enum — `public readonly Status|array $status` — and
+its getter and `create()` take the enum alone. `HydratorTypeCaster` hands any array it meets to the hydrator
+to BUILD the declared class, and `new` on an enum is a PHP `Error`: `{"status": {"a": 1}}` was a 500. With
+`array` declared, the native caster keeps the array and the raw `In` check refuses it, a 422 like every
+other mode.
+
 ## Setup you must not skip, part two: ext-intl for dates
 
 A `format: date` or `format: date-time` property is emitted with `#[ToDateTime]`, the hydrator's own
@@ -658,6 +664,10 @@ to the member. "Members" means every class implementing the interface, an `allOf
 not name included.
 
 The same holds for the items of a list or map of a union.
+
+A discriminated `oneOf` / `anyOf` of `$ref`s written INLINE on a component's property becomes such an
+interface too, named after the schema and the property (`Probe.shape` → `ProbeShape`): typed
+`Circle|Oval`, the hydrator built the first member whatever the discriminator said.
 
 A union of an enum and a scalar (`oneOf: [{$ref: Scope}, {type: integer}]`) is declared with `string`
 and `int` both — `Scope|int|string` — so the value is kept as sent and the interpreter checks it; the

@@ -973,7 +973,8 @@ final class SymfonyConstraintMatrixTest extends TestCase
 
         $namespace = 'SymOneOfDiscriminator';
         $this->generator->generateFromArray($spec, $this->outputDirectory, $namespace, 'symfony');
-        foreach (['PetCat', 'PetDog', 'PetHolder'] as $file) {
+        // Since 2.15.145 the inline discriminated union is an interface of its own, `PetHolderPet`.
+        foreach (['PetHolderPet', 'PetCat', 'PetDog', 'PetHolder'] as $file) {
             require_once $this->outputDirectory . '/' . $file . '.php';
         }
 
@@ -986,6 +987,66 @@ final class SymfonyConstraintMatrixTest extends TestCase
         $violations = $validator->validate(new $holder(pet: new $cat(kind: 'dog', name: 'Milo')));
         $messages = [];
         foreach ($violations as $violation) {
+            $messages[] = (string)$violation->getMessage();
+        }
+        $this->assertStringContainsString(
+            needle: 'field "pet" discriminator kind must match concrete class',
+            haystack: implode("\n", $messages),
+        );
+    }
+
+    /**
+     * The same union as a component behind a `$ref`: the serializer builds the class its tag names, so
+     * only an object built by hand — a response DTO — can disagree with its tag. Until 2.15.145 nothing
+     * checked it in this spelling, and `new Holder(pet: new Cat(kind: 'dog'))` was written out as a dog.
+     */
+    public function testAReferencedDiscriminatedUnionChecksTheTagAgainstTheClass(): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $member = static fn(): array => [
+            'type' => 'object',
+            'required' => ['kind', 'name'],
+            'properties' => ['kind' => ['type' => 'string'], 'name' => ['type' => 'string']],
+        ];
+        $spec = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => [],
+            'components' => ['schemas' => [
+                'Tabby' => $member(),
+                'Hound' => $member(),
+                'Critter' => [
+                    'oneOf' => [['$ref' => '#/components/schemas/Tabby'], ['$ref' => '#/components/schemas/Hound']],
+                    'discriminator' => [
+                        'propertyName' => 'kind',
+                        'mapping' => ['cat' => '#/components/schemas/Tabby', 'dog' => '#/components/schemas/Hound'],
+                    ],
+                ],
+                'Perch' => [
+                    'type' => 'object',
+                    'required' => ['pet'],
+                    'properties' => ['pet' => ['$ref' => '#/components/schemas/Critter']],
+                ],
+            ]],
+        ];
+
+        $namespace = 'SymReferencedDiscriminator';
+        $this->generator->generateFromArray($spec, $this->outputDirectory, $namespace, 'symfony');
+        foreach (['Critter', 'Tabby', 'Hound', 'Perch'] as $file) {
+            require_once $this->outputDirectory . '/' . $file . '.php';
+        }
+
+        $holder = $namespace . '\Perch';
+        $cat = $namespace . '\Tabby';
+        $validator = Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator();
+
+        $this->assertCount(0, $validator->validate(new $holder(pet: new $cat(kind: 'cat', name: 'Milo'))));
+
+        $messages = [];
+        foreach ($validator->validate(new $holder(pet: new $cat(kind: 'dog', name: 'Milo'))) as $violation) {
             $messages[] = (string)$violation->getMessage();
         }
         $this->assertStringContainsString(

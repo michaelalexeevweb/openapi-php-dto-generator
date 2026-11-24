@@ -326,7 +326,8 @@ All measured and pinned; the full table with reasons is in
 
 - ignores an inline `discriminator` written on a property (`oneOf` + `discriminator` with no component
   base): the first member is validated and built. laravel-data dispatches through an abstract morph base,
-  and only a component union gets one — write the union as a component and reference it;
+  and only a component union gets one — write the union as a component and reference it. Any union of
+  classes is read that way, at any depth, an inline object's property included;
 - checks the extra keys `additionalProperties: {schema}` admits but does not keep them: the `Data` class
   holds declared properties only, so a valid extra key is not in `toArray()`;
 - keeps the PHP array where runtime casts a map to `stdClass`, so an empty map encodes as `[]` rather

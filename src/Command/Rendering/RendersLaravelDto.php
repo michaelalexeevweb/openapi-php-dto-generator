@@ -568,6 +568,14 @@ trait RendersLaravelDto
                 'new DateTimeImmutable(%s)',
                 $raw,
             ),
+            // A date beside another scalar — `oneOf: [{type: integer}, {format: date-time}]`, typed
+            // `int|DateTimeImmutable`. With no `string` member, a string can only be the date, and it
+            // was handed over as the string: a TypeError, a 500 on every valid date.
+            $this->isTemporalScalarUnion($property['type']) => sprintf(
+                '(is_string(%1$s) ? new DateTimeImmutable(%1$s) : %2$s)',
+                sprintf('$data[%s]', $key),
+                $raw,
+            ),
             // The ITEMS of a temporal container, cast the same way the scalar above is. Without this
             // the property held the strings `validated()` handed over while its docblock promised
             // `array<DateTimeImmutable>` — a lie PHPStan downstream was already believing. `array_map`

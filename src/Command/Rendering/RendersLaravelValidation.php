@@ -252,7 +252,12 @@ trait RendersLaravelValidation
         $constraints = $this->laravelConstraintsFor($property);
         $declaredType = $constraints['type'] ?? null;
 
-        return ($constraints['nullable'] ?? null) === true
+        // The walker's own reading of the document as well: a `oneOf` / `anyOf` member with
+        // `nullable: true` admits null for the union, and the keywords on the property say nothing
+        // of it — an optional `oneOf: [{type: number, nullable: true}, {type: string}]` was typed
+        // without `null`, and an explicit null was a TypeError in laravel-data's constructor.
+        return ($property['schemaNullable'] ?? false) === true
+            || ($constraints['nullable'] ?? null) === true
             || (is_array($declaredType) && in_array('null', $declaredType, true));
     }
 
@@ -574,6 +579,34 @@ trait RendersLaravelValidation
     }
 
     /**
+     * Whether `field.*` reaches exactly the members `$keyword` (`items` / `additionalProperties`) judges.
+     * It reaches EVERY member, so it does not where the schema names some of them itself: `items`
+     * beside `prefixItems` judges only the positions past the tuple, and `additionalProperties` beside
+     * `properties` / `patternProperties` only the keys they leave over. Emitted there, a rule refused
+     * `[-75, "a"]` of `prefixItems: [{type: integer}], items: {type: string}` at position 0, and
+     * `{"ibis": true}` of `{ibis: boolean}` beside `additionalProperties: {type: integer}`. The
+     * interpreter, which tells the members apart, keeps that keyword whole instead.
+     *
+     * @param array<string, mixed> $schema
+     */
+    private function laravelWildcardReaches(array $schema, string $keyword): bool
+    {
+        if (!is_array($schema[$keyword] ?? null)) {
+            return false;
+        }
+        if ($keyword === 'items') {
+            return !$this->hasPrefixItems($schema);
+        }
+        foreach (['properties', 'patternProperties'] as $keysKeyword) {
+            if (is_array($schema[$keysKeyword] ?? null) && $schema[$keysKeyword] !== []) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * Rules for the members of a list or the values of a map, keyed by the wildcard path Laravel
      * expects (`tags.*`). A DTO-valued item is validated by ITS OWN `rules()`, so nothing is emitted
      * for it here — the application composes the two, which is also how Laravel's own nested
@@ -595,9 +628,9 @@ trait RendersLaravelValidation
         $constraints = $this->laravelConstraintsFor($property);
         $itemSchema = null;
 
-        if (is_array($constraints['items'] ?? null)) {
+        if ($this->laravelWildcardReaches($constraints, 'items')) {
             $itemSchema = $constraints['items'];
-        } elseif (is_array($constraints['additionalProperties'] ?? null)) {
+        } elseif ($this->laravelWildcardReaches($constraints, 'additionalProperties')) {
             $itemSchema = $constraints['additionalProperties'];
         }
 
@@ -691,8 +724,8 @@ trait RendersLaravelValidation
         }
 
         $nested = match (true) {
-            is_array($schema['items'] ?? null) => $schema['items'],
-            is_array($schema['additionalProperties'] ?? null) => $schema['additionalProperties'],
+            $this->laravelWildcardReaches($schema, 'items') => $schema['items'],
+            $this->laravelWildcardReaches($schema, 'additionalProperties') => $schema['additionalProperties'],
             default => null,
         };
         if ($nested === null) {
@@ -1462,7 +1495,7 @@ trait RendersLaravelValidation
 
             // A container is unenforced only when its CONTENTS are.
             if ($keyword === 'items' || $keyword === 'additionalProperties') {
-                if (is_array($schema[$keyword]) && $this->laravelUnconsumedKeywords($schema[$keyword], $hop + 1) === []) {
+                if ($this->laravelWildcardReaches($schema, $keyword) && $this->laravelUnconsumedKeywords($schema[$keyword], $hop + 1) === []) {
                     continue;
                 }
             }
@@ -1558,7 +1591,7 @@ trait RendersLaravelValidation
             // Depth 1: the ITEM is one container hop from the property, and coverage is judged by
             // distance from the PROPERTY — that is where the dotted path starts counting.
             $containerCoveredByRules[$containerKey] = !$keysUnmaterialized
-                && is_array($schema[$containerKey] ?? null)
+                && $this->laravelWildcardReaches($schema, $containerKey)
                 && $this->laravelUnconsumedKeywords($schema[$containerKey], 1) === [];
         }
 
@@ -1604,7 +1637,10 @@ trait RendersLaravelValidation
                     continue;
                 }
 
-                $pruned[$keyword] = $keysUnmaterialized ? $value : $this->laravelPruneNestedRuleCoveredKeywords($value, 1);
+                // Where no `field.*` rule reaches the members, nothing below is covered either.
+                $pruned[$keyword] = $keysUnmaterialized || !$this->laravelWildcardReaches($schema, $keyword)
+                    ? $value
+                    : $this->laravelPruneNestedRuleCoveredKeywords($value, 1);
                 continue;
             }
 
@@ -1694,6 +1730,11 @@ trait RendersLaravelValidation
         $pruned = [];
         foreach ($schema as $keyword => $value) {
             if (($keyword === 'items' || $keyword === 'additionalProperties') && is_array($value)) {
+                // No `field.*` rule reaches these members, so no rule covers anything below them.
+                if (!$this->laravelWildcardReaches($schema, $keyword)) {
+                    $pruned[$keyword] = $value;
+                    continue;
+                }
                 if ($this->laravelUnconsumedKeywords($value, $hop + 1) === []) {
                     if ($keyword === 'items' && $itemsMatter) {
                         $pruned[$keyword] = [];
@@ -1817,7 +1858,7 @@ trait RendersLaravelValidation
     }
 
     /**
-     * The discriminator of a `oneOf` written inline on the property — `Circle|Square`, no base class to
+     * The discriminator of a `oneOf` / `anyOf` written inline on the property — `Circle|Square`, no base class to
      * carry it — once `laravelDiscriminatorDispatch()` has turned it into checks per variant.
      *
      * @param SchemaProperty $property
@@ -1828,7 +1869,7 @@ trait RendersLaravelValidation
         $constraints = $property['constraints'] ?? [];
         $propertyName = $constraints['x-discriminator-property'] ?? null;
         $mapping = $constraints['x-discriminator-map'] ?? null;
-        if (!is_string($propertyName) || !is_array($mapping) || array_key_exists('oneOf', $constraints)) {
+        if (!is_string($propertyName) || !is_array($mapping) || array_key_exists('oneOf', $constraints) || array_key_exists('anyOf', $constraints)) {
             return null;
         }
 
@@ -1965,7 +2006,7 @@ trait RendersLaravelValidation
             $this->laravelRecordRecursiveFold($target);
 
             return $nestedClass !== null
-                ? $this->laravelWithNullableNestedMarker($schema, $property, $target)
+                ? $this->laravelWithNullableNestedMarker(schema: $schema, property: $property, target: $target, className: $target)
                 : [...$schema, $this->laravelContainerValueKey($property) => ['x-openapi-recurse' => $target]];
         }
 
@@ -1980,7 +2021,7 @@ trait RendersLaravelValidation
                 return $schema;
             }
             if ($nestedClass !== null) {
-                return $this->laravelWithNullableNestedMarker($schema, $property, $shared['key']);
+                return $this->laravelWithNullableNestedMarker(schema: $schema, property: $property, target: $shared['key'], className: $target);
             }
             $containerKey = $this->laravelContainerValueKey($property);
             $schema[$containerKey] = [
@@ -1998,13 +2039,14 @@ trait RendersLaravelValidation
 
         if ($nestedClass !== null) {
             $merged = [...$schema, ...$nested];
-            if ($property['nullable'] === true && $this->laravelFoldIsUnion($nested)) {
+            $admitsNull = $this->laravelNestedValueAdmitsNull(property: $property, className: $target);
+            if ($admitsNull && $this->laravelFoldIsUnion($nested)) {
                 return $this->laravelUnionOrNull($merged);
             }
 
             // A nullable nested value must survive: `{"child": null}` is legal, and the interpreter
             // skips a null only when the schema says it may be one.
-            if ($property['nullable'] === true || !$this->propertyIsRequiredOnInput($property)) {
+            if ($admitsNull) {
                 $merged['nullable'] = true;
             }
 
@@ -2118,19 +2160,42 @@ trait RendersLaravelValidation
      *
      * @param array<string, mixed> $schema
      * @param SchemaProperty $property
+     * @param string $target the fold the marker points at
+     * @param string $className the class behind that fold
      * @return array<string, mixed>
      */
-    private function laravelWithNullableNestedMarker(array $schema, array $property, string $target): array
+    private function laravelWithNullableNestedMarker(array $schema, array $property, string $target, string $className): array
     {
         $marked = [...$schema, 'x-openapi-recurse' => $target];
-        if ($property['nullable'] === true && $this->laravelFoldIsUnion($this->laravelRecursiveFolds[$target] ?? [])) {
+        $admitsNull = $this->laravelNestedValueAdmitsNull(property: $property, className: $className);
+        if ($admitsNull && $this->laravelFoldIsUnion($this->laravelRecursiveFolds[$target] ?? [])) {
             return $this->laravelUnionOrNull($marked);
         }
-        if ($property['nullable'] === true || !$this->propertyIsRequiredOnInput($property)) {
+        if ($admitsNull) {
             $marked['nullable'] = true;
         }
 
         return $marked;
+    }
+
+    /**
+     * Whether the interpreter may let a `null` through for a nested class. For an object class, whenever
+     * the PHP property is nullable — an optional one included: its `array` rule already refuses the
+     * null, and the permission only keeps the interpreter from repeating that. A union class has no such
+     * rule — it may hold a scalar — so the interpreter is the only thing that refuses `null` there, and
+     * only the SCHEMA may allow it: an optional non-nullable union property took `null` (the dispatch
+     * of a discriminated union skipped it, a bare union got a `null` branch) and built nothing.
+     *
+     * @param SchemaProperty $property
+     */
+    private function laravelNestedValueAdmitsNull(array $property, string $className): bool
+    {
+        $definition = $this->dtoSchemas[$className] ?? [];
+        if (array_key_exists('oneOf', $definition) || array_key_exists('anyOf', $definition)) {
+            return ($property['schemaNullable'] ?? $property['nullable']) === true;
+        }
+
+        return $property['nullable'] === true || !$this->propertyIsRequiredOnInput($property);
     }
 
     /**
@@ -2481,9 +2546,11 @@ trait RendersLaravelValidation
 
     /**
      * Whether a subschema describes an object and NOTHING else. A union that also allows an array is
-     * ambiguous by design, so it is left to the interpreter rather than refused here.
+     * ambiguous by design, so it is left to the interpreter rather than refused here. A `oneOf` /
+     * `anyOf` whose every member is an object (or `null`) is one: `anyOf: [{type: object}]` refuses
+     * `[1,2]` exactly as `type: object` does.
      *
-     * @param array<string, mixed> $schema
+     * @param array<array-key, mixed> $schema
      */
     private function laravelSchemaIsObject(array $schema): bool
     {
@@ -2494,8 +2561,33 @@ trait RendersLaravelValidation
                 callback: static fn(mixed $member): bool => $member !== 'null',
             )) === ['object'];
         }
+        if ($type !== null) {
+            return $type === 'object';
+        }
 
-        return $type === 'object';
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            $members = $schema[$keyword] ?? null;
+            if (!is_array($members) || $members === []) {
+                continue;
+            }
+            $objectMembers = 0;
+            foreach ($members as $member) {
+                if (!is_array($member)) {
+                    return false;
+                }
+                if (($member['type'] ?? null) === 'null') {
+                    continue;
+                }
+                if (!$this->laravelSchemaIsObject($member)) {
+                    return false;
+                }
+                $objectMembers++;
+            }
+
+            return $objectMembers > 0;
+        }
+
+        return false;
     }
 
     /**
@@ -2564,7 +2656,7 @@ trait RendersLaravelValidation
         $paths = [];
         if ($hop < self::LARAVEL_MAX_DOTTED_RULE_HOP) {
             foreach (['items', 'additionalProperties'] as $key) {
-                if (is_array($schema[$key] ?? null)) {
+                if ($this->laravelWildcardReaches($schema, $key)) {
                     $paths = [...$paths, ...$this->laravelScalarTypePathsIn($schema[$key], $path . '.*', $hop + 1)];
                 }
             }
@@ -2597,16 +2689,22 @@ trait RendersLaravelValidation
      * The nested class a property hands its validation to, and the path below the property it applies
      * at: the property itself for a nested DTO, `<property>.*` for a list or map of them.
      *
+     * A union of generated classes counts as its first member only below the root — `$belowRoot` — where
+     * laravel-data's own inference never reaches, see `laravelDataFirstUnionMember()`.
+     *
      * @param SchemaProperty $property
      * @return array{class: string, suffix: string}|null
      */
-    private function laravelComposedChild(array $property): ?array
+    private function laravelComposedChild(array $property, bool $belowRoot = false): ?array
     {
         $segment = $this->laravelPathSegment($property['openApiName']);
         $nestedClass = $this->laravelDtoClass($property);
         $itemClass = $this->laravelDtoItemClass($property);
+        $firstMember = $belowRoot ? $this->laravelDataFirstUnionMember($property) : null;
         if ($nestedClass !== null) {
             $child = ['class' => $nestedClass, 'suffix' => $segment];
+        } elseif ($firstMember !== null) {
+            $child = ['class' => $firstMember, 'suffix' => $segment];
         } elseif ($itemClass !== null && !$this->laravelIsEnumClass($itemClass)) {
             $child = ['class' => $itemClass, 'suffix' => $segment . '.*'];
         } else {
@@ -2614,6 +2712,39 @@ trait RendersLaravelValidation
         }
 
         return $this->laravelComposesNested($child['class']) ? $child : null;
+    }
+
+    /**
+     * laravel-data builds a property typed by a union of generated classes (`Circle|Oval`) as its FIRST
+     * member, and checks it as that member too — on the root class, through its own rule inference. Below
+     * the root nothing did: the union's interpreter check saw the branches without the enums they had
+     * moved into the PHP type, let a tag through, and the cast to the first member's enum was a
+     * `CannotCastEnum` 500. The first member's rules are added where the union sits, as on the root.
+     *
+     * @param SchemaProperty $property
+     */
+    private function laravelDataFirstUnionMember(array $property): ?string
+    {
+        if ($this->attributeMode !== self::ATTRIBUTE_MODE_LARAVEL_DATA || str_contains($property['type'], '<')) {
+            return null;
+        }
+        $members = array_values(array_filter(
+            array: explode('|', ltrim($property['type'], '?')),
+            callback: static fn(string $member): bool => !in_array(strtolower($member), ['null', 'optional'], true),
+        ));
+        if (count($members) < 2) {
+            return null;
+        }
+        $classes = [];
+        foreach ($members as $member) {
+            $className = $this->shortClassName(ltrim($member, '\\'));
+            if (!array_key_exists($className, $this->dtoSchemas) || $this->laravelIsEnumClass($className)) {
+                return null;
+            }
+            $classes[] = $className;
+        }
+
+        return $classes[0];
     }
 
     /**
@@ -2630,7 +2761,7 @@ trait RendersLaravelValidation
         $targets = [];
         foreach (array_keys($this->dtoSchemas) as $owner) {
             foreach ($this->getSchemaProperties($owner) as $property) {
-                $child = $this->laravelComposedChild($property);
+                $child = $this->laravelComposedChild(property: $property, belowRoot: true);
                 if ($child !== null) {
                     $targets[$child['class']] = true;
                 }
@@ -2668,7 +2799,7 @@ trait RendersLaravelValidation
                 $rules[] = ['suffix' => $itemPath, 'rules' => $this->laravelRulesLiteral($itemRules)];
             }
 
-            $child = $this->laravelComposedChild($property);
+            $child = $this->laravelComposedChild(property: $property, belowRoot: true);
             if ($child !== null) {
                 $children[] = $child;
             } else {

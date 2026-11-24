@@ -1,4 +1,4 @@
-# laravel mode — 106 files, 30365 lines
+# laravel mode — 106 files, 30408 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -25205,6 +25205,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use BackedEnum;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
@@ -25790,6 +25791,10 @@ final class TestPostRequest implements JsonSerializable
                     } else {
                         $discriminatorValue = $discriminatorCarrier[$discriminatorProperty]
                             ?? (property_exists($value, $phpProperty) ? $value->{$phpProperty} : null);
+                        // A variant whose discriminator is a one-value `enum` holds it as its enum case.
+                        if ($discriminatorValue instanceof BackedEnum) {
+                            $discriminatorValue = $discriminatorValue->value;
+                        }
                         $mapKey = is_scalar($discriminatorValue) ? (string)$discriminatorValue : null;
                         if ($mapKey === null || !array_key_exists($mapKey, $discriminatorMap)) {
                             $errors[] = sprintf(
@@ -26435,6 +26440,7 @@ final class TreeNode implements JsonSerializable
                 ],
                 'objectPaths' => [
                     $prefix . '.children',
+                    $prefix . '.children.*',
                 ],
                 'scalarPaths' => [
                 ],
@@ -26455,6 +26461,7 @@ final class TreeNode implements JsonSerializable
      */
     private const array OPENAPI_OBJECT_PATHS = [
         'children',
+        'children.*',
     ];
 
     /**
@@ -26769,6 +26776,10 @@ final class TreeNode implements JsonSerializable
                     } else {
                         $discriminatorValue = $discriminatorCarrier[$discriminatorProperty]
                             ?? (property_exists($value, $phpProperty) ? $value->{$phpProperty} : null);
+                        // A variant whose discriminator is a one-value `enum` holds it as its enum case.
+                        if ($discriminatorValue instanceof BackedEnum) {
+                            $discriminatorValue = $discriminatorValue->value;
+                        }
                         $mapKey = is_scalar($discriminatorValue) ? (string)$discriminatorValue : null;
                         if ($mapKey === null || !array_key_exists($mapKey, $discriminatorMap)) {
                             $errors[] = sprintf(
@@ -27520,6 +27531,7 @@ final class UnionUnderContainer implements JsonSerializable
      */
     private const array OPENAPI_OBJECT_PATHS = [
         'tree',
+        'chain.*',
     ];
 
     /**
@@ -27831,6 +27843,9 @@ final class UnionUnderContainer implements JsonSerializable
                 if (array_key_exists('type', $branch) && !self::matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
                     continue;
                 }
+                if (self::openApiListBelongsToArrayBranch($normalizedValue, $schema['oneOf'], $branch)) {
+                    continue;
+                }
                 // Keep why each branch failed: with no match at all those reasons are far more
                 // useful than "does not match any oneOf branch".
                 $errorsForBranch = self::validateOpenApiNode($value, $branch, $path, $depth + 1);
@@ -27877,6 +27892,10 @@ final class UnionUnderContainer implements JsonSerializable
                     } else {
                         $discriminatorValue = $discriminatorCarrier[$discriminatorProperty]
                             ?? (property_exists($value, $phpProperty) ? $value->{$phpProperty} : null);
+                        // A variant whose discriminator is a one-value `enum` holds it as its enum case.
+                        if ($discriminatorValue instanceof BackedEnum) {
+                            $discriminatorValue = $discriminatorValue->value;
+                        }
                         $mapKey = is_scalar($discriminatorValue) ? (string)$discriminatorValue : null;
                         if ($mapKey === null || !array_key_exists($mapKey, $discriminatorMap)) {
                             $errors[] = sprintf(
@@ -27984,6 +28003,9 @@ final class UnionUnderContainer implements JsonSerializable
                     && !($normalizedValue === null && ($branch['nullable'] ?? false) === true)
                     && !self::matchesOpenApiCallbackType($normalizedValue, $branch['type'])
                 ) {
+                    continue;
+                }
+                if (self::openApiListBelongsToArrayBranch($normalizedValue, $schema['anyOf'], $branch)) {
                     continue;
                 }
                 $errorsForBranch = self::validateOpenApiNode($value, $branch, $path, $depth + 1);
@@ -28101,6 +28123,27 @@ final class UnionUnderContainer implements JsonSerializable
             'object' => is_array($value) || is_object($value),
             default => true,
         };
+    }
+
+    /**
+     * @param array<array-key, mixed> $branches
+     * @param array<array-key, mixed> $branch
+     */
+    private static function openApiListBelongsToArrayBranch(mixed $value, array $branches, array $branch): bool
+    {
+        $typesOf = static fn(mixed $type): array => is_string($type) ? [$type] : (is_array($type) ? $type : []);
+        $branchTypes = $typesOf($branch['type'] ?? null);
+        if (!is_array($value) || !array_is_list($value) || !in_array('object', $branchTypes, true) || in_array('array', $branchTypes, true)) {
+            return false;
+        }
+
+        foreach ($branches as $sibling) {
+            if (is_array($sibling) && in_array('array', $typesOf($sibling['type'] ?? null), true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static function normalizeOpenApiStructuralValue(mixed $value): mixed

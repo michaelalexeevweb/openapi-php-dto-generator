@@ -22,17 +22,8 @@ use ReflectionProperty;
 use RuntimeException;
 use stdClass;
 use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\PropertyInfo\Extractor\PhpDocExtractor;
-use Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
-use Symfony\Component\PropertyInfo\PropertyInfoExtractor;
-use Symfony\Component\Serializer\Encoder\JsonEncoder;
-use Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactory;
-use Symfony\Component\Serializer\Mapping\Loader\AttributeLoader;
-use Symfony\Component\Serializer\NameConverter\MetadataAwareNameConverter;
-use Symfony\Component\Serializer\Normalizer\ArrayDenormalizer;
 use Symfony\Component\Serializer\Normalizer\BackedEnumNormalizer;
 use Symfony\Component\Serializer\Normalizer\DateTimeNormalizer;
-use Symfony\Component\Serializer\Normalizer\ObjectNormalizer;
 use Symfony\Component\Serializer\Serializer;
 use Symfony\Component\Validator\Validation;
 use Throwable;
@@ -54,16 +45,7 @@ use Throwable;
 final class ValidationParityTest extends TestCase
 {
     use ComparesModes;
-
-    private string $outputDirectory;
-
-    /**
-     * Documents written beside the spec, by file name: when there are any, the spec is written to a
-     * file next to them and generated from there, so its `$ref`s can name them.
-     *
-     * @var array<string, mixed>
-     */
-    private array $siblingDocuments = [];
+    use RunsPayloadsThroughModes;
 
     protected function setUp(): void
     {
@@ -7508,6 +7490,1106 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * Shapes reached through a `$ref`, or built from scalar members, that once broke generation or the
+     * request itself: a name collision between the enums of two union members, a class referenced but
+     * never written (a 500 on every request in the Laravel modes), a scalar or union component read as a
+     * DTO, and `allOf` over a scalar alias inside a union typed as a class. Every mode must generate,
+     * never crash, and give each payload the document's answer.
+     *
+     * @param array<string, mixed> $propertySchema
+     * @param array<string, array<string, mixed>> $components
+     * @param array<string, bool> $payloads JSON payload => accepted
+     * @param array<string, array<string, bool|null>> $diverging mode => the payloads that mode answers otherwise,
+     *     by the README.support-matrix divergence named beside the case; `null` leaves the payload unasserted
+     *     where another parity case owns that framework answer
+     */
+    #[DataProvider('componentShapeProvider')]
+    public function testComponentShapesGenerateAndValidateInEveryMode(
+        string $openApiVersion,
+        array $propertySchema,
+        array $components,
+        array $payloads,
+        array $diverging = [],
+    ): void {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = self::probeSpec($propertySchema);
+        $spec['openapi'] = $openApiVersion;
+        $spec['components']['schemas'] += $components;
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: $spec,
+                key: 'component shape ' . md5((string)json_encode($spec)),
+                payloads: $payloads,
+                diverging: $diverging,
+            ),
+        );
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: array<string, mixed>, 2: array<string, array<string, mixed>>, 3: array<string, bool>, 4?: array<string, array<string, bool|null>>}>
+     */
+    public static function componentShapeProvider(): array
+    {
+        $flagAlias = ['Flag' => ['type' => 'boolean']];
+        // "a scalar for a property typed as a generated class": symfony/serializer builds an empty object.
+        $symfonyBuildsAnEmptyObject = ['symfony' => ['{"f":{"a":3}}' => true]];
+        // A scalar beside a class with required keys: under `#[MapRequestPayload]` the serializer tries the
+        // class first and collects its failure — `testAnObjectBranchBesideAScalarBranchIsJudgedByTheBranchItMatches`
+        // owns that answer, not these cases.
+        $symfonyTriesTheClassFirst = static fn(string $json): array => ['symfony' => [$json => null]];
+
+        return [
+            'anyOf of two inline enums of different types' => [
+                '3.0.3',
+                ['anyOf' => [['type' => 'string', 'enum' => ['green']], ['type' => 'integer', 'enum' => [-20]]]],
+                [],
+                ['{"f":"green"}' => true, '{"f":-20}' => true, '{"f":"red"}' => false, '{"f":-19}' => false],
+            ],
+            'oneOf of two inline enums of different types' => [
+                '3.1.0',
+                ['oneOf' => [['type' => 'string', 'enum' => ['green', 'blue']], ['type' => 'integer', 'enum' => [-12, -8]]]],
+                [],
+                ['{"f":"blue"}' => true, '{"f":-8}' => true, '{"f":"red"}' => false, '{"f":-9}' => false],
+            ],
+            'oneOf of a closed object and an inline enum' => [
+                '3.1.0',
+                ['oneOf' => [['type' => 'object', 'additionalProperties' => false], ['type' => 'integer', 'enum' => [-12, -8]]]],
+                [],
+                ['{"f":{}}' => true, '{"f":-12}' => true, '{"f":{"a":1}}' => false, '{"f":3}' => false, '{"f":"x"}' => false],
+                [
+                    // An integer enum branch beside an object branch matching "more than one oneOf branch" is
+                    // the union parity cases' concern; the class here is empty, so symfony/serializer 7.4.10
+                    // builds it from a scalar ("a scalar for a property typed as a generated class"), and the
+                    // extra key is "`additionalProperties: false` … on a DTO-shaped schema".
+                    'runtime' => ['{"f":-12}' => null],
+                    // A scalar for the empty class: built on serializer 7.4.10, refused from 7.4.23 on.
+                    'symfony' => ['{"f":{"a":1}}' => true, '{"f":3}' => null, '{"f":"x"}' => null],
+                    'yii3' => ['{"f":{"a":1}}' => true],
+                ],
+            ],
+            'map of allOf over a number alias' => [
+                '3.0.3',
+                ['type' => 'object', 'additionalProperties' => ['allOf' => [['$ref' => '#/components/schemas/Num']]]],
+                ['Num' => ['type' => 'number']],
+                ['{"f":{}}' => true, '{"f":{"a":1.5}}' => true, '{"f":{"a":"x"}}' => false],
+            ],
+            'map of allOf over a boolean alias' => [
+                '3.0.3',
+                ['type' => 'object', 'additionalProperties' => ['allOf' => [['$ref' => '#/components/schemas/Flag']]]],
+                $flagAlias,
+                ['{"f":{}}' => true, '{"f":{"a":true}}' => true, '{"f":{"a":"x"}}' => false],
+            ],
+            'map of allOf over an array alias' => [
+                '3.0.3',
+                ['type' => 'object', 'additionalProperties' => ['allOf' => [['$ref' => '#/components/schemas/Tags']]]],
+                ['Tags' => ['type' => 'array', 'items' => ['type' => 'string']]],
+                ['{"f":{}}' => true, '{"f":{"a":["x"]}}' => true, '{"f":{"a":[5]}}' => false, '{"f":{"a":"x"}}' => false],
+            ],
+            'array alias of a boolean alias' => [
+                '3.1.0',
+                ['$ref' => '#/components/schemas/Flags'],
+                ['Flags' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Flag']]] + $flagAlias,
+                ['{"f":[true]}' => true, '{"f":[]}' => true, '{"f":["x"]}' => false, '{"f":true}' => false],
+            ],
+            'component map of an inline object' => [
+                '3.1.0',
+                ['$ref' => '#/components/schemas/Shelf'],
+                [
+                    'Shelf' => [
+                        'type' => 'object',
+                        'additionalProperties' => ['type' => 'object', 'properties' => ['g' => ['type' => 'string']]],
+                    ],
+                ],
+                ['{"f":{}}' => true, '{"f":{"a":{"g":"x"}}}' => true, '{"f":{"a":{"g":5}}}' => false, '{"f":{"a":3}}' => false],
+                $symfonyBuildsAnEmptyObject,
+            ],
+            'map of an inline object' => [
+                '3.1.0',
+                ['type' => 'object', 'additionalProperties' => ['type' => 'object', 'properties' => ['g' => ['type' => 'string']]]],
+                [],
+                ['{"f":{}}' => true, '{"f":{"a":{"g":"x"}}}' => true, '{"f":{"a":{"g":5}}}' => false, '{"f":{"a":3}}' => false],
+                $symfonyBuildsAnEmptyObject,
+            ],
+            'scalar component with a type list' => [
+                '3.1.0',
+                ['$ref' => '#/components/schemas/Count'],
+                ['Count' => ['type' => ['integer', 'null'], 'minimum' => 2]],
+                ['{"f":5}' => true, '{"f":null}' => true, '{"f":1}' => false, '{"f":"x"}' => false, '{"f":{}}' => false],
+            ],
+            'union component of an integer and an object' => [
+                '3.1.0',
+                ['$ref' => '#/components/schemas/Shape'],
+                [
+                    'Shape' => [
+                        'oneOf' => [
+                            ['type' => 'integer'],
+                            ['type' => 'object', 'required' => ['vole'], 'properties' => ['vole' => ['type' => 'string']]],
+                        ],
+                    ],
+                ],
+                ['{"f":3}' => true, '{"f":{"vole":"x"}}' => true, '{"f":"x"}' => false, '{"f":{"vole":5}}' => false],
+                $symfonyTriesTheClassFirst('{"f":3}'),
+            ],
+            'union component of an array and a string' => [
+                '3.1.0',
+                ['$ref' => '#/components/schemas/Bag'],
+                ['Bag' => ['oneOf' => [['type' => 'array', 'items' => ['type' => 'integer']], ['type' => 'string']]]],
+                ['{"f":[1]}' => true, '{"f":"x"}' => true, '{"f":{"zz":1}}' => false, '{"f":["a"]}' => false, '{"f":3}' => false],
+            ],
+            // The inline spelling of the two unions above, which always worked — the reference must agree.
+            'inline union of an integer and an object' => [
+                '3.1.0',
+                ['oneOf' => [['type' => 'integer'], ['type' => 'object', 'required' => ['vole'], 'properties' => ['vole' => ['type' => 'string']]]]],
+                [],
+                ['{"f":3}' => true, '{"f":{"vole":"x"}}' => true, '{"f":"x"}' => false, '{"f":{"vole":5}}' => false],
+                $symfonyTriesTheClassFirst('{"f":3}'),
+            ],
+            'inline union of an array and a string' => [
+                '3.1.0',
+                ['oneOf' => [['type' => 'array', 'items' => ['type' => 'integer']], ['type' => 'string']]],
+                [],
+                ['{"f":[1]}' => true, '{"f":"x"}' => true, '{"f":{"zz":1}}' => false, '{"f":["a"]}' => false, '{"f":3}' => false],
+            ],
+            'list of a union component of an array and a string' => [
+                '3.1.0',
+                ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Bag']],
+                ['Bag' => ['oneOf' => [['type' => 'array', 'items' => ['type' => 'integer']], ['type' => 'string']]]],
+                ['{"f":[[1],"x"]}' => true, '{"f":[]}' => true, '{"f":[3]}' => false, '{"f":[["a"]]}' => false],
+            ],
+            'map of a union component of an array and a string' => [
+                '3.1.0',
+                ['type' => 'object', 'additionalProperties' => ['$ref' => '#/components/schemas/Bag']],
+                ['Bag' => ['oneOf' => [['type' => 'array', 'items' => ['type' => 'integer']], ['type' => 'string']]]],
+                ['{"f":{"a":[1],"b":"x"}}' => true, '{"f":{}}' => true, '{"f":{"a":3}}' => false, '{"f":{"a":["a"]}}' => false],
+            ],
+            'nullable union component of a reference and an integer' => [
+                '3.1.0',
+                ['$ref' => '#/components/schemas/Mark'],
+                [
+                    'Mark' => ['anyOf' => [['$ref' => '#/components/schemas/Spot'], ['type' => 'integer'], ['type' => 'null']]],
+                    'Spot' => ['type' => 'object', 'required' => ['x'], 'properties' => ['x' => ['type' => 'integer']]],
+                ],
+                ['{"f":4}' => true, '{"f":null}' => true, '{"f":{"x":1}}' => true, '{"f":"x"}' => false, '{"f":{"x":"a"}}' => false],
+                $symfonyTriesTheClassFirst('{"f":4}'),
+            ],
+            'scalar component with a type list of two scalars' => [
+                '3.1.0',
+                ['$ref' => '#/components/schemas/Code'],
+                ['Code' => ['type' => ['string', 'integer'], 'minLength' => 2]],
+                ['{"f":"ab"}' => true, '{"f":7}' => true, '{"f":"a"}' => false, '{"f":true}' => false, '{"f":null}' => false],
+            ],
+            'list of a scalar component with a type list' => [
+                '3.1.0',
+                ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Count']],
+                ['Count' => ['type' => ['integer', 'null'], 'minimum' => 2]],
+                ['{"f":[5,null]}' => true, '{"f":[1]}' => false, '{"f":["x"]}' => false],
+            ],
+            'anyOf of allOf over a number alias and a string' => [
+                '3.1.0',
+                ['anyOf' => [['allOf' => [['$ref' => '#/components/schemas/Weight']]], ['type' => 'string']]],
+                ['Weight' => ['type' => 'number']],
+                ['{"f":2}' => true, '{"f":2.5}' => true, '{"f":"x"}' => true, '{"f":true}' => false, '{"f":{}}' => false],
+            ],
+            'oneOf of allOf over a string alias and null' => [
+                '3.1.0',
+                ['oneOf' => [['allOf' => [['$ref' => '#/components/schemas/Label']]], ['type' => 'null']]],
+                ['Label' => ['type' => 'string', 'minLength' => 2]],
+                ['{"f":"ab"}' => true, '{"f":null}' => true, '{"f":"a"}' => false, '{"f":5}' => false],
+            ],
+        ];
+    }
+
+    /**
+     * Discriminated unions whose variants spell the discriminator property as a one-value enum
+     * (`kind: {type: string, enum: [circle]}`), listed inline on the property or behind a component, under
+     * `oneOf` and `anyOf`, plus the plain-string spelling behind a component. The discriminator picks the
+     * variant: a payload naming one variant is judged by that variant alone, a missing, unknown or
+     * non-string tag is refused, and so are a non-object and `null` where the union is not nullable. No
+     * payload may crash any mode.
+     *
+     * @param array<string, mixed> $propertySchema
+     * @param array<string, array<string, mixed>> $components
+     * @param array<string, bool> $payloads JSON payload => accepted
+     * @param bool $required whether `f` is required; an optional one may be left out, but not sent as `null`
+     * @param array<string, array<string, bool|null>> $diverging mode => the payloads that mode answers otherwise,
+     *     by the README.support-matrix divergence named beside the case
+     * @param list<GenerationMode> $skippedModes modes a case does not measure, for the reason named beside it
+     */
+    #[DataProvider('discriminatedUnionShapeProvider')]
+    public function testDiscriminatedUnionShapesValidateInEveryMode(
+        string $openApiVersion,
+        array $propertySchema,
+        array $components,
+        array $payloads,
+        bool $required = true,
+        array $diverging = [],
+        array $skippedModes = [],
+    ): void {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = self::probeSpec($propertySchema);
+        $spec['openapi'] = $openApiVersion;
+        $spec['components']['schemas'] += $components;
+        if (!$required) {
+            $spec['components']['schemas']['Probe']['required'] = [];
+        }
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: $spec,
+                key: 'discriminated shape ' . md5((string)json_encode($spec)),
+                payloads: $payloads,
+                diverging: $diverging,
+                skippedModes: $skippedModes,
+            ),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{0: string, 1: array<string, mixed>, 2: array<string, array<string, mixed>>, 3: array<string, bool>, 4?: bool, 5?: array<string, array<string, bool|null>>, 6?: list<GenerationMode>}>
+     */
+    public static function discriminatedUnionShapeProvider(): iterable
+    {
+        $variant = static fn(string $tag, string $field): array => [
+            'type' => 'object',
+            'required' => ['kind', $field],
+            'properties' => ['kind' => ['type' => 'string', 'enum' => [$tag]], $field => ['type' => 'integer']],
+        ];
+        $enumTagged = ['Circle' => $variant('circle', 'r'), 'Oval' => $variant('oval', 'w')];
+        $mapped = [
+            'propertyName' => 'kind',
+            'mapping' => ['circle' => '#/components/schemas/Circle', 'oval' => '#/components/schemas/Oval'],
+        ];
+        $branches = [['$ref' => '#/components/schemas/Circle'], ['$ref' => '#/components/schemas/Oval']];
+        $payloads = [
+            '{"f":{"kind":"circle","r":1}}' => true,
+            '{"f":{"kind":"oval","w":2}}' => true,
+            '{"f":{"kind":"circle"}}' => false,
+            '{"f":{"kind":"oval","r":1}}' => false,
+            '{"f":{"kind":"zz","r":1}}' => false,
+            '{"f":{"kind":{"zz":1}}}' => false,
+            '{"f":{"kind":5,"r":1}}' => false,
+            '{"f":{}}' => false,
+            '{"f":"zzq"}' => false,
+            '{"f":null}' => false,
+        ];
+
+        // support matrix: "an inline `discriminator` on a property (no component base)" — laravel-data
+        // validates and builds the FIRST member, so the second member's valid payload is refused, and a
+        // payload the first member alone accepts passes whatever its tag says.
+        $firstMemberOnly = ['laravel-data' => [
+            '{"f":{"kind":"oval","w":2}}' => false,
+            '{"f":{"kind":"oval","r":1}}' => null,
+            '{"f":{"kind":"zz","r":1}}' => null,
+        ]];
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            foreach (['3.0.3', '3.1.0'] as $version) {
+                yield sprintf('inline %s, enum tags, mapped, %s', $keyword, $version) => [
+                    $version,
+                    [$keyword => $branches, 'discriminator' => $mapped],
+                    $enumTagged,
+                    $payloads,
+                    true,
+                    $firstMemberOnly,
+                ];
+            }
+            yield sprintf('component %s, enum tags, mapped', $keyword) => [
+                '3.1.0',
+                ['$ref' => '#/components/schemas/Shape'],
+                $enumTagged + ['Shape' => [$keyword => $branches, 'discriminator' => $mapped]],
+                $payloads,
+            ];
+        }
+        foreach (['3.0.3', '3.1.0'] as $version) {
+            yield 'optional component oneOf, enum tags, implicit mapping, ' . $version => [
+                $version,
+                ['$ref' => '#/components/schemas/Shape'],
+                [
+                    'Circle' => $variant('Circle', 'r'),
+                    'Oval' => $variant('Oval', 'w'),
+                    'Shape' => ['oneOf' => $branches, 'discriminator' => ['propertyName' => 'kind']],
+                ],
+                ['{}' => true, '{"f":{"kind":"Oval","w":2}}' => true, '{"f":null}' => false, '{"f":{"kind":"Oval"}}' => false],
+                false,
+            ];
+            yield 'optional component oneOf, enum tags, mapped, ' . $version => [
+                $version,
+                ['$ref' => '#/components/schemas/Shape'],
+                $enumTagged + ['Shape' => ['oneOf' => $branches, 'discriminator' => $mapped]],
+                ['{}' => true, '{"f":{"kind":"oval","w":2}}' => true, '{"f":null}' => false, '{"f":"zzq"}' => false],
+                false,
+            ];
+        }
+        yield 'optional component oneOf of an integer and an object, no discriminator' => [
+            '3.1.0',
+            ['$ref' => '#/components/schemas/Mark'],
+            ['Mark' => ['oneOf' => [['type' => 'integer'], ['type' => 'object', 'required' => ['x'], 'properties' => ['x' => ['type' => 'integer']]]]]],
+            ['{}' => true, '{"f":{"x":1}}' => true, '{"f":null}' => false],
+            false,
+        ];
+        yield 'optional nullable component oneOf, enum tags, mapped' => [
+            '3.1.0',
+            ['anyOf' => [['$ref' => '#/components/schemas/Shape'], ['type' => 'null']]],
+            $enumTagged + ['Shape' => ['oneOf' => $branches, 'discriminator' => $mapped]],
+            ['{}' => true, '{"f":null}' => true, '{"f":{"kind":"oval","w":2}}' => true, '{"f":{"kind":"oval"}}' => false],
+            false,
+        ];
+
+        $plain = static fn(string $field): array => [
+            'type' => 'object',
+            'required' => ['kind', $field],
+            'properties' => ['kind' => ['type' => 'string'], $field => ['type' => 'integer']],
+        ];
+        // Deeper inline positions: an inline object's property and list items.
+        yield 'inline oneOf inside an inline object, enum tags, mapped' => [
+            '3.1.0',
+            ['type' => 'object', 'required' => ['g'], 'properties' => ['g' => ['oneOf' => $branches, 'discriminator' => $mapped]]],
+            $enumTagged,
+            [
+                '{"f":{"g":{"kind":"circle","r":1}}}' => true,
+                '{"f":{"g":{"kind":"oval","w":2}}}' => true,
+                '{"f":{"g":{"kind":"zzq","r":1}}}' => false,
+                '{"f":{"g":{"kind":"circle"}}}' => false,
+                '{"f":{"g":{"kind":{"zz":1}}}}' => false,
+                '{"f":{"g":{}}}' => false,
+            ],
+            true,
+            // laravel-data checks and builds a union of classes as its first member at every depth, as on
+            // the root (the inline-discriminator row of README.support-matrix.md); below the root it was a
+            // `CannotCastEnum` 500 until 2.15.145.
+            ['laravel-data' => ['{"f":{"g":{"kind":"oval","w":2}}}' => false]],
+        ];
+        yield 'list of an inline anyOf, enum tags, mapped' => [
+            '3.1.0',
+            ['type' => 'array', 'items' => ['anyOf' => $branches, 'discriminator' => $mapped]],
+            $enumTagged,
+            [
+                '{"f":[{"kind":"circle","r":1},{"kind":"oval","w":2}]}' => true,
+                '{"f":[]}' => true,
+                '{"f":[{"kind":"zzq","r":1}]}' => false,
+                '{"f":[{"kind":"oval"}]}' => false,
+                '{"f":[{"kind":{"zz":1}}]}' => false,
+                '{"f":[null]}' => false,
+            ],
+        ];
+
+        $plainTagged = ['Circle' => $plain('r'), 'Oval' => $plain('w')];
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            yield sprintf('inline %s, plain string tags, mapped', $keyword) => [
+                '3.1.0',
+                [$keyword => $branches, 'discriminator' => $mapped],
+                $plainTagged,
+                $payloads,
+                true,
+                ['laravel-data' => ['{"f":{"kind":"oval","r":1}}' => true, '{"f":{"kind":"zz","r":1}}' => true] + $firstMemberOnly['laravel-data']],
+            ];
+        }
+        yield 'component oneOf, plain string tags, implicit mapping' => [
+            '3.1.0',
+            ['$ref' => '#/components/schemas/Shape'],
+            [
+                'Circle' => $plain('r'),
+                'Square' => $plain('s'),
+                'Shape' => [
+                    'oneOf' => [['$ref' => '#/components/schemas/Circle'], ['$ref' => '#/components/schemas/Square']],
+                    'discriminator' => ['propertyName' => 'kind'],
+                ],
+            ],
+            [
+                '{"f":{"kind":"Circle","r":1}}' => true,
+                '{"f":{"kind":"Square","s":2}}' => true,
+                '{"f":{"kind":"Square","r":1}}' => false,
+                '{"f":{"kind":"Cow","r":1}}' => false,
+                '{"f":{"kind":{"zz":1}}}' => false,
+                '{"f":{"kind":["Circle"],"r":1}}' => false,
+                '{"f":{}}' => false,
+                '{"f":null}' => false,
+            ],
+        ];
+    }
+
+    /**
+     * A temporal format reached through a composition, and a wire value of the wrong shape sent to a
+     * plain enum. Each once crashed a mode or refused a valid value: the date inside an `allOf` /
+     * `anyOf` was parsed as a date-time, the union of a date-time and another type was typed as a
+     * `DateTimeImmutable` union the frameworks cannot hydrate, the 3.1 nullable spelling refused a
+     * valid timestamp, and an object sent to an enum property was handed to `new` on the enum.
+     *
+     * @param array<string, mixed> $propertySchema
+     * @param array<string, bool> $payloads JSON payload => accepted
+     * @param array<string, array<string, bool|null>> $diverging
+     */
+    #[DataProvider('temporalAndEnumShapeProvider')]
+    public function testTemporalCompositionsAndEnumShapesNeverCrash(array $propertySchema, array $payloads, array $diverging = []): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = self::probeSpec($propertySchema);
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: $spec,
+                key: 'temporal shape ' . md5((string)json_encode($spec)),
+                payloads: $payloads,
+                diverging: $diverging,
+            ),
+        );
+    }
+
+    /**
+     * @return array<string, array{0: array<string, mixed>, 1: array<string, bool>, 2?: array<string, array<string, bool|null>>}>
+     */
+    public static function temporalAndEnumShapeProvider(): array
+    {
+        $date = ['type' => 'string', 'format' => 'date'];
+        $dateTime = ['type' => 'string', 'format' => 'date-time'];
+        $datePayloads = [
+            '{"f":"2018-06-18"}' => true,
+            '{"f":"not a date"}' => false,
+            '{"f":5}' => false,
+            '{"f":{"zz":1}}' => false,
+        ];
+        $dateTimePayloads = [
+            '{"f":"2018-06-18T10:20:30Z"}' => true,
+            '{"f":"not a timestamp"}' => false,
+            '{"f":{"zz":1}}' => false,
+        ];
+
+        return [
+            'an object or a list sent to a string enum' => [
+                ['type' => 'string', 'enum' => ['amber', 'red']],
+                [
+                    '{"f":"amber"}' => true,
+                    '{"f":"blue"}' => false,
+                    '{"f":{"zz":1}}' => false,
+                    '{"f":[1,2]}' => false,
+                    '{"f":[]}' => false,
+                    '{"f":5}' => false,
+                ],
+            ],
+            'an object or a list sent to an integer enum' => [
+                ['type' => 'integer', 'enum' => [1, 2]],
+                [
+                    '{"f":1}' => true,
+                    '{"f":3}' => false,
+                    '{"f":{"zz":1}}' => false,
+                    '{"f":[1,2]}' => false,
+                ],
+            ],
+            'an object sent to a nullable enum' => [
+                ['type' => ['string', 'null'], 'enum' => ['amber', 'red', null]],
+                [
+                    '{"f":"red"}' => true,
+                    '{"f":null}' => true,
+                    '{"f":"blue"}' => false,
+                    '{"f":{"zz":1}}' => false,
+                    '{"f":["red"]}' => false,
+                ],
+            ],
+            'an object sent to an enum with a default' => [
+                ['type' => 'string', 'enum' => ['amber', 'red'], 'default' => 'red'],
+                [
+                    '{"f":"amber"}' => true,
+                    '{"f":{"zz":1}}' => false,
+                    '{"f":["amber"]}' => false,
+                ],
+            ],
+            'an object or a list sent to an enum beside a string' => [
+                ['anyOf' => [['type' => 'integer', 'enum' => [-16]], ['type' => 'string']]],
+                [
+                    '{"f":-16}' => true,
+                    '{"f":"x"}' => true,
+                    '{"f":-15}' => false,
+                    '{"f":{"zz":1}}' => false,
+                    '{"f":[1]}' => false,
+                ],
+            ],
+            'format date in an allOf' => [['allOf' => [$date]], $datePayloads],
+            'format date in an anyOf' => [['anyOf' => [$date]], $datePayloads],
+            'format date in a oneOf' => [['oneOf' => [$date]], $datePayloads],
+            'format date-time in an allOf' => [['allOf' => [$dateTime]], $dateTimePayloads],
+            'format date-time in an anyOf' => [['anyOf' => [$dateTime]], $dateTimePayloads],
+            'an integer or a date-time' => [
+                ['oneOf' => [['type' => 'integer'], $dateTime]],
+                [
+                    '{"f":-27}' => true,
+                    '{"f":"2018-06-18T10:20:30Z"}' => true,
+                    '{"f":"not a timestamp"}' => false,
+                    '{"f":true}' => false,
+                    '{"f":{"zz":1}}' => false,
+                ],
+            ],
+            'a boolean or a date-time' => [
+                ['anyOf' => [['type' => 'boolean'], $dateTime]],
+                [
+                    '{"f":true}' => true,
+                    '{"f":false}' => true,
+                    '{"f":"2018-06-18T10:20:30Z"}' => true,
+                    '{"f":"not a timestamp"}' => false,
+                    '{"f":5}' => false,
+                ],
+            ],
+            'a boolean or a date' => [
+                ['anyOf' => [['type' => 'boolean'], $date]],
+                [
+                    '{"f":true}' => true,
+                    '{"f":"2018-06-18"}' => true,
+                    '{"f":"not a date"}' => false,
+                    '{"f":5}' => false,
+                ],
+            ],
+            'a list or a date' => [
+                ['oneOf' => [['type' => 'array'], $date]],
+                [
+                    '{"f":[]}' => true,
+                    '{"f":[1,"a"]}' => true,
+                    '{"f":"2018-06-18"}' => true,
+                    '{"f":"not a date"}' => false,
+                    '{"f":5}' => false,
+                ],
+            ],
+            'an integer, a list or a date' => [
+                ['oneOf' => [['type' => 'integer', 'maximum' => -18], ['type' => 'array'], $date]],
+                [
+                    '{"f":-20}' => true,
+                    '{"f":[]}' => true,
+                    '{"f":"2018-06-18"}' => true,
+                    '{"f":-5}' => false,
+                    '{"f":"not a date"}' => false,
+                ],
+                // README.support-matrix "an integer for a `oneOf` of `format: date`, `integer` and …": beside
+                // an `array` member `#[ToString]` cannot stop `#[ToDateTime]` reading the int as a timestamp.
+                ['yii3' => ['{"f":-5}' => true]],
+            ],
+            'a date-time or null, the 3.1 spelling' => [
+                ['anyOf' => [$dateTime, ['type' => 'null']]],
+                [
+                    '{"f":"2018-06-18T10:20:30Z"}' => true,
+                    '{"f":null}' => true,
+                    '{"f":"not a timestamp"}' => false,
+                    '{"f":5}' => false,
+                ],
+            ],
+            'a date-time or null as a oneOf' => [
+                ['oneOf' => [$dateTime, ['type' => 'null']]],
+                [
+                    '{"f":"2018-06-18T10:20:30Z"}' => true,
+                    '{"f":null}' => true,
+                    '{"f":"not a timestamp"}' => false,
+                ],
+            ],
+            'a date or null, the 3.1 spelling' => [
+                ['anyOf' => [$date, ['type' => 'null']]],
+                [
+                    '{"f":"2018-06-18"}' => true,
+                    '{"f":null}' => true,
+                    '{"f":"not a date"}' => false,
+                ],
+            ],
+            'a date-time or null, the type array spelling' => [
+                ['type' => ['string', 'null'], 'format' => 'date-time'],
+                [
+                    '{"f":"2018-06-18T10:20:30Z"}' => true,
+                    '{"f":null}' => true,
+                    '{"f":"not a timestamp"}' => false,
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * Unions whose members disagree on type, each member carrying its own keywords: an enum, a length, a
+     * map's value schema, a list's item schema, `nullable`. A member's keywords judge only the values of
+     * that member's type — a string member's `minLength` says nothing about a number, an integer enum is
+     * not "matched" by every object — and a value a member's type admits but its keywords refuse matches
+     * no member. Every mode must give the document's answer, and never crash.
+     *
+     * @param array<string, mixed> $propertySchema
+     * @param array<string, bool> $payloads JSON payload => accepted
+     * @param array<string, array<string, bool|null>> $diverging mode => the payloads that mode answers otherwise,
+     *     by the README.support-matrix divergence named beside the case
+     */
+    #[DataProvider('unionMemberKeywordProvider')]
+    public function testUnionMemberKeywordsJudgeOnlyTheirOwnType(
+        string $openApiVersion,
+        array $propertySchema,
+        array $payloads,
+        array $diverging = [],
+    ): void {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = self::probeSpec($propertySchema);
+        $spec['openapi'] = $openApiVersion;
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: $spec,
+                key: 'union member keywords ' . md5((string)json_encode($spec)),
+                payloads: $payloads,
+                diverging: $diverging,
+            ),
+        );
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: array<string, mixed>, 2: array<string, bool>, 3?: array<string, array<string, bool|null>>}>
+     */
+    public static function unionMemberKeywordProvider(): array
+    {
+        // "a scalar for a property typed as a generated class": symfony/serializer 7.4.10 builds an empty
+        // object from a scalar when the class requires nothing; newer releases refuse it.
+        $symfonyMayBuildAnEmptyObject = static fn(string ...$jsons): array => ['symfony' => array_fill_keys($jsons, null)];
+        // "a JSON array for a `type: object` property": the serializer and the hydrator build the object
+        // before any validator sees the raw body.
+        $arrayAsObject = static fn(string $json): array => ['symfony' => [$json => true], 'yii3' => [$json => true]];
+
+        return [
+            'oneOf of an integer enum and an open object' => [
+                '3.1.0',
+                ['oneOf' => [['type' => 'integer', 'enum' => [-6]], ['type' => 'object']]],
+                ['{"f":-6}' => true, '{"f":{}}' => true, '{"f":{"a":1}}' => true, '{"f":-5}' => false, '{"f":"x"}' => false],
+                $symfonyMayBuildAnEmptyObject('{"f":-5}', '{"f":"x"}'),
+            ],
+            'anyOf of an integer enum and an open object' => [
+                '3.1.0',
+                ['anyOf' => [['type' => 'integer', 'enum' => [-6, 4]], ['type' => 'object']]],
+                ['{"f":-6}' => true, '{"f":4}' => true, '{"f":{"a":1}}' => true, '{"f":-5}' => false],
+                $symfonyMayBuildAnEmptyObject('{"f":-5}'),
+            ],
+            'oneOf of a number map and a short string list' => [
+                '3.1.0',
+                ['oneOf' => [
+                    ['type' => 'object', 'additionalProperties' => ['type' => 'number']],
+                    ['type' => 'array', 'items' => ['type' => 'string', 'maxLength' => 3]],
+                ]],
+                [
+                    '{"f":["ab"]}' => true,
+                    '{"f":[]}' => true,
+                    '{"f":{"a":1.5}}' => true,
+                    '{"f":[7]}' => false,
+                    '{"f":["abcdef"]}' => false,
+                    '{"f":{"a":"x"}}' => false,
+                    '{"f":"ab"}' => false,
+                ],
+            ],
+            'anyOf of a number map and a short string list' => [
+                '3.1.0',
+                ['anyOf' => [
+                    ['type' => 'object', 'additionalProperties' => ['type' => 'number']],
+                    ['type' => 'array', 'items' => ['type' => 'string', 'maxLength' => 3]],
+                ]],
+                ['{"f":["ab"]}' => true, '{"f":{"a":1.5}}' => true, '{"f":[7]}' => false, '{"f":["abcdef"]}' => false, '{"f":{"a":"x"}}' => false],
+            ],
+            'list of oneOf of a number map and a short string list' => [
+                '3.1.0',
+                ['type' => 'array', 'items' => ['oneOf' => [
+                    ['type' => 'object', 'additionalProperties' => ['type' => 'number']],
+                    ['type' => 'array', 'items' => ['type' => 'string', 'maxLength' => 3]],
+                ]]],
+                ['{"f":[["ab"]]}' => true, '{"f":[{"a":1.5}]}' => true, '{"f":[[7]]}' => false, '{"f":[["abcdef"]]}' => false],
+            ],
+            'anyOf of a lone open object' => [
+                '3.1.0',
+                ['anyOf' => [['type' => 'object']]],
+                ['{"f":{}}' => true, '{"f":{"a":1}}' => true, '{"f":[1,2]}' => false, '{"f":"x"}' => false],
+                $arrayAsObject('{"f":[1,2]}') + $symfonyMayBuildAnEmptyObject('{"f":"x"}'),
+            ],
+            'oneOf of a lone open object' => [
+                '3.1.0',
+                ['oneOf' => [['type' => 'object']]],
+                ['{"f":{"a":1}}' => true, '{"f":[1,2]}' => false],
+                $arrayAsObject('{"f":[1,2]}'),
+            ],
+            'inline oneOf of a string and an object with a required boolean' => [
+                '3.1.0',
+                ['oneOf' => [
+                    ['type' => 'string'],
+                    ['type' => 'object', 'properties' => ['g' => ['type' => 'boolean']], 'required' => ['g']],
+                ]],
+                ['{"f":"hi"}' => true, '{"f":{"g":true}}' => true, '{"f":{}}' => false, '{"f":{"g":"x"}}' => false, '{"f":5}' => false],
+                // "a scalar for a property typed as a generated class": under `#[MapRequestPayload]`,
+                // symfony/serializer 7.4.10 tries the class member first and, building it from the scalar,
+                // collects "the class misses the "g" property" before the string member is tried; newer
+                // releases refuse the scalar for the class and take the string.
+                ['symfony' => ['{"f":"hi"}' => null]],
+            ],
+            'anyOf of a number enum and a string' => [
+                '3.1.0',
+                ['anyOf' => [['type' => 'number', 'enum' => [5]], ['type' => 'string']]],
+                ['{"f":5}' => true, '{"f":"x"}' => true, '{"f":6}' => false, '{"f":true}' => false],
+            ],
+            'oneOf of a string enum and an integer' => [
+                '3.1.0',
+                ['oneOf' => [['type' => 'string', 'enum' => ['red']], ['type' => 'integer']]],
+                ['{"f":"red"}' => true, '{"f":3}' => true, '{"f":"blue"}' => false],
+            ],
+            'oneOf of a long string and a number' => [
+                '3.1.0',
+                ['oneOf' => [['type' => 'string', 'minLength' => 3], ['type' => 'number']]],
+                ['{"f":5}' => true, '{"f":2.5}' => true, '{"f":"abc"}' => true, '{"f":"ab"}' => false, '{"f":true}' => false],
+            ],
+            'anyOf of a short string and an integer' => [
+                '3.1.0',
+                ['anyOf' => [['type' => 'string', 'maxLength' => 2], ['type' => 'integer', 'minimum' => 10]]],
+                ['{"f":12345}' => true, '{"f":"ab"}' => true, '{"f":"abc"}' => false, '{"f":5}' => false],
+            ],
+            'anyOf of a string and null, the 3.1 spelling' => [
+                '3.1.0',
+                ['anyOf' => [['type' => 'string'], ['type' => 'null']]],
+                ['{"f":"x"}' => true, '{"f":null}' => true, '{"f":7}' => false, '{"f":true}' => false],
+            ],
+            'oneOf of an integer and null, the 3.1 spelling' => [
+                '3.1.0',
+                ['oneOf' => [['type' => 'integer'], ['type' => 'null']]],
+                ['{"f":7}' => true, '{"f":null}' => true, '{"f":"x"}' => false, '{"f":true}' => false],
+            ],
+            'oneOf of a nullable number and a string, the 3.0 spelling' => [
+                '3.0.3',
+                ['oneOf' => [['type' => 'number', 'nullable' => true], ['type' => 'string']]],
+                ['{"f":null}' => true, '{"f":1.5}' => true, '{"f":"x"}' => true, '{"f":true}' => false],
+            ],
+            'list of a nullable number or a string, the 3.0 spelling' => [
+                '3.0.3',
+                ['type' => 'array', 'items' => ['oneOf' => [['type' => 'number', 'nullable' => true], ['type' => 'string']]]],
+                ['{"f":[null]}' => true, '{"f":[1.5]}' => true, '{"f":["x"]}' => true, '{"f":[true]}' => false],
+            ],
+            'oneOf of a nullable integer and a string, the 3.0 spelling' => [
+                '3.0.3',
+                ['oneOf' => [['type' => 'integer', 'nullable' => true], ['type' => 'string']]],
+                ['{"f":null}' => true, '{"f":1}' => true, '{"f":"x"}' => true, '{"f":true}' => false],
+            ],
+            'map of a nullable number or a string, the 3.0 spelling' => [
+                '3.0.3',
+                ['type' => 'object', 'additionalProperties' => ['oneOf' => [['type' => 'number', 'nullable' => true], ['type' => 'string']]]],
+                ['{"f":{"a":null}}' => true, '{"f":{"a":1}}' => true, '{"f":{"a":true}}' => false],
+            ],
+            'optional oneOf of a nullable number and a string, the 3.0 spelling' => [
+                '3.0.3',
+                ['type' => 'object', 'properties' => ['g' => ['oneOf' => [['type' => 'number', 'nullable' => true], ['type' => 'string']]]]],
+                ['{"f":{"g":null}}' => true, '{"f":{}}' => true, '{"f":{"g":1}}' => true, '{"f":{"g":true}}' => false],
+            ],
+            'optional anyOf of a number and a nullable string, the 3.0 spelling' => [
+                '3.0.3',
+                ['type' => 'object', 'properties' => ['g' => ['anyOf' => [['type' => 'number'], ['type' => 'string', 'nullable' => true]]]]],
+                ['{"f":{"g":null}}' => true, '{"f":{"g":"x"}}' => true, '{"f":{"g":true}}' => false],
+            ],
+            'optional anyOf of a string and null, the 3.1 spelling' => [
+                '3.1.0',
+                ['type' => 'object', 'properties' => ['g' => ['anyOf' => [['type' => 'string'], ['type' => 'null']]]]],
+                ['{"f":{"g":null}}' => true, '{"f":{"g":"x"}}' => true, '{"f":{}}' => true, '{"f":{"g":7}}' => false, '{"f":{"g":true}}' => false],
+            ],
+            'anyOf of a number and a nullable string, the 3.0 spelling' => [
+                '3.0.3',
+                ['anyOf' => [['type' => 'number'], ['type' => 'string', 'nullable' => true]]],
+                ['{"f":null}' => true, '{"f":1.5}' => true, '{"f":"x"}' => true, '{"f":true}' => false],
+            ],
+        ];
+    }
+
+    /**
+     * Containers whose members carry their own rules: positional `prefixItems` before `items`, declared
+     * properties beside an `additionalProperties` schema, a map of a nullable enum, a map alias with a
+     * sibling count keyword, an array alias of a string alias, and a JSON object where an array belongs.
+     * Every mode must give the document's answer, and never crash.
+     *
+     * @param array<string, mixed> $propertySchema
+     * @param array<string, array<string, mixed>> $components
+     * @param array<string, bool> $payloads JSON payload => accepted
+     * @param array<string, array<string, bool|null>> $diverging mode => the payloads that mode answers otherwise,
+     *     by the README.support-matrix divergence named beside the case
+     */
+    #[DataProvider('containerShapeProvider')]
+    public function testContainerMembersAreJudgedByTheirOwnSchema(
+        string $openApiVersion,
+        array $propertySchema,
+        array $components,
+        array $payloads,
+        array $diverging = [],
+    ): void {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = self::probeSpec($propertySchema);
+        $spec['openapi'] = $openApiVersion;
+        $spec['components']['schemas'] += $components;
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: $spec,
+                key: 'container shape ' . md5((string)json_encode($spec)),
+                payloads: $payloads,
+                diverging: $diverging,
+            ),
+        );
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: array<string, mixed>, 2: array<string, array<string, mixed>>, 3: array<string, bool>, 4?: array<string, array<string, bool|null>>}>
+     */
+    public static function containerShapeProvider(): array
+    {
+        $tuple = ['type' => 'array', 'prefixItems' => [['type' => 'integer']], 'items' => ['type' => 'string']];
+        $weights = ['Weights' => ['type' => 'object', 'additionalProperties' => ['type' => 'number']]];
+        $uuid = '"0b7e6c1a-3f4d-4c2b-9a8e-1d2c3b4a5f60"';
+        // "a `null` ITEM of a nullable list of dates or enums, or a `null` VALUE of such a map":
+        // symfony/serializer hands the null to the enum or date normalizer, which refuses it.
+        $symfonyRefusesANullMember = static fn(string $json): array => ['symfony' => [$json => false]];
+
+        return [
+            'prefixItems before items' => [
+                '3.1.0',
+                $tuple,
+                [],
+                [
+                    '{"f":[]}' => true,
+                    '{"f":[-75]}' => true,
+                    '{"f":[-75,"a"]}' => true,
+                    '{"f":[-75,"a","b"]}' => true,
+                    '{"f":["a"]}' => false,
+                    '{"f":[-75,5]}' => false,
+                    '{"f":[-75,"a",5]}' => false,
+                ],
+            ],
+            'prefixItems of two before items' => [
+                '3.1.0',
+                ['type' => 'array', 'prefixItems' => [['type' => 'integer'], ['type' => 'boolean']], 'items' => ['type' => 'string']],
+                [],
+                ['{"f":[1,true,"a"]}' => true, '{"f":[1]}' => true, '{"f":[1,"a"]}' => false, '{"f":[1,true,2]}' => false],
+            ],
+            'prefixItems without items' => [
+                '3.1.0',
+                ['type' => 'array', 'prefixItems' => [['type' => 'integer']]],
+                [],
+                ['{"f":[1]}' => true, '{"f":[1,"a",true]}' => true, '{"f":["a"]}' => false],
+            ],
+            'prefixItems inside a list' => [
+                '3.1.0',
+                ['type' => 'array', 'items' => $tuple],
+                [],
+                ['{"f":[[-75],[-75,"a"]]}' => true, '{"f":[[-75,"a"],["a"]]}' => false, '{"f":[[-75,5]]}' => false],
+            ],
+            'declared property beside an additionalProperties schema' => [
+                '3.1.0',
+                ['type' => 'object', 'properties' => ['ibis' => ['type' => 'boolean']], 'additionalProperties' => ['type' => 'integer']],
+                [],
+                [
+                    '{"f":{"ibis":true}}' => true,
+                    '{"f":{"ibis":true,"x":3}}' => true,
+                    '{"f":{"x":3}}' => true,
+                    '{"f":{"ibis":true,"x":"a"}}' => false,
+                    '{"f":{"ibis":3}}' => false,
+                ],
+                // "a key `additionalProperties: {schema}` admits beside the named properties": the
+                // serializer and the hydrator fill the declared properties only.
+                ['symfony' => ['{"f":{"ibis":true,"x":"a"}}' => true], 'yii3' => ['{"f":{"ibis":true,"x":"a"}}' => true]],
+            ],
+            'map of a nullable enum, the 3.1 spelling' => [
+                '3.1.0',
+                ['type' => 'object', 'additionalProperties' => ['anyOf' => [['type' => 'string', 'enum' => ['violet']], ['type' => 'null']]]],
+                [],
+                ['{"f":{"a":null}}' => true, '{"f":{"a":"violet"}}' => true, '{"f":{"a":"red"}}' => false, '{"f":{"a":3}}' => false],
+                $symfonyRefusesANullMember('{"f":{"a":null}}'),
+            ],
+            'list of a nullable enum, the 3.1 spelling' => [
+                '3.1.0',
+                ['type' => 'array', 'items' => ['anyOf' => [['type' => 'string', 'enum' => ['violet']], ['type' => 'null']]]],
+                [],
+                ['{"f":[null]}' => true, '{"f":["violet",null]}' => true, '{"f":["red"]}' => false, '{"f":[3]}' => false],
+            ],
+            'map of a nullable component enum' => [
+                '3.1.0',
+                ['type' => 'object', 'additionalProperties' => ['anyOf' => [['$ref' => '#/components/schemas/Hue'], ['type' => 'null']]]],
+                ['Hue' => ['type' => 'string', 'enum' => ['violet', 'teal']]],
+                ['{"f":{"a":null}}' => true, '{"f":{"a":"teal"}}' => true, '{"f":{"a":"red"}}' => false],
+                $symfonyRefusesANullMember('{"f":{"a":null}}'),
+            ],
+            'list of a nullable component enum' => [
+                '3.1.0',
+                ['type' => 'array', 'items' => ['anyOf' => [['$ref' => '#/components/schemas/Hue'], ['type' => 'null']]]],
+                ['Hue' => ['type' => 'string', 'enum' => ['violet', 'teal']]],
+                ['{"f":[null]}' => true, '{"f":["teal"]}' => true, '{"f":["red"]}' => false],
+                $symfonyRefusesANullMember('{"f":[null]}'),
+            ],
+            'map of a nullable date' => [
+                '3.1.0',
+                ['type' => 'object', 'additionalProperties' => ['type' => ['string', 'null'], 'format' => 'date']],
+                [],
+                ['{"f":{"a":null}}' => true, '{"f":{"a":"2020-01-02"}}' => true, '{"f":{"a":5}}' => false],
+                $symfonyRefusesANullMember('{"f":{"a":null}}'),
+            ],
+            'map of a nullable enum, the 3.0 spelling' => [
+                '3.0.3',
+                ['type' => 'object', 'additionalProperties' => ['type' => 'string', 'enum' => ['violet', null], 'nullable' => true]],
+                [],
+                ['{"f":{"a":null}}' => true, '{"f":{"a":"violet"}}' => true, '{"f":{"a":"red"}}' => false],
+            ],
+            'map alias with a sibling maxProperties' => [
+                '3.1.0',
+                ['$ref' => '#/components/schemas/Weights', 'maxProperties' => 1],
+                $weights,
+                [
+                    '{"f":{}}' => true,
+                    '{"f":{"a":1.5}}' => true,
+                    '{"f":{"a":"x"}}' => false,
+                    '{"f":null}' => false,
+                    '{"f":{"a":1,"b":2}}' => false,
+                ],
+            ],
+            'map alias with a sibling minProperties' => [
+                '3.1.0',
+                ['$ref' => '#/components/schemas/Weights', 'minProperties' => 1],
+                $weights,
+                ['{"f":{"a":1.5}}' => true, '{"f":{}}' => false, '{"f":{"a":"x"}}' => false],
+            ],
+            'map alias' => [
+                '3.1.0',
+                ['$ref' => '#/components/schemas/Weights'],
+                $weights,
+                ['{"f":{"a":1.5}}' => true, '{"f":{"a":"x"}}' => false, '{"f":null}' => false],
+            ],
+            'array alias of a string alias' => [
+                '3.1.0',
+                ['$ref' => '#/components/schemas/Ids'],
+                [
+                    'Uuid' => ['type' => 'string', 'format' => 'uuid'],
+                    'Ids' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Uuid'], 'minItems' => 1],
+                ],
+                ['{"f":[' . $uuid . ']}' => true, '{"f":[]}' => false, '{"f":["x"]}' => false, '{"f":[5]}' => false],
+            ],
+            'array of a string alias' => [
+                '3.1.0',
+                ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Uuid'], 'minItems' => 1],
+                ['Uuid' => ['type' => 'string', 'format' => 'uuid']],
+                ['{"f":[' . $uuid . ']}' => true, '{"f":[]}' => false, '{"f":["x"]}' => false],
+            ],
+            'optional array alias of a string alias' => [
+                '3.1.0',
+                ['type' => 'object', 'properties' => ['g' => ['$ref' => '#/components/schemas/Ids']]],
+                [
+                    'Uuid' => ['type' => 'string', 'format' => 'uuid'],
+                    'Ids' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Uuid'], 'minItems' => 1],
+                ],
+                ['{"f":{"g":[' . $uuid . ']}}' => true, '{"f":{"g":[]}}' => false, '{"f":{"g":["x"]}}' => false],
+            ],
+            'map alias with a sibling maxProperties, one level down' => [
+                '3.1.0',
+                ['type' => 'object', 'properties' => ['g' => ['$ref' => '#/components/schemas/Weights', 'maxProperties' => 1]]],
+                $weights,
+                ['{"f":{"g":{"a":1.5}}}' => true, '{"f":{"g":{"a":"x"}}}' => false, '{"f":{"g":{"a":1,"b":2}}}' => false],
+            ],
+            'array alias of a number alias with sibling item counts' => [
+                '3.1.0',
+                ['$ref' => '#/components/schemas/Amber', 'minItems' => 1, 'maxItems' => 3],
+                [
+                    'Azure' => ['type' => 'number', 'minimum' => -3.5, 'exclusiveMaximum' => -2],
+                    'Amber' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Azure']],
+                ],
+                ['{"f":[-3]}' => true, '{"f":[]}' => false, '{"f":[0]}' => false],
+            ],
+            'array alias with sibling item counts in a class extended beside its reference' => [
+                '3.1.0',
+                ['$ref' => '#/components/schemas/Crimson', 'properties' => ['lynx' => ['type' => 'boolean']]],
+                [
+                    'Azure' => ['type' => 'number', 'minimum' => -3.5, 'exclusiveMaximum' => -2],
+                    'Amber' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Azure']],
+                    'Crimson' => ['type' => 'object', 'properties' => ['quokka' => ['$ref' => '#/components/schemas/Amber', 'minItems' => 1, 'maxItems' => 3]], 'required' => ['quokka']],
+                ],
+                ['{"f":{"quokka":[-3]}}' => true, '{"f":{"quokka":[]}}' => false, '{"f":{"quokka":[0]}}' => false],
+            ],
+            'a JSON object for an array of integers' => [
+                '3.1.0',
+                ['type' => 'array', 'items' => ['type' => 'integer']],
+                [],
+                ['{"f":[1]}' => true, '{"f":[]}' => true, '{"f":{"zz":1}}' => false, '{"f":["a"]}' => false],
+            ],
+            'a JSON object for an array of strings' => [
+                '3.1.0',
+                ['type' => 'array', 'items' => ['type' => 'string']],
+                [],
+                ['{"f":["a"]}' => true, '{"f":{"zz":"a"}}' => false],
+            ],
+        ];
+    }
+
+    /**
+     * Generate the spec in every mode and run each payload through it, then collect every answer that
+     * differs from the expected one — every mode and payload first, then one assertion: the table of
+     * misses says more than the first. A crash is a miss whatever was expected.
+     *
+     * @param array<string, mixed> $spec
+     * @param array<string, bool> $payloads JSON payload => accepted
+     * @param array<string, array<string, bool|null>> $diverging mode => the payloads that mode answers otherwise;
+     *     `null` leaves the payload unasserted, but a crash is still a miss
+     * @param list<GenerationMode> $skippedModes
+     * @return list<string>
+     */
+    private function payloadTableMisses(array $spec, string $key, array $payloads, array $diverging = [], array $skippedModes = []): array
+    {
+        $misses = [];
+        foreach (GenerationMode::cases() as $mode) {
+            if (in_array($mode, $skippedModes, true)) {
+                continue;
+            }
+            try {
+                $fqcn = $this->generate($spec, $this->namespaceFor($mode, $key), $mode->value);
+            } catch (Throwable $throwable) {
+                $misses[] = sprintf('%s: generation failed: %s', $mode->value, $throwable->getMessage());
+
+                continue;
+            }
+            if ($mode === GenerationMode::LaravelData) {
+                LaravelDataContainer::boot();
+            }
+            foreach ($payloads as $json => $expected) {
+                // Symfony as `#[MapRequestPayload]` runs it: a payload of the wrong type is a 422 there.
+                $outcome = $this->payloadOutcome($mode, $fqcn, (string)$json, self::SYMFONY_REQUEST_PAYLOAD_CONTEXT);
+                if (array_key_exists($json, $diverging[$mode->value] ?? [])) {
+                    $expected = $diverging[$mode->value][$json];
+                }
+                // An unasserted answer is still an answer: a crash is a 500 whatever the verdict should be.
+                if ($expected === null && $outcome->verdict !== PayloadVerdict::Crashed) {
+                    continue;
+                }
+                $wanted = match ($expected) {
+                    true => PayloadVerdict::Accepted,
+                    false => PayloadVerdict::Refused,
+                    // Unasserted: either verdict but a crash.
+                    null => PayloadVerdict::Refused,
+                };
+                if ($outcome->verdict !== $wanted) {
+                    $misses[] = sprintf(
+                        '%s: %s %s, expected %s (%s: %s)',
+                        $mode->value,
+                        $json,
+                        $outcome->verdict->value,
+                        $wanted->value,
+                        $outcome->stage,
+                        $outcome->detail,
+                    );
+                }
+            }
+        }
+
+        return $misses;
+    }
+
+    /**
      * The one place a mode name turns into an implementation. No `default` arm on purpose: a mode
      * added to `GenerationMode` without a verdict here fails with `UnhandledMatchError` instead of
      * quietly going unmeasured.
@@ -7545,18 +8627,7 @@ final class ValidationParityTest extends TestCase
         $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::Yii3, $key), 'yii3');
         $this->skipYii3WithoutIntl($fqcn, $validJson, $key);
 
-        $accepts = static function (string $json) use ($fqcn): bool {
-            $payload = json_decode($json, true);
-            if (!is_array($payload)) {
-                return false;
-            }
-
-            try {
-                return (new Yii3Container())->hydrateValidated($fqcn, $payload)->isValid();
-            } catch (Throwable) {
-                return false;
-            }
-        };
+        $accepts = fn(string $json): bool => $this->yii3Outcome($fqcn, $json)->isAccepted();
 
         return ['valid' => $accepts($validJson), 'invalid' => $accepts($invalidJson)];
     }
@@ -7708,20 +8779,9 @@ final class ValidationParityTest extends TestCase
     private function runtimeVerdict(array $spec, string $key, string $validJson, string $invalidJson): array
     {
         $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::Runtime, $key), 'runtime');
-        $deserializer = new DtoDeserializer();
-        $normalizer = new DtoNormalizer();
 
-        $accepts = static function (string $json) use ($deserializer, $normalizer, $fqcn): bool {
-            $request = Request::create('/', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $json);
-            try {
-                // The runtime deserializer validates on the way in; normalizing re-checks the DTO.
-                $normalizer->validateAndNormalizeToArray($deserializer->deserialize($request, $fqcn));
-            } catch (Throwable) {
-                return false;
-            }
-
-            return true;
-        };
+        // The runtime deserializer validates on the way in; normalizing re-checks the DTO.
+        $accepts = fn(string $json): bool => $this->runtimeOutcome($fqcn, $json)->isAccepted();
 
         return ['valid' => $accepts($validJson), 'invalid' => $accepts($invalidJson)];
     }
@@ -7748,46 +8808,17 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * A FormRequest hands the controller `toDto()`, so hydration is part of the verdict: a payload the
+     * rules accept but the DTO cannot hold is not "accepted" in any useful sense.
+     *
      * @param array<string, mixed> $spec
      * @return array{valid: bool, invalid: bool}
      */
     private function laravelVerdict(array $spec, string $key, string $validJson, string $invalidJson): array
     {
         $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::Laravel, $key), 'laravel');
-        $factory = new Factory(new Translator(new ArrayLoader(), 'en'));
 
-        $accepts = static function (string $json) use ($factory, $fqcn): bool {
-            /** @var array<string, mixed>|null $payload */
-            $payload = json_decode($json, true);
-            if (!is_array($payload)) {
-                return false;
-            }
-
-            /** @var array<string, mixed> $rules */
-            $rules = call_user_func([$fqcn, 'rules']);
-            $validator = $factory->make($payload, $rules);
-            if (method_exists($fqcn, 'withValidator')) {
-                // The raw body is passed exactly as the generated FormRequest passes it: `type: object`
-                // versus `type: array` is a wire-shape question the decoded payload can no longer answer.
-                call_user_func([$fqcn, 'withValidator'], $validator, $json);
-            }
-
-            if ($validator->fails()) {
-                return false;
-            }
-
-            // A FormRequest hands the controller `toDto()`, so hydration is part of the verdict: a
-            // payload the rules accept but the DTO cannot hold is not "accepted" in any useful sense.
-            try {
-                /** @var array<string, mixed> $validated */
-                $validated = $validator->validated();
-                call_user_func([$fqcn, 'fromValidated'], $validated);
-            } catch (Throwable) {
-                return false;
-            }
-
-            return true;
-        };
+        $accepts = fn(string $json): bool => $this->laravelOutcome($fqcn, $json)->isAccepted();
 
         return ['valid' => $accepts($validJson), 'invalid' => $accepts($invalidJson)];
     }
@@ -7806,20 +8837,7 @@ final class ValidationParityTest extends TestCase
         $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::LaravelData, $key), 'laravel-data');
         LaravelDataContainer::boot();
 
-        $accepts = static fn(string $json): bool => (bool)LaravelDataContainer::withRequest(
-            json: $json,
-            work: static function (LaravelRequest $request) use ($fqcn): bool {
-                try {
-                    // Hydration is part of the verdict, as in every other mode: a payload the rules
-                    // accept but the object cannot hold is not "accepted" in any useful sense.
-                    $fqcn::from($request);
-                } catch (Throwable) {
-                    return false;
-                }
-
-                return true;
-            },
-        );
+        $accepts = fn(string $json): bool => $this->laravelDataOutcome($fqcn, $json)->isAccepted();
 
         return ['valid' => $accepts($validJson), 'invalid' => $accepts($invalidJson)];
     }
@@ -7832,87 +8850,8 @@ final class ValidationParityTest extends TestCase
     {
         $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::Symfony, $key), 'symfony');
 
-        $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
-        $typeExtractor = new PropertyInfoExtractor([], [new PhpDocExtractor(), new ReflectionExtractor()]);
-        $serializer = new Serializer(
-            normalizers: [
-                new BackedEnumNormalizer(),
-                new DateTimeNormalizer(),
-                new ObjectNormalizer(
-                    classMetadataFactory: $classMetadataFactory,
-                    nameConverter: new MetadataAwareNameConverter($classMetadataFactory),
-                    propertyAccessor: null,
-                    propertyTypeExtractor: $typeExtractor,
-                ),
-                new ArrayDenormalizer(),
-            ],
-            encoders: [new JsonEncoder()],
-        );
-        $validator = Validation::createValidatorBuilder()->enableAttributeMapping()->getValidator();
-
-        $accepts = static function (string $json) use ($serializer, $validator, $fqcn, $context): bool {
-            try {
-                $dto = $serializer->deserialize($json, $fqcn, 'json', $context);
-            } catch (Throwable) {
-                return false;
-            }
-
-            return count($validator->validate($dto)) === 0;
-        };
+        $accepts = fn(string $json): bool => $this->symfonyOutcome($fqcn, $json, $context)->isAccepted();
 
         return ['valid' => $accepts($validJson), 'invalid' => $accepts($invalidJson)];
-    }
-
-    /**
-     * @param array<string, mixed> $spec
-     * @return class-string
-     */
-    private function generate(array $spec, string $namespace, string $mode): string
-    {
-        $target = $this->outputDirectory . '/' . $namespace;
-        if (!is_dir($target)) {
-            mkdir($target, 0o755, true);
-        }
-
-        if ($this->siblingDocuments === []) {
-            (new GenerateDtoCommand())->generateFromArray($spec, $target, $namespace, $mode);
-        } else {
-            $documents = $this->outputDirectory . '/documents-' . $namespace;
-            if (!is_dir($documents)) {
-                mkdir($documents, 0o755, true);
-            }
-            foreach (['spec.json' => $spec] + $this->siblingDocuments as $fileName => $document) {
-                file_put_contents($documents . '/' . $fileName, json_encode($document, JSON_THROW_ON_ERROR));
-            }
-            (new GenerateDtoCommand())->generateFromFile($documents . '/spec.json', $target, $namespace, $mode);
-        }
-        // An autoloader, as an application has: a class that extends another (`allOf` with one `$ref`)
-        // must find its parent whatever order the files are listed in.
-        spl_autoload_register(static function (string $class) use ($namespace, $target): void {
-            if (str_starts_with($class, $namespace . '\\')) {
-                $file = $target . '/' . str_replace('\\', '/', substr($class, strlen($namespace) + 1)) . '.php';
-                if (is_file($file)) {
-                    require_once $file;
-                }
-            }
-        });
-        foreach (glob($target . '/*.php') ?: [] as $file) {
-            require_once $file;
-        }
-
-        /** @var class-string $fqcn */
-        $fqcn = $namespace . '\Probe';
-
-        return $fqcn;
-    }
-
-    private function namespaceFor(GenerationMode $mode, string $key): string
-    {
-        return 'Parity' . $mode->tag() . $this->namespaceSuffix($key);
-    }
-
-    private function namespaceSuffix(string $key): string
-    {
-        return substr(md5($key), 0, 10);
     }
 }

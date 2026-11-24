@@ -108,8 +108,14 @@ trait RendersLaravelDataDto
             if ($property['openApiName'] !== $property['name']) {
                 $inputAliases[$property['openApiName']] = $property['name'];
             }
-            if ($morphDiscriminator !== null && $property['openApiName'] === $morphDiscriminator) {
+            if ($morphBase !== null && $morphDiscriminator !== null && $property['openApiName'] === $morphDiscriminator) {
                 $param['promoted'] = false;
+                // laravel-data fills the property the BASE declares, so it hands this parameter the
+                // base's type: a member typing its one-value `enum` tag as its own enum got the raw
+                // string from the payload and died in the constructor, a 500 on every valid payload.
+                // Its rule still holds the value to the member's tag.
+                $param['declaredType'] = $this->laravelDataMorphDiscriminatorType($morphBase, $namespace);
+                $param['parameterType'] = $param['declaredType'];
                 $parentArguments[] = $param['name'];
             }
             $params[] = $param;
@@ -198,6 +204,29 @@ trait RendersLaravelDataDto
             ];
         }
 
+        // A date beside a non-string scalar is cast only when a string arrives — see the template.
+        $temporalUnionNames = [];
+        foreach ($properties as $property) {
+            if ($this->isTemporalScalarUnion($property['type'])) {
+                $temporalUnionNames[] = $property['name'];
+            }
+        }
+        $temporalUnionCast = null;
+        if ($temporalUnionNames !== []) {
+            $temporalUnionCast = [
+                'namesLiteral' => '[' . implode(', ', array_map($this->phpStringLiteral(...), $temporalUnionNames)) . ']',
+                'pipelineRef' => $this->libraryClassRef('Spatie\LaravelData\DataPipeline', $namespace, $useStatements),
+                'castPipeRef' => $this->libraryClassRef(
+                    fqcn: 'Spatie\LaravelData\DataPipes\CastPropertiesDataPipe',
+                    namespace: $namespace,
+                    useStatements: $useStatements,
+                ),
+                'containerRef' => $this->libraryClassRef('Illuminate\Container\Container', $namespace, $useStatements),
+                'configRef' => $this->libraryClassRef('Spatie\LaravelData\Support\DataConfig', $namespace, $useStatements),
+                'propertyRef' => $this->libraryClassRef('Spatie\LaravelData\Support\DataProperty', $namespace, $useStatements),
+            ];
+        }
+
         // laravel-data writes `toArray()` in the order the PROPERTIES are declared, and a promoted property
         // is declared where its parameter is — required ones first, as PHP needs. Where that differs from
         // the schema's order, the properties are declared above the constructor in the schema's order
@@ -275,6 +304,7 @@ trait RendersLaravelDataDto
             'declaresProperties' => $declaresProperties,
             'declaredParams' => $this->inSchemaOrder($className, $params),
             'wireNameRestore' => $wireNameRestore,
+            'temporalUnionCast' => $temporalUnionCast,
             'parameterReads' => $this->laravelParameterReads($properties),
             'rulesKeyType' => $this->laravelRulesKeyType(array_column($rules, 'path')),
             'morphBase' => null,
@@ -347,15 +377,12 @@ trait RendersLaravelDataDto
             );
         }
 
-        // Typed as the members type it: a discriminator the base declares as an enum is that enum in
-        // every member, and `parent::__construct()` handing it to a `string` was a TypeError.
-        $propertyType = 'string';
+        $propertyType = $this->laravelDataMorphDiscriminatorType($className, $namespace);
         $enumTyped = false;
         foreach ($this->getSchemaProperties($className) as $baseProperty) {
             if ($baseProperty['openApiName'] !== $propertyName) {
                 continue;
             }
-            $propertyType = $this->resolveLaravelDataParam($baseProperty, $namespace)['declaredType'];
             $enumClass = $this->laravelEnumClass($baseProperty);
             if ($enumClass !== null) {
                 $this->appendImportForClass($useStatements, $enumClass, $namespace, $className);
@@ -434,6 +461,8 @@ trait RendersLaravelDataDto
             'morphBase' => [
                 'propertyName' => $propertyName,
                 'property' => $property,
+                // laravel-data reads the discriminator by both names, so the guard looks under both.
+                'discriminatorKeys' => array_values(array_unique([$propertyName, $property])),
                 'propertyType' => $propertyType,
                 'enumRef' => $enumRef,
                 'guard' => $guard,
@@ -465,6 +494,24 @@ trait RendersLaravelDataDto
             'interfaceExtends' => [],
             'discriminatorProperty' => $propertyName,
         ]);
+    }
+
+    /**
+     * The type a morph base declares its discriminator with: the base's own schema type when it declares
+     * the property — a discriminator the base types as an enum is that enum in every member, and
+     * `parent::__construct()` handing it to a `string` was a TypeError — and `string` for a union base,
+     * which declares no properties of its own.
+     */
+    private function laravelDataMorphDiscriminatorType(string $baseClass, string $namespace): string
+    {
+        $propertyName = $this->discriminatorSchemas[$baseClass]['propertyName'] ?? null;
+        foreach ($this->getSchemaProperties($baseClass) as $baseProperty) {
+            if ($baseProperty['openApiName'] === $propertyName) {
+                return $this->resolveLaravelDataParam($baseProperty, $namespace)['declaredType'];
+            }
+        }
+
+        return 'string';
     }
 
     /**
@@ -1044,7 +1091,11 @@ trait RendersLaravelDataDto
      */
     private function laravelDataTemporalAttributes(array $property, string $namespace): array
     {
-        if ($this->shortClassName(ltrim($property['type'], '?')) !== 'DateTimeImmutable') {
+        // A date beside a non-string scalar — `int|DateTimeImmutable` — is cast only when a string
+        // arrives (see `pipeline()`), and then with the formats its branches name: the global ATOM cast
+        // refused a `format: date` branch's `2018-06-18` after the rule had accepted it.
+        $temporalUnion = $this->isTemporalScalarUnion($property['type']);
+        if ($this->shortClassName(ltrim($property['type'], '?')) !== 'DateTimeImmutable' && !$temporalUnion) {
             return [];
         }
 
@@ -1072,8 +1123,22 @@ trait RendersLaravelDataDto
         ];
 
         $temporalFormat = $property['temporalFormat'] ?? null;
-        if (is_string($temporalFormat)) {
+        if ($temporalUnion) {
+            $unionFormats = $property['unionTemporalFormats'] ?? [];
+            $castFormats = [
+                ...(in_array('date', $unionFormats, true) ? $dateCastFormats : []),
+                ...($unionFormats === [] || in_array('date-time', $unionFormats, true) ? $dateTimeCastFormats : []),
+            ];
+            // The transformer below writes any value it is handed as a date, a `true` included.
+            $temporalFormat = null;
+        } elseif (is_string($temporalFormat)) {
             $castFormats = $temporalFormat === 'Y-m-d' ? $dateCastFormats : $dateTimeCastFormats;
+        } elseif (($property['unionTemporalFormats'] ?? []) === ['date']) {
+            // `anyOf: [{format: date}]`, or the 3.1 nullable spelling `anyOf: [{format: date}, {type: null}]`:
+            // the global ATOM cast refused `2018-06-18` after the rule had accepted it — a 500. Written back
+            // as a date too, as the other modes write it.
+            $castFormats = $dateCastFormats;
+            $temporalFormat = 'Y-m-d';
         } elseif ($this->isDateOrDateTimeUnion($property['constraints'] ?? [])) {
             // A `oneOf` of a `format: date` and a `format: date-time` string: both shapes are this one
             // property, and the global ATOM cast refused `2026-12-01` after its own rule had accepted it.

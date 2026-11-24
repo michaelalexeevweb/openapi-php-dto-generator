@@ -393,6 +393,32 @@ trait RendersYii3Dto
     }
 
     /**
+     * `string|float` widened to `string|int|float`. `PhpNativeTypeCaster` keeps a value only where a
+     * member is its exact type, and otherwise casts it to the FIRST member that takes it — and PHP lists
+     * `string` before `float`. A JSON integer is no float, so `5` became `"5"`: a `oneOf` of
+     * `{type: string, minLength: 3}` and `{type: number}` refused it as a short string, and
+     * `anyOf: [{type: number, enum: [5]}, {type: string}]` accepted `6` as the string `"6"`. With `int`
+     * declared the integer is kept as it came.
+     */
+    private function yii3IntegerKeptBesideFloatAndString(string $type): string
+    {
+        $members = explode('|', $type);
+        if (!in_array('float', $members, true) || !in_array('string', $members, true) || in_array('int', $members, true)) {
+            return $type;
+        }
+
+        $widened = [];
+        foreach ($members as $member) {
+            if ($member === 'float') {
+                $widened[] = 'int';
+            }
+            $widened[] = $member;
+        }
+
+        return implode('|', $widened);
+    }
+
+    /**
      * One constructor parameter: its source attribute, its validation attributes and its declaration.
      *
      * @param SchemaProperty $property
@@ -413,6 +439,7 @@ trait RendersYii3Dto
         array &$sourceImports,
         array &$useStatements,
     ): array {
+        $property['type'] = $this->yii3IntegerKeptBesideFloatAndString($property['type']);
         $attributes = [];
 
         $source = $this->yii3SourceAttribute($property, $sourceImports);
@@ -442,6 +469,7 @@ trait RendersYii3Dto
         $type = $property['type'];
         $docType = null;
         $createDocType = null;
+        $heldEnumType = null;
         if (str_contains($type, '<')) {
             // The ITEMS of a temporal container stay strings in this mode — `#[ToDateTime]` cannot
             // convert them (see the attribute emitter), so promising `DateTimeImmutable` here would
@@ -469,6 +497,15 @@ trait RendersYii3Dto
                         $type .= '|' . $scalar;
                     }
                 }
+            }
+            // An enum also admits the decoded array: handed `{"f": {...}}`, `HydratorTypeCaster` asked the
+            // hydrator to BUILD the enum class from it, and `new` on an enum is an `Error` — a 500 where
+            // every other mode refuses. With `array` in the type the native caster keeps the array, the
+            // checks refuse it, and a member still becomes its case. The getter and `create()` keep the
+            // type without it. Not beside a generated class, which is what an array is built into.
+            if ($this->yii3HoldsArrayForEnum($property['type'])) {
+                $heldEnumType = $type;
+                $type = str_starts_with($type, '?') ? substr($type, 1) . '|array|null' : $type . '|array';
             }
         }
         $wireBoolean = $this->yii3IsWireBoolean($property);
@@ -590,8 +627,10 @@ trait RendersYii3Dto
                 $enumClass,
             );
         }
-        $default = $this->yii3DefaultExpression($property, $type, $docType);
-        $getterType = $wireBoolean ? ($nullable ? '?bool' : 'bool') : $propertyType;
+        $default = $this->yii3DefaultExpression($property, $heldEnumType ?? $type, $docType);
+        // The enum's own type, as the getter hands it out: an array is held only for the rule to refuse.
+        $enumPropertyType = $heldEnumType === null ? $propertyType : str_replace('|array', '', $propertyType);
+        $getterType = $wireBoolean ? ($nullable ? '?bool' : 'bool') : $enumPropertyType;
 
         // A default the schema does not let be null makes the getter total: it answers either what was
         // sent or the default, so its type says so and the caller needs no `?? …` of its own. A null the
@@ -660,7 +699,7 @@ trait RendersYii3Dto
         // and no key at all (`create(success: true)` with no `message`, which runtime mode never wrote).
         // Its default is therefore a fresh `stdClass` — a value no such property can hold, and no class of
         // ours: left out, the key stays absent; `null` is written. The docblock keeps the real type.
-        $createType = $wireBoolean ? ($nullable ? '?bool' : 'bool') : $propertyType;
+        $createType = $wireBoolean ? ($nullable ? '?bool' : 'bool') : $enumPropertyType;
         $createMarker = $schemaNullable && !$this->propertyIsRequiredOnInput($property);
         $createMarkerType = null;
         if ($createMarker) {
@@ -816,7 +855,12 @@ trait RendersYii3Dto
         // ("Using null as an array offset is deprecated" on every schema without a `type`).
         // Read through the folded `allOf` too: `allOf: [{}, {type: number}]` types the property `float`
         // exactly as `type: number` does, and without the rule the caster turned "foo" into 0.0.
-        $declaredType = $constraints['type'] ?? $this->foldScalarAllOfConstraints($constraints)['type'] ?? null;
+        // And through a `oneOf` / `anyOf` of ONE typed member and `{type: null}`, the 3.1 spelling of
+        // `type: [string, "null"]`: it is declared `?string` the same way, and without the rule the cast
+        // turned `7` into `"7"` and `true` into `"1"`.
+        $declaredType = $constraints['type']
+            ?? $this->foldScalarAllOfConstraints($constraints)['type']
+            ?? $this->yii3TypeBesideANullMember($constraints);
         $typeRule = is_string($declaredType)
             ? (self::YII3_TYPE_RULES[$declaredType] ?? null)
             : null;
@@ -908,9 +952,13 @@ trait RendersYii3Dto
             // an integer member `7` came back as 1970-01-01T00:00:07. Made a string first, it parses as
             // no date and is left to the cast, which turns it back into the int it was. Not where the
             // schema lets the union be null: `ToString` makes null `""`, and the cast reads that as 0 —
-            // elsewhere the raw check below refuses the null before it gets that far.
+            // elsewhere the raw check below refuses the null before it gets that far. Nor beside an
+            // `array` member: `ToString` makes every array `""`, and `oneOf: [{type: array}, {format:
+            // date}]` refused `[]` as missing.
+            $unionMembers = $this->yii3TypeMembers($property['type']);
             if (
-                count($this->yii3TypeMembers($property['type'])) > 1
+                count($unionMembers) > 1
+                && !in_array('array', $unionMembers, true)
                 && !($property['schemaNullable'] ?? $property['nullable'])
             ) {
                 $ruleImports[] = 'Yiisoft\Hydrator\Attribute\Parameter\ToString';
@@ -1130,7 +1178,7 @@ trait RendersYii3Dto
 
     /**
      * The temporal formats a property is written in, in the order the hydrator should try them: its
-     * own `format`, or those of its `oneOf`/`anyOf` branches — a union carries it there. `date-time`
+     * own `format`, or those of its `oneOf`/`anyOf`/`allOf` branches — a composition carries it there. `date-time`
      * when it names none.
      *
      * @param array<string, mixed> $constraints
@@ -1143,7 +1191,8 @@ trait RendersYii3Dto
         if (is_string($format)) {
             $named[] = $format;
         } else {
-            foreach (['oneOf', 'anyOf'] as $keyword) {
+            // An `allOf` carries it in a branch too: `allOf: [{format: date}]` was parsed as a date-time.
+            foreach (['oneOf', 'anyOf', 'allOf'] as $keyword) {
                 $branches = is_array($constraints[$keyword] ?? null) ? $constraints[$keyword] : [];
                 foreach ($branches as $branch) {
                     $branchFormat = is_array($branch) ? ($branch['format'] ?? null) : null;
@@ -2220,6 +2269,35 @@ PHP;
     }
 
     /**
+     * The `type` of the one member a `oneOf` / `anyOf` holds beside `{type: null}` members, or null.
+     *
+     * @param array<string, mixed> $constraints
+     */
+    private function yii3TypeBesideANullMember(array $constraints): ?string
+    {
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            $members = $constraints[$keyword] ?? null;
+            if (!is_array($members)) {
+                continue;
+            }
+            $types = [];
+            foreach ($members as $member) {
+                $type = is_array($member) ? $member['type'] ?? null : null;
+                if (!is_string($type)) {
+                    return null;
+                }
+                if ($type !== 'null') {
+                    $types[] = $type;
+                }
+            }
+
+            return count($types) === 1 && count($members) > 1 ? $types[0] : null;
+        }
+
+        return null;
+    }
+
+    /**
      * Whether a `type` rule may be emitted for this property.
      *
      * Only when the PHP type IS the scalar the schema names. A union, a list, a temporal and a
@@ -2581,6 +2659,28 @@ PHP;
             schema: $this->yii3ClassSchemaWithInlineAllOfMerged($this->dtoSchemas[$className] ?? [], $className),
             depth: 2,
         );
+    }
+
+    /**
+     * Whether the property is an enum, or a union of enums and scalars, with no generated class and no
+     * `array` among its members — the shapes an array payload could only be handed to the enum for.
+     */
+    private function yii3HoldsArrayForEnum(string $type): bool
+    {
+        if (str_contains($type, '<')) {
+            return false;
+        }
+        $hasEnum = false;
+        foreach (explode('|', ltrim($type, '?')) as $member) {
+            $member = ltrim($member, '\\');
+            if (array_key_exists($member, $this->enumSchemas)) {
+                $hasEnum = true;
+            } elseif (!in_array($member, ['string', 'int', 'float', 'bool', 'null'], true)) {
+                return false;
+            }
+        }
+
+        return $hasEnum;
     }
 
     /**

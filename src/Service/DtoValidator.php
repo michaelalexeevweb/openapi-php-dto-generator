@@ -666,6 +666,19 @@ final class DtoValidator implements DtoValidatorInterface
                 )];
             }
 
+            // The discriminator picks the variant: a value built as one member while its tag names
+            // another — or names none — matched a branch all the same, and passed.
+            $discriminatorMap = $constraints['x-discriminator-map'] ?? null;
+            $discriminatorProperty = $constraints['x-discriminator-property'] ?? null;
+            if (is_array($discriminatorMap) && is_string($discriminatorProperty) && $value instanceof GeneratedDtoInterface) {
+                array_push($errors, ...$this->validateDiscriminatorChoice(
+                    subject: $subject,
+                    value: $value,
+                    propertyName: $discriminatorProperty,
+                    map: $discriminatorMap,
+                ));
+            }
+
             // enum: compare JSON values without coercing strings or booleans.
             if (array_key_exists('enum', $constraints) && is_array($constraints['enum'])) {
                 // A backed enum getter returns the enum object; the schema's enum list holds raw
@@ -901,9 +914,16 @@ final class DtoValidator implements DtoValidatorInterface
         $format = $constraints['format'] ?? null;
         if (!is_string($format)) {
             // A union carries the format on its branches. A date written as ATOM matched no `date`
-            // branch, so `oneOf: [{format: date}, {type: 'null'}]` refused every date.
+            // branch, so `oneOf: [{format: date}, {type: 'null'}]` refused every date — and an
+            // `allOf: [{format: date}]` refused it the same way.
             $branchFormats = [];
-            foreach ([...(is_array($constraints['oneOf'] ?? null) ? $constraints['oneOf'] : []), ...(is_array($constraints['anyOf'] ?? null) ? $constraints['anyOf'] : [])] as $branch) {
+            $branches = [];
+            foreach (['allOf', 'oneOf', 'anyOf'] as $keyword) {
+                if (is_array($constraints[$keyword] ?? null)) {
+                    $branches = [...$branches, ...$constraints[$keyword]];
+                }
+            }
+            foreach ($branches as $branch) {
                 if (is_array($branch) && is_string($branch['format'] ?? null)) {
                     $branchFormats[$branch['format']] = true;
                 }
@@ -1022,6 +1042,35 @@ final class DtoValidator implements DtoValidatorInterface
                     $this->describeOpenApiTypeOfValue($value),
                 ),
         ];
+    }
+
+    /**
+     * The member a discriminated union's value was built as, against the one its tag names. The map
+     * holds class names as the generator wrote them, relative to the DTO's own namespace.
+     *
+     * @param array<mixed> $map discriminator value => class name
+     * @return list<string>
+     */
+    private function validateDiscriminatorChoice(string $subject, GeneratedDtoInterface $value, string $propertyName, array $map): array
+    {
+        $payload = $this->objectPayloadForConstraints($value) ?? [];
+        $tag = $payload[$propertyName] ?? null;
+        if ($tag instanceof BackedEnum) {
+            $tag = $tag->value;
+        }
+        $mapped = is_string($tag) || is_int($tag) ? ($map[$tag] ?? null) : null;
+        if (!is_string($mapped) || $mapped === '') {
+            return [sprintf(
+                '%s discriminator %s must be one of: %s',
+                $subject,
+                $propertyName,
+                implode(', ', array_map('strval', array_keys($map))),
+            )];
+        }
+
+        return str_ends_with('\\' . $value::class, '\\' . ltrim($mapped, '\\'))
+            ? []
+            : [sprintf('%s discriminator %s must match concrete class', $subject, $propertyName)];
     }
 
     /**
@@ -1158,7 +1207,12 @@ final class DtoValidator implements DtoValidatorInterface
             // checked, where it is still knowable: DtoDeserializer refuses a JSON array for a
             // `type: object` property before it ever becomes a PHP value.
             // An empty array is `[]` and no object where the JSON objects kept their `stdClass`.
-            'object' => (is_array($value) && !($value === [] && $this->emptyArrayIsJsonArray)) || is_object($value),
+            // An enum case or a date the hydrator built from a scalar member is that scalar, not an
+            // object: `oneOf: [{type: integer, enum: [-6]}, {type: object}]` must not match `-6` twice.
+            // Where the JSON objects kept their `stdClass`, a non-empty LIST is a JSON array as well
+            // (see validateConstraints()): `[7]` is no map of numbers beside a list branch.
+            'object' => (is_array($value) && !($this->emptyArrayIsJsonArray && array_is_list($value)))
+                || (is_object($value) && !$value instanceof BackedEnum && !$value instanceof DateTimeInterface),
             'null' => $value === null,
             default => true,
         };

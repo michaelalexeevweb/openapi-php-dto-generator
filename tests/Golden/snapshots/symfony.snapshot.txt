@@ -1,4 +1,4 @@
-# symfony mode — 77 files, 13286 lines
+# symfony mode — 77 files, 13398 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -1500,6 +1500,7 @@ final class ApiTestSerializationGetQueryParams
     /**
      * @var ?array<int>
      */
+    #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $exploded = null;
@@ -1510,6 +1511,7 @@ final class ApiTestSerializationGetQueryParams
     /**
      * @var ?array<string>
      */
+    #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $joined = null;
@@ -1520,6 +1522,7 @@ final class ApiTestSerializationGetQueryParams
     /**
      * @var ?array<int>
      */
+    #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $spaced = null;
@@ -1530,6 +1533,7 @@ final class ApiTestSerializationGetQueryParams
     /**
      * @var ?array<string>
      */
+    #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $piped = null;
@@ -2843,9 +2847,11 @@ final class ApplicatorRefs
     /**
      * @var array<array<string, mixed>>
      */
+    #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     private readonly array $mustContain;
 
+    #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $positions = null;
@@ -2853,6 +2859,7 @@ final class ApplicatorRefs
     #[Ignore]
     private bool $positionsProvided = false;
 
+    #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $rest = null;
@@ -2860,6 +2867,7 @@ final class ApplicatorRefs
     #[Ignore]
     private bool $restProvided = false;
 
+    #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $closedPair = null;
@@ -2910,6 +2918,7 @@ final class ApplicatorRefs
     #[Ignore]
     private bool $neverMatchesProvided = false;
 
+    #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $closedFirstSlot = null;
@@ -5089,6 +5098,7 @@ final class ChainLink
     /**
      * @var ?array<ChainTag>
      */
+    #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     #[Assert\Valid]
     #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
@@ -5179,6 +5189,7 @@ final class ChainMiddle
     /**
      * @var array<ChainLink>
      */
+    #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     #[Assert\Valid]
     private readonly array $links;
@@ -5282,6 +5293,25 @@ final class Circle implements Shape
     public function getRadius(): int
     {
         return $this->radius;
+    }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['kind'] = $this->kind;
+        $payload['radius'] = $this->radius;
+
+        return $payload;
     }
 }
 
@@ -5389,12 +5419,14 @@ final class ContainerAliases
     /**
      * @var array<array<string>>
      */
+    #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     private readonly array $listOfLists;
 
     /**
      * @var ?array<array<string, mixed>>
      */
+    #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $listOfMaps = null;
@@ -5415,6 +5447,7 @@ final class ContainerAliases
     /**
      * @var ?array<string>
      */
+    #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $plain = null;
@@ -5943,6 +5976,7 @@ final class Containers
     /**
      * @var array<DateTimeImmutable>
      */
+    #[Assert\Type('list')]
     #[Assert\All([new Assert\Type(DateTimeImmutable::class)])]
     #[Groups(['read', 'write'])]
     #[Context(normalizationContext: [
@@ -5967,6 +6001,7 @@ final class Containers
     /**
      * @var ?array<DateTimeImmutable>
      */
+    #[Assert\Type('list')]
     #[Assert\All([new Assert\Type(DateTimeImmutable::class)])]
     #[Groups(['read', 'write'])]
     #[Context(normalizationContext: [
@@ -5981,6 +6016,7 @@ final class Containers
     /**
      * @var array<Shape>
      */
+    #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     #[Assert\Valid]
     private readonly array $shapes;
@@ -7238,6 +7274,7 @@ final class ItemBounds
     /**
      * @var array<int>
      */
+    #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     private readonly array $scores;
 
@@ -7254,6 +7291,7 @@ final class ItemBounds
     /**
      * @var ?array<string>
      */
+    #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $codes = null;
@@ -7925,12 +7963,14 @@ final class NestedContainers
     /**
      * @var array<array<int>>
      */
+    #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     private readonly array $matrix;
 
     /**
      * @var array<array<string, string>>
      */
+    #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     private readonly array $rowsOfMaps;
 
@@ -7957,6 +7997,7 @@ final class NestedContainers
     /**
      * @var ?array<array<string>>
      */
+    #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $dateRows = null;
@@ -7967,6 +8008,7 @@ final class NestedContainers
     /**
      * @var array<array<float|int>>|null
      */
+    #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $numRows = null;
@@ -7977,6 +8019,7 @@ final class NestedContainers
     /**
      * @var ?array<array<string>>
      */
+    #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $enumRows = null;
@@ -7987,6 +8030,7 @@ final class NestedContainers
     /**
      * @var ?array<array<Tag>>
      */
+    #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     #[Assert\Valid]
     #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
@@ -8712,6 +8756,7 @@ final class NullableContainerValues
     /**
      * @var array<?string>
      */
+    #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     private readonly array $listOfNullable;
 
@@ -8728,6 +8773,7 @@ final class NullableContainerValues
     /**
      * @var ?array<?string>
      */
+    #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $listOfNullable31 = null;
@@ -9988,6 +10034,25 @@ final class Square implements Shape
     {
         return $this->side;
     }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['kind'] = $this->kind;
+        $payload['side'] = $this->side;
+
+        return $payload;
+    }
 }
 
 ===== Tag.php =====
@@ -10176,6 +10241,7 @@ final class Test2
     /**
      * @var array<Tag>
      */
+    #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     #[Assert\Valid]
     private readonly array $tags;
@@ -10699,6 +10765,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use BackedEnum;
 use OverflowException;
 use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
@@ -11054,6 +11121,10 @@ final class TestPostRequest
                     } else {
                         $discriminatorValue = $discriminatorCarrier[$discriminatorProperty]
                             ?? (property_exists($value, $phpProperty) ? $value->{$phpProperty} : null);
+                        // A variant whose discriminator is a one-value `enum` holds it as its enum case.
+                        if ($discriminatorValue instanceof BackedEnum) {
+                            $discriminatorValue = $discriminatorValue->value;
+                        }
                         $mapKey = is_scalar($discriminatorValue) ? (string)$discriminatorValue : null;
                         if ($mapKey === null || !array_key_exists($mapKey, $discriminatorMap)) {
                             $errors[] = sprintf(
@@ -11349,6 +11420,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use BackedEnum;
 use OverflowException;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Validator\Constraints as Assert;
@@ -11696,6 +11768,10 @@ final class TreeNode
                     } else {
                         $discriminatorValue = $discriminatorCarrier[$discriminatorProperty]
                             ?? (property_exists($value, $phpProperty) ? $value->{$phpProperty} : null);
+                        // A variant whose discriminator is a one-value `enum` holds it as its enum case.
+                        if ($discriminatorValue instanceof BackedEnum) {
+                            $discriminatorValue = $discriminatorValue->value;
+                        }
                         $mapKey = is_scalar($discriminatorValue) ? (string)$discriminatorValue : null;
                         if ($mapKey === null || !array_key_exists($mapKey, $discriminatorMap)) {
                             $errors[] = sprintf(
@@ -11989,6 +12065,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use BackedEnum;
 use OverflowException;
 use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
@@ -12170,6 +12247,7 @@ final class UnionUnderContainer
 
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
+    #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $chain = null;
@@ -12177,6 +12255,7 @@ final class UnionUnderContainer
     #[Ignore]
     private bool $chainProvided = false;
 
+    #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $chainAllOf = null;
@@ -12188,6 +12267,7 @@ final class UnionUnderContainer
     #[Assert\Valid]
     private readonly TreeNode $tree;
 
+    #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $listOfUnions = null;
@@ -12400,6 +12480,9 @@ final class UnionUnderContainer
                 if (array_key_exists('type', $branch) && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
                     continue;
                 }
+                if ($this->openApiListBelongsToArrayBranch($normalizedValue, $schema['oneOf'], $branch)) {
+                    continue;
+                }
                 // Keep why each branch failed: with no match at all those reasons are far more
                 // useful than "does not match any oneOf branch".
                 $errorsForBranch = $this->validateOpenApiNode($value, $branch, $path, $depth + 1);
@@ -12446,6 +12529,10 @@ final class UnionUnderContainer
                     } else {
                         $discriminatorValue = $discriminatorCarrier[$discriminatorProperty]
                             ?? (property_exists($value, $phpProperty) ? $value->{$phpProperty} : null);
+                        // A variant whose discriminator is a one-value `enum` holds it as its enum case.
+                        if ($discriminatorValue instanceof BackedEnum) {
+                            $discriminatorValue = $discriminatorValue->value;
+                        }
                         $mapKey = is_scalar($discriminatorValue) ? (string)$discriminatorValue : null;
                         if ($mapKey === null || !array_key_exists($mapKey, $discriminatorMap)) {
                             $errors[] = sprintf(
@@ -12557,6 +12644,9 @@ final class UnionUnderContainer
                 ) {
                     continue;
                 }
+                if ($this->openApiListBelongsToArrayBranch($normalizedValue, $schema['anyOf'], $branch)) {
+                    continue;
+                }
                 $errorsForBranch = $this->validateOpenApiNode($value, $branch, $path, $depth + 1);
                 if ($errorsForBranch === []) {
                     $anyOfMatched = true;
@@ -12648,6 +12738,27 @@ final class UnionUnderContainer
             'object' => is_array($value) || is_object($value),
             default => true,
         };
+    }
+
+    /**
+     * @param array<array-key, mixed> $branches
+     * @param array<array-key, mixed> $branch
+     */
+    private function openApiListBelongsToArrayBranch(mixed $value, array $branches, array $branch): bool
+    {
+        $typesOf = static fn(mixed $type): array => is_string($type) ? [$type] : (is_array($type) ? $type : []);
+        $branchTypes = $typesOf($branch['type'] ?? null);
+        if (!is_array($value) || !array_is_list($value) || !in_array('object', $branchTypes, true) || in_array('array', $branchTypes, true)) {
+            return false;
+        }
+
+        foreach ($branches as $sibling) {
+            if (is_array($sibling) && in_array('array', $typesOf($sibling['type'] ?? null), true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function normalizeOpenApiStructuralValue(mixed $value): mixed
@@ -12818,6 +12929,7 @@ final class UniqueScalars
     /**
      * @var array<string>
      */
+    #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     private readonly array $tags;
 
