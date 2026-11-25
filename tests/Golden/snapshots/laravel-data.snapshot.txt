@@ -1,4 +1,4 @@
-# laravel-data mode — 80 files, 23333 lines
+# laravel-data mode — 80 files, 23334 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -10665,8 +10665,9 @@ final class Containers extends Data
      * Where a discriminated union below this class holds something that is not an object, keyed by path.
      * laravel-data reads the discriminator out of that value before any rule runs, and a string, a number
      * or an item's null there was a `TypeError` from `array_key_exists()` — a 500 — where a plain object
-     * property answers 422. Walked along the payload, so it ends where the data does, a union inside a
-     * union member included.
+     * property answers 422. A null item of a list or map of a plain class is refused here too: its
+     * `#[DataCollectionOf]` builds the class out of the null. Walked along the payload, so it ends where
+     * the data does, a union inside a union member included.
      *
      * @internal called by `validate()` and by the classes that hold this one
      * @param array<array-key, mixed> $node

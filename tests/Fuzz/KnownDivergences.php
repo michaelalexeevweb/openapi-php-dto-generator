@@ -197,13 +197,6 @@ final class KnownDivergences
                 'row' => 'support matrix: "a non-object ITEM of a list or map of DTOs" (yii3 drops it)',
             ],
             [
-                'modes' => [GenerationMode::Yii3],
-                'category' => 'wrong-accept',
-                'kinds' => [''],
-                'tagsAny' => ['itemsOf:nullable-dto'],
-                'row' => 'support matrix footnote 3: yii3 does not check the OBJECT items of a nullable list of DTOs',
-            ],
-            [
                 'modes' => [GenerationMode::LaravelData],
                 'category' => 'wrong-accept',
                 'kinds' => [''],

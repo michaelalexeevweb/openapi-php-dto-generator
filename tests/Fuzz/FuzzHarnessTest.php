@@ -255,6 +255,42 @@ final class FuzzHarnessTest extends TestCase
     }
 
     /**
+     * A shrink keeps the constraint the mutation broke: the report keeps the mutation's `kind`, so a
+     * document that no longer holds the keyword reports a defect it does not show (a `tooLong` whose
+     * `maxLength` was dropped, and the failure carried on by an `enum` beside it).
+     */
+    #[DataProvider('shrinkKinds')]
+    public function testAShrinkKeepsTheKeywordTheMutationBroke(string $kind, bool $kept): void
+    {
+        $document = ['components' => ['schemas' => [
+            'Probe' => ['type' => 'object', 'properties' => ['ocelot' => ['$ref' => '#/components/schemas/Ivorya']]],
+            'Ivorya' => ['type' => 'array', 'maxItems' => 2, 'items' => ['$ref' => '#/components/schemas/Umbera']],
+            'Umbera' => ['type' => 'object', 'properties' => [
+                'kind' => ['type' => 'string', 'enum' => ['Umbera']],
+                'egret' => ['type' => 'string', 'maxLength' => 0],
+            ]],
+        ]]];
+        $runner = new FuzzRunner(outputDirectory: sys_get_temp_dir() . '/fuzz-harness-test', modes: [], propertiesPerSpec: 1);
+        $method = new ReflectionMethod(FuzzRunner::class, 'shrinkSchema');
+
+        // Every candidate "still fails": only the guard stands between the shrink and an empty schema.
+        $shrunk = $method->invoke($runner, $document, 'ocelot', static fn(array $candidate): bool => true, [], $kind);
+
+        $this->assertSame($kept, str_contains((string)json_encode($shrunk), '"maxLength"'), $kind);
+    }
+
+    /**
+     * @return iterable<string, array{0: string, 1: bool}>
+     */
+    public static function shrinkKinds(): iterable
+    {
+        yield 'tooLong keeps maxLength' => ['tooLong', true];
+        // A kind whose keyword the document never held is not held back, nor is a type mutation.
+        yield 'wrongType shrinks freely' => ['wrongType:array', false];
+        yield 'a keyword the document lacks' => ['patternMismatch', false];
+    }
+
+    /**
      * @param array<string, mixed> $schemas
      */
     #[DataProvider('referenceVerdicts')]

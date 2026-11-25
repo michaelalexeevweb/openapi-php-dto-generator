@@ -658,6 +658,11 @@ property typed by one is declared `Report|array`:
   the member yourself when you need the object: `$hydrator->create(AlphaReport::class, $input->getMeta())`;
 - `create()` takes the member object, `AlphaReport::create(...)`.
 
+An INLINE `oneOf` / `anyOf` of two or more classes with no discriminator (`anyOf: [$ref Olive, $ref Teal]`)
+is typed by its members rather than an interface, and held the same way: `Olive|Teal|array`, the decoded
+array checked against every member. Built by the hydrator instead, every object became the FIRST class —
+a `Teal` payload arrived as an `Olive` with its `dog` dropped, and neither class was checked.
+
 The interface declares the getters its members share — same name, same type in every one — so code
 typed by it reads `$event->getUuid()` directly. A property whose type differs between members is left
 to the member. "Members" means every class implementing the interface, an `allOf` child the mapping does

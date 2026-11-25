@@ -1864,6 +1864,44 @@ trait RendersLaravelValidation
     }
 
     /**
+     * The string-backed enums of a union that also holds a date and no plain `string` —
+     * `oneOf: [{enum: [red]}, {format: date}]`, typed `BoxA|DateTimeImmutable`, optionally beside a
+     * `bool`, an `int` or a class. Empty for any other type.
+     *
+     * Such a union is not a `isTemporalScalarUnion()`: a string arriving there is the enum OR the date,
+     * so it needs `tryFrom()` first and the date parse only when that finds no case. Treated as a plain
+     * enum union, the date string reached the constructor as a string (a TypeError in laravel mode) or
+     * went through laravel-data's global ATOM cast with the enum value as well (`CannotCastDate`).
+     *
+     * @return list<string>
+     */
+    private function laravelStringEnumsBesideDate(string $type): array
+    {
+        $members = array_map($this->shortClassName(...), $this->unionMembersBesideNull($type));
+        if (!in_array('DateTimeImmutable', $members, true)) {
+            return [];
+        }
+
+        $stringEnums = [];
+        foreach ($members as $member) {
+            if (in_array($member, ['DateTimeImmutable', 'int', 'float', 'bool', 'array'], true) || array_key_exists($member, $this->dtoSchemas)) {
+                continue;
+            }
+            if (($this->enumSchemas[$member]['type'] ?? null) === 'int') {
+                continue;
+            }
+            if (($this->enumSchemas[$member]['type'] ?? null) !== 'string') {
+                // A plain `string` (or anything unknown) beside the date: the string is a legitimate
+                // value of its own, not this shape.
+                return [];
+            }
+            $stringEnums[] = $member;
+        }
+
+        return $stringEnums;
+    }
+
+    /**
      * A union with an enum member — `oneOf: [$ref Palette, string, integer]` is `Palette|string|int` — takes
      * the enum case when the value is one of its members, and the scalar otherwise. Handed over as it
      * came, `"crimson"` stayed a string where the type promised `Palette`.

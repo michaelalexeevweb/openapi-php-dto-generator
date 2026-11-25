@@ -546,6 +546,11 @@ trait RendersLaravelDto
                 ? sprintf('self::toIntIfIntegral(%s)', $raw)
                 : $raw,
         };
+        // `BoxA|DateTimeImmutable`: a string that is no enum case is the date. Parsed behind the
+        // `tryFrom()` below, it was handed over as the string — a TypeError after validation passed.
+        if ($this->laravelStringEnumsBesideDate($property['type']) !== []) {
+            $raw = sprintf('(is_string(%1$s) ? new DateTimeImmutable(%1$s) : %2$s)', sprintf('$data[%s]', $key), $raw);
+        }
         $raw = $this->laravelWithUnionEnumCast($param['declaredType'], sprintf('$data[%s]', $key), $raw);
         // `Shade|string`: the validator has already decided the value matches one member, and only the
         // class arrives as an array. Handed over as that array, the constructor threw a TypeError — a
@@ -744,10 +749,7 @@ trait RendersLaravelDto
             return null;
         }
 
-        $short = $this->shortClassName($leaf);
-        $itemMapper = str_starts_with($inner, '?')
-            ? sprintf('static fn(?%s $item): array|object|null => $item === null ? null : ($item->toArray() ?: (object)[])', $short)
-            : $this->laravelItemToWireMapper($leaf);
+        $itemMapper = $this->laravelItemToWireMapper($leaf, str_starts_with($inner, '?'));
 
         $isMap = static fn(string $container): bool => preg_match('/^\??array<\s*(?:string|int)\s*,/', $container) === 1;
         $row = $isMap($outer)
@@ -861,7 +863,7 @@ trait RendersLaravelDto
             $valueClass = $this->laravelDtoItemClass($property);
             $mapped = $valueClass === null
                 ? $propertyAccess
-                : sprintf('array_map(%s, %s)', $this->laravelItemToWireMapper($valueClass), $propertyAccess);
+                : sprintf('array_map(%s, %s)', $this->laravelItemToWireMapper($valueClass, $this->laravelItemsNullable($property)), $propertyAccess);
 
             return $nullable
                 ? sprintf('%s === null ? null : self::toJsonObjects(%s)', $propertyAccess, $mapped)
@@ -887,7 +889,7 @@ trait RendersLaravelDto
 
         $itemClass = $this->laravelDtoItemClass($property);
         if ($itemClass !== null) {
-            $mapper = $this->laravelItemToWireMapper($itemClass);
+            $mapper = $this->laravelItemToWireMapper($itemClass, $this->laravelItemsNullable($property));
 
             return $nullable
                 ? sprintf('%s === null ? null : array_map(%s, array_values(%s))', $propertyAccess, $mapper, $propertyAccess)
@@ -1009,15 +1011,27 @@ trait RendersLaravelDto
      * The closure that turns ONE container value into its wire form: an enum into its backing value,
      * a DTO into its array. Used by both containers — a list maps it over the items, a map maps it
      * over the values and then casts the result.
+     *
+     * `$itemNullable`: the items admit null (`array<?Fox>`, an item `oneOf: [$ref, null]` or a
+     * `nullable: true` item). The constructor already lets a null item through, so the mapper must
+     * hand it back as null — typed `Fox $item`, it was a TypeError in `toArray()`.
      */
-    private function laravelItemToWireMapper(string $itemClass): string
+    private function laravelItemToWireMapper(string $itemClass, bool $itemNullable): string
     {
-        return $this->laravelIsEnumClass($itemClass)
-            ? sprintf('static fn(%s $item): int|string => $item->value', $this->shortClassName($itemClass))
-            // Same reason as the scalar embed: an ITEM that is a `type: object` with nothing to write
-            // is `{}`. `toJsonObjects()` leaves a non-array alone, so a cast item survives the map
-            // cast that follows it.
-            : sprintf('static fn(%s $item): array|object => $item->toArray() ?: (object)[]', $this->shortClassName($itemClass));
+        $short = $this->shortClassName($itemClass);
+
+        if ($this->laravelIsEnumClass($itemClass)) {
+            return $itemNullable
+                ? sprintf('static fn(?%s $item): int|string|null => $item?->value', $short)
+                : sprintf('static fn(%s $item): int|string => $item->value', $short);
+        }
+
+        // Same reason as the scalar embed: an ITEM that is a `type: object` with nothing to write is
+        // `{}`. `toJsonObjects()` leaves a non-array alone, so a cast item survives the map cast that
+        // follows it.
+        return $itemNullable
+            ? sprintf('static fn(?%s $item): array|object|null => $item === null ? null : ($item->toArray() ?: (object)[])', $short)
+            : sprintf('static fn(%s $item): array|object => $item->toArray() ?: (object)[]', $short);
     }
 
     /**

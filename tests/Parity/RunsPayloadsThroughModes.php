@@ -199,7 +199,8 @@ trait RunsPayloadsThroughModes
 
     /**
      * The emitted rules and `withValidator()`, as the FormRequest runs them, then `fromValidated()`, which
-     * `toDto()` calls in the controller: a payload the rules accept but the DTO cannot hold is a 500.
+     * `toDto()` calls in the controller: a payload the rules accept but the DTO cannot hold is a 500. The
+     * DTO is then encoded the way a JSON response encodes it (`jsonSerialize()` is its `toArray()`).
      *
      * @param class-string $fqcn
      */
@@ -231,9 +232,18 @@ trait RunsPayloadsThroughModes
         try {
             /** @var array<string, mixed> $validated */
             $validated = $validator->validated();
-            call_user_func([$fqcn, 'fromValidated'], $validated);
+            $dto = call_user_func([$fqcn, 'fromValidated'], $validated);
         } catch (Throwable $crash) {
             return PayloadOutcome::crashed(stage: 'hydrate', throwable: $crash);
+        }
+
+        // The response side, as the controller writes the DTO back: a value the constructor holds but
+        // `toArray()` cannot write — a null item of a list of classes — was a `TypeError` here, a 500
+        // the request side never showed.
+        try {
+            json_encode($dto, JSON_THROW_ON_ERROR);
+        } catch (Throwable $crash) {
+            return PayloadOutcome::crashed(stage: 'serialize', throwable: $crash);
         }
 
         return PayloadOutcome::accepted();

@@ -30,6 +30,7 @@ use UnitEnum;
 use WeakMap;
 
 use function array_diff_key;
+use function array_fill_keys;
 use function array_filter;
 use function array_is_list;
 use function array_key_exists;
@@ -183,6 +184,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
      *   inQueryProperties: array<string, ReflectionProperty|null>,
      *   inHeaderProperties: array<string, ReflectionProperty|null>,
      *   inCookieProperties: array<string, ReflectionProperty|null>,
+     *   requestFieldNames: array<string, true>,
      * }>
      */
     private static array $dtoMetaCache = [];
@@ -760,7 +762,11 @@ final class DtoDeserializer implements DtoDeserializerInterface
             $fast = $this->resolveFastHydrator($reflection, $classMeta, $request, $bodyData);
             if ($fast !== null) {
                 try {
-                    return $this->withUndeclaredProperties(dto: $fast($errors), undeclared: $undeclared);
+                    return $this->withUndeclaredKeysNoted(
+                        dto: $this->withUndeclaredProperties(dto: $fast($errors), undeclared: $undeclared),
+                        bodyData: $bodyData,
+                        requestFieldNames: $classMeta['requestFieldNames'],
+                    );
                 } catch (RuntimeException $e) {
                     throw $this->withUnreadableBodyHint($e, $request, $bodyData, $queryData, $formData);
                 }
@@ -1164,7 +1170,30 @@ final class DtoDeserializer implements DtoDeserializerInterface
             }
         }
 
-        return $this->withUndeclaredProperties(dto: $dto, undeclared: $undeclared);
+        return $this->withUndeclaredKeysNoted(
+            dto: $this->withUndeclaredProperties(dto: $dto, undeclared: $undeclared),
+            bodyData: $bodyData,
+            requestFieldNames: $classMeta['requestFieldNames'],
+        );
+    }
+
+    /**
+     * `$dto`, with the body keys it declares no property for noted beside it — see
+     * {@see DtoServiceSupport::rememberUndeclaredKeysSent()}. A `required` name the class lacks is
+     * then met by the key that was sent, instead of being refused because the built object cannot
+     * hold it.
+     *
+     * @param array<array-key, mixed> $bodyData
+     * @param array<string, true> $requestFieldNames
+     */
+    private function withUndeclaredKeysNoted(object $dto, array $bodyData, array $requestFieldNames): object
+    {
+        $sent = array_diff_key($bodyData, $requestFieldNames);
+        if ($sent !== []) {
+            DtoServiceSupport::rememberUndeclaredKeysSent($dto, array_fill_keys(array_keys($sent), true));
+        }
+
+        return $dto;
     }
 
     /**
@@ -1228,6 +1257,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
      *   inQueryProperties: array<string, ReflectionProperty|null>,
      *   inHeaderProperties: array<string, ReflectionProperty|null>,
      *   inCookieProperties: array<string, ReflectionProperty|null>,
+     *   requestFieldNames: array<string, true>,
      * }
      */
     private function buildDtoMeta(ReflectionClass $reflection, string $dtoClass): array
@@ -1244,6 +1274,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 'inQueryProperties' => [],
                 'inHeaderProperties' => [],
                 'inCookieProperties' => [],
+                'requestFieldNames' => [],
             ];
         }
 
@@ -1467,6 +1498,11 @@ final class DtoDeserializer implements DtoDeserializerInterface
             }
         }
 
+        $requestFieldNames = [];
+        foreach ($params as $param) {
+            $requestFieldNames[$param['requestFieldName']] = true;
+        }
+
         return [
             'hasConstructor' => true,
             'plainBodyOnly' => $plainBodyOnly,
@@ -1477,6 +1513,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             'inQueryProperties' => $inQueryProperties,
             'inHeaderProperties' => $inHeaderProperties,
             'inCookieProperties' => $inCookieProperties,
+            'requestFieldNames' => $requestFieldNames,
         ];
     }
 

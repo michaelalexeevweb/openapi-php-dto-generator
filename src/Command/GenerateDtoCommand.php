@@ -572,6 +572,14 @@ final class GenerateDtoCommand extends Command
      * @var array<string, true>
      */
     private array $constraintUnmaterializedProperties = [];
+
+    /**
+     * Whether a union component below the materialization boundary is inlined in Symfony mode too.
+     * That serializer builds the variant objects of a typed container through the discriminator map,
+     * so by default the reference is left for the class; a container a property holds as the decoded
+     * `array` gets no variant built, and only its schema can judge it.
+     */
+    private bool $constraintInlinesUnionComponents = false;
     public string $baseOutputDirectory = '';
     public string $baseNamespace = '';
 
@@ -1175,6 +1183,18 @@ final class GenerateDtoCommand extends Command
 
             $parsed = Yaml::parseFile($filePath);
         } catch (ParseException $e) {
+            // symfony/yaml from 7.4.14 / 8.0.x counts alias expansion itself and stops the bomb before
+            // the budget below sees it. Same refusal, same words, whichever release did the counting.
+            if (str_starts_with($e->getMessage(), 'Maximum number of nodes expanded by collection aliases')) {
+                throw new RuntimeException(
+                    message: sprintf(
+                        '%s expands to more than the YAML parser\'s alias limit allows from %d bytes of text — YAML aliases nested into one another? Nothing was generated.',
+                        $filePath,
+                        is_string($text) ? strlen($text) : 0,
+                    ),
+                    previous: $e,
+                );
+            }
             if (!$referenced) {
                 throw $e;
             }
@@ -2617,6 +2637,29 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * Whether the component a `$ref` names admits null, following a chain of bare aliases
+     * (`Azure: {$ref: Crate}`) to the component that says so.
+     *
+     * @param list<string> $visited
+     */
+    private function referenceAdmitsNull(string $ref, array $visited = []): bool
+    {
+        if (in_array($ref, $visited, true)) {
+            return false;
+        }
+        if ($this->arrayAliasAllowsNull($ref)) {
+            return true;
+        }
+        $definition = $this->localComponentDefinition($ref) ?? [];
+        if ($this->componentAdmitsNull($definition)) {
+            return true;
+        }
+        $next = $definition['$ref'] ?? null;
+
+        return is_string($next) && $this->referenceAdmitsNull(ref: $next, visited: [...$visited, $ref]);
+    }
+
+    /**
      * The schema a LOCAL `#/components/schemas/X` reference names, as the document wrote it.
      *
      * @return array<string, mixed>|null
@@ -2674,6 +2717,14 @@ final class GenerateDtoCommand extends Command
                     $value = ['$ref' => $refs[0]['$ref'], 'nullable' => true] + $rest;
                     break;
                 }
+            }
+            // A bare `$ref` item or value to a component that admits null — `nullable: true` on it,
+            // `null` in its 3.1 `type`, a null branch, or any of those at the end of an alias chain —
+            // admits null as the item, the way the same reference as a whole property already did.
+            // Left on the target, the list was typed `array<Crate>` and every null item refused.
+            $valueRef = $value['$ref'] ?? null;
+            if (is_string($valueRef) && !array_key_exists('nullable', $value) && $this->referenceAdmitsNull($valueRef)) {
+                $value['nullable'] = true;
             }
             $schema[$key] = $this->canonicalNullableRefContainers($value);
         }
@@ -7296,7 +7347,9 @@ final class GenerateDtoCommand extends Command
         // Not a union in Symfony mode: its serializer DOES build the variant objects at this depth,
         // through the discriminator map, and an inlined branch matched against such an object reads its
         // private state as missing, so a valid payload was refused. That mode keeps its old answer.
-        $compositionKeys = $this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY ? ['allOf'] : ['allOf', 'oneOf', 'anyOf'];
+        $compositionKeys = $this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY && !$this->constraintInlinesUnionComponents
+            ? ['allOf']
+            : ['allOf', 'oneOf', 'anyOf'];
         $isComposed = false;
         foreach ($compositionKeys as $compositionKey) {
             $isComposed = $isComposed || (is_array($definition[$compositionKey] ?? null) && $definition[$compositionKey] !== []);
@@ -9684,12 +9737,43 @@ final class GenerateDtoCommand extends Command
         if (str_contains($valueType, '<') || str_contains($valueType, '|')) {
             return 'mixed';
         }
-        $valueType = $this->itemsLessListAsList($valueType);
+        // Only where the value IS a list: a union of free-form objects (`anyOf: [{type: object}]`)
+        // resolves to the same bare `array`, and turned into the list form it refused every object.
+        // It is declared `mixed`, as a union of an object and a scalar already is: the decoded JSON
+        // object stays itself and the union constraint judges it. As `array<string, mixed>` the
+        // empty `{}` arrived as an empty list, which the `type: object` branch then refused.
+        $valueType = $this->admitsAList($additionalProperties)
+            ? $this->itemsLessListAsList($valueType)
+            : ($valueType === 'array' ? 'mixed' : $valueType);
 
         // And null where the resolver found it, as the property itself is: `anyOf: [{enum: [violet]},
         // {type: null}]` is the enum class or null, and declared without the `?` the null value the
         // document allows was refused in four modes.
         return $this->composeMapValueTypeHint($valueType, $valueNullable || $resolvedNullable);
+    }
+
+    /**
+     * Whether a schema admits a JSON list: `type: array` itself, or in a `oneOf` / `anyOf` / `allOf`
+     * branch at any depth. A schema that names no type at all is not counted — its bare `array` is
+     * the object a union of free-form objects stands for.
+     *
+     * @param array<mixed> $schema
+     */
+    private function admitsAList(array $schema): bool
+    {
+        $type = $schema['type'] ?? null;
+        if ($type === 'array' || (is_array($type) && in_array('array', $type, true))) {
+            return true;
+        }
+        foreach (['oneOf', 'anyOf', 'allOf'] as $keyword) {
+            foreach (is_array($schema[$keyword] ?? null) ? $schema[$keyword] : [] as $branch) {
+                if (is_array($branch) && $this->admitsAList($branch)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**

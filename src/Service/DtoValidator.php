@@ -671,6 +671,9 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
                         ? $this->withObjectRulesOwnedByTheDto(dto: $value, constraints: $this->withPropertyRulesOwnedByTheDto($constraints))
                         : $constraints,
                     depth: $depth,
+                    // The keys the DTO was sent but has no property for: a `required` name it does
+                    // not declare is met by them, see `DtoServiceSupport::rememberUndeclaredKeysSent()`.
+                    undeclaredKeysSent: $isGeneratedDto ? DtoServiceSupport::undeclaredKeysSentTo($value) : [],
                 )];
             }
         }
@@ -1605,9 +1608,10 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
     /**
      * @param array<array-key, mixed> $value
      * @param array<string, mixed> $constraints
+     * @param array<array-key, true> $undeclaredKeysSent keys a generated DTO was sent beside its properties
      * @return array<string>
      */
-    private function validateObjectConstraints(string $subject, array $value, array $constraints, int $depth): array
+    private function validateObjectConstraints(string $subject, array $value, array $constraints, int $depth, array $undeclaredKeysSent = []): array
     {
         $errors = [];
         $count = count($value);
@@ -1648,7 +1652,7 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
                 if (!is_string($requiredProp)) {
                     continue;
                 }
-                if (!array_key_exists($requiredProp, $value)) {
+                if (!array_key_exists($requiredProp, $value) && !array_key_exists($requiredProp, $undeclaredKeysSent)) {
                     $errors[] = sprintf('%s.%s is required', $subject, $requiredProp);
                 }
             }
@@ -1744,11 +1748,11 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
 
         if (array_key_exists('dependentRequired', $constraints) && is_array($constraints['dependentRequired'])) {
             foreach ($constraints['dependentRequired'] as $ifProp => $deps) {
-                if (!is_string($ifProp) || !is_array($deps) || !array_key_exists($ifProp, $value)) {
+                if (!is_string($ifProp) || !is_array($deps) || (!array_key_exists($ifProp, $value) && !array_key_exists($ifProp, $undeclaredKeysSent))) {
                     continue;
                 }
                 foreach ($deps as $dep) {
-                    if (is_string($dep) && !array_key_exists($dep, $value)) {
+                    if (is_string($dep) && !array_key_exists($dep, $value) && !array_key_exists($dep, $undeclaredKeysSent)) {
                         $errors[] = sprintf('%s.%s is required when %s is present', $subject, $dep, $ifProp);
                     }
                 }

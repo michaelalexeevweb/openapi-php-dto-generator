@@ -625,6 +625,15 @@ treatment: it becomes an interface of its own, named after the schema and the pr
 the first member every time under `#[MapRequestPayload]`, which collects that member's failures rather
 than trying the next one.
 
+An UNDISCRIMINATED inline union of classes (`anyOf: [$ref Olive, $ref Teal]`, or an inline object beside a
+`$ref`) has nothing to map, so it stays typed `Olive|Teal` and is checked by
+`#[Assert\AtLeastOneOf([new Assert\Type(Olive::class), new Assert\Type(Teal::class)])]` with
+`#[Assert\Valid]`. The serializer builds the first member it can; under `#[MapRequestPayload]` it
+collects that member's missing properties rather than trying the next, so an object only a LATER member
+accepts is refused on symfony/serializer 7.4.10 — see the
+[support matrix](README.support-matrix.md#divergences). Add a `discriminator` and the union becomes the
+interface above.
+
 An `anyOf` branch that is purely `{type: null}` causes the whole `#[Assert\AtLeastOneOf]` to be
 dropped (the field stays nullable).
 

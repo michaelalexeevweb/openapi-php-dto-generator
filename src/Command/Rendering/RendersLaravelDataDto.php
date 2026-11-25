@@ -205,16 +205,29 @@ trait RendersLaravelDataDto
         }
 
         // A date beside a non-string scalar is cast only when a string arrives — see the template.
+        // A date beside a string enum (`BoxA|DateTimeImmutable`) is cast only when a string arrives
+        // that is no case of the enum: the constructor turns the case into the enum, and the date
+        // cast threw `CannotCastDate` on `red` — and, without the formats, on every date too.
         $temporalUnionNames = [];
+        $enumBesideDateEntries = [];
         foreach ($properties as $property) {
-            if ($this->isTemporalScalarUnion($property['type'])) {
+            $enumsBesideDate = $this->laravelStringEnumsBesideDate($property['type']);
+            if ($this->isTemporalScalarUnion($property['type']) || $enumsBesideDate !== []) {
                 $temporalUnionNames[] = $property['name'];
+            }
+            if ($enumsBesideDate !== []) {
+                $enumBesideDateEntries[] = sprintf(
+                    '%s => [%s]',
+                    $this->phpStringLiteral($property['name']),
+                    implode(', ', array_map(static fn(string $enum): string => $enum . '::class', $enumsBesideDate)),
+                );
             }
         }
         $temporalUnionCast = null;
         if ($temporalUnionNames !== []) {
             $temporalUnionCast = [
                 'namesLiteral' => '[' . implode(', ', array_map($this->phpStringLiteral(...), $temporalUnionNames)) . ']',
+                'enumsLiteral' => $enumBesideDateEntries === [] ? null : '[' . implode(', ', $enumBesideDateEntries) . ']',
                 'pipelineRef' => $this->libraryClassRef('Spatie\LaravelData\DataPipeline', $namespace, $useStatements),
                 'castPipeRef' => $this->libraryClassRef(
                     fqcn: 'Spatie\LaravelData\DataPipes\CastPropertiesDataPipe',
@@ -606,7 +619,7 @@ trait RendersLaravelDataDto
                 }
                 foreach ($this->getSchemaProperties($className) as $property) {
                     $target = $this->laravelDataMorphStepTarget($property)['class'] ?? null;
-                    if ($target !== null && ($this->laravelDataIsMorphBase($target) || array_key_exists($target, $reach))) {
+                    if ($this->laravelDataRefusesNullItems($property) || ($target !== null && ($this->laravelDataIsMorphBase($target) || array_key_exists($target, $reach)))) {
                         $reach[$className] = true;
                         $grown = true;
 
@@ -640,15 +653,52 @@ trait RendersLaravelDataDto
             return ['class' => $itemClass, 'many' => true];
         }
 
+        // A union of classes written on the property (`Cat|Dog`): laravel-data takes the FIRST data
+        // class of the type as the property's class (`DataTypeFactory`, `$dataClass ??=`) and resolves
+        // its rules against whatever object arrived — a `Dog` payload included. A discriminated union
+        // inside that first member then read its discriminator out of the dog's string `toy`: a
+        // `TypeError` in `DataMorphClassResolver`, a 500. Walking the first member refuses that value
+        // first. A first member that is itself a union base is left alone: its own check would refuse
+        // the other members' payloads outright.
+        foreach ($this->unionMembersBesideNull($property['type']) as $member) {
+            $memberClass = $this->shortClassName($member);
+            if (!array_key_exists($memberClass, $this->dtoSchemas) || $this->laravelIsEnumClass($memberClass)) {
+                continue;
+            }
+
+            return $this->laravelDataIsMorphBase($memberClass) ? null : ['class' => $memberClass, 'many' => false];
+        }
+
         return null;
     }
 
     /**
-     * The properties of a concrete class through which a union is reached, for its
-     * `openApiMorphNodeErrors()` walk, and the imports that walk needs. Null when no union is reached.
+     * Whether this property is a list or map of a CONCRETE class whose items admit null
+     * (`items: {oneOf: [$ref Fox, null]}`, a `nullable: true` item object). laravel-data's
+     * `#[DataCollectionOf(Fox::class)]` builds a `Fox` out of every element and has no null case: a
+     * null item was `CannotCreateData` (a 500) when the class requires a property, and an empty `Fox`
+     * — accepted, written back as `{}` — when it requires none. The guard refuses the null item before
+     * that, as it refuses one of a discriminated union.
+     *
+     * @param SchemaProperty $property
+     */
+    private function laravelDataRefusesNullItems(array $property): bool
+    {
+        $target = $this->laravelDataMorphStepTarget($property);
+
+        return $target !== null
+            && $target['many']
+            && !$this->laravelDataIsMorphBase($target['class'])
+            && $this->laravelItemsNullable($property);
+    }
+
+    /**
+     * The properties of a concrete class through which a union is reached, or that hold a null item the
+     * container cannot build (`laravelDataRefusesNullItems()`), for its `openApiMorphNodeErrors()` walk,
+     * and the imports that walk needs. Null when neither is reached.
      *
      * @param array<int, string> $useStatements
-     * @return array{steps: list<array{wireName: string, class: string, many: bool, union: bool}>, arrayableRef: string, exceptionRef: string}|null
+     * @return array{steps: list<array{wireName: string, class: string, many: bool, union: bool, recurse: bool, nullItems: bool}>, arrayableRef: string, exceptionRef: string}|null
      */
     private function laravelDataMorphGuard(string $className, string $namespace, array &$useStatements): ?array
     {
@@ -663,15 +713,21 @@ trait RendersLaravelDataDto
                 continue;
             }
             $union = $this->laravelDataIsMorphBase($target['class']);
-            if (!$union && !array_key_exists($target['class'], $this->laravelDataMorphReach())) {
+            $recurse = !$union && array_key_exists($target['class'], $this->laravelDataMorphReach());
+            $nullItems = $this->laravelDataRefusesNullItems($property);
+            if (!$union && !$recurse && !$nullItems) {
                 continue;
             }
-            $this->appendImportForClass($useStatements, $target['class'], $namespace, $className);
+            if ($union || $recurse) {
+                $this->appendImportForClass($useStatements, $target['class'], $namespace, $className);
+            }
             $steps[] = [
                 'wireName' => $property['openApiName'],
                 'class' => $this->formatClassNameForNamespace($target['class'], $namespace),
                 'many' => $target['many'],
                 'union' => $union,
+                'recurse' => $recurse,
+                'nullItems' => $nullItems,
             ];
         }
 
@@ -1146,7 +1202,7 @@ trait RendersLaravelDataDto
         // A date beside a non-string scalar — `int|DateTimeImmutable` — is cast only when a string
         // arrives (see `pipeline()`), and then with the formats its branches name: the global ATOM cast
         // refused a `format: date` branch's `2018-06-18` after the rule had accepted it.
-        $temporalUnion = $this->isTemporalScalarUnion($property['type']);
+        $temporalUnion = $this->isTemporalScalarUnion($property['type']) || $this->laravelStringEnumsBesideDate($property['type']) !== [];
         if ($this->shortClassName(ltrim($property['type'], '?')) !== 'DateTimeImmutable' && !$temporalUnion) {
             return [];
         }

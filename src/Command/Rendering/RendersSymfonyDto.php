@@ -598,11 +598,15 @@ trait RendersSymfonyDto
         return $this->withConstraintSourceOf(
             className: $className,
             extraction: function () use ($className, $schemaDefinition, $mixedProperties): array {
+                // Ahead of the list below: reading the class's properties extracts their constraints,
+                // and that extraction consumes the list as its own.
+                $classSchema = $this->symfonyWithRawContainerBranchesInlined(
+                    classSchema: $this->classSchemaWithInlineAllOfMerged(schemaDefinition: $schemaDefinition, className: $className),
+                    className: $className,
+                );
                 $this->constraintUnmaterializedProperties = $mixedProperties;
 
-                return $this->extractValidationConstraints($this->symfonyWithDiscriminatedUnionPropertiesSpelledOut(
-                    $this->classSchemaWithInlineAllOfMerged(schemaDefinition: $schemaDefinition, className: $className),
-                ));
+                return $this->extractValidationConstraints($this->symfonyWithDiscriminatedUnionPropertiesSpelledOut($classSchema));
             },
         );
     }
@@ -669,6 +673,106 @@ trait RendersSymfonyDto
         }
 
         return $names;
+    }
+
+    /**
+     * The class schema with every container branch of a property's `oneOf` / `anyOf` written out in
+     * place, where the property is held as the decoded `array` (`?array`, `array|string`).
+     *
+     * No class is built below such a property, so a `$ref` there names a class nothing hydrates: as a
+     * union branch it became "is that class" and refused every valid object (`{"lynx": {"ka": {…}}}`
+     * against a map of a nullable union component), and as a bare `items` / `additionalProperties` it
+     * extracted to nothing and accepted every invalid one.
+     *
+     * @param array<string, mixed> $classSchema
+     * @return array<string, mixed>
+     */
+    private function symfonyWithRawContainerBranchesInlined(array $classSchema, string $className): array
+    {
+        if (!is_array($classSchema['properties'] ?? null)) {
+            return $classSchema;
+        }
+        $rawHeld = [];
+        // Typed as rendered: a list of a union component beside a scalar is `array<Shape>|int`, and
+        // the serializer builds its variants.
+        foreach ($this->symfonyWithUnionListsTyped($className, $this->getSchemaProperties($className)) as $property) {
+            if (in_array('array', explode('|', ltrim($property['type'], '?')), true)) {
+                $rawHeld[$property['openApiName']] = true;
+            }
+        }
+        $properties = [];
+        foreach ($classSchema['properties'] as $name => $propertySchema) {
+            if (is_array($propertySchema) && array_key_exists((string)$name, $rawHeld)) {
+                $propertySchema = $this->symfonyContainerUnionReferenceInlined($propertySchema);
+                foreach (['oneOf', 'anyOf'] as $keyword) {
+                    foreach (is_array($propertySchema[$keyword] ?? null) ? $propertySchema[$keyword] : [] as $index => $branch) {
+                        if (is_array($branch) && $this->isContainerBranch($branch)) {
+                            $propertySchema[$keyword][$index] = $this->symfonyRawContainerInlined($branch);
+                        }
+                    }
+                }
+            }
+            $properties[$name] = $propertySchema;
+        }
+
+        return ['properties' => $properties] + $classSchema;
+    }
+
+    /**
+     * A property `$ref` to a union component with a container branch (`Amber: {oneOf: [{type: object,
+     * additionalProperties: …}, {type: null}]}`), followed through bare aliases, written out in place,
+     * so its container branches are judged as the inline union's are. Anything else comes back as is.
+     *
+     * @param array<string, mixed> $propertySchema
+     * @return array<string, mixed>
+     */
+    private function symfonyContainerUnionReferenceInlined(array $propertySchema): array
+    {
+        $ref = $propertySchema['$ref'] ?? null;
+        $visited = [];
+        $definition = null;
+        while (is_string($ref) && !in_array($ref, $visited, true)) {
+            $visited[] = $ref;
+            $definition = $this->localComponentDefinition($ref);
+            $ref = is_array($definition) && array_keys($definition) === ['$ref'] ? $definition['$ref'] : null;
+        }
+        if (!is_array($definition)) {
+            return $propertySchema;
+        }
+        $hasContainerBranch = false;
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            foreach (is_array($definition[$keyword] ?? null) ? $definition[$keyword] : [] as $branch) {
+                $hasContainerBranch = $hasContainerBranch || (is_array($branch) && $this->isContainerBranch($branch));
+            }
+        }
+        if (!$hasContainerBranch) {
+            return $propertySchema;
+        }
+        $own = [];
+        foreach ($propertySchema as $keyword => $value) {
+            if ($keyword !== '$ref') {
+                $own[$keyword] = $value;
+            }
+        }
+
+        return $own + $definition;
+    }
+
+    /**
+     * A container nothing materializes, its references — union components among them — inlined.
+     *
+     * @param array<string, mixed> $container
+     * @return array<string, mixed>
+     */
+    private function symfonyRawContainerInlined(array $container): array
+    {
+        $inlinesBefore = $this->constraintInlinesUnionComponents;
+        $this->constraintInlinesUnionComponents = true;
+        try {
+            return $this->inlineNestedContainerValidation(schema: $container, belowMaterialization: true);
+        } finally {
+            $this->constraintInlinesUnionComponents = $inlinesBefore;
+        }
     }
 
     /**
@@ -2041,6 +2145,11 @@ PHP;
             && in_array($items['type'] ?? null, ['integer', 'number', 'string', 'boolean'], true)
         ) {
             $itemExpressions = $this->valueConstraintExpressions($items);
+            // `Type` takes null for valid, so inside `All` it let `[null]` through as a list of
+            // booleans. An item the schema does not let be null is refused it first.
+            if (($items['nullable'] ?? null) !== true) {
+                $itemExpressions = ['new Assert\NotNull()', ...$itemExpressions];
+            }
             $expressions[] = 'new Assert\All([' . implode(', ', $itemExpressions) . '])';
         }
 
@@ -2493,7 +2602,9 @@ PHP;
             // A free-form `{type: object}` has no class of its own: it is the `array` it is held as.
             $inlineClass = is_array($branch) && ($branch['type'] ?? null) === 'object' && !array_key_exists('x-php-instanceof', $branch)
                 && !$this->isFreeFormObjectSchema($branch)
-                ? $this->unionClassBesideScalars($property['type']) ?? $this->symfonyLoneDtoClass($property['type'])
+                ? $this->unionClassBesideScalars($property['type'])
+                    ?? $this->symfonyLoneDtoClass($property['type'])
+                    ?? $this->symfonyInlineBranchClassBesideReferences(phpType: $property['type'], branches: $anyOf)
                 : null;
             // A `format: date` / `date-time` branch is hydrated into the `DateTimeImmutable` the PHP
             // type names, so holding one IS the branch: `Type('string')` refused every valid date,
@@ -2519,6 +2630,33 @@ PHP;
         }
 
         return count($branches) >= 2 ? '#[Assert\AtLeastOneOf([' . implode(', ', $branches) . '])]' : null;
+    }
+
+    /**
+     * The class an inline object branch is hydrated into beside `$ref` branches of other classes —
+     * `ProbeOkapi` of `ProbeOkapi|Teal`: the one generated class of the type no `$ref` branch names.
+     * `Type('array')` refused it there, the value being by then no array.
+     *
+     * @param array<mixed> $branches
+     */
+    private function symfonyInlineBranchClassBesideReferences(string $phpType, array $branches): ?string
+    {
+        $referenced = [];
+        foreach ($branches as $branch) {
+            $instanceOf = is_array($branch) ? $branch['x-php-instanceof'] ?? null : null;
+            if (is_string($instanceOf)) {
+                $referenced[] = $this->shortClassName($instanceOf);
+            }
+        }
+        $inline = [];
+        foreach ($this->unionMembersBesideNull($phpType) as $member) {
+            $short = $this->shortClassName($member);
+            if (array_key_exists($short, $this->dtoSchemas) && !array_key_exists($short, $this->enumSchemas) && !in_array($short, $referenced, true)) {
+                $inline[] = $short;
+            }
+        }
+
+        return count($inline) === 1 ? $inline[0] : null;
     }
 
     /**

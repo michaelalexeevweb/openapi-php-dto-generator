@@ -3,6 +3,39 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.151 — 2026-11-25
+
+- fuzz round six: 16 fixes
+- nullable $ref items admit null
+- object-union map values accepted
+- sent undeclared required key accepted
+- yii3 inline class unions checked
+- laravel-data null DTO items refused
+
+The sixth fuzz round took the round-five leftovers and 10 findings from fresh seeds: 13 root causes, 16 fixes,
+each with a test that failed before, and 10 framework limits documented. A fresh run on new seeds is down to
+2 findings, from 5.
+
+- runtime, laravel, laravel-data: a list item or map value written as a bare `$ref` to a component that admits
+  null (also through an alias) is typed `array<?Crate>` and accepts `null`; a map value
+  `anyOf: [{type: object}]` (alone or beside null) accepts objects instead of being read as a list;
+- runtime: an object whose `required` names a key it does not declare accepts a payload that sends it — the
+  deserializer notes the undeclared keys a DTO was sent, and `required` / `dependentRequired` count them;
+- symfony: a list branch of a property union refuses `[null]` unless its items are nullable; raw-held union
+  containers are checked;
+- laravel: a list or map of a class whose items admit null writes a null item back as null (it was a
+  TypeError); a string beside an enum and a date is parsed as the date;
+- laravel-data: a null item of a list of a plain class is a 422 instead of a 500; an inline class union whose
+  first member holds a discriminated union is guarded;
+- yii3: an inline undiscriminated union of classes is held as the decoded array and checked against every
+  member (the first class was built from any object); an integer beside a date member is checked against its
+  own branch before it is read as a timestamp; a list of a nullable class checks its items.
+
+Fuzz harness: the shrinker keeps the mutated keyword, so a shrunk finding no longer drifts onto another defect.
+
+Every mode: a YAML alias bomb is refused with the same message whichever symfony/yaml release stops it — the
+newest releases count alias expansion themselves and threw their own `ParseException` first.
+
 ## 2.15.150 — 2026-11-25
 
 - runtime services independent

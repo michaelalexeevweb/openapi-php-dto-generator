@@ -74,6 +74,7 @@ final class TemplateEscapingTest extends TestCase
             'morphBase.guard.values|raw' => 'the discriminator values as an array literal, each via phpStringLiteral()',
             'interpreterConstsBlock|raw' => 'the emitted interpreter constants (RendersSchemaInterpreter), literals via renderPhpLiteral()',
             'wireNameRestore.namesLiteral|raw' => 'integer-like wire names as an array literal from renderPhpArrayLiteral()',
+            'temporalUnionCast.enumsLiteral|raw' => 'property name (phpStringLiteral()) => list of generated enum class references (`Name::class`) as a PHP array literal',
             'temporalUnionCast.namesLiteral|raw' => 'sanitized PHP property names as an array literal, each via phpStringLiteral()',
             'rule.rules|raw' => 'a Laravel rules array literal from laravelRulesLiteral(), strings via phpStringLiteral()',
             'interpreterMethodsBlock|raw' => 'the emitted interpreter methods (RendersSchemaInterpreter), fixed code around sanitized names',

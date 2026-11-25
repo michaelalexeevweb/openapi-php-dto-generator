@@ -47,6 +47,39 @@ final class FuzzRunner
 
     private const array LIST_KEYWORDS = ['enum', 'required', 'type', 'allOf', 'anyOf', 'oneOf', 'prefixItems'];
 
+    /**
+     * The keywords a mutation kind breaks (any one of them holds it), by the kind's part before `:`. A
+     * kind not listed — `wrongType`, `nullForbidden` — breaks `type`, which no shrink removes.
+     */
+    private const array MUTATED_KEYWORDS = [
+        'tooLong' => ['maxLength'],
+        'tooShort' => ['minLength'],
+        'patternMismatch' => ['pattern'],
+        'notInEnum' => ['enum', 'const'],
+        'badFormat' => ['format'],
+        'impossibleDate' => ['format'],
+        'looseDateTime' => ['format'],
+        'belowMinimum' => ['minimum', 'exclusiveMinimum'],
+        'atExclusiveMinimum' => ['exclusiveMinimum'],
+        'aboveMaximum' => ['maximum', 'exclusiveMaximum'],
+        'atExclusiveMaximum' => ['exclusiveMaximum'],
+        'notMultipleOf' => ['multipleOf'],
+        'tooFewItems' => ['minItems'],
+        'tooManyItems' => ['maxItems'],
+        'duplicateItems' => ['uniqueItems'],
+        'tooFewProperties' => ['minProperties'],
+        'tooManyProperties' => ['maxProperties'],
+        'missingRequired' => ['required'],
+        'extraKeyClosed' => ['additionalProperties', 'unevaluatedProperties'],
+        'unknownDiscriminator' => ['discriminator'],
+    ];
+
+    /** Keywords whose value maps NAMES to schemas: their keys are names, never keywords. */
+    private const array NAMED_SCHEMA_MAPS = ['properties', 'patternProperties', 'dependentSchemas', '$defs', 'definitions', 'schemas'];
+
+    /** Keywords whose value is data, not a schema. */
+    private const array DATA_KEYWORDS = ['enum', 'const', 'default', 'example', 'examples', 'required', 'discriminator'];
+
     /** @var array<string, array<string, mixed>> keyed by signature */
     private array $findings = [];
 
@@ -466,6 +499,7 @@ final class FuzzRunner
                     property: $suspect,
                     stillFails: static fn(array $candidate): bool => $stillFails($candidate, $property, $value),
                     payloadKeys: self::payloadKeys($value),
+                    kind: $payload['kind'],
                 );
                 if ($property !== null) {
                     $value = $this->shrinkPayload(
@@ -886,14 +920,25 @@ final class FuzzRunner
     /**
      * Greedy: try every single edit, keep the first that still fails, start over; stop when none does.
      *
+     * A candidate that drops every keyword the mutation `$kind` broke is no candidate: the finding
+     * keeps the mutation's kind, and a failure carried on by another constraint (a `tooLong` whose
+     * `maxLength` went, still refused by an `enum`) would be reported as a defect it does not show —
+     * and filed against the wrong `KnownDivergences` row.
+     *
      * @param array<string, mixed> $document
      * @param callable(array<string, mixed>): bool $stillFails
      * @param array<int, string> $payloadKeys object keys the payload sends; their properties are not removed,
      *     which would turn a declared key into an undeclared one — the documented closed-object divergence
+     * @param string $kind the mutation label the finding is reported under
      * @return array<string, mixed>
      */
-    private function shrinkSchema(array $document, string $property, callable $stillFails, array $payloadKeys = []): array
+    private function shrinkSchema(array $document, string $property, callable $stillFails, array $payloadKeys = [], string $kind = ''): array
     {
+        $mutated = self::MUTATED_KEYWORDS[(string)strtok($kind, ':')] ?? [];
+        if ($mutated !== [] && !self::holdsKeyword(schema: $document, keywords: $mutated)) {
+            // The unshrunk document never held it (a mutation drawn some other way): nothing to keep.
+            $mutated = [];
+        }
         $trials = 0;
         $improved = true;
         while ($improved && $trials < self::SHRINK_SCHEMA_TRIALS) {
@@ -906,6 +951,9 @@ final class FuzzRunner
                 if ($candidate === $document) {
                     continue;
                 }
+                if ($mutated !== [] && !self::holdsKeyword(schema: $candidate, keywords: $mutated)) {
+                    continue;
+                }
                 if ($stillFails($candidate)) {
                     $document = $candidate;
                     $improved = true;
@@ -916,6 +964,41 @@ final class FuzzRunner
         }
 
         return $document;
+    }
+
+    /**
+     * Whether any schema in `$schema` uses one of `$keywords` as a keyword — not as a property name,
+     * nor inside the data of an `enum` or a `default`.
+     *
+     * @param array<int, string> $keywords
+     */
+    private static function holdsKeyword(mixed $schema, array $keywords): bool
+    {
+        if (!is_array($schema)) {
+            return false;
+        }
+        foreach ($schema as $key => $value) {
+            if (is_string($key) && in_array($key, $keywords, true) && !array_is_list($schema)) {
+                return true;
+            }
+            if (is_string($key) && in_array($key, self::DATA_KEYWORDS, true)) {
+                continue;
+            }
+            if (is_string($key) && in_array($key, self::NAMED_SCHEMA_MAPS, true) && is_array($value)) {
+                foreach ($value as $named) {
+                    if (self::holdsKeyword(schema: $named, keywords: $keywords)) {
+                        return true;
+                    }
+                }
+
+                continue;
+            }
+            if (self::holdsKeyword(schema: $value, keywords: $keywords)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

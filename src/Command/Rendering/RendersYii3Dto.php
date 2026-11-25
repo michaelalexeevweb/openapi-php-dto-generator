@@ -265,11 +265,14 @@ trait RendersYii3Dto
                 constraints: $this->withConstraintSourceOf(
                     className: $className,
                     extraction: fn(): array => $this->extractValidationConstraints(
-                        propertySchema: $this->yii3WithHeldArrayBranchesSpelledOut(
-                            schema: $this->yii3WithMapValuesInlined(
-                                schema: $this->yii3ClassSchemaWithInlineAllOfMerged($this->dtoSchemas[$className] ?? [], $className),
+                        propertySchema: $this->yii3WithNullableClassItemsSpelledOut(
+                            schema: $this->yii3WithHeldArrayBranchesSpelledOut(
+                                schema: $this->yii3WithMapValuesInlined(
+                                    schema: $this->yii3ClassSchemaWithInlineAllOfMerged($this->dtoSchemas[$className] ?? [], $className),
+                                ),
+                                className: $className,
+                                properties: $properties,
                             ),
-                            className: $className,
                             properties: $properties,
                         ),
                     ),
@@ -537,10 +540,14 @@ trait RendersYii3Dto
             // A union interface cannot be built by the hydrator: a property typed by one stayed unfilled
             // and a request carrying it was refused as missing it. It holds the decoded array instead —
             // the interpreter picks the branch and checks it — or the member `create()` was given.
-            if ($this->yii3IsUnionInterface($property['type'])) {
+            // So can a union of two generated classes with nothing to tell them apart (`Olive|Teal`):
+            // the hydrator built the FIRST one from any object, a Teal payload became an Olive with
+            // its `dog` dropped, and neither class was checked. Held as the decoded array, the
+            // interpreter judges it against the union, the way it does a union component.
+            if ($this->yii3IsUnionInterface($property['type']) || $this->yii3IsUnionOfClasses($property['type'])) {
                 $docType = $type . '|array<string, mixed>';
                 $createDocType = $type;
-                $type .= '|array';
+                $type = str_starts_with($type, '?') ? substr($type, 1) . '|array|null' : $type . '|array';
             }
             // An enum beside a scalar keeps the value AS SENT: with `Scope|int` the hydrator, finding no
             // builtin member for `"all"`, fell back to casting it — `"all"` and `"nope"` both became 0, and
@@ -987,6 +994,10 @@ trait RendersYii3Dto
         // after `#[ToDateTime]` judged the date object and not the string — an int had already become
         // a timestamp by then, and passed.
         $conversions = [];
+        // Whether an integer member is read as a Unix timestamp: a date member beside it, and no
+        // `#[ToString]` to keep it from `#[ToDateTime]`. The raw union check then carries the numeric
+        // members' own keywords, as nothing after the hydration sees the integer any more.
+        $readsIntegerAsTimestamp = false;
 
         // A `DateTimeImmutable` property needs a HYDRATOR attribute as well as a rule: without it the
         // string never becomes a date, the parameter falls back to its default and a value the client
@@ -1038,6 +1049,8 @@ trait RendersYii3Dto
             ) {
                 $ruleImports[] = 'Yiisoft\Hydrator\Attribute\Parameter\ToString';
                 $conversions[] = '#[' . $this->yii3Lib('ToString', 'Yiisoft\Hydrator\Attribute\Parameter\ToString') . ']';
+            } else {
+                $readsIntegerAsTimestamp = count($unionMembers) > 1;
             }
             foreach ($wireFormats as $wireFormat) {
                 $conversions[] = sprintf(
@@ -1112,6 +1125,7 @@ trait RendersYii3Dto
                 type: $property['type'],
                 temporalFormats: $this->yii3TemporalFormats($constraints),
                 ruleImports: $ruleImports,
+                numericKeywordsOf: $readsIntegerAsTimestamp ? $constraints : [],
             )
             : null;
         // An OPTIONAL object, enum or such a union the schema does not let be null is the exception:
@@ -1475,9 +1489,11 @@ trait RendersYii3Dto
      *
      * @param array<int, string> $temporalFormats
      * @param array<int, string> $ruleImports
+     * @param array<string, mixed> $numericKeywordsOf the property's schema where its numeric members' own
+     *                                                 keywords are checked here, its branches carrying them
      * @return array<string, string>|null
      */
-    private function yii3RawUnionMemberRules(string $type, array $temporalFormats, array &$ruleImports): ?array
+    private function yii3RawUnionMemberRules(string $type, array $temporalFormats, array &$ruleImports, array $numericKeywordsOf = []): ?array
     {
         $members = [];
         // Counted apart from the rules: a class and an `array` member share one `new Each()`, and
@@ -1550,10 +1566,88 @@ trait RendersYii3Dto
             }
             $fqcn = $this->yii3RuleClass($scalar[0]);
             $ruleImports[] = $fqcn;
-            $members['new ' . $this->yii3Lib($scalar[0], $fqcn) . '()'] = $scalar[1];
+            $memberRule = 'new ' . $this->yii3Lib($scalar[0], $fqcn) . '()';
+            // A numeric member carries its branch's enum and bounds: beside a date member and an
+            // array-typed one no `#[ToString]` protects the int, `#[ToDateTime]` reads it as a Unix
+            // timestamp, and `{"raven": 4}` was held as 1970-01-01T00:00:04 against `enum: [3]`.
+            $keywordRules = in_array($member, ['int', 'float'], true)
+                ? $this->yii3NumericBranchKeywordRules(
+                    branchType: $member === 'int' ? 'integer' : 'number',
+                    constraints: $numericKeywordsOf,
+                    ruleImports: $ruleImports,
+                )
+                : [];
+            if ($keywordRules !== []) {
+                $compositeFqcn = $this->yii3RuleClass('Composite');
+                $ruleImports[] = $compositeFqcn;
+                $memberRule = sprintf('new %s([%s])', $this->yii3Lib('Composite', $compositeFqcn), implode(', ', [$memberRule, ...$keywordRules]));
+            }
+            $members[$memberRule] = $scalar[1];
         }
 
         return $memberCount > 1 ? $members : null;
+    }
+
+    /**
+     * The enum and bound rules of the one `oneOf` / `anyOf` branch of this numeric type, rendered for
+     * a `Composite` beside the type rule — none when no branch, or more than one, has the type.
+     *
+     * @param array<string, mixed> $constraints
+     * @param array<int, string> $ruleImports
+     * @return list<string>
+     */
+    private function yii3NumericBranchKeywordRules(string $branchType, array $constraints, array &$ruleImports): array
+    {
+        $matching = [];
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            foreach (is_array($constraints[$keyword] ?? null) ? $constraints[$keyword] : [] as $branch) {
+                $declared = is_array($branch) ? $branch['type'] ?? null : null;
+                if ($declared === $branchType || (is_array($declared) && in_array($branchType, $declared, true))) {
+                    $matching[] = $branch;
+                }
+            }
+        }
+        if (count($matching) !== 1) {
+            return [];
+        }
+        $branch = $matching[0];
+
+        $rules = [];
+        foreach (
+            [
+                'minimum' => 'GreaterThanOrEqual',
+                'maximum' => 'LessThanOrEqual',
+                'exclusiveMinimum' => 'GreaterThan',
+                'exclusiveMaximum' => 'LessThan',
+            ] as $keyword => $rule
+        ) {
+            $bound = $branch[$keyword] ?? null;
+            if (is_numeric($bound) && !$this->yii3BoundIsExclusiveByModifier($branch, $keyword)) {
+                $fqcn = $this->yii3RuleClass($rule);
+                $ruleImports[] = $fqcn;
+                $rules[] = sprintf("new %s(%s, type: 'original')", $this->yii3Lib($rule, $fqcn), $this->yii3NumberLiteral($bound));
+            }
+        }
+        $enum = $branch['enum'] ?? null;
+        $values = is_array($enum) ? array_values(array_filter(
+            array: $enum,
+            callback: static fn(mixed $value): bool => is_int($value) || is_float($value),
+        )) : [];
+        if ($values !== []) {
+            $listed = [];
+            foreach ($values as $value) {
+                $listed[] = $this->yii3NumberLiteral($value);
+                // JSON has one number type: `3.0` IS the 3 the enum lists, decoded to a float.
+                if (is_int($value)) {
+                    $listed[] = $this->numericLiteral((float)$value);
+                }
+            }
+            $inFqcn = $this->yii3RuleClass('In');
+            $ruleImports[] = $inFqcn;
+            $rules[] = sprintf('new %s([%s], strict: true)', $this->yii3Lib('In', $inFqcn), implode(', ', $listed));
+        }
+
+        return $rules;
     }
 
     /**
@@ -2736,6 +2830,40 @@ PHP;
     }
 
     /**
+     * The items of a list of a generated class that admits null (`array<?Crate>`) written out for the
+     * interpreter. `#[Collection]` drops what is not an array, the null among it, so such a list is
+     * hydrated without it and its items stay the decoded arrays — which nothing checked: `[{"lid": 1}]`
+     * passed a `type: string` of the class. The interpreter judges them against the class instead.
+     *
+     * @param array<string, mixed> $schema
+     * @param array<int, SchemaProperty> $properties
+     * @return array<string, mixed>
+     */
+    private function yii3WithNullableClassItemsSpelledOut(array $schema, array $properties): array
+    {
+        if (!is_array($schema['properties'] ?? null)) {
+            return $schema;
+        }
+        foreach ($properties as $property) {
+            $name = $property['openApiName'];
+            $items = $schema['properties'][$name]['items'] ?? null;
+            $itemType = $this->yii3ArrayItemType($property);
+            if (
+                !is_array($items)
+                || $itemType === null
+                || !str_starts_with($itemType, '?')
+                || !$this->isGeneratedDtoType(substr($itemType, 1))
+                || $this->yii3IsUnionInterface(substr($itemType, 1))
+            ) {
+                continue;
+            }
+            $schema['properties'][$name]['items'] = $this->inlineNestedContainerValidation(schema: $items, belowMaterialization: true);
+        }
+
+        return $schema;
+    }
+
+    /**
      * The class schema with the object branch of every union the hydrator keeps as the decoded array
      * written out the way a value nothing materializes is: its `allOf` merged into one object and its
      * enums marked for inline validation.
@@ -2886,6 +3014,14 @@ PHP;
                 $bareListRef = $mapRef !== null && array_keys($property) === ['$ref'] && $this->arrayAliasDefinition($mapRef) !== null;
                 if ($mapRef !== null && ($this->mapComponentDefinition($mapRef) !== null || $bareListRef)) {
                     $property = $this->inlineArrayAliasForConstraints($property);
+                } elseif ($mapRef !== null && !array_key_exists('items', $property) && $this->arrayAliasDefinition($mapRef) !== null) {
+                    // Beside sibling keywords the reference stays the applicator it is, but its `items`
+                    // judge every item all the same: `{$ref: Shelf, maxItems: 2}` of a list of a nullable
+                    // union held its items as decoded arrays, and checked none of them.
+                    $aliasItems = $this->inlineArrayAliasForConstraints($property)['items'] ?? null;
+                    if (is_array($aliasItems)) {
+                        $property['items'] = $aliasItems;
+                    }
                 }
                 foreach (['items', 'additionalProperties'] as $container) {
                     if (!is_array($property[$container] ?? null)) {
@@ -3111,6 +3247,23 @@ PHP;
             schema: $this->yii3ClassSchemaWithInlineAllOfMerged($this->dtoSchemas[$className] ?? [], $className),
             depth: 2,
         );
+    }
+
+    /**
+     * Whether a union holds two or more generated classes — `Olive|Teal`, `ProbeBison|Teal|null` — the
+     * shape an inline undiscriminated `oneOf` / `anyOf` of objects is typed with.
+     */
+    private function yii3IsUnionOfClasses(string $phpType): bool
+    {
+        $classes = 0;
+        foreach ($this->unionMembersBesideNull($phpType) as $member) {
+            $short = $this->shortClassName($member);
+            if (array_key_exists($short, $this->dtoSchemas) && !array_key_exists($short, $this->enumSchemas) && !$this->yii3IsUnionInterface($short)) {
+                $classes++;
+            }
+        }
+
+        return $classes >= 2;
     }
 
     /**

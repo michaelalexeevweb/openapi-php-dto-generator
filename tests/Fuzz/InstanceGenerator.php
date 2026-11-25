@@ -703,10 +703,11 @@ final class InstanceGenerator
     private function unionMutations(array $node): array
     {
         $withString = in_array('string', array_map(static fn(array $branch): string => $branch['t'], $node['branches']), true);
-        // A date beside an `array` branch: yii3 cannot keep an integer sibling from reading as a timestamp.
+        // A date beside an array-typed branch — a list, an object, a map: yii3 cannot keep an integer
+        // sibling from reading as a timestamp.
         $descriptors = array_map(self::descriptor(...), $node['branches']);
         $withTemporal = in_array('temporal', $descriptors, true);
-        $temporalBesideArray = $withTemporal && in_array('array', $descriptors, true);
+        $temporalBesideArray = $withTemporal && array_intersect(['array', 'dto', 'map'], $descriptors) !== [];
         // … nor beside `null`, whether a `type: null` member, a nullable member or the union itself.
         $temporalBesideNull = $withTemporal && (
             ($node['nullable'] ?? false)

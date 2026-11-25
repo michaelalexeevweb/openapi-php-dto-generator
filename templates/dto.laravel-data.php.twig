@@ -330,8 +330,9 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
 
     /**
      * laravel-data's own pipeline, with one change: a property typed a date beside another scalar
-     * (`int|DateTimeImmutable`) is cast only when a string arrives. Its date cast is otherwise handed
-     * every value — `true` and `-27` included — and throws on each, a 500 for a payload the rules accepted.
+     * (`int|DateTimeImmutable`) is cast only when a string arrives — and beside a string enum, only a
+     * string that is no case of it. Its date cast is otherwise handed every value — `true`, `-27` and the
+     * enum's `red` included — and throws on each, a 500 for a payload the rules accepted.
      */
     public static function pipeline(): {{ temporalUnionCast.pipelineRef }}
     {
@@ -343,6 +344,14 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
                     if (!is_string($value) && in_array($property->name, {{ temporalUnionCast.namesLiteral|raw }}, true)) {
                         return false;
                     }
+{% if temporalUnionCast.enumsLiteral is not null %}
+                    // A case of the enum beside the date is the enum, not a date to parse.
+                    foreach ({{ temporalUnionCast.enumsLiteral|raw }}[$property->name] ?? [] as $enum) {
+                        if (is_string($value) && $enum::tryFrom($value) !== null) {
+                            return false;
+                        }
+                    }
+{% endif %}
 
                     return parent::shouldBeCasted($property, $value);
                 }
@@ -389,8 +398,9 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
      * Where a discriminated union below this class holds something that is not an object, keyed by path.
      * laravel-data reads the discriminator out of that value before any rule runs, and a string, a number
      * or an item's null there was a `TypeError` from `array_key_exists()` — a 500 — where a plain object
-     * property answers 422. Walked along the payload, so it ends where the data does, a union inside a
-     * union member included.
+     * property answers 422. A null item of a list or map of a plain class is refused here too: its
+     * `#[DataCollectionOf]` builds the class out of the null. Walked along the payload, so it ends where
+     * the data does, a union inside a union member included.
      *
      * @internal called by `validate()` and by the classes that hold this one
      * @param array<array-key, mixed> $node
@@ -407,9 +417,17 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
 {% if step.union %}
             $errors += {{ step.class }}::openApiMorphUnionErrors($item, $prefix . '{{ wire|php_string }}.' . $key, true);
 {% else %}
+{% if step.nullItems %}
+            // `#[DataCollectionOf]` builds the class out of every element and has no null case.
+            if ($item === null) {
+                $errors[$prefix . '{{ wire|php_string }}.' . $key] = sprintf('%s expects object, got null.', $prefix . '{{ wire|php_string }}.' . $key);
+            }
+{% endif %}
+{% if step.recurse %}
             if (is_array($item)) {
                 $errors += {{ step.class }}::openApiMorphNodeErrors($item, $prefix . '{{ wire|php_string }}.' . $key);
             }
+{% endif %}
 {% endif %}
         }
 {% elseif step.union %}
