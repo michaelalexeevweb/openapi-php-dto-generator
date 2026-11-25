@@ -3,6 +3,47 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.148 — 2026-11-25
+
+- fuzz round four: 26 fixes
+- class branch beats array member
+- inline discriminator picks by tag
+- $ref siblings in alias items
+- requirement-only anyOf enforced
+- yii3 allOf union members typed
+
+The fourth fuzz round took the round-three leftovers and 45 findings from fresh seeds: 29 root causes, 26 fixes,
+each with a test that failed before, and 3 framework limits documented. A fresh run on new seeds is down to 15
+findings, from 45.
+
+**Regenerate after upgrading, in every mode.**
+
+Generation (every mode):
+
+- an array alias whose `items` is `{$ref: X, properties: {…}}` judges both X and the siblings, as the inline
+  spelling does; runtime writes both back instead of `[{}]`;
+- a union member `$ref` to a nullable array alias admits `null` on the property;
+- an object whose `anyOf` / `oneOf` arms only list `required` keys is a class with its properties and a
+  class-level union check (runtime generated an empty class);
+- a member shared by two discriminated component unions is typed by its members and dispatched by mapping.
+
+Validation:
+
+- runtime: the vendored copy of the services (`--dto-generator-directory`) includes the new
+  `EmptyJsonObjectFields` helper; a test now checks that every library class a copied file calls is copied;
+- runtime: a class branch of its own — an inline object, a `$ref` with keys beside it, a merged `allOf` — next
+  to an `array` member is built and checked (the array member took the object as a map); `[]` no longer
+  satisfies a class branch beside a list that refuses it; an inline `discriminator` over overlapping members
+  builds the member its tag names; `{}` held by an `array`-typed union is written back as `{}`;
+- symfony: an optional `allOf: [{type: object}]` sent as `null` is refused; a union holding a list of a
+  discriminated union is typed `array<Shape>` and its items built through the discriminator map;
+- laravel, laravel-data: a union member typed one composition deeper refuses a JSON list; list items with no
+  class of their own have their properties checked; in `anyOf: [array, $ref Lime, {type: object}]` the class
+  is built only from an object it accepts (it was a 500); laravel-data checks each item of a list of a
+  discriminated union against its member before building it;
+- yii3: a union member written as a multi-part `allOf` gets the type rule its parts agree on; an enum beside a
+  class member passes through `In`; a `$ref` to an object-or-array union component checks its object branch.
+
 ## 2.15.147 — 2026-11-25
 
 - fuzz round three: 24 fixes

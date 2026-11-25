@@ -636,6 +636,8 @@ final class DtoDeserializer implements DtoDeserializerInterface
         $args = [];
         $providedParamSources = [];
         $errors = [];
+        /** @var array<string, true> $emptyJsonObjectFields */
+        $emptyJsonObjectFields = [];
 
         // `additionalProperties: false` closes the object. Runtime mode is the one mode holding the
         // RAW body at this point, so it is the one mode that can see a key the schema never
@@ -1073,7 +1075,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 } else {
                     $value = $this->castUnionValue(
                         paramName: $requestFieldName,
-                        typeNames: $paramMeta['typeNames'],
+                        typeNames: $this->discriminatedUnionMember(typeNames: $paramMeta['typeNames'], value: $rawValue, constraints: $paramMeta['fieldConstraints']),
                         rawValue: $rawValue,
                         rawWasProvided: $rawWasProvided,
                         rawSource: $castSource,
@@ -1099,6 +1101,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
             }
 
             $args[] = $value;
+            if ($this->isEmptyJsonObjectHeldAsArray(cast: $value, raw: $rawValue)) {
+                $emptyJsonObjectFields[$paramMeta['name']] = true;
+            }
 
             if ($rawWasProvided && $rawSource === 'json' && is_array($paramMeta['fieldConstraints'])) {
                 foreach ($this->listsWhereObjectsBelong(value: $rawValue, constraints: $paramMeta['fieldConstraints'], paramPath: $requestFieldName) as $shapeError) {
@@ -1134,6 +1139,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         $dto = $reflection->newInstanceArgs($args);
+        EmptyJsonObjectFields::remember($dto, $emptyJsonObjectFields);
 
         // Set tracking flags: all to false first, then mark provided sources.
         foreach ($classMeta['params'] as $paramMeta) {
@@ -2234,6 +2240,40 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 $this->unionTrialArrayResults = [];
             }
         }
+    }
+
+    /**
+     * The member an inline `discriminator` names, as the only type to build — or every type, when the
+     * union has no discriminator or the tag names none of them.
+     *
+     * Tried in declaration order instead, members that overlap (each requires only the tag, and takes
+     * the other's keys as extra ones) were all built as the FIRST: `{"kind": "square", "side": 2}`
+     * became a `Circle`, and the validator refused it as not the class its tag names. The map holds
+     * class names as the generator wrote them, relative to the DTO's own namespace.
+     *
+     * @param array<int, string> $typeNames
+     * @return array<int, string>
+     */
+    private function discriminatedUnionMember(array $typeNames, mixed $value, mixed $constraints): array
+    {
+        $map = is_array($constraints) ? ($constraints['x-discriminator-map'] ?? null) : null;
+        $property = is_array($constraints) ? ($constraints['x-discriminator-property'] ?? null) : null;
+        if (!is_array($map) || !is_string($property)) {
+            return $typeNames;
+        }
+        $fields = $value instanceof stdClass ? get_object_vars($value) : $value;
+        $tag = is_array($fields) ? ($fields[$property] ?? null) : null;
+        $mapped = is_string($tag) || is_int($tag) ? ($map[$tag] ?? null) : null;
+        if (!is_string($mapped) || $mapped === '') {
+            return $typeNames;
+        }
+        foreach ($typeNames as $typeName) {
+            if (str_ends_with('\\' . $typeName, '\\' . ltrim($mapped, '\\'))) {
+                return [$typeName];
+            }
+        }
+
+        return $typeNames;
     }
 
     /**
@@ -3343,7 +3383,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             }
 
             // resolveDiscriminatorTargetClass already uses $itemPath in its messages — don't re-wrap
-            $targetClass = $this->resolveDiscriminatorTargetClass($arrayItemType, $itemValue, $itemPath) ?? $arrayItemType;
+            $targetClass = $this->resolveDiscriminatorTargetClass(baseClass: $arrayItemType, value: $itemValue, paramPath: $itemPath, mustExtendBase: false) ?? $arrayItemType;
             if (!class_exists($targetClass)) {
                 throw new RuntimeException(
                     message: "Discriminator mapping for \"{$itemPath}\" points to unknown class \"{$targetClass}\".",
@@ -4179,7 +4219,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return null;
         }
 
-        $cast = $this->buildFastCast($reflection, $meta['byName']);
+        /** @var array<string, true> $emptyJsonObjectFields */
+        $emptyJsonObjectFields = [];
+        $cast = $this->buildFastCast(reflection: $reflection, byName: $meta['byName'], emptyJsonObjectFields: $emptyJsonObjectFields);
 
         // Anything but the body could supply a value: an uploaded file, or a router-verified
         // request attribute carrying one of the declared names. Both outrank or join the body in
@@ -4201,7 +4243,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
         /** @var callable(array<string, mixed>, Closure, array<int, string>): object $hydrator */
         $hydrator = [$className, 'hydrateFast'];
 
-        return static fn(array $errors): object => $hydrator($bodyData, $cast, $errors);
+        return static function (array $errors) use ($hydrator, $bodyData, $cast, &$emptyJsonObjectFields): object {
+            $dto = $hydrator($bodyData, $cast, $errors);
+            EmptyJsonObjectFields::remember($dto, $emptyJsonObjectFields);
+
+            return $dto;
+        };
     }
 
     /**
@@ -4242,10 +4289,11 @@ final class DtoDeserializer implements DtoDeserializerInterface
      *
      * @param ReflectionClass<object> $reflection
      * @param array<string, mixed> $byName
+     * @param array<string, true> $emptyJsonObjectFields filled with the fields an empty JSON object went into as `[]`
      */
-    private function buildFastCast(ReflectionClass $reflection, array $byName): Closure
+    private function buildFastCast(ReflectionClass $reflection, array $byName, array &$emptyJsonObjectFields): Closure
     {
-        return function (string $name, mixed $value, array &$errors) use ($byName, $reflection): mixed {
+        return function (string $name, mixed $value, array &$errors) use ($byName, $reflection, &$emptyJsonObjectFields): mixed {
             $paramMeta = $byName[$name];
             try {
                 if (count($paramMeta['typeNames']) === 1 && self::isJsonScalarAlready($paramMeta['typeNames'][0], $value)) {
@@ -4272,7 +4320,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                         )
                         : $this->castUnionValue(
                             paramName: $name,
-                            typeNames: $paramMeta['typeNames'],
+                            typeNames: $this->discriminatedUnionMember(typeNames: $paramMeta['typeNames'], value: $value, constraints: $paramMeta['fieldConstraints']),
                             rawValue: $value,
                             rawWasProvided: true,
                             rawSource: 'json',
@@ -4294,6 +4342,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 }
 
                 return null;
+            }
+            if ($this->isEmptyJsonObjectHeldAsArray(cast: $cast, raw: $value)) {
+                $emptyJsonObjectFields[$paramMeta['name']] = true;
             }
 
             if (is_array($paramMeta['fieldConstraints'])) {
@@ -4613,6 +4664,15 @@ final class DtoDeserializer implements DtoDeserializerInterface
     }
 
     /**
+     * Whether `{}` went into a field as the empty PHP array, which reads as `[]` from then on — noted
+     * in {@see EmptyJsonObjectFields} so that the write-back says `{}` again.
+     */
+    private function isEmptyJsonObjectHeldAsArray(mixed $cast, mixed $raw): bool
+    {
+        return $cast === [] && $raw instanceof stdClass && get_object_vars($raw) === [];
+    }
+
+    /**
      * A JSON array found where the schema allows only an object, at any depth of a value the request
      * decoded itself.
      *
@@ -4700,9 +4760,16 @@ final class DtoDeserializer implements DtoDeserializerInterface
     }
 
     /**
+     * The class the discriminator of `$baseClass` maps the value to.
+     *
+     * A list item may be a member that does not extend the base: one that two discriminated unions
+     * share extends neither, since a class has one parent, and nothing in PHP types a list item. The
+     * mapping names it as a member of the union, so it is the class to build (`$mustExtendBase:
+     * false`); a property typed with the base can hold only a subclass, and keeps the requirement.
+     *
      * @param array<array-key, mixed> $value
      */
-    private function resolveDiscriminatorTargetClass(string $baseClass, array $value, string $paramPath): ?string
+    private function resolveDiscriminatorTargetClass(string $baseClass, array $value, string $paramPath, bool $mustExtendBase = true): ?string
     {
         if (!class_exists($baseClass)) {
             return null;
@@ -4783,7 +4850,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             );
         }
 
-        if (!is_a($targetClass, $baseClass, true)) {
+        if ($mustExtendBase && !is_a($targetClass, $baseClass, true)) {
             throw new RuntimeException(
                 message: "Discriminator mapping class {$targetClass} must extend or implement {$baseClass}.",
             );

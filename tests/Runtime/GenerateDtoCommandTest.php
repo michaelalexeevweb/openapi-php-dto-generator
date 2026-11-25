@@ -5686,6 +5686,7 @@ final class GenerateDtoCommandTest extends TestCase
             'DtoValidatorInterface.php',
             'DtoDeserializer.php',
             'DtoDeserializerInterface.php',
+            'EmptyJsonObjectFields.php',
         ];
 
         foreach ($expectedFiles as $file) {
@@ -5694,6 +5695,23 @@ final class GenerateDtoCommandTest extends TestCase
             $content = (string)file_get_contents($path);
             $this->assertStringContainsString('namespace MyApp\Generated\Common;', $content);
             $this->assertStringNotContainsString('namespace OpenapiPhpDtoGenerator\\', $content);
+        }
+
+        // Every library class a copied file names is copied too: `EmptyJsonObjectFields` was added to the
+        // services in 2.15.148 and left out of the copy list, so vendored code died on `Class not found`.
+        $libraryClasses = [];
+        foreach ([...(glob(__DIR__ . '/../../src/Service/*.php') ?: []), ...(glob(__DIR__ . '/../../src/Contract/*.php') ?: [])] as $source) {
+            $libraryClasses[] = basename($source, '.php');
+        }
+        $copied = array_map(static fn(string $path): string => basename($path, '.php'), glob($commonDir . '/*.php') ?: []);
+        foreach ($copied as $copiedClass) {
+            $content = (string)file_get_contents($commonDir . '/' . $copiedClass . '.php');
+            foreach ($libraryClasses as $libraryClass) {
+                if ($libraryClass === 'DtoDeserializerPsr7' || preg_match('/\b' . $libraryClass . '::/', $content) !== 1) {
+                    continue;
+                }
+                $this->assertContains($libraryClass, $copied, $copiedClass . ' calls ' . $libraryClass . ', which is not copied');
+            }
         }
 
         // Self-namespace imports must be removed — same-namespace classes need no use statement

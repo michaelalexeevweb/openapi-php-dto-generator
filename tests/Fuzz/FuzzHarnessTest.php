@@ -103,6 +103,39 @@ final class FuzzHarnessTest extends TestCase
     }
 
     /**
+     * `{}` for an object that requires a key beside an `array` member, or for a bare list, is the `[]`
+     * yii3 decodes it to: tagged, and filed under the empty-container row for yii3 alone.
+     */
+    public function testAnEmptyObjectBesideAListIsTheEmptyContainerRow(): void
+    {
+        $object = ['t' => 'object', 'props' => ['dingo' => ['t' => 'string']], 'required' => ['dingo'], 'additional' => null];
+        $unions = [
+            'beside a list' => [['t' => 'union', 'op' => 'anyOf', 'branches' => [$object, ['t' => 'array', 'items' => ['t' => 'integer'], 'unique' => false]]], true],
+            'beside an integer' => [['t' => 'union', 'op' => 'anyOf', 'branches' => [$object, ['t' => 'integer']]], false],
+        ];
+        foreach ($unions as $label => [$union, $besideList]) {
+            // `mutations()` samples: a few seeds between them draw the missing key.
+            $empty = [];
+            foreach (range(1, 12) as $seed) {
+                foreach ((new InstanceGenerator(new FuzzRandom($seed)))->mutations($union) as $mutation) {
+                    if ($mutation['kind'] === 'missingRequired') {
+                        $empty[] = $mutation;
+                    }
+                }
+            }
+            $this->assertNotSame([], $empty, $label);
+            foreach ($empty as $mutation) {
+                $this->assertSame($besideList, in_array('emptyBesideArray', $mutation['tags'], true), $label);
+                $row = KnownDivergences::explain(mode: GenerationMode::Yii3, category: 'wrong-accept', kind: $mutation['kind'], tags: $mutation['tags']);
+                $this->assertSame($besideList, $row !== null, $label);
+            }
+        }
+        $tags = ['in:union', 'site:dto', 'emptyBesideArray'];
+        $this->assertNull(KnownDivergences::explain(mode: GenerationMode::Runtime, category: 'wrong-accept', kind: 'missingRequired', tags: $tags));
+        $this->assertNull(KnownDivergences::explain(mode: GenerationMode::Yii3, category: 'wrong-refuse', kind: 'missingRequired', tags: $tags));
+    }
+
+    /**
      * The row's shapes read off the shrunk document, not off the tags the original mutation carried.
      *
      * @param array<string, mixed> $schemas
@@ -141,6 +174,15 @@ final class FuzzHarnessTest extends TestCase
         yield 'null value of a map of classes' => [$probe(['zebu' => ['type' => 'object', 'additionalProperties' => $limeRef]], $lime), '{"zebu":{"ka":null}}', GenerationMode::Symfony, true];
         yield 'null for a class property is no item' => [$probe(['lemur' => $limeRef], $lime), '{"lemur":null}', GenerationMode::Symfony, false];
         yield 'scalar below a class property' => [$probe(['lemur' => $limeRef], $lime), '{"lemur":{"llama":5}}', GenerationMode::Symfony, false];
+        $puffin = ['anyOf' => [
+            ['type' => 'object', 'properties' => ['dingo' => ['type' => 'string']], 'required' => ['dingo']],
+            ['type' => 'array', 'items' => ['type' => 'integer']],
+        ]];
+        yield 'empty object beside a list, yii3' => [$probe(['puffin' => $puffin]), '{"puffin":{}}', GenerationMode::Yii3, true];
+        yield 'empty object for a list, yii3' => [$probe(['toucan' => ['type' => 'array']]), '{"toucan":{}}', GenerationMode::Yii3, true];
+        yield 'empty object beside a list, runtime' => [$probe(['puffin' => $puffin]), '{"puffin":{}}', GenerationMode::Runtime, false];
+        yield 'non-empty object beside a list, yii3' => [$probe(['puffin' => $puffin]), '{"puffin":{"zz":1}}', GenerationMode::Yii3, false];
+        yield 'empty object without a list member, yii3' => [$probe(['puffin' => ['type' => 'object', 'required' => ['dingo']]]), '{"puffin":{}}', GenerationMode::Yii3, false];
         yield 'string item of a list of strings' => [$probe(['lemur' => ['type' => 'array', 'items' => ['type' => 'string', 'maxLength' => 1]]]), '{"lemur":["xyz"]}', GenerationMode::Symfony, false];
     }
 

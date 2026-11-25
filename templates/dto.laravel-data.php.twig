@@ -171,19 +171,36 @@ abstract class {{ className }} extends {{ morphBase.dataBase }} implements {{ mo
             return [$path . '.{{ key|php_string }}' => sprintf('%s.{{ key|php_string }} expects string, got %s.', $path, get_debug_type($discriminator))];
         }
 {% endfor %}
-{% if morphBase.reachingMembers is empty %}
-
-        return [];
-{% else %}
-
+        $member = self::morph(['{{ morphBase.property|php_string }}' => $value['{{ morphBase.propertyName|php_string }}'] ?? null]);
+{% if morphBase.reachingMembers is not empty %}
         // The member the discriminator names may hold a union of its own.
-        return match (self::morph(['{{ morphBase.property|php_string }}' => $value['{{ morphBase.propertyName|php_string }}'] ?? null])) {
+        $errors = match ($member) {
 {% for member in morphBase.reachingMembers %}
             {{ member }}::class => {{ member }}::openApiMorphNodeErrors($value, $path),
 {% endfor %}
             default => [],
         };
+        if ($errors !== []) {
+            return $errors;
+        }
 {% endif %}
+        if (!$isItem || $member === null) {
+            return [];
+        }
+
+        // laravel-data builds a list item or a map value as the member its discriminator names, and
+        // validates nothing of it first: `{"kind": "cat", "paw": "x"}` reached the constructor, a
+        // `TypeError`. The member's own validation answers for it, as it does for a property.
+        $errors = [];
+        try {
+            $member::validate($value);
+        } catch ({{ morphBase.guard.exceptionRef }} $exception) {
+            foreach ($exception->errors() as $key => $messages) {
+                $errors[$path . '.' . $key] = (string)($messages[0] ?? '');
+            }
+        }
+
+        return $errors;
     }
 }
 {% elseif unionMembers is not null %}
@@ -872,13 +889,14 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');

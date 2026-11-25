@@ -551,10 +551,12 @@ trait RendersLaravelDto
         // 500 on every valid object.
         $unionDtoMember = $this->unionClassBesideScalars($param['declaredType']);
         if ($unionDtoMember !== null) {
-            // Beside an `array` member the class is the array with keys — a list stays the list.
+            // Beside an `array` member the class is the array with keys — a list stays the list — and
+            // beside a free-form object too, only the one the class accepts.
+            $classMatch = $this->laravelClassMatchCondition($property, sprintf('$data[%s]', $key));
             $raw = sprintf(
                 $this->unionHasArrayMember($param['declaredType'])
-                    ? '(is_array(%1$s) && !array_is_list(%1$s) ? %2$s : (%3$s))'
+                    ? '(is_array(%1$s) && !array_is_list(%1$s)' . ($classMatch === null ? '' : ' && ' . $classMatch) . ' ? %2$s : (%3$s))'
                     : '(is_array(%1$s) ? %2$s : (%3$s))',
                 sprintf('$data[%s]', $key),
                 $this->laravelNestedDtoExpression(

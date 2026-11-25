@@ -1,4 +1,4 @@
-# laravel mode — 106 files, 31213 lines
+# laravel mode — 106 files, 31233 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -10580,13 +10580,14 @@ final class ApplicatorRefs implements JsonSerializable
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -11445,13 +11446,14 @@ final class ApplicatorRefsConditional implements JsonSerializable
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -12026,13 +12028,14 @@ final class ApplicatorRefsKeyed implements JsonSerializable
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -12582,13 +12585,14 @@ final class ApplicatorRefsPoisonedKey implements JsonSerializable
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -14367,13 +14371,14 @@ final class ChainLink implements JsonSerializable
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -14963,13 +14968,14 @@ final class ChainMiddle implements JsonSerializable
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -16891,13 +16897,14 @@ final class Containers implements JsonSerializable
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -17445,13 +17452,14 @@ final class CountMap implements JsonSerializable
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -19564,13 +19572,14 @@ final class ItemBounds implements JsonSerializable
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -19969,7 +19978,7 @@ final class NestedContainers implements JsonSerializable
      * @param ?array<string, array<string>> $listsByKey
      * @param ?array<string, array<string, int>> $mapsByKey
      * @param ?array<array<string>> $dateRows
-     * @param array<array<float|int>>|null $numRows
+     * @param ?array<array<float|int>> $numRows
      * @param ?array<array<string>> $enumRows
      * @param ?array<array<Tag>> $tagRows
      */
@@ -20398,7 +20407,7 @@ final class NestedContainers implements JsonSerializable
     }
 
     /**
-     * @return array<array<float|int>>|null
+     * @return ?array<array<float|int>>
      */
     public function getNumRows(): ?array
     {
@@ -20472,13 +20481,14 @@ final class NestedContainers implements JsonSerializable
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -21612,13 +21622,14 @@ final class ObjectWideRules implements JsonSerializable
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -22139,6 +22150,7 @@ use function is_array;
 use function is_bool;
 use function is_finite;
 use function is_float;
+use function is_object;
 use function is_string;
 use function json_decode;
 use function preg_match;
@@ -22525,13 +22537,14 @@ final class ReadOnlyFields implements JsonSerializable
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -24694,13 +24707,14 @@ final class Test2 implements JsonSerializable
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -26167,13 +26181,14 @@ final class TestPostRequest implements JsonSerializable
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -27230,13 +27245,14 @@ final class TreeNode implements JsonSerializable
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -28473,13 +28489,14 @@ final class UnionUnderContainer implements JsonSerializable
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -29302,13 +29319,14 @@ final class UniqueScalars implements JsonSerializable
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -30085,13 +30103,14 @@ final class User implements JsonSerializable
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -30837,13 +30856,14 @@ final class User2 implements JsonSerializable
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');

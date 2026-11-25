@@ -670,7 +670,9 @@ final class FuzzRunner
      * - a scalar where the schema, or a union member of it, is a generated class ("a scalar for a
      *   property typed as a generated class": symfony);
      * - `null` or a scalar ITEM of a list, or VALUE of a map, of such classes ("a non-object ITEM of a
-     *   list or map of DTOs": symfony builds an empty object).
+     *   list or map of DTOs": symfony builds an empty object);
+     * - `{}` where the schema, or a union member of it, is a list ("an EMPTY JSON container": yii3 reads
+     *   `{}` and `[]` as one).
      *
      * The walk follows the value into the properties, items and map values it sends, and into union
      * members.
@@ -710,6 +712,14 @@ final class FuzzRunner
         }
         if (is_array($value) && self::hasMember(schema: $schema, schemas: $schemas, test: self::isObjectShaped(...))) {
             return 'support matrix: "a JSON array for a `type: object` property"';
+        }
+        if (
+            $mode === GenerationMode::Yii3
+            && $value instanceof stdClass
+            && get_object_vars($value) === []
+            && self::hasMember(schema: $schema, schemas: $schemas, test: self::isListShaped(...))
+        ) {
+            return 'support matrix: "an EMPTY JSON container: `[]` for an object, `{}` for a list or for the object member of a union beside an `array` member"';
         }
         $scalar = $value !== null && !is_array($value) && !$value instanceof stdClass;
         if ($mode === GenerationMode::Symfony && $scalar && self::hasMember(schema: $schema, schemas: $schemas, test: self::isClassShaped(...))) {
@@ -849,6 +859,28 @@ final class FuzzRunner
         }
 
         return false;
+    }
+
+    /**
+     * Whether a schema admits a JSON list by its `type`, followed through a `$ref`.
+     *
+     * @param array<string, mixed> $schemas
+     */
+    private static function isListShaped(mixed $schema, array $schemas, int $depth): bool
+    {
+        if (!is_array($schema) || $depth > 8) {
+            return false;
+        }
+        if (is_string($schema['$ref'] ?? null)) {
+            return self::isListShaped(
+                schema: $schemas[substr($schema['$ref'], strlen('#/components/schemas/'))] ?? [],
+                schemas: $schemas,
+                depth: $depth + 1,
+            );
+        }
+        $type = $schema['type'] ?? null;
+
+        return $type === 'array' || (is_array($type) && in_array('array', $type, true));
     }
 
     /**

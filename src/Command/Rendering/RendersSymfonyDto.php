@@ -85,6 +85,90 @@ trait RendersSymfonyDto
     }
 
     /**
+     * A property whose `oneOf`/`anyOf` holds a list of a UNION component beside `null` or a scalar
+     * (`oneOf: [{type: array, items: {$ref: Shape}}, {type: integer}]`), typed as that list:
+     * `array<Shape>|int`.
+     *
+     * Typed `array|int`, the serializer kept the items as decoded arrays, and nothing judged them: a
+     * union component is not spelled out below the property in this mode (the serializer builds its
+     * variants wherever the list is typed — `nestedObjectRefDefinition()`), so the items were left
+     * `{type: array}`. `{"quokka": [{"kind": "square", "side": -1}]}` passed a `minimum: 0`, and a tag
+     * the mapping does not name passed too. Typed, the variants are built through the discriminator
+     * map and cascaded into, as for `type: [array, "null"]`. A list of a plain class is spelled out
+     * already and stays as it was.
+     *
+     * @param array<int, SchemaProperty> $properties
+     * @return array<int, SchemaProperty>
+     */
+    private function symfonyWithUnionListsTyped(string $className, array $properties): array
+    {
+        $schemaProperties = $this->dtoSchemas[$className]['properties'] ?? null;
+        if (!is_array($schemaProperties)) {
+            return $properties;
+        }
+        foreach ($properties as $index => $property) {
+            $schema = $schemaProperties[$property['openApiName']] ?? null;
+            $members = $this->topLevelTypeMembers(ltrim($property['type'], '?'));
+            if (!is_array($schema) || count(array_keys($members, 'array', true)) !== 1) {
+                continue;
+            }
+            $itemClass = $this->symfonyUnionListItemClass($schema, $className);
+            if ($itemClass === null) {
+                continue;
+            }
+            $typed = array_map(
+                callback: static fn(string $member): string => $member === 'array' ? 'array<' . $itemClass . '>' : $member,
+                array: $members,
+            );
+            $properties[$index]['type'] = (str_starts_with($property['type'], '?') ? '?' : '') . implode('|', $typed);
+        }
+
+        return $properties;
+    }
+
+    /**
+     * The union component the one list member of a property's `oneOf`/`anyOf` holds, or null.
+     *
+     * @param array<mixed> $schema
+     */
+    private function symfonyUnionListItemClass(array $schema, string $className): ?string
+    {
+        $found = null;
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            $branches = $schema[$keyword] ?? null;
+            if (!is_array($branches)) {
+                continue;
+            }
+            foreach ($branches as $branch) {
+                if (!is_array($branch)) {
+                    continue;
+                }
+                $type = $branch['type'] ?? null;
+                if ($type !== 'array' && !(is_array($type) && in_array('array', $type, true))) {
+                    continue;
+                }
+                $items = is_array($branch['items'] ?? null) ? $branch['items'] : [];
+                $ref = $items['$ref'] ?? null;
+                if ($found !== null || !is_string($ref) || array_keys($items) !== ['$ref']) {
+                    return null;
+                }
+                $itemClass = $this->schemaRefToClassName(ref: $ref, currentSourceFile: $this->getSchemaSourceFile($className));
+                $definition = $this->dtoSchemas[$itemClass] ?? null;
+                if (
+                    !is_array($definition)
+                    || ((!is_array($definition['oneOf'] ?? null) || $definition['oneOf'] === [])
+                        && (!is_array($definition['anyOf'] ?? null) || $definition['anyOf'] === []))
+                ) {
+                    return null;
+                }
+                $found = $itemClass;
+            }
+        }
+
+        return $found;
+    }
+
+    /**
      * Renders a DTO in Symfony mode: a plain data class with promoted public readonly
      * constructor properties decorated with Symfony Validator (#[Assert\*]) and Serializer
      * (#[SerializedName]) attributes. No library runtime, interface, or normalization map.
@@ -126,6 +210,8 @@ trait RendersSymfonyDto
                 sharedProperties: $properties,
             );
         }
+
+        $properties = $this->symfonyWithUnionListsTyped($className, $properties);
 
         $useStatements = [];
         if ($this->needsDateTimeImmutableImport($properties)) {
@@ -992,7 +1078,15 @@ PHP;
 
         if (str_contains($phpType, '<')) {
             $docType = $this->formatDocblockTypeForNamespace($phpType, $namespace);
-            $phpType = 'array';
+            // A list beside other members (`array<Shape>|int`, see `symfonyWithUnionListsTyped()`)
+            // keeps them natively; a list alone is `array`, its nullability the schema's below.
+            $nativeMembers = array_map(
+                callback: static fn(string $member): string => str_contains($member, '<') ? 'array' : $member,
+                array: $this->topLevelTypeMembers(ltrim($phpType, '?')),
+            );
+            $phpType = count($nativeMembers) > 1
+                ? $this->formatPhpTypeForNamespace(implode('|', $nativeMembers), $namespace)
+                : 'array';
         } else {
             $phpType = $this->formatPhpTypeForNamespace($phpType, $namespace);
         }
@@ -1069,14 +1163,14 @@ PHP;
         // admits every value, null included, and keeps the old reading.
         $nullRefusedByCallback = false;
         $untypedRequiredObject = false;
-        $targetType = $this->dtoSchemas[ltrim($property['type'], '?\\')]['type'] ?? null;
-        $targetPinsObject = $targetType === 'object'
-            || (is_array($targetType) && in_array('object', $targetType, true) && !in_array('null', $targetType, true));
+        // Through `allOf` too: `allOf: [{type: object, properties: …}]` builds a class whose own schema
+        // names no `type`, and `{"lemur": null}` passed as an empty object.
+        $targetPinsObject = $this->symfonySchemaPinsObject($this->dtoSchemas[ltrim($property['type'], '?\\')] ?? []);
         // A union with a class member (`string|Leaf`) is read the same way: the serializer turned the
         // null into `new Leaf()` — the optional case only, a required union keeps its typed parameter.
         $unionClass = $this->unionClassBesideScalars($property['type']);
-        $unionTargetType = $unionClass === null ? null : ($this->dtoSchemas[$unionClass]['type'] ?? null);
-        if (!$schemaNullable && !$required && $defaultLiteral === ' = null' && $unionTargetType === 'object') {
+        $unionTargetPinsObject = $unionClass !== null && $this->symfonySchemaPinsObject($this->dtoSchemas[$unionClass] ?? []);
+        if (!$schemaNullable && !$required && $defaultLiteral === ' = null' && $unionTargetPinsObject) {
             $inputType = $this->composePhpTypeHint($phpType, true);
             $nullRefusedByCallback = true;
         }
@@ -1182,6 +1276,35 @@ PHP;
                     && $this->unionHasArrayMember($property['type']),
             ),
         ];
+    }
+
+    /**
+     * Whether a class schema admits objects only: its own `type` is `object` (or a list of it without
+     * `null`), or one `allOf` part — every part must hold — pins it so. A part `nullable: true` pins nothing.
+     *
+     * @param array<mixed> $schema
+     */
+    private function symfonySchemaPinsObject(array $schema, int $depth = 0): bool
+    {
+        // The class's own `nullable` is the property's to answer (`$schemaNullable`), as before.
+        if ($depth > 0 && ($schema['nullable'] ?? false) === true) {
+            return false;
+        }
+        $type = $schema['type'] ?? null;
+        if ($type === 'object' || (is_array($type) && in_array('object', $type, true) && !in_array('null', $type, true))) {
+            return true;
+        }
+        $allOf = $schema['allOf'] ?? null;
+        if ($type !== null || !is_array($allOf) || $depth > 8) {
+            return false;
+        }
+        foreach ($allOf as $part) {
+            if (is_array($part) && $this->symfonySchemaPinsObject($part, $depth + 1)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -1965,10 +2088,17 @@ PHP;
         }
 
         $members = [];
-        foreach (explode('|', $type) as $member) {
-            $member = ltrim(trim($member), '?');
-            if ($member !== '' && $member !== 'null') {
-                $members[] = $member;
+        foreach ($this->topLevelTypeMembers($type) as $member) {
+            // A list beside other members (`array<Shape>|int`) holds its items as surely as a list
+            // alone does.
+            while (preg_match('/^array<(?:[^,<>]+,\s*)?(.+)>$/', $member, $matches) === 1) {
+                $member = ltrim(trim($matches[1]), '?');
+            }
+            foreach (explode('|', $member) as $inner) {
+                $inner = ltrim(trim($inner), '?');
+                if ($inner !== '' && $inner !== 'null') {
+                    $members[] = $inner;
+                }
             }
         }
 
@@ -2026,7 +2156,15 @@ PHP;
                 continue;
             }
             $name = $property['name'];
-            $lines[] = sprintf('        if (is_object($this->%s)) {', $name);
+            // A list member (`array<Shape>|int`) is cascaded into the same way: the validator walks
+            // the objects of an array it is given.
+            $holdsList = false;
+            foreach ($this->topLevelTypeMembers(ltrim($property['type'], '?')) as $member) {
+                $holdsList = $holdsList || str_starts_with($member, 'array<');
+            }
+            $lines[] = $holdsList
+                ? sprintf('        if (is_object($this->%1$s) || is_array($this->%1$s)) {', $name)
+                : sprintf('        if (is_object($this->%s)) {', $name);
             $lines[] = sprintf("            \$context->getValidator()->inContext(\$context)->atPath('%s')->validate(\$this->%s, null, \$context->getGroup());", $name, $name);
             $lines[] = '        }';
         }

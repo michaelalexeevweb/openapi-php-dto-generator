@@ -16335,7 +16335,7 @@ final class NestedContainers implements GeneratedDtoInterface, Stringable
     private bool $dateRowsInHeader = false;
     private bool $dateRowsInCookie = false;
     /**
-     * @var array<array<float|int>>|null
+     * @var ?array<array<float|int>>
      */
     private ?array $numRows;
     private bool $numRowsInRequest = false;
@@ -16368,7 +16368,7 @@ final class NestedContainers implements GeneratedDtoInterface, Stringable
      * @param ?array<string, array<string>> $listsByKey
      * @param ?array<string, array<string, int>> $mapsByKey
      * @param ?array<array<string>> $dateRows
-     * @param array<array<float|int>>|null $numRows
+     * @param ?array<array<float|int>> $numRows
      * @param ?array<array<string>> $enumRows
      * @param ?array<array<Tag>> $tagRows
      */
@@ -16643,7 +16643,7 @@ final class NestedContainers implements GeneratedDtoInterface, Stringable
     }
 
     /**
-     * @return array<array<float|int>>|null
+     * @return ?array<array<float|int>>
      */
     public function getNumRows(): ?array
     {
@@ -16974,7 +16974,7 @@ final class NestedContainers implements GeneratedDtoInterface, Stringable
                 'writeOnly' => false,
                 'readOnly' => false,
                 'isParameter' => false,
-                'arrayItemType' => 'array<array<float|int>>|null',
+                'arrayItemType' => '?array<array<float|int>>',
             ],
         ];
         $map['enumRows'] = [

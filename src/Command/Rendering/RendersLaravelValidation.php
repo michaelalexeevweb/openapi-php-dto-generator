@@ -696,6 +696,15 @@ trait RendersLaravelValidation
         $itemPath = $this->laravelPathSegment($property['openApiName']) . '.*';
         $paths = $rules === [] ? [] : [$itemPath => $rules];
 
+        // The item's own PROPERTIES, where it is an object no class was generated for: `items: {allOf:
+        // [{type: object, properties: …}], nullable: true}` folds into such an object. The prune counts
+        // them as covered by a rule, so without these `[{"walrus": 5}]` passed both halves.
+        if (is_array($itemSchema) && $this->laravelWildcardReaches($constraints, 'items')) {
+            foreach ($this->laravelObjectPropertyRules($itemSchema, $itemPath, 2) as $propertyPath => $propertyRules) {
+                $paths[$propertyPath] = $propertyRules;
+            }
+        }
+
         // And a container INSIDE the container. Laravel's dotted paths go as deep as the schema does;
         // stopping at one `.*` said `matrix.*` is an array and then checked its members with nothing —
         // while `laravelUnconsumedKeywords()` was already pruning those keywords from the interpreter
@@ -745,7 +754,30 @@ trait RendersLaravelValidation
         // `present`/`sometimes` are dropped for the same reason `laravelNestedRules()` drops them: a
         // nested property's PRESENCE is not expressible as a rule — both candidates fire when the
         // parent is absent or null — so `required` stays with the interpreter.
-        foreach ($nested['properties'] ?? [] as $propertyName => $propertySchema) {
+        foreach ($this->laravelObjectPropertyRules($nested, $path, $hop + 1) as $propertyPath => $propertyRules) {
+            $paths[$propertyPath] = $propertyRules;
+        }
+
+        foreach ($this->laravelDeepItemRules($nested, $path, $hop + 1) as $deepPath => $deepRules) {
+            $paths[$deepPath] = $deepRules;
+        }
+
+        return $paths;
+    }
+
+    /**
+     * The rules of an object's own properties under `$path`, and of the containers below them, for an
+     * object no class was generated for.
+     *
+     * @param array<array-key, mixed> $object
+     * @param int $hop the hop of the containers below these properties
+     * @return array<string, array<int, string>>
+     */
+    private function laravelObjectPropertyRules(array $object, string $path, int $hop): array
+    {
+        $paths = [];
+        $properties = $object['properties'] ?? null;
+        foreach (is_array($properties) ? $properties : [] as $propertyName => $propertySchema) {
             if (!is_string($propertyName) || !is_array($propertySchema)) {
                 continue;
             }
@@ -759,13 +791,9 @@ trait RendersLaravelValidation
                 $paths[$propertyPath] = $propertyRules;
             }
 
-            foreach ($this->laravelDeepItemRules($propertySchema, $propertyPath, $hop + 1) as $p => $r) {
+            foreach ($this->laravelDeepItemRules($propertySchema, $propertyPath, $hop) as $p => $r) {
                 $paths[$p] = $r;
             }
-        }
-
-        foreach ($this->laravelDeepItemRules($nested, $path, $hop + 1) as $deepPath => $deepRules) {
-            $paths[$deepPath] = $deepRules;
         }
 
         return $paths;
@@ -1317,6 +1345,15 @@ trait RendersLaravelValidation
             $constraints[$property['openApiName']] = $folded;
         }
 
+        // The class of a union beside a free-form object is built only from a value it matches, which
+        // the hydrator asks the interpreter: its whole fold, the way a cycle's is stored.
+        foreach ($properties as $property) {
+            $matchedClass = $this->laravelUnionClassBesideFreeFormObject($property);
+            if ($matchedClass !== null) {
+                $this->laravelRecordRecursiveFold($matchedClass);
+            }
+        }
+
         // Root assertions and property assertions occupy separate slots. Every JSON property name
         // is legal here, including the old sentinel and the names of these storage slots themselves.
         return [
@@ -1347,6 +1384,9 @@ trait RendersLaravelValidation
                 $objectLevel[$keyword] = $extracted[$keyword];
             }
         }
+        // The `anyOf` / `oneOf` a class judges itself by as a whole — beside its `allOf`, or arms that
+        // only name which declared key is required. Carried nowhere, the root accepted `{}`.
+        $objectLevel = [...$objectLevel, ...$this->classLevelUnionsBesideAllOf(className: $className, extracted: $extracted)];
 
         $objectLevel = $this->laravelWithClosedObjectFlag(
             schema: $schema,
@@ -2063,10 +2103,17 @@ trait RendersLaravelValidation
                 );
             }
             $containerKey = $this->laravelContainerValueKey($property);
-            $schema[$containerKey] = [
+            $marked = [
                 ...(is_array($schema[$containerKey] ?? null) ? $schema[$containerKey] : []),
                 'x-openapi-recurse' => $shared['key'],
             ];
+            // A null item of `array<?Shape>`: the fold of a discriminated union asserts `type: object`,
+            // which refused the null the items admit. Let through the way `laravelWithNullableNestedMarker()`
+            // lets a property's: `nullable` beside a typed fold, a null branch beside a bare union.
+            if ($this->laravelItemsNullable($property)) {
+                $marked = $this->laravelFoldIsUnion($shared['fold']) ? $this->laravelUnionOrNull($marked) : [...$marked, 'nullable' => true];
+            }
+            $schema[$containerKey] = $marked;
 
             return $schema;
         }
@@ -2748,8 +2795,10 @@ trait RendersLaravelValidation
     /**
      * Whether a `oneOf` / `anyOf` has an object member and no member a JSON array could match:
      * `anyOf: [{type: object}, {type: string}]`. Decoded, `[2]` satisfied the object member there, so
-     * the raw body is asked instead, as for a plain `type: object`. A member that names no type admits
-     * an array, and so does one that names `array`: such a union stays the interpreter's.
+     * the raw body is asked instead, as for a plain `type: object`. A member's type is read through
+     * its nested `allOf` / `anyOf` / `oneOf` too: `anyOf: [{anyOf: [{type: object}, {type: integer}]}]`
+     * refuses `[2]` as the flat spelling does. A member whose type cannot be told admits an array, and
+     * so does one that names `array`: such a union stays the interpreter's.
      *
      * @param array<array-key, mixed> $schema
      */
@@ -2770,10 +2819,12 @@ trait RendersLaravelValidation
 
                     continue;
                 }
-                $type = $member['type'] ?? null;
-                $types = is_array($type) ? $type : [$type];
-                if ($type === null || $type === [] || in_array('array', $types, true) || in_array('object', $types, true)) {
+                $types = $this->laravelAdmittedJsonTypes($member);
+                if ($types === null || in_array('array', $types, true)) {
                     return false;
+                }
+                if (in_array('object', $types, true)) {
+                    $hasObjectMember = true;
                 }
             }
 
@@ -2781,6 +2832,120 @@ trait RendersLaravelValidation
         }
 
         return false;
+    }
+
+    /**
+     * The class of a `Lime|array` union whose document also admits an object the class may refuse —
+     * `anyOf: [{$ref: Lime}, {type: object}]`. Any array with keys used to be built into the class, and
+     * `{"any": 1}`, valid as the free-form member, died in the constructor: a 500. Such a union builds
+     * the class only from a value the class's own schema accepts (see `laravelClassMatchCondition()`).
+     *
+     * @param SchemaProperty $property
+     */
+    private function laravelUnionClassBesideFreeFormObject(array $property): ?string
+    {
+        $class = $this->unionClassBesideScalars($property['type']);
+        if ($class === null || !$this->unionHasArrayMember($property['type'])) {
+            return null;
+        }
+
+        // The class member is a `$ref`, or already inlined as one of the object-admitting members — so
+        // without a `$ref` it takes two of those for one to be free-form.
+        $constraints = $property['constraints'] ?? [];
+        foreach (['anyOf', 'oneOf'] as $keyword) {
+            $members = $constraints[$keyword] ?? null;
+            if (!is_array($members)) {
+                continue;
+            }
+            $classReferenced = false;
+            $objectMembers = 0;
+            foreach ($members as $member) {
+                if (!is_array($member)) {
+                    continue;
+                }
+                if (array_key_exists('$ref', $member)) {
+                    $classReferenced = true;
+
+                    continue;
+                }
+                $types = $this->laravelAdmittedJsonTypes($member);
+                if ($types === null || in_array('object', $types, true)) {
+                    $objectMembers++;
+                }
+            }
+            if ($objectMembers >= ($classReferenced ? 1 : 2)) {
+                return $class;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The PHP condition, beside the "array with keys" test, under which `$valueAccess` is built into
+     * the union's class; `null` where every such array is the class.
+     *
+     * @param SchemaProperty $property
+     */
+    private function laravelClassMatchCondition(array $property, string $valueAccess): ?string
+    {
+        $class = $this->laravelUnionClassBesideFreeFormObject($property);
+
+        return $class === null
+            ? null
+            : sprintf("self::validateOpenApiNode(%s, ['x-openapi-recurse' => %s], '', 0) === []", $valueAccess, $this->phpStringLiteral($class));
+    }
+
+    /**
+     * The JSON types a subschema admits, read through its nested `allOf` (every part must hold, so the
+     * types the typed parts share) and `anyOf` / `oneOf` (any member may, so all of them); `null` when
+     * that cannot be told — a member with no type, a `$ref`.
+     *
+     * @param array<array-key, mixed> $schema
+     * @return array<int, string>|null
+     */
+    private function laravelAdmittedJsonTypes(array $schema): ?array
+    {
+        $type = $schema['type'] ?? null;
+        if (is_string($type)) {
+            $types = [$type];
+        } elseif (is_array($type) && $type !== []) {
+            $types = array_values(array_filter(array: $type, callback: 'is_string'));
+        } else {
+            $types = null;
+        }
+        // `integer` is a `number`; the two only matter here as "not a container".
+        $types = $types !== null && in_array('number', $types, true) ? [...$types, 'integer'] : $types;
+
+        foreach (['anyOf', 'oneOf'] as $keyword) {
+            $members = $schema[$keyword] ?? null;
+            if (!is_array($members) || $members === []) {
+                continue;
+            }
+            $admitted = [];
+            foreach ($members as $member) {
+                $memberTypes = is_array($member) ? $this->laravelAdmittedJsonTypes($member) : null;
+                if ($memberTypes === null) {
+                    $admitted = null;
+
+                    break;
+                }
+                $admitted = [...$admitted, ...$memberTypes];
+            }
+            if ($admitted !== null) {
+                $types = $types === null ? $admitted : array_values(array_intersect($types, $admitted));
+            }
+        }
+
+        $parts = $schema['allOf'] ?? null;
+        foreach (is_array($parts) ? $parts : [] as $part) {
+            $partTypes = is_array($part) ? $this->laravelAdmittedJsonTypes($part) : null;
+            if ($partTypes !== null) {
+                $types = $types === null ? $partTypes : array_values(array_intersect($types, $partTypes));
+            }
+        }
+
+        return $types === null ? null : array_values(array_unique($types));
     }
 
     /**

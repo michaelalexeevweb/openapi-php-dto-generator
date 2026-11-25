@@ -431,6 +431,7 @@ trait RendersLaravelDataDto
             'requestRef' => $this->libraryClassRef('Illuminate\Http\Request', $namespace, $useStatements),
             'ruleRef' => $this->libraryClassRef('Illuminate\Validation\Rule', $namespace, $useStatements),
             'validatorRef' => $this->libraryClassRef('Illuminate\Support\Facades\Validator', $namespace, $useStatements),
+            'exceptionRef' => $this->libraryClassRef('Illuminate\Validation\ValidationException', $namespace, $useStatements),
             // `strval`: a numeric discriminator value is an INT key once PHP has the mapping.
             'values' => '[' . implode(', ', array_map(
                 callback: $this->phpStringLiteral(...),
@@ -927,10 +928,12 @@ trait RendersLaravelDataDto
         // that only the class can be (beside a list: the array with keys), as the enum gets its case.
         $unionDataClass = $enumItemClass === null ? $this->laravelDataUnionClassToBuild($property['type']) : null;
         if ($unionDataClass !== null) {
+            // Beside a free-form object member, only the object the class accepts is the class.
+            $classMatch = $this->laravelClassMatchCondition($property, $variable);
             $enumCast = sprintf(
                 '%s ? %s::from(%s) : (%s)',
                 $this->unionHasArrayMember($property['type'])
-                    ? sprintf('is_array(%1$s) && !array_is_list(%1$s)', $variable)
+                    ? sprintf('is_array(%1$s) && !array_is_list(%1$s)', $variable) . ($classMatch === null ? '' : ' && ' . $classMatch)
                     : sprintf('is_array(%s)', $variable),
                 $unionDataClass,
                 $variable,

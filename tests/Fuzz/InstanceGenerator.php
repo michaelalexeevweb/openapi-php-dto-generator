@@ -396,7 +396,17 @@ final class InstanceGenerator
         }
         $common = [...$common, ...$this->wrongTypes($node, $site, self::classMemberTags($node))];
 
-        return $this->random->sample([...$common, ...$own], self::MUTATIONS_PER_NODE);
+        // `{}` where the node also admits a list — the object member of a union beside an `array`
+        // member, or a bare `type: array` — is `[]` once a framework decodes it to a PHP array.
+        $admitsArray = in_array('array', self::admittedTypes($node), true);
+        $tagged = array_map(
+            callback: static fn(array $mutation): array => $admitsArray && $mutation['value'] instanceof stdClass && get_object_vars($mutation['value']) === []
+                ? [...$mutation, 'tags' => [...$mutation['tags'], 'emptyBesideArray']]
+                : $mutation,
+            array: [...$common, ...$own],
+        );
+
+        return $this->random->sample($tagged, self::MUTATIONS_PER_NODE);
     }
 
     /**

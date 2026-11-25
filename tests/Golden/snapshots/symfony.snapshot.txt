@@ -8015,7 +8015,7 @@ final class NestedContainers
     private bool $dateRowsProvided = false;
 
     /**
-     * @var array<array<float|int>>|null
+     * @var ?array<array<float|int>>
      */
     #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
@@ -8158,7 +8158,7 @@ final class NestedContainers
     }
 
     /**
-     * @return array<array<float|int>>|null
+     * @return ?array<array<float|int>>
      */
     public function getNumRows(): ?array
     {
@@ -8247,7 +8247,7 @@ final class NestedContainers
      * @param ?array<string, array<string>> $listsByKey
      * @param ?array<string, array<string, int>> $mapsByKey
      * @param ?array<array<string>> $dateRows
-     * @param array<array<float|int>>|null $numRows
+     * @param ?array<array<float|int>> $numRows
      * @param ?array<array<string>> $enumRows
      * @param ?array<array<Tag>> $tagRows
      */

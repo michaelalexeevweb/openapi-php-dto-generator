@@ -254,7 +254,10 @@ final class DtoNormalizer implements DtoNormalizerInterface
 
         try {
             // Seed the cycle guard with this root so a self-reference in its own payload is caught.
-            return $this->applyOutputExclusions($dto, $this->normalizeArrayPayload($result, [spl_object_id($dto) => true]));
+            return $this->withEmptyJsonObjectsRestored(
+                dto: $dto,
+                normalized: $this->applyOutputExclusions($dto, $this->normalizeArrayPayload($result, [spl_object_id($dto) => true])),
+            );
         } catch (LogicException | RuntimeException) {
             // Fast-path is opportunistic; on an EXPECTED normalization failure (a not-provided
             // field, an unnormalizable value, or a circular reference) fall back to the
@@ -263,6 +266,29 @@ final class DtoNormalizer implements DtoNormalizerInterface
             // dtoToArray()'s behaviour instead of silently masking a bug behind the slow path.
             return null;
         }
+    }
+
+    /**
+     * `{}` the deserializer put into an `array`-typed union field (`anyOf: [{type: array}, {type:
+     * object}]`) is the empty PHP array, which `json_encode()` writes as `[]` — the deserializer noted
+     * it in {@see EmptyJsonObjectFields}, and it is written as the object it arrived as.
+     *
+     * @param array<array-key, mixed> $normalized
+     * @return array<array-key, mixed>
+     */
+    private function withEmptyJsonObjectsRestored(object $dto, array $normalized): array
+    {
+        $fields = EmptyJsonObjectFields::of($dto);
+        if ($fields === []) {
+            return $normalized;
+        }
+        foreach ($this->getClassMeta($dto)['getters'] as $getter) {
+            if (array_key_exists($getter['propertyName'], $fields) && ($normalized[$getter['outputName']] ?? null) === []) {
+                $normalized[$getter['outputName']] = new stdClass();
+            }
+        }
+
+        return $normalized;
     }
 
     /**
@@ -610,6 +636,10 @@ final class DtoNormalizer implements DtoNormalizerInterface
                         schema: $meta['constraintsByField'][$getterMeta['propertyName']] ?? [],
                     );
                 }
+                // `{}` the deserializer put into an `array`-typed union field: see withEmptyJsonObjectsRestored().
+                if ($normalized === [] && array_key_exists($getterMeta['propertyName'], EmptyJsonObjectFields::of($dto))) {
+                    $normalized = new stdClass();
+                }
                 $result[$getterMeta['outputName']] = $normalized;
             } catch (Throwable $e) {
                 if (!$rawValue instanceof File) {
@@ -769,7 +799,10 @@ final class DtoNormalizer implements DtoNormalizerInterface
                     // Strip write-only fields of the nested DTO too (mirrors the root path in
                     // tryFastArray). Generated toArray() already omits them, so this is a
                     // belt-and-suspenders guard against an inconsistent hand-written toArray().
-                    $normalized = $this->applyOutputExclusions($value, $this->normalizeArrayPayload($arrayValue, $visited));
+                    $normalized = $this->withEmptyJsonObjectsRestored(
+                        dto: $value,
+                        normalized: $this->applyOutputExclusions($value, $this->normalizeArrayPayload($arrayValue, $visited)),
+                    );
 
                     // An object with nothing to write is `{}`, not `[]`. PHP spells both as the empty
                     // array, and the only place that still knows the schema said `type: object` is
@@ -975,11 +1008,27 @@ final class DtoNormalizer implements DtoNormalizerInterface
             return null;
         }
 
+        // A list item of a discriminated union may be a member two such unions share, which extends
+        // neither base (see `DtoDeserializer::resolveDiscriminatorTargetClass()`): the mapping names it.
+        if (is_object($value) && $this->isMappedMemberOf($value, $expectedType)) {
+            return null;
+        }
+
         if (enum_exists($expectedType)) {
             return "Method {$methodName}() must return enum {$expectedType}, got " . get_debug_type($value);
         }
 
         return "Method {$methodName}() must return instance of {$expectedType}, got " . get_debug_type($value);
+    }
+
+    /**
+     * Whether `$baseClass` is a discriminated union whose own mapping names the class of `$value`.
+     */
+    private function isMappedMemberOf(object $value, string $baseClass): bool
+    {
+        $mapping = method_exists($baseClass, 'getDiscriminatorMapping') ? $baseClass::getDiscriminatorMapping() : null;
+
+        return is_array($mapping) && in_array($value::class, $mapping, true);
     }
 
     private function isSerializableGetterName(string $name): bool

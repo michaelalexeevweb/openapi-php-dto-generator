@@ -62,6 +62,15 @@ final class KnownDivergences
     {
         return [
             [
+                'modes' => [GenerationMode::Yii3],
+                'category' => 'wrong-accept',
+                // `{}` for an object that requires a key, or for a list: the body arrives decoded, where
+                // it is the `[]` the `array` member (or the list itself) accepts.
+                'kinds' => ['missingRequired', 'tooFewProperties', 'wrongType:object'],
+                'tagsAll' => ['emptyBesideArray'],
+                'row' => 'support matrix: "an EMPTY JSON container: `[]` for an object, `{}` for a list or for the object member of a union beside an `array` member" (yii3 reads `[]` and `{}` as one)',
+            ],
+            [
                 'modes' => [GenerationMode::Symfony, GenerationMode::Yii3],
                 'category' => 'wrong-accept',
                 'kinds' => ['wrongType:array'],

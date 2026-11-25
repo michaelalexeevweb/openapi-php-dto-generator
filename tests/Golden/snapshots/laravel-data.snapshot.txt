@@ -1,4 +1,4 @@
-# laravel-data mode — 80 files, 23255 lines
+# laravel-data mode — 80 files, 23311 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -5898,13 +5898,14 @@ final class ApplicatorRefs extends Data
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -6586,13 +6587,14 @@ final class ApplicatorRefsConditional extends Data
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -7086,13 +7088,14 @@ final class ApplicatorRefsKeyed extends Data
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -7561,13 +7564,14 @@ final class ApplicatorRefsPoisonedKey extends Data
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -8922,13 +8926,14 @@ final class ChainLink extends Data
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -9505,13 +9510,14 @@ final class ChainMiddle extends Data
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -11100,13 +11106,14 @@ final class Containers extends Data
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -11620,13 +11627,14 @@ final class CountMap extends Data
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -11839,6 +11847,7 @@ use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Spatie\LaravelData\Attributes\PropertyForMorph;
 use Spatie\LaravelData\Contracts\PropertyMorphableData;
 use Spatie\LaravelData\Data;
@@ -11951,8 +11960,24 @@ abstract class Discriminator extends Data implements PropertyMorphableData
         if ($discriminator !== null && !is_string($discriminator) && !is_int($discriminator) && !is_float($discriminator)) {
             return [$path . '.type' => sprintf('%s.type expects string, got %s.', $path, get_debug_type($discriminator))];
         }
+        $member = self::morph(['type' => $value['type'] ?? null]);
+        if (!$isItem || $member === null) {
+            return [];
+        }
 
-        return [];
+        // laravel-data builds a list item or a map value as the member its discriminator names, and
+        // validates nothing of it first: `{"kind": "cat", "paw": "x"}` reached the constructor, a
+        // `TypeError`. The member's own validation answers for it, as it does for a property.
+        $errors = [];
+        try {
+            $member::validate($value);
+        } catch (ValidationException $exception) {
+            foreach ($exception->errors() as $key => $messages) {
+                $errors[$path . '.' . $key] = (string)($messages[0] ?? '');
+            }
+        }
+
+        return $errors;
     }
 }
 
@@ -12887,6 +12912,7 @@ use function is_array;
 use function is_bool;
 use function is_finite;
 use function is_float;
+use function is_object;
 use function is_string;
 use function json_decode;
 use function preg_last_error;
@@ -13339,13 +13365,14 @@ final class ItemBounds extends Data
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -14094,13 +14121,14 @@ final class NestedContainers extends Data
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -14980,13 +15008,14 @@ final class ObjectWideRules extends Data
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -15411,11 +15440,13 @@ use function array_keys;
 use function array_map;
 use function array_shift;
 use function array_slice;
+use function get_object_vars;
 use function implode;
 use function is_array;
 use function is_bool;
 use function is_finite;
 use function is_float;
+use function is_object;
 use function is_string;
 use function preg_match;
 use function preg_match_all;
@@ -15695,13 +15726,14 @@ final class ReadOnlyFields extends Data
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -16001,6 +16033,7 @@ use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Spatie\LaravelData\Attributes\PropertyForMorph;
 use Spatie\LaravelData\Contracts\PropertyMorphableData;
 use Spatie\LaravelData\Data;
@@ -16111,8 +16144,24 @@ abstract class Shape extends Data implements PropertyMorphableData
         if ($discriminator !== null && !is_string($discriminator) && !is_int($discriminator) && !is_float($discriminator)) {
             return [$path . '.kind' => sprintf('%s.kind expects string, got %s.', $path, get_debug_type($discriminator))];
         }
+        $member = self::morph(['kind' => $value['kind'] ?? null]);
+        if (!$isItem || $member === null) {
+            return [];
+        }
 
-        return [];
+        // laravel-data builds a list item or a map value as the member its discriminator names, and
+        // validates nothing of it first: `{"kind": "cat", "paw": "x"}` reached the constructor, a
+        // `TypeError`. The member's own validation answers for it, as it does for a property.
+        $errors = [];
+        try {
+            $member::validate($value);
+        } catch (ValidationException $exception) {
+            foreach ($exception->errors() as $key => $messages) {
+                $errors[$path . '.' . $key] = (string)($messages[0] ?? '');
+            }
+        }
+
+        return $errors;
     }
 }
 
@@ -17475,13 +17524,14 @@ final class Test2 extends Data
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -18588,13 +18638,14 @@ final class TestPostRequest extends Data
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -19534,13 +19585,14 @@ final class TreeNode extends Data
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -20694,13 +20746,14 @@ final class UnionUnderContainer extends Data
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -21474,13 +21527,14 @@ final class UniqueScalars extends Data
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -22268,13 +22322,14 @@ final class User extends Data
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');
@@ -23004,13 +23059,14 @@ final class User2 extends Data
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');

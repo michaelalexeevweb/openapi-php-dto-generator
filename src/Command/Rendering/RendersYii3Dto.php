@@ -1620,10 +1620,10 @@ trait RendersYii3Dto
 
         // `Shade|string`: the class checks itself when it is what the property holds, and `Nested` alone
         // refused the string. Nothing checked the object before — `{}` passed a `required` of the class.
-        // An enum case and a `DateTimeImmutable` are objects without rules of their own, so `Nested`
-        // passes them as they are and judges the class by its attributes; a plain `array` member is the
-        // list `Each` takes. Before, any of the three beside the class left the class unchecked:
-        // `{"elk": {"cat": "ga"}}` passed a `maxLength: 1` of the class.
+        // A `DateTimeImmutable` is an object without rules of its own, so `Nested` passes it as it is and
+        // judges the class by its attributes; an enum member is held as its backing scalar, which `In`
+        // takes; a plain `array` member is the list `Each` takes. Before, any of the three beside the
+        // class left the class unchecked: `{"elk": {"cat": "ga"}}` passed a `maxLength: 1` of the class.
         $unionClass = $this->unionClassBesideScalars($property['type']);
         // Beside `bool` the class is held as the decoded array (see `renderYii3Parameter()`), which
         // `Nested` refuses; the interpreter checks it against the class's branch.
@@ -1633,6 +1633,16 @@ trait RendersYii3Dto
         if ($unionClass !== null && !$this->yii3IsUnionInterface($unionClass)) {
             $alternatives = [];
             foreach ($this->yii3TypeMembers($property['type']) as $member) {
+                // The hydrator keeps an enum member as its backing scalar, which `Nested` refused:
+                // `oneOf: [{type: string}, {type: integer, enum: [8]}, {type: object}]` turned `8` away.
+                $enum = $this->enumSchemas[$member] ?? null;
+                if ($enum !== null) {
+                    $inFqcn = $this->yii3RuleClass('In');
+                    $ruleImports[] = $inFqcn;
+                    $values = $this->yii3EnumInValues(values: $enum['values'], strict: true);
+                    $alternatives[] = sprintf('new %s([%s], strict: true)', $this->yii3Lib('In', $inFqcn), implode(', ', $values));
+                    continue;
+                }
                 $rule = match ($member) {
                     'int' => 'Integer',
                     'float' => 'Number',
@@ -2534,8 +2544,8 @@ PHP;
     }
 
     /**
-     * The one `type` a union member names: its own, or the one it reaches through a single-member
-     * `allOf` or a `$ref` to a scalar alias. `anyOf: [{allOf: [{type: integer}]}]` is declared `?int`
+     * The one `type` a union member names: its own, or the one it reaches through an `allOf` whose
+     * parts agree on it or a `$ref` to a scalar alias. `anyOf: [{allOf: [{type: integer}]}]` is declared `?int`
      * like `anyOf: [{type: integer}]`, and without the type rule the caster turned `[2]` into `2`.
      *
      * @param array<mixed> $member
@@ -2553,11 +2563,49 @@ PHP;
             return is_array($alias) ? $this->yii3MemberScalarType($alias, $depth + 1) : null;
         }
         $allOf = $member['allOf'] ?? null;
-        if (is_array($allOf) && count($allOf) === 1 && is_array($allOf[array_key_first($allOf)])) {
-            return $this->yii3MemberScalarType($allOf[array_key_first($allOf)], $depth + 1);
+
+        return is_array($allOf) ? $this->yii3AllOfScalarType($allOf, $depth + 1) : null;
+    }
+
+    /**
+     * The one `type` the parts of an `allOf` agree on. A part that names no type at all
+     * (`{maxLength: 3}`, `{format: int64}`) narrows the value without changing its kind, so it is
+     * skipped; a part that names one indirectly but resolves to no scalar makes the answer unknown.
+     * `integer` beside `number` is the narrower `integer`.
+     *
+     * @param array<mixed> $allOf
+     */
+    private function yii3AllOfScalarType(array $allOf, int $depth): ?string
+    {
+        $agreed = null;
+        foreach ($allOf as $part) {
+            if (!is_array($part)) {
+                return null;
+            }
+            $type = $this->yii3MemberScalarType($part, $depth);
+            if ($type === null) {
+                foreach (['type', '$ref', 'allOf', 'anyOf', 'oneOf', 'not', 'properties', 'items'] as $keyword) {
+                    if (array_key_exists($keyword, $part)) {
+                        return null;
+                    }
+                }
+
+                continue;
+            }
+            if ($agreed === null || $agreed === $type) {
+                $agreed = $type;
+
+                continue;
+            }
+            $pair = [$agreed, $type];
+            sort($pair);
+            if ($pair !== ['integer', 'number']) {
+                return null;
+            }
+            $agreed = 'integer';
         }
 
-        return null;
+        return $agreed;
     }
 
     /**
@@ -2704,6 +2752,7 @@ PHP;
             if (!is_array($propertySchema) || !$this->yii3HoldsUnionClassAsArray($property['type'])) {
                 continue;
             }
+            $propertySchema = $this->yii3WithUnionComponentInlined($propertySchema, $className);
             foreach (['oneOf', 'anyOf'] as $keyword) {
                 if (!is_array($propertySchema[$keyword] ?? null)) {
                     continue;
@@ -2731,6 +2780,33 @@ PHP;
         }
 
         return $schema;
+    }
+
+    /**
+     * A property `$ref` to a union COMPONENT, written out as that component's union.
+     *
+     * The inline spelling (`anyOf: [{…object…}, {type: array}]`) has its object branch checked against
+     * the held array; behind a name the same union reached the interpreter as the component's, with the
+     * object branch left to a class that is never built — reduced to `x-php-checked-by-class`, or with
+     * its property `enum` moved into an enum type the array does not hold. `{"toucan": {"kiwi": 3}}`
+     * passed a `multipleOf: 2`. Only a bare `$ref` (siblings beside it are left as they are).
+     *
+     * @param array<string, mixed> $propertySchema
+     * @return array<string, mixed>
+     */
+    private function yii3WithUnionComponentInlined(array $propertySchema, string $className): array
+    {
+        $ref = $propertySchema['$ref'] ?? null;
+        if (!is_string($ref) || array_keys($propertySchema) !== ['$ref']) {
+            return $propertySchema;
+        }
+        $componentClass = $this->schemaRefToClassName(ref: $ref, currentSourceFile: $this->getSchemaSourceFile($className));
+        $definition = $this->dtoSchemas[$componentClass] ?? null;
+        if (!is_array($definition) || (!is_array($definition['oneOf'] ?? null) && !is_array($definition['anyOf'] ?? null))) {
+            return $propertySchema;
+        }
+
+        return $definition;
     }
 
     /**
@@ -2854,8 +2930,10 @@ PHP;
             foreach ($schema[$keyword] as $branch) {
                 $ref = is_array($branch) ? $this->referenceOrSingleRefAllOf($branch) : null;
                 $definition = $ref !== null ? $this->nestedScalarRefDefinition($ref, $this->rootSpecFile) : null;
+                // The branch's 3.0 `nullable` stays with the members: `{allOf: [{$ref: Kind}], nullable:
+                // true}` written out as the bare enum refused the very null the branch admits.
                 $branches[] = is_array($definition) && is_array($definition['enum'] ?? null)
-                    ? $definition + ['x-php-inline-enum' => true]
+                    ? $definition + ['x-php-inline-enum' => true] + (($branch['nullable'] ?? null) === true ? ['nullable' => true] : [])
                     : $branch;
             }
             $schema[$keyword] = $branches;

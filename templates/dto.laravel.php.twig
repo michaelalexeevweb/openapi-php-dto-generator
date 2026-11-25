@@ -712,13 +712,14 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
 
         preg_match_all('/\.([^ .\[]+)|\[(\d+)\]/', $match[1], $found, PREG_SET_ORDER);
         $segments = array_map(static fn(array $segment): string => ($segment[2] ?? '') !== '' ? $segment[2] : $segment[1], $found);
-        $node = $value;
+        // An empty JSON object reaches here as the `\stdClass` it was put back as: walked like the array.
+        $node = is_object($value) ? get_object_vars($value) : $value;
         foreach (array_slice($segments, 0, -1) as $segment) {
             if (!is_array($node) || !array_key_exists($segment, $node)) {
                 $node = null;
                 break;
             }
-            $node = $node[$segment];
+            $node = is_object($node[$segment]) ? get_object_vars($node[$segment]) : $node[$segment];
         }
         if ($segments !== [] && !is_array($node)) {
             $validator->errors()->add($property, str_ends_with($error, '.') ? $error : $error . '.');

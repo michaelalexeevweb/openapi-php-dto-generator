@@ -206,6 +206,14 @@ final class DtoValidator implements DtoValidatorInterface
     private bool $emptyArrayIsJsonArray = false;
 
     /**
+     * The non-empty list a union with an `array` member is judging, while its other branches run — see
+     * {@see validateUnionBranches()}. Null outside one.
+     *
+     * @var list<mixed>|null
+     */
+    private ?array $listOfTheArrayMember = null;
+
+    /**
      * This validator for values whose JSON objects are still `stdClass`, so that an empty PHP array
      * can only have been `[]`: it no longer satisfies `type: object`, and an object keyword
      * (`required`, `minProperties`, …) leaves it alone, as JSON Schema says of any array. Where `type`
@@ -638,7 +646,16 @@ final class DtoValidator implements DtoValidatorInterface
         // hydrated map instead — the deserializer refused a non-empty JSON array for it on the way in,
         // and lets `[]` stand for the empty object `json_encode([])` sends — so a list there is an
         // object keyed 0..n-1 and is read as one, by every branch below.
-        if (is_array($value) && array_is_list($value) && $this->typePinsObject($constraints['type'] ?? null)) {
+        //
+        // Not the list a union kept for its `array` member: the deserializer refused nothing there, so
+        // `{type: object}` inside an `allOf` of the other branch read `["zzq"]` as an object and the
+        // union accepted what its list member refuses.
+        if (
+            is_array($value)
+            && array_is_list($value)
+            && $this->typePinsObject($constraints['type'] ?? null)
+            && ($value === [] || $value !== $this->listOfTheArrayMember)
+        ) {
             $value = (object)$value;
         }
 
@@ -997,6 +1014,44 @@ final class DtoValidator implements DtoValidatorInterface
      */
     private function validateUnionBranches(string $subject, mixed $value, array $branches, bool $isOneOf, int $depth): array
     {
+        // A non-empty list beside an `array` member is that member's: no other branch reads it as an
+        // object keyed 0..n-1 (see validateConstraints()).
+        if (!$this->isNonEmptyList($value) || !$this->unionHasListMember($branches)) {
+            return $this->validateUnionBranchesOf(subject: $subject, value: $value, branches: $branches, isOneOf: $isOneOf, depth: $depth);
+        }
+        $listBefore = $this->listOfTheArrayMember;
+        /** @var list<mixed> $value */
+        $this->listOfTheArrayMember = $value;
+        try {
+            return $this->validateUnionBranchesOf(subject: $subject, value: $value, branches: $branches, isOneOf: $isOneOf, depth: $depth);
+        } finally {
+            $this->listOfTheArrayMember = $listBefore;
+        }
+    }
+
+    /**
+     * Whether a union branch declares `type: array` — the member a list belongs to.
+     *
+     * @param array<int, mixed> $branches
+     */
+    private function unionHasListMember(array $branches): bool
+    {
+        foreach ($branches as $branch) {
+            $type = is_array($branch) ? ($branch['type'] ?? null) : null;
+            if ($type === 'array' || (is_array($type) && in_array('array', $type, true))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param array<int, mixed> $branches
+     * @return array<string>
+     */
+    private function validateUnionBranchesOf(string $subject, mixed $value, array $branches, bool $isOneOf, int $depth): array
+    {
         $validBranches = 0;
         // A class branch is judged on the hydrated value. A payload still raw here — an object-shaped
         // array or a `stdClass` nothing turned into a generated object class — cannot be told from
@@ -1006,9 +1061,22 @@ final class DtoValidator implements DtoValidatorInterface
         $undecidedBranches = 0;
         $nullableBranchAdmitsNull = false;
         $errors = [];
+        // Read the way `DtoDeserializer` reads, `[]` is the empty JSON ARRAY: the deserializer builds
+        // `{}` into the class and leaves `[]` a list, so a class branch is not undecided about it.
+        // Counted as a raw object, `anyOf: [{type: array, minItems: 1}, $ref Circle]` accepted the `[]`
+        // its list member refuses. A caller validating an associatively decoded payload keeps the
+        // default reading, where `[]` may still be `{}`.
+        $emptyListIsNoObject = $value === [] && $this->emptyArrayIsJsonArray;
 
         foreach ($branches as $branch) {
             if (!is_array($branch)) {
+                continue;
+            }
+
+            $branchClass = $branch['x-php-instanceof'] ?? null;
+            if ($emptyListIsNoObject && is_string($branchClass) && !enum_exists($branchClass)) {
+                $errors[] = sprintf('%s must be %s', $subject, $this->describeBranchClass($branchClass));
+
                 continue;
             }
 
