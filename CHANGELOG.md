@@ -3,6 +3,35 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.155 — 2026-11-25
+
+- fuzz round ten: 14 fixes
+- composed object items get classes
+- allOf object refuses JSON lists
+- union branch required names checked
+- symfony union components held decoded
+
+The tenth fuzz round took the round-nine leftovers and 5 findings from fresh seeds: 9 root causes, 14 fixes,
+each with a test that failed before, and 7 framework limits documented. A fresh run on new seeds found 7:
+4 in the shapes covered before round seven, 3 in unions of several objects.
+
+**Regenerate after upgrading, in every mode.**
+
+- every mode: a list item that is one object behind a composition (`items: {allOf: [{type: object, …}]}`,
+  `anyOf: [{type: object, …}, {type: null}]`) gets a class of its own, as the same schema does as a property
+  — it was held as the decoded array, and `{}` was written back as `[]`;
+- runtime: an object given only through `allOf` refuses a JSON list; a union branch whose `required` names a
+  key it does not declare (`{$ref: Teal, required: [zebu]}`) checks it against the raw payload — `anyOf`
+  accepted what it should not, `oneOf` refused valid payloads as matching twice;
+- laravel, laravel-data: an object behind a composition in a list item or map value refuses a JSON list;
+  laravel builds the items of a list of a union component;
+- symfony: a property, list item or map value typed as a union component of classes without a discriminator
+  is held as the decoded object and checked against the members (every object was refused); lists of lists
+  are checked.
+
+Fuzz harness: an `allOf` union member counts as an object of the pair; a `null` map value of nullable
+objects is filed under its documented row.
+
 ## 2.15.154 — 2026-11-25
 
 - fuzz round nine: 15 fixes

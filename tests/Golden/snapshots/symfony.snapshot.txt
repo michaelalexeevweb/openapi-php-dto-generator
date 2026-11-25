@@ -1,4 +1,4 @@
-# symfony mode — 77 files, 13498 lines
+# symfony mode — 77 files, 13975 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -13397,13 +13397,34 @@ namespace GoldenCorpus;
 
 use DateTimeImmutable;
 use DateTimeInterface;
+use OverflowException;
 use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
+use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
+use function array_is_list;
+use function array_key_exists;
 use function array_map;
+use function array_pop;
+use function array_unique;
+use function array_values;
+use function get_object_vars;
+use function implode;
+use function in_array;
 use function is_array;
+use function is_bool;
+use function is_float;
+use function is_int;
+use function is_object;
+use function is_string;
+use function method_exists;
+use function sprintf;
+use function str_ends_with;
+use function str_starts_with;
+use function strpos;
+use function substr;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -13417,16 +13438,138 @@ use function is_array;
  */
 final class User
 {
+    private const array OPENAPI_VALIDATION_CONSTRAINTS = [
+        'properties' => [
+            'id' => [],
+            'name' => [],
+            'pet' => [
+                'anyOf' => [
+                    [
+                        'type' => 'null',
+                    ],
+                    [
+                        'anyOf' => [
+                            [
+                                'allOf' => [
+                                    [
+                                        'type' => 'object',
+                                        'required' => [
+                                            'name',
+                                        ],
+                                        'properties' => [
+                                            'name' => [
+                                                'type' => 'string',
+                                            ],
+                                        ],
+                                    ],
+                                    [
+                                        'type' => 'object',
+                                        'required' => [
+                                            'meow',
+                                        ],
+                                        'properties' => [
+                                            'meow' => [
+                                                'type' => 'string',
+                                            ],
+                                        ],
+                                    ],
+                                ],
+                            ],
+                            [
+                                'allOf' => [
+                                    [
+                                        'type' => 'object',
+                                        'required' => [
+                                            'name',
+                                        ],
+                                        'properties' => [
+                                            'name' => [
+                                                'type' => 'string',
+                                            ],
+                                        ],
+                                    ],
+                                    [
+                                        'type' => 'object',
+                                        'required' => [
+                                            'bark',
+                                        ],
+                                        'properties' => [
+                                            'bark' => [
+                                                'type' => 'string',
+                                            ],
+                                        ],
+                                    ],
+                                ],
+                            ],
+                            [
+                                'allOf' => [
+                                    [
+                                        'type' => 'object',
+                                        'required' => [
+                                            'name',
+                                        ],
+                                        'properties' => [
+                                            'name' => [
+                                                'type' => 'string',
+                                            ],
+                                        ],
+                                    ],
+                                    [
+                                        'type' => 'object',
+                                        'required' => [
+                                            'bark',
+                                        ],
+                                        'properties' => [
+                                            'bark' => [
+                                                'type' => 'string',
+                                            ],
+                                        ],
+                                    ],
+                                ],
+                            ],
+                            [
+                                'type' => 'object',
+                                'required' => [
+                                    'test2',
+                                ],
+                                'properties' => [
+                                    'test2' => [
+                                        'type' => 'string',
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+                'nullable' => true,
+            ],
+            'createdAt' => [],
+        ],
+    ];
+
+    private const array OPENAPI_PHP_TO_NAME_MAP = [
+        'id' => 'id',
+        'name' => 'name',
+        'pet' => 'pet',
+        'createdAt' => 'createdAt',
+    ];
+
+    private const array OPENAPI_PROVIDED_FLAGS = [];
+
+    private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
+
     #[Groups(['read', 'write'])]
     private readonly int $id;
 
     #[Groups(['read', 'write'])]
     private readonly string $name;
 
+    /**
+     * @var array<string, mixed>|Animal2|null
+     */
     #[Groups(['read', 'write'])]
-    #[Assert\Valid]
     #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => false])]
-    private readonly ?Animal2 $pet;
+    private readonly array|Animal2|null $pet;
 
     #[Groups(['read', 'write'])]
     #[Context(normalizationContext: [
@@ -13435,7 +13578,7 @@ final class User
     private readonly DateTimeImmutable $createdAt;
 
     /**
-     * @param ?Animal2 $pet
+     * @param array<string, mixed>|Animal2|null $pet
      */
     public function __construct(
         int $id,
@@ -13459,7 +13602,10 @@ final class User
         return $this->name;
     }
 
-    public function getPet(): ?Animal2
+    /**
+     * @return array<string, mixed>|Animal2|null
+     */
+    public function getPet(): array|Animal2|null
     {
         return $this->pet;
     }
@@ -13486,11 +13632,23 @@ final class User
         return $value->format('u') === '000000' ? $value->format('c') : $value->format('Y-m-d\TH:i:s.uP');
     }
 
+    #[Assert\Callback]
+    public function validateOpenApiConstraints(ExecutionContextInterface $context): void
+    {
+        foreach ($this->validateOpenApiNode($this->toOpenApiValidationPayload(), self::OPENAPI_VALIDATION_CONSTRAINTS, 'payload', 0) as $error) {
+            $violation = $context->buildViolation(str_ends_with($error, '.') ? $error : $error . '.');
+            $path = self::openApiViolationPath($error);
+            if ($path !== null) {
+                $violation->atPath($path);
+            }
+            $violation->addViolation();
+        }
+    }
+
     /**
-     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
-     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
-     * one through here, because the properties themselves are private. For output, use the Symfony
-     * serializer.
+     * This DTO as an OpenAPI-named payload — machinery for the generated validation, not an API to
+     * call. It is public only because an enclosing DTO is a different class and needs this view of
+     * a nested one. For output, use the Symfony serializer.
      *
      * @internal
      *
@@ -13499,12 +13657,331 @@ final class User
     public function toOpenApiValidationPayload(): array
     {
         $payload = [];
-        $payload['id'] = $this->id;
-        $payload['name'] = $this->name;
-        $payload['pet'] = $this->pet;
-        $payload['createdAt'] = $this->createdAt;
+        foreach (self::OPENAPI_PHP_TO_NAME_MAP as $phpName => $openApiName) {
+            // A required property always exists. An optional one belongs in the payload only when
+            // it was actually provided — its presence flag says so, which is also what keeps the
+            // flags themselves out of the payload (iterating the object's properties would put
+            // them in and trip `additionalProperties: false`).
+            $flag = self::OPENAPI_PROVIDED_FLAGS[$phpName] ?? null;
+            if ($flag !== null && $this->{$flag} !== true) {
+                continue;
+            }
+            $payload[$openApiName] = $this->{$phpName};
+        }
 
         return $payload;
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNode(mixed $value, array $schema, string $path, int $depth): array
+    {
+        if ($depth > 0) {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        }
+        try {
+            return $this->validateOpenApiNodeUnchecked($value, $schema, $path, $depth);
+        } catch (OverflowException $error) {
+            return [$error->getMessage()];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiNodeUnchecked(mixed $value, array $schema, string $path, int $depth): array
+    {
+        // An incomplete check is not a branch mismatch: not/if/anyOf must not invert or swallow it.
+        if ($depth >= self::OPENAPI_MAX_VALIDATION_DEPTH) {
+            throw new OverflowException($path . ' exceeds maximum validation depth.');
+        }
+
+        $errors = [];
+        $normalizedValue = $this->normalizeOpenApiCallbackValue($value, $schema);
+        $structuredValue = $this->normalizeOpenApiStructuralValue($value);
+        if (
+            is_array($structuredValue)
+            && $structuredValue !== []
+            && array_is_list($structuredValue)
+            && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
+        ) {
+            $structuredValue = null;
+        }
+
+        if (array_key_exists('type', $schema) && !($value === null && ($schema['nullable'] ?? false) === true)) {
+            $typeConstraint = $schema['type'];
+            if (is_string($typeConstraint)) {
+                if (!$this->matchesOpenApiCallbackType($normalizedValue, $typeConstraint)) {
+                    $errors[] = sprintf('%s must be of type %s', $path, $typeConstraint);
+                }
+            }
+        }
+
+        if (is_array($structuredValue) && is_array($schema['required'] ?? null)) {
+            foreach ($schema['required'] as $requiredProp) {
+                if (is_string($requiredProp) && !array_key_exists($requiredProp, $structuredValue)) {
+                    $errors[] = sprintf('%s is required', $this->openApiChildPath($path, $requiredProp));
+                }
+            }
+        }
+
+        if (is_array($schema['properties'] ?? null) && is_array($structuredValue)) {
+            foreach ($schema['properties'] as $propertyName => $propertySchema) {
+                // A property named by digits arrives as an int key; it is still a name.
+                $propertyName = (string)$propertyName;
+                if (!is_array($propertySchema)) {
+                    continue;
+                }
+                if (!array_key_exists($propertyName, $structuredValue)) {
+                    continue;
+                }
+                if ($this->isGeneratedOpenApiDtoObject($structuredValue[$propertyName])) {
+                    $errors = [...$errors, ...$this->validateOpenApiApplicatorsAroundDto($structuredValue[$propertyName], $propertySchema, $this->openApiChildPath($path, $propertyName), $depth + 1)];
+                    continue;
+                }
+                $errors = [
+                    ...$errors,
+                    ...$this->validateOpenApiNode($structuredValue[$propertyName], $propertySchema, $this->openApiChildPath($path, $propertyName), $depth + 1),
+                ];
+            }
+        }
+
+        if (is_array($schema['allOf'] ?? null)) {
+            foreach ($schema['allOf'] as $branch) {
+                if (!is_array($branch)) {
+                    continue;
+                }
+
+                $errors = [...$errors, ...$this->validateOpenApiNode($value, $branch, $path, $depth + 1)];
+            }
+        }
+
+        if (is_array($schema['anyOf'] ?? null)) {
+            $anyOfMatched = false;
+            $anyOfErrors = [];
+            foreach ($schema['anyOf'] as $branch) {
+                if (!is_array($branch)) {
+                    continue;
+                }
+
+                if (
+                    array_key_exists('type', $branch)
+                    && !($normalizedValue === null && ($branch['nullable'] ?? false) === true)
+                    && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])
+                ) {
+                    continue;
+                }
+                $errorsForBranch = $this->validateOpenApiNode($value, $branch, $path, $depth + 1);
+                if ($errorsForBranch === []) {
+                    $anyOfMatched = true;
+                    break;
+                }
+
+                $anyOfErrors = [...$anyOfErrors, ...$errorsForBranch];
+            }
+
+            if (!$anyOfMatched) {
+                $errors = $anyOfErrors === []
+                    ? [...$errors, $this->describeOpenApiUnionMismatch($path, 'anyOf', $schema['anyOf'], $value)]
+                    : [...$errors, ...array_values(array_unique($anyOfErrors))];
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
+     * Whether a subschema matches; its errors are thrown away. The path is not: an unfinished check —
+     * the depth limit, a pattern the engine gave up on — is thrown out of here with it, and is the
+     * refusal the caller ends up reporting, so it has to name the value it could not finish.
+     *
+     * @param array<string, mixed> $schema
+     */
+    private function matchesOpenApiNode(mixed $value, array $schema, string $path, int $depth): bool
+    {
+        return $this->validateOpenApiNode($value, $schema, $path, $depth) === [];
+    }
+
+    /**
+     * Every branch was gated out by its declared type, so no branch has a reason to report. Naming the
+     * types the union does accept turns an unactionable sentence into one the caller can act on. Same
+     * wording as the runtime validator, so a payload reads the same whichever mode answered it.
+     *
+     * @param array<int, mixed> $branches
+     */
+    private function describeOpenApiUnionMismatch(string $path, string $kind, array $branches, mixed $value): string
+    {
+        $types = [];
+        foreach ($branches as $branch) {
+            if (!is_array($branch)) {
+                continue;
+            }
+
+            $declared = is_array($branch['type'] ?? null) ? $branch['type'] : [$branch['type'] ?? null];
+            foreach ($declared as $type) {
+                if (is_string($type) && $type !== '' && !in_array($type, $types, true)) {
+                    $types[] = $type;
+                }
+            }
+        }
+
+        if ($types === []) {
+            return sprintf('%s does not match any %s branch', $path, $kind);
+        }
+
+        $last = array_pop($types);
+        $expected = $types === [] ? $last : implode(', ', $types) . ' or ' . $last;
+
+        return sprintf(
+            '%s does not match any %s branch (expected %s, got %s)',
+            $path,
+            $kind,
+            $expected,
+            match (true) {
+                $value === null => 'null',
+                is_bool($value) => 'boolean',
+                is_int($value) => 'integer',
+                is_float($value) => 'number',
+                is_string($value) => 'string',
+                is_array($value) => array_is_list($value) ? 'array' : 'object',
+                default => 'object',
+            },
+        );
+    }
+
+    private function matchesOpenApiCallbackType(mixed $value, mixed $type): bool
+    {
+        if (!is_string($type) || $type === '') {
+            return true;
+        }
+
+        return match ($type) {
+            'string' => is_string($value),
+            'object' => is_array($value) || is_object($value),
+            'null' => $value === null,
+            default => true,
+        };
+    }
+
+    private function normalizeOpenApiCallbackValue(mixed $value, array $schema): mixed
+    {
+        if (!$value instanceof DateTimeInterface) {
+            return $value;
+        }
+
+        $format = $schema['format'] ?? null;
+        if (!is_string($format)) {
+            return $value->format(DateTimeInterface::ATOM);
+        }
+
+        return match ($format) {
+            'date' => $value->format('Y-m-d'),
+            default => $value->format(DateTimeInterface::ATOM),
+        };
+    }
+
+    private function normalizeOpenApiStructuralValue(mixed $value): mixed
+    {
+        if (is_array($value) || !is_object($value)) {
+            return $value;
+        }
+
+        // Generated DTOs expose their OpenAPI-named payload themselves.
+        if (method_exists($value, 'toOpenApiValidationPayload')) {
+            return $value->toOpenApiValidationPayload();
+        }
+        // Any other object: only its public state is visible, under PHP property names.
+        return get_object_vars($value);
+    }
+
+    private function isGeneratedOpenApiDtoObject(mixed $value): bool
+    {
+        // Such a DTO validates its own schema through its own #[Assert\Callback], reached by the
+        // #[Assert\Valid] cascade — the enclosing DTO must not report the same errors again.
+        return is_object($value)
+            && method_exists($value, 'validateOpenApiConstraints')
+            && method_exists($value, 'toOpenApiValidationPayload');
+    }
+
+    /**
+     * The union a nested DTO is one branch of: the DTO checks its own keywords — a `not` or `allOf`
+     * beside them included — the enclosing schema judges which of its branches the value matches.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiApplicatorsAroundDto(mixed $value, array $schema, string $path, int $depth): array
+    {
+        $applicators = [];
+        foreach (['oneOf', 'anyOf', 'x-discriminator-property', 'x-discriminator-php-property', 'x-discriminator-map'] as $keyword) {
+            if (array_key_exists($keyword, $schema)) {
+                $applicators[$keyword] = $schema[$keyword];
+            }
+        }
+
+        return $applicators === [] ? [] : $this->validateOpenApiNode($value, $applicators, $path, $depth);
+    }
+
+    /**
+     * The property a message is about, as a value path, or null when it is about the payload itself.
+     *
+     * The interpreter bakes the subject INTO the sentence — `field "tags" must …`, and one level down
+     * `field "tags".id must …` — because the wording has to match the runtime validator's word for
+     * word. Reading it back here is what lets the violation carry the FIELD as well as the sentence:
+     * an error response groups by property, and every keyword this interpreter owns was landing at
+     * the root instead, where a per-field renderer never shows it.
+     */
+    private static function openApiViolationPath(string $error): ?string
+    {
+        if (!str_starts_with($error, 'field "')) {
+            return null;
+        }
+
+        $closing = strpos($error, '"', 7);
+        if ($closing === false) {
+            return null;
+        }
+
+        $property = substr($error, 7, $closing - 7);
+        if ($property === '') {
+            return null;
+        }
+
+        // Anything after the closing quote up to the first space is the rest of the path, so
+        // `field "tags".id must …` answers `tags.id` rather than just `tags`, and an item,
+        // `field "ids"[0] must …`, answers `ids[0]` — the index Symfony's own constraints put there.
+        $rest = substr($error, $closing + 1);
+        $deeper = '';
+        if (str_starts_with($rest, '.') || str_starts_with($rest, '[')) {
+            $space = strpos($rest, ' ');
+            $deeper = $space === false ? $rest : substr($rest, 0, $space);
+        }
+
+        return $property . $deeper;
+    }
+
+    private function openApiChildPath(string $path, string $propertyName): string
+    {
+        // The first level names the field the way the runtime validator's caller does, so both
+        // modes report the same subject: `field "tags" must ...`.
+        return $path === 'payload'
+            ? sprintf('field "%s"', $propertyName)
+            : $path . '.' . $propertyName;
+    }
+
+    /**
+     * Cascades into the object a property holds beside a scalar member of its type. `#[Assert\Valid]`
+     * would do it, but Symfony throws when that attribute meets the scalar instead.
+     */
+    #[Assert\Callback]
+    private function validateOpenApiUnionMembers(ExecutionContextInterface $context): void
+    {
+        if (is_object($this->pet) || is_array($this->pet)) {
+            $context->getValidator()->inContext($context)->atPath('pet')->validate($this->pet, null, $context->getGroup());
+        }
     }
 }
 

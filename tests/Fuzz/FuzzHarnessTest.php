@@ -463,6 +463,57 @@ final class FuzzHarnessTest extends TestCase
     }
 
     /**
+     * A member spelled as an `allOf` with no `type` of its own is an object of the pair too — it is
+     * generated as a class (`ProbeGibbonOneOf2`). `isObjectShaped()` read only `$ref`, `type` and
+     * `anyOf`/`oneOf`, so the pair counted one member, and a value of the second, refused by symfony
+     * through the class that sorts first (row 165), was filed as undocumented (seed 14030).
+     */
+    public function testAnAllOfMemberIsAnObjectOfThePair(): void
+    {
+        $runner = new FuzzRunner(outputDirectory: sys_get_temp_dir() . '/fuzz-harness-pair-allof', modes: [GenerationMode::Symfony], propertiesPerSpec: 1);
+        $generate = new ReflectionMethod(FuzzRunner::class, 'generateChecked');
+        $tag = new ReflectionMethod(FuzzRunner::class, 'tagObjectsOfAPair');
+        $tagged = static function (array $document, string $json) use ($runner, $generate, $tag): bool {
+            $generation = $generate->invoke($runner, $document, GenerationMode::Symfony);
+            $payload = ['property' => 'gibbon', 'kind' => 'valid', 'json' => $json, 'expected' => PayloadVerdict::Accepted, 'tags' => ['unionObjectPair']];
+
+            return in_array('objectOfPair', $tag->invoke(null, [$payload], $document, $generation['fqcn'])[0]['tags'], true);
+        };
+        $document = static fn(array $second): array => ['openapi' => '3.1.0', 'info' => ['title' => 'Fuzz', 'version' => '1.0.0'], 'components' => ['schemas' => [
+            'Probe' => ['type' => 'object', 'properties' => ['gibbon' => ['oneOf' => [
+                ['type' => 'object', 'properties' => ['red' => ['type' => 'boolean']], 'required' => ['red']],
+                $second,
+            ]]]],
+        ]]];
+        $blue = ['type' => 'object', 'properties' => ['blue' => ['type' => 'integer']], 'required' => ['blue']];
+
+        $allOf = $document(['allOf' => [$blue]]);
+        $this->assertTrue($tagged($allOf, '{"gibbon":{"blue":3}}'), 'a value of the allOf member');
+        $this->assertTrue($tagged($allOf, '{"gibbon":{"plover":-27}}'), 'the seed-14030 shrink');
+        $this->assertFalse($tagged($allOf, '{"gibbon":{"red":true}}'), 'a value of the member that sorts first');
+
+        $plain = $document($blue);
+        $this->assertTrue($tagged($plain, '{"gibbon":{"blue":3}}'), 'the plain control');
+        $this->assertFalse($tagged($plain, '{"gibbon":{"red":true}}'), 'the plain control, first member');
+    }
+
+    /**
+     * laravel-data refuses the `null` VALUE of a map of nullable objects (row 163) as it refuses the null
+     * item of such a list; the generator tags the map value `nullMapValue:…` (seed 14000).
+     */
+    public function testANullValueOfAMapOfNullableDtosIsTheNullItemRow(): void
+    {
+        foreach (['nullMapValue:nullable-dto', 'nullMapValue:nullable-discriminated', 'nullItem:nullable-dto'] as $tag) {
+            $this->assertNotNull(KnownDivergences::explain(mode: GenerationMode::LaravelData, category: 'wrong-refuse', kind: 'valid', tags: [$tag]), $tag);
+            $this->assertNull(KnownDivergences::explain(mode: GenerationMode::Laravel, category: 'wrong-refuse', kind: 'valid', tags: [$tag]), $tag);
+        }
+        $this->assertNull(KnownDivergences::explain(mode: GenerationMode::LaravelData, category: 'wrong-refuse', kind: 'valid', tags: ['nullMapValue:nullable-temporal']));
+
+        // The seed-14000 shape: `flowers: {additionalProperties: {type: object, nullable: true, …}}`.
+        $this->assertSame('nullable-dto', InstanceGenerator::descriptor(['t' => 'object', 'nullable' => true, 'props' => ['petals' => ['t' => 'number']], 'required' => []]));
+    }
+
+    /**
      * The valid draw of a union of two objects no longer guesses which member symfony builds.
      */
     public function testTheGeneratorLeavesTheMemberOrderToTheRunner(): void

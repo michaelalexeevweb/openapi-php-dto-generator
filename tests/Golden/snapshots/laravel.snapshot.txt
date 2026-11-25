@@ -1,4 +1,4 @@
-# laravel mode — 106 files, 31255 lines
+# laravel mode — 106 files, 31257 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -28232,6 +28232,8 @@ final class UnionUnderContainer implements JsonSerializable
     private const array OPENAPI_OBJECT_PATHS = [
         'tree',
         'chain.*',
+        'chainAllOf.*',
+        'listOfUnions.*',
     ];
 
     /**

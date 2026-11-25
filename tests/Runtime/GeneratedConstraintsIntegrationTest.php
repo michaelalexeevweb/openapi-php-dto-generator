@@ -1093,8 +1093,20 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     {
         (new GenerateDtoCommand())->generateFromArray($spec, $this->outputDirectory, $namespace);
 
+        // An autoloader, as an application has: a class that extends another (an item `allOf` with a
+        // `$ref`) must find its parent whatever order the files are listed in.
+        $directory = $this->outputDirectory;
+        $isLoaded = static fn(string $class): bool => class_exists($class, false) || interface_exists($class, false) || enum_exists($class, false);
+        spl_autoload_register(static function (string $class) use ($namespace, $directory, $isLoaded): void {
+            $file = $directory . '/' . substr($class, strlen($namespace) + 1) . '.php';
+            if (str_starts_with($class, $namespace . '\\') && !$isLoaded($class) && is_file($file)) {
+                require $file;
+            }
+        });
         foreach (glob($this->outputDirectory . '/*.php') ?: [] as $file) {
-            require $file;
+            if (!$isLoaded($namespace . '\\' . basename($file, '.php'))) {
+                require $file;
+            }
         }
 
         /** @var class-string<GeneratedDtoInterface> $fqcn */

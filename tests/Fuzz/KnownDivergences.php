@@ -205,8 +205,8 @@ final class KnownDivergences
                 'modes' => [GenerationMode::LaravelData],
                 'category' => 'wrong-refuse',
                 'kinds' => ['valid'],
-                'tagsAny' => ['nullItem:nullable-dto', 'nullItem:nullable-discriminated'],
-                'row' => 'support matrix: "a `null` ITEM of a nullable list of DTOs" (laravel-data refuses)',
+                'tagsAny' => ['nullItem:nullable-dto', 'nullItem:nullable-discriminated', 'nullMapValue:nullable-dto', 'nullMapValue:nullable-discriminated'],
+                'row' => 'support matrix: "a `null` ITEM of a nullable list of DTOs", or a `null` VALUE of such a map (laravel-data refuses)',
             ],
             [
                 'modes' => [GenerationMode::Yii3],

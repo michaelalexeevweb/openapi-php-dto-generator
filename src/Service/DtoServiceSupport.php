@@ -18,7 +18,7 @@ use WeakMap;
 final class DtoServiceSupport
 {
     /**
-     * How many `anyOf`/`oneOf` levels {@see admitsObjectContainerOnly()} reads through.
+     * How many `anyOf`/`oneOf`/`allOf` levels {@see admitsObjectContainerOnly()} reads through.
      */
     private const int MAX_NESTED_UNION_DEPTH = 16;
 
@@ -299,7 +299,8 @@ final class DtoServiceSupport
      * array — `[{type: object}, {type: null}]`, `[map, string]`. A branch naming no type admits
      * either, so it answers no. A branch that is a union itself — `oneOf: [{oneOf: [{type: object}]}]`
      * — answers by ITS branches: read one level deep, the nested object member was an untyped branch,
-     * and `{}` held as `[]` was refused as "expected object, got array". The deserializer, the
+     * and `{}` held as `[]` was refused as "expected object, got array". An `allOf` — on its own or
+     * as such a branch — admits only an object when one of its members does. The deserializer, the
      * normalizer and the emitted `toArray()` read a hydrated union value by it, the way they read a
      * `type: object` map.
      *
@@ -314,6 +315,13 @@ final class DtoServiceSupport
             return in_array('object', $types, true) && !in_array('array', $types, true);
         }
 
+        // An `allOf` admits what EVERY member admits: one member that admits only an object is
+        // enough. Not read, `{allOf: [{type: object}]}` as a list item or a map value took `[1, 2]`
+        // for an object.
+        if (self::allOfAdmitsObjectContainerOnly($constraints, $depth)) {
+            return true;
+        }
+
         $sawObject = false;
         foreach (['anyOf', 'oneOf'] as $keyword) {
             $branches = $constraints[$keyword] ?? null;
@@ -326,6 +334,11 @@ final class DtoServiceSupport
                 }
                 $type = $branch['type'] ?? null;
                 $types = is_string($type) ? [$type] : (is_array($type) ? $type : []);
+                if ($types === [] && self::allOfAdmitsObjectContainerOnly($branch, $depth)) {
+                    $sawObject = true;
+
+                    continue;
+                }
                 if ($types === [] && self::isBareUnion($branch) && $depth < self::MAX_NESTED_UNION_DEPTH) {
                     if (!self::admitsObjectContainerOnly($branch, $depth + 1)) {
                         return false;
@@ -342,6 +355,27 @@ final class DtoServiceSupport
         }
 
         return $sawObject;
+    }
+
+    /**
+     * Whether a schema's `allOf` has a member that admits no container but an object, read through
+     * nested compositions as deep as {@see admitsObjectContainerOnly()} reads its unions.
+     *
+     * @param array<array-key, mixed> $constraints
+     */
+    private static function allOfAdmitsObjectContainerOnly(array $constraints, int $depth): bool
+    {
+        $members = $constraints['allOf'] ?? null;
+        if (!is_array($members) || $depth >= self::MAX_NESTED_UNION_DEPTH) {
+            return false;
+        }
+        foreach ($members as $member) {
+            if (is_array($member) && self::admitsObjectContainerOnly($member, $depth + 1)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

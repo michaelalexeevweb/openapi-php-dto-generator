@@ -1087,6 +1087,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                         rawValue: $rawValue,
                         rawWasProvided: $rawWasProvided,
                         exactlyOne: $this->unionMustMatchExactlyOne($paramMeta['fieldConstraints']),
+                        unionConstraints: is_array($paramMeta['fieldConstraints']) ? $paramMeta['fieldConstraints'] : [],
                         rawSource: $castSource,
                         arrayItemType: $paramMeta['arrayItemType'],
                         schemaAllowsNull: $paramMeta['schemaAllowsNull'],
@@ -2229,6 +2230,8 @@ final class DtoDeserializer implements DtoDeserializerInterface
      * @param array<int, string> $typeNames
      * @param ReflectionClass<object>|null $dtoReflection null for the members of a union interface,
      *     which are classes and need no temporal format read off the owner
+     * @param array<array-key, mixed> $unionConstraints the union's own constraints, whose class branches
+     *     may list `required` names the class does not declare
      */
     private function castUnionValue(
         string $paramName,
@@ -2247,6 +2250,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         ?string $nestedArrayItemType = null,
         bool $nestedArrayItemsNullable = false,
         bool $exactlyOne = false,
+        array $unionConstraints = [],
     ): mixed {
         // A missing value here always belongs to a required parameter: optional
         // missing params are short-circuited in deserialize() before this call,
@@ -2278,6 +2282,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 nestedArrayItemType: $nestedArrayItemType,
                 nestedArrayItemsNullable: $nestedArrayItemsNullable,
                 exactlyOne: $exactlyOne,
+                unionConstraints: $unionConstraints,
             );
         } finally {
             $this->unionTrialDepth--;
@@ -2286,6 +2291,35 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 $this->unionTrialArrayResults = [];
             }
         }
+    }
+
+    /**
+     * The first name the union branch "is `$typeName`" lists in `required` — the names the generator
+     * keeps beside the marker because the class does not declare them — that the raw value lacks.
+     *
+     * @param array<array-key, mixed> $unionConstraints
+     */
+    private function missingUndeclaredRequiredName(string $typeName, array $unionConstraints, mixed $rawValue): ?string
+    {
+        $fields = $rawValue instanceof stdClass ? get_object_vars($rawValue) : $rawValue;
+        if (!is_array($fields)) {
+            return null;
+        }
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            foreach (is_array($unionConstraints[$keyword] ?? null) ? $unionConstraints[$keyword] : [] as $branch) {
+                $branchClass = is_array($branch) ? ($branch['x-php-instanceof'] ?? null) : null;
+                if (!is_string($branchClass) || ltrim($branchClass, '\\') !== ltrim($typeName, '\\')) {
+                    continue;
+                }
+                foreach (is_array($branch['required'] ?? null) ? $branch['required'] : [] as $name) {
+                    if (is_string($name) && !array_key_exists($name, $fields)) {
+                        return $name;
+                    }
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -2404,6 +2438,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
      *
      * @param array<int, string> $typeNames
      * @param ReflectionClass<object>|null $dtoReflection
+     * @param array<array-key, mixed> $unionConstraints
      */
     private function castFirstMatchingUnionBranch(
         string $paramName,
@@ -2421,6 +2456,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         ?string $nestedArrayItemType,
         bool $nestedArrayItemsNullable,
         bool $exactlyOne = false,
+        array $unionConstraints = [],
     ): mixed {
         $errors = [];
         $matched = false;
@@ -2459,6 +2495,16 @@ final class DtoDeserializer implements DtoDeserializerInterface
             } catch (RuntimeException $e) {
                 if (!$matched) {
                     $errors[] = $e->getMessage();
+                }
+
+                continue;
+            }
+            // A class has no slot for a `required` name its branch does not declare: built, it says
+            // nothing about that name, and the raw value answers instead.
+            $missingName = is_object($cast) ? $this->missingUndeclaredRequiredName($typeName, $unionConstraints, $rawValue) : null;
+            if ($missingName !== null) {
+                if (!$matched) {
+                    $errors[] = "param \"{$paramName}\".{$missingName} is required";
                 }
 
                 continue;
@@ -3372,6 +3418,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 openApiFormat: null,
                 allowsAssociativeArray: false,
                 exactlyOne: $union['exactlyOne'],
+                unionConstraints: $constraints,
             );
         }
 
@@ -3590,6 +3637,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 openApiFormat: null,
                 allowsAssociativeArray: false,
                 exactlyOne: $union['exactlyOne'],
+                unionConstraints: $itemConstraints,
             );
         }
 
@@ -4518,6 +4566,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                             rawValue: $value,
                             rawWasProvided: true,
                             exactlyOne: $this->unionMustMatchExactlyOne($paramMeta['fieldConstraints']),
+                            unionConstraints: is_array($paramMeta['fieldConstraints']) ? $paramMeta['fieldConstraints'] : [],
                             rawSource: 'json',
                             arrayItemType: $paramMeta['arrayItemType'],
                             schemaAllowsNull: $paramMeta['schemaAllowsNull'],

@@ -3934,7 +3934,24 @@ final class DtoValidatorTest extends TestCase
         self::assertTrue(DtoValidator::admitsObjectContainerOnly(['oneOf' => [['type' => 'object']]]));
         self::assertFalse(DtoValidator::admitsObjectContainerOnly(['oneOf' => [['oneOf' => [['type' => 'object'], ['type' => 'array']]]]]));
         self::assertFalse(DtoValidator::admitsObjectContainerOnly(['oneOf' => [['oneOf' => [['type' => 'object'], []]]]]));
-        self::assertFalse(DtoValidator::admitsObjectContainerOnly(['oneOf' => [['allOf' => [['type' => 'object']], 'oneOf' => [['type' => 'object']]]]]));
         self::assertFalse(DtoValidator::admitsObjectContainerOnly(['oneOf' => [['type' => 'string']]]));
+    }
+
+    /**
+     * An `allOf` admits what every member admits: one member that admits only an object makes the
+     * whole an object, on its own or as a union branch. Unread, `{allOf: [{type: object}]}` as a list
+     * item took `[1, 2]` for an object.
+     */
+    public function testAnAllOfWithAnObjectOnlyMemberAdmitsTheObjectContainerOnly(): void
+    {
+        self::assertTrue(DtoValidator::admitsObjectContainerOnly(['allOf' => [['type' => 'object']]]));
+        self::assertTrue(DtoValidator::admitsObjectContainerOnly(['allOf' => [['minProperties' => 1], ['type' => 'object']]]));
+        self::assertTrue(DtoValidator::admitsObjectContainerOnly(['anyOf' => [['allOf' => [['type' => 'object']]], ['type' => 'null']]]));
+        self::assertTrue(DtoValidator::admitsObjectContainerOnly(['oneOf' => [['allOf' => [['type' => 'object']], 'oneOf' => [['type' => 'object']]]]]));
+        self::assertTrue(DtoValidator::admitsObjectContainerOnly(['allOf' => [['anyOf' => [['type' => 'object'], ['type' => 'null']]]]]));
+        // No member that pins an object: the value could still be a list.
+        self::assertFalse(DtoValidator::admitsObjectContainerOnly(['allOf' => [['minProperties' => 1]]]));
+        self::assertFalse(DtoValidator::admitsObjectContainerOnly(['allOf' => [['type' => ['object', 'array']]]]));
+        self::assertFalse(DtoValidator::admitsObjectContainerOnly(['anyOf' => [['allOf' => [['minimum' => 1]]], ['type' => 'object']]]));
     }
 }

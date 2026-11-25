@@ -885,8 +885,9 @@ final class FuzzRunner
 
     /**
      * Whether a schema resolves to an object: through `$ref` hops, a single-member `anyOf`/`oneOf`
-     * wrapper, or a union whose every non-null member is an object — the shapes symfony and yii3 type
-     * as the class, so the class rows of the support matrix speak for them.
+     * wrapper, a union whose every non-null member is an object, or an `allOf` with no `type` of its
+     * own and an object part — the shapes symfony and yii3 type as the class, so the class rows of the
+     * support matrix speak for them.
      *
      * @param array<string, mixed> $schemas
      */
@@ -922,6 +923,11 @@ final class FuzzRunner
             }
 
             return $objectMembers > 0;
+        }
+        foreach (is_array($schema['allOf'] ?? null) ? $schema['allOf'] : [] as $part) {
+            if (self::isObjectShaped(schema: $part, schemas: $schemas, depth: $depth + 1)) {
+                return true;
+            }
         }
 
         return false;

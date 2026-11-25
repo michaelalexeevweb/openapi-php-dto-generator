@@ -16,7 +16,8 @@ use Symfony\Component\HttpFoundation\Request;
  * A property whose schema is a union of OBJECTS with no `discriminator` cannot be hydrated by the framework
  * modes, and the document says so at generation time rather than the request finding out. Runtime mode
  * builds the member the payload matches since 2.15.152, and is not warned; the Laravel modes do the same
- * for a PROPERTY typed as such a union since 2.15.153, and are warned about its list items alone.
+ * for a PROPERTY typed as such a union since 2.15.153, and are warned about its list items alone. Symfony
+ * holds the decoded object since 2.15.155, checked against the members, and is not warned either.
  *
  * Nothing can turn such a payload back into a member: the document does not say which member a given
  * object is, and choosing by structure would be a guess two overlapping branches could not settle. Every
@@ -58,8 +59,10 @@ final class UnhydratableUnionParityTest extends TestCase
             ));
 
             // Runtime builds the member the payload matches (see
-            // testRuntimeBuildsTheMemberThePayloadMatches), so it has nothing to warn about.
-            if ($mode === GenerationMode::Runtime) {
+            // testRuntimeBuildsTheMemberThePayloadMatches), and symfony holds the decoded object, checked
+            // against the members (ValidationParityTest::testAnUndiscriminatedUnionComponentIsUsableWhereverItSits),
+            // so neither has anything to warn about.
+            if (in_array($mode, [GenerationMode::Runtime, GenerationMode::Symfony], true)) {
                 $this->assertSame(expected: [], actual: $matching);
 
                 continue;
@@ -125,14 +128,15 @@ final class UnhydratableUnionParityTest extends TestCase
      * Laravel mode is the one that writes its own hydrator, and it used to write
      * `Shape::fromValidated($data['shape'])` against an interface that declares no such method — so a
      * payload the document allows died on `Error: Call to undefined method`, a PHP-level accident naming
-     * an internal artefact for a document-level limitation the generator had already reported. It now
-     * throws the same sentence the warning carries — for a list item of the union. The property typed as
-     * the union is built as the member it matches since 2.15.153.
+     * an internal artefact for a document-level limitation the generator had already reported. It then
+     * threw the same sentence the warning carries. The property typed as the union is built as the member
+     * it matches since 2.15.153, a list item or map value of it since 2.15.155 — it was still that throw,
+     * a 500 for every valid item.
      *
      * The other modes fail inside their framework's own hydration, which is not ours to reshape; this
      * pins the one failure the generator authors.
      */
-    public function testLaravelSaysWhyInsteadOfDyingOnAnUndefinedMethod(): void
+    public function testLaravelBuildsTheMatchingMemberInsteadOfDyingOnAnUndefinedMethod(): void
     {
         $this->generate(GenerationMode::Laravel);
 
@@ -159,14 +163,11 @@ final class UnhydratableUnionParityTest extends TestCase
                 actual: $built->getShape()::class,
             );
 
-            try {
-                $probe::fromValidated([...$payload, 'many' => [['r' => 1]]]);
-                self::fail('a list of a union with no discriminator cannot be hydrated, so this must not succeed');
-            } catch (RuntimeException $thrown) {
-                self::assertStringContainsString('Property "many"', $thrown->getMessage());
-                self::assertStringContainsString('no discriminator', $thrown->getMessage());
-                self::assertStringContainsString('Add a discriminator to Shape', $thrown->getMessage());
-            }
+            $items = $probe::fromValidated([...$payload, 'many' => [['r' => 1], ['a' => 2]]])->getMany();
+            self::assertSame(
+                expected: ['Circle', 'Square'],
+                actual: array_map(static fn(object $item): string => substr($item::class, (int)strrpos($item::class, chr(92)) + 1), $items),
+            );
         } finally {
             spl_autoload_unregister($loader);
         }
@@ -296,7 +297,8 @@ final class UnhydratableUnionParityTest extends TestCase
                         array: $warnings,
                         callback: static fn(string $warning): bool => str_contains($warning, 'an undiscriminated ' . $keyword . ' union'),
                     ));
-                    self::assertCount($mode === GenerationMode::Runtime ? 0 : 3, $matching, $mode->value . ': ' . implode(' ', $warnings));
+                    $silent = in_array($mode, [GenerationMode::Runtime, GenerationMode::Symfony], true);
+                    self::assertCount($silent ? 0 : 3, $matching, $mode->value . ': ' . implode(' ', $warnings));
                     foreach ($matching as $warning) {
                         self::assertStringContainsString('Add a discriminator to Shape', $warning);
                     }

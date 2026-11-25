@@ -5261,7 +5261,10 @@ final class GenerateDtoCommand extends Command
                 continue;
             }
 
-            if (!$this->isInlineObjectVariant($variant)) {
+            // An object the branch spells by an `allOf` — `{$ref: Teal, required: [zebu]}` arrives
+            // written as one — is a member class too. Skipped, the member was missing from the union
+            // and every payload was refused as "Unsupported type".
+            if (!$this->isInlineObjectVariant($variant) && $this->unionBranchTypeOfItsOwn($variant, $ownerClassName) !== 'class') {
                 continue;
             }
 
@@ -6208,10 +6211,17 @@ final class GenerateDtoCommand extends Command
             }
             foreach ($classIndexes as $position => $branchIndex) {
                 $variant = $variants[$branchIndex];
-                if (!is_array($variant) || $this->requiresAnUndeclaredName($variant)) {
+                if (!is_array($variant)) {
                     continue;
                 }
                 $marker = ['x-php-instanceof' => ltrim(($this->schemaNamespaces[$candidates[$position]] ?? $this->baseNamespace) . '\\' . $candidates[$position], '\\')];
+                // A `required` name the branch does not declare has no slot in its class: building the
+                // class says nothing about it, so the marker keeps it, for the raw payload to answer.
+                // Dropped, `{$ref: Teal, required: [zebu]}` matched `{"marten": 1}`.
+                $undeclaredRequired = $this->undeclaredRequiredNames($variant);
+                if ($undeclaredRequired !== []) {
+                    $marker['required'] = $undeclaredRequired;
+                }
                 $branch = $branches[$branchIndex];
                 if (is_array($branch) && ($branch['nullable'] ?? null) === true) {
                     $marker['nullable'] = true;
@@ -6238,6 +6248,76 @@ final class GenerateDtoCommand extends Command
         }
 
         return $type === 'object' || (is_array($type) && in_array('object', $type, true));
+    }
+
+    /**
+     * The names a branch lists in `required` — its own and its `allOf` members' — that none of its
+     * `properties` declares, the properties of a `$ref` target and of `allOf` members counted. A
+     * reference this document cannot resolve declares nothing that is known, so its names all count.
+     *
+     * @param array<mixed> $branch
+     * @return list<string>
+     */
+    private function undeclaredRequiredNames(array $branch): array
+    {
+        $declared = $this->declaredPropertyNames($branch);
+        $undeclared = [];
+        foreach ($this->requiredNamesThroughAllOf($branch) as $name) {
+            if (!in_array($name, $declared, true) && !in_array($name, $undeclared, true)) {
+                $undeclared[] = $name;
+            }
+        }
+
+        return $undeclared;
+    }
+
+    /**
+     * @param array<mixed> $schema
+     * @return list<string>
+     */
+    private function requiredNamesThroughAllOf(array $schema, int $depth = 0): array
+    {
+        $names = array_values(array_filter(
+            array: is_array($schema['required'] ?? null) ? $schema['required'] : [],
+            callback: is_string(...),
+        ));
+        if ($depth >= self::SHAPE_PROBE_DEPTH) {
+            return $names;
+        }
+        foreach (is_array($schema['allOf'] ?? null) ? $schema['allOf'] : [] as $member) {
+            if (is_array($member)) {
+                $names = [...$names, ...$this->requiredNamesThroughAllOf($member, $depth + 1)];
+            }
+        }
+
+        return $names;
+    }
+
+    /**
+     * The property names a schema declares: its `properties`, its `allOf` members' and those of the
+     * component a `$ref` names, at any depth.
+     *
+     * @param array<mixed> $schema
+     * @return list<string>
+     */
+    private function declaredPropertyNames(array $schema, int $depth = 0): array
+    {
+        $names = array_map(strval(...), array_keys(is_array($schema['properties'] ?? null) ? $schema['properties'] : []));
+        if ($depth >= self::SHAPE_PROBE_DEPTH) {
+            return $names;
+        }
+        $ref = $schema['$ref'] ?? null;
+        $target = is_string($ref) ? $this->localComponentDefinition($ref) : null;
+        if ($target !== null) {
+            $names = [...$names, ...$this->declaredPropertyNames($target, $depth + 1)];
+        }
+        foreach (is_array($schema['allOf'] ?? null) ? $schema['allOf'] : [] as $member) {
+            if (is_array($member)) {
+                $names = [...$names, ...$this->declaredPropertyNames($member, $depth + 1)];
+            }
+        }
+
+        return $names;
     }
 
     /**
@@ -6409,12 +6489,23 @@ final class GenerateDtoCommand extends Command
         if (!is_array($target) || array_key_exists('discriminator', $target) || $this->bareUnionBranches($target) === null) {
             return $propertySchema;
         }
+        $unionKeyword = is_array($target['oneOf'] ?? null) ? 'oneOf' : 'anyOf';
+        // A `required` name an inline branch does not declare has no slot in the class written for it
+        // (`collectUnionTypes()` names it `<Union>OneOf<n>`), so it stays beside the member's marker.
+        $undeclaredByMember = [];
+        foreach (array_values(is_array($target[$unionKeyword] ?? null) ? $target[$unionKeyword] : []) as $index => $variant) {
+            $names = is_array($variant) && !array_key_exists('$ref', $variant) ? $this->undeclaredRequiredNames($variant) : [];
+            if ($names !== []) {
+                $undeclaredByMember[$interface . ($unionKeyword === 'oneOf' ? 'OneOf' : 'AnyOf') . ($index + 1)] = $names;
+            }
+        }
         // The members the interface was given — `$ref` branches and the classes written for inline
         // object branches (`AnimalOneOf3`) alike, in declaration order.
         $branches = [];
         foreach ($this->unionInterfacesByClass as $member => $interfaces) {
             if (in_array($interface, $interfaces, true) && array_key_exists($member, $this->dtoSchemas)) {
-                $branches[] = ['$ref' => '#/components/schemas/' . $member];
+                $branches[] = ['$ref' => '#/components/schemas/' . $member]
+                    + (array_key_exists($member, $undeclaredByMember) ? ['required' => $undeclaredByMember[$member]] : []);
             }
         }
         if (count($branches) < 2) {
@@ -6427,7 +6518,7 @@ final class GenerateDtoCommand extends Command
             }
         }
 
-        return [...$spelled, is_array($target['oneOf'] ?? null) ? 'oneOf' : 'anyOf' => $branches];
+        return [...$spelled, $unionKeyword => $branches];
     }
 
     /**
@@ -8208,6 +8299,19 @@ final class GenerateDtoCommand extends Command
 
             $itemsType = $this->soleTypeBesidesNull($items['type'] ?? null);
 
+            // An object ITEM behind a composition — `items: {allOf: [{type: object, …}]}`, `{anyOf:
+            // [{type: object, …}, {type: null}]}` — is an object with its own class, as the same schema
+            // as a property or a map value is. Left to the type mapping below it became `mixed` and
+            // stayed the decoded array: an empty item `{}` was written back as `[]`.
+            $composedItemClass = $itemsType === null
+                ? $this->composedObjectItemClass($items, $ownerClassName, $propertyName)
+                : null;
+            if ($composedItemClass !== null) {
+                [$itemClassName, $itemClassNullable] = $composedItemClass;
+
+                return ['array<' . $this->composePhpTypeHint($itemClassName, $itemNullable || $itemClassNullable) . '>', $nullable];
+            }
+
             // A list of lists. Left to the scalar mapping below it landed on `default => 'mixed'`, so
             // `array<array<int>>` was declared `array<mixed>` — and `mixed` is the one item type
             // `DtoNormalizer::validate()` skips, which is why a matrix with a scalar where a row
@@ -8278,6 +8382,58 @@ final class GenerateDtoCommand extends Command
             },
             $nullable,
         ];
+    }
+
+    /**
+     * The class of a list item that is ONE object behind a composition: an `allOf` that merges into a
+     * class, or an `anyOf` / `oneOf` whose only branch besides `null` is such an object. Resolved the
+     * way a map value is — through `resolvePropertyType()` under the name `<Owner><Property>Item` —
+     * and null for anything else (a union of two objects, a `$ref` that names its own class, a
+     * scalar), which keeps the item type it had.
+     *
+     * @param array<string, mixed> $items
+     * @return array{string, bool}|null the class name and whether the composition admits null
+     */
+    private function composedObjectItemClass(array $items, string $ownerClassName, string $propertyName): ?array
+    {
+        if (is_array($items['allOf'] ?? null)) {
+            $isOneObject = $this->unionBranchTypeOfItsOwn($items, $ownerClassName) === 'class';
+        } else {
+            $keyword = is_array($items['anyOf'] ?? null) ? 'anyOf' : (is_array($items['oneOf'] ?? null) ? 'oneOf' : null);
+            if ($keyword === null) {
+                return null;
+            }
+            $branches = array_values(array_filter(
+                array: $items[$keyword],
+                callback: fn(mixed $branch): bool => !is_array($branch) || !$this->isNullBranch($branch),
+            ));
+            $isOneObject = count($branches) === 1 && is_array($branches[0])
+                && $this->unionBranchTypeOfItsOwn($branches[0], $ownerClassName) === 'class';
+        }
+        if (!$isOneObject) {
+            return null;
+        }
+
+        $itemPropertyName = $propertyName . 'Item';
+        [$itemType, $itemNullable] = $this->resolvePropertyType($items, $ownerClassName, $itemPropertyName);
+        if ($itemType !== $ownerClassName . $this->normalizeClassName($itemPropertyName)) {
+            return null;
+        }
+        $this->recordSynthesizedOrigin($itemType, $ownerClassName, $propertyName, arrayItem: true);
+
+        return [$itemType, $itemNullable];
+    }
+
+    /**
+     * A union branch that only adds `null`: `{type: null}`, or the 3.0 idiom `{nullable: true}` with
+     * nothing else that would type it — the two `resolveComposedUnionPropertyType()` skips.
+     *
+     * @param array<string, mixed> $branch
+     */
+    private function isNullBranch(array $branch): bool
+    {
+        return ($branch['type'] ?? null) === 'null'
+            || (($branch['nullable'] ?? false) === true && $this->isNullOnlyBranch($branch));
     }
 
     /**
@@ -12439,7 +12595,9 @@ final class GenerateDtoCommand extends Command
      * Runtime mode is not warned: the owner's `getConstraints()` names the members as branches, and
      * `DtoDeserializer` builds the payload into the member it matches, as it does for an inline
      * `Olive|Teal` — the first under `anyOf`, the only one under `oneOf`. It used to refuse every payload
-     * with `Unsupported type: Shape`.
+     * with `Unsupported type: Shape`. Nor is symfony mode since 2.15.155: it holds such a property, list
+     * item or map value as the decoded object, checked against the members by the callback
+     * (`RendersSymfonyDto::symfonyWithUndiscriminatedUnionsHeldDecoded()`).
      *
      * A 500 at request time for a shape the generator could see at build time is the actual defect, so it
      * is named here instead. Generation still succeeds: the interface and its members are useful as types,
@@ -12453,7 +12611,7 @@ final class GenerateDtoCommand extends Command
      */
     private function warnAboutUnhydratableUnionProperties(string $className, array $properties): void
     {
-        if ($this->attributeMode === self::ATTRIBUTE_MODE_RUNTIME) {
+        if (in_array($this->attributeMode, [self::ATTRIBUTE_MODE_RUNTIME, self::ATTRIBUTE_MODE_SYMFONY], true)) {
             return;
         }
         foreach ($properties as $property) {

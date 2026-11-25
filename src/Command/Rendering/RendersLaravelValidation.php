@@ -941,8 +941,15 @@ trait RendersLaravelValidation
             $this->importLibraryClass(fqcn: 'InvalidArgumentException', namespace: $namespace, useStatements: $imports);
         }
 
-        // The members a union component is built as are named by the hydration, not by the type.
-        foreach ([...$this->generatedClassesNamedByType($property['type']), ...$this->laravelUndiscriminatedUnionClasses($property)] as $nested) {
+        // The members a union component is built as are named by the hydration, not by the type — as a
+        // list item or map value too, in laravel mode.
+        $builtMembers = [];
+        if ($this->attributeMode === self::ATTRIBUTE_MODE_LARAVEL) {
+            foreach ($this->generatedClassesNamedByType($property['type']) as $namedClass) {
+                $builtMembers = [...$builtMembers, ...$this->laravelUnionComponentMembers($namedClass)];
+            }
+        }
+        foreach ([...$this->generatedClassesNamedByType($property['type']), ...$this->laravelUndiscriminatedUnionClasses($property), ...$builtMembers] as $nested) {
             $this->appendImportForClass($imports, $nested, $namespace, $className);
         }
 
@@ -959,8 +966,9 @@ trait RendersLaravelValidation
                 $referenced !== null
                 && $this->attributeMode === self::ATTRIBUTE_MODE_LARAVEL
                 && $this->isUnhydratableUnionClass($referenced)
-                // A property typed as such a component is built as its matching member instead.
-                && !($referenced === $this->laravelDtoClass($property) && $this->laravelUndiscriminatedUnionClasses($property) !== [])
+                // A property, item or value typed as such a component is built as its matching member
+                // instead, when every member is a `$ref` class.
+                && $this->laravelUnionComponentMembers($referenced) === []
             ) {
                 $this->importLibraryClass(fqcn: 'RuntimeException', namespace: $namespace, useStatements: $imports);
             }
@@ -1358,6 +1366,16 @@ trait RendersLaravelValidation
             // A union of classes is built as the first member whose own schema the value matches.
             foreach ($this->laravelUndiscriminatedUnionClasses($property) as $memberClass) {
                 $this->laravelRecordRecursiveFold($memberClass);
+            }
+            // So is a list item or map value of such a union component, at any depth — in laravel mode,
+            // whose hydrator builds it; laravel-data holds those items as the decoded arrays.
+            if ($this->attributeMode !== self::ATTRIBUTE_MODE_LARAVEL) {
+                continue;
+            }
+            foreach ($this->generatedClassesNamedByType($property['type']) as $namedClass) {
+                foreach ($this->laravelUnionComponentMembers($namedClass) as $memberClass) {
+                    $this->laravelRecordRecursiveFold($memberClass);
+                }
             }
         }
 
@@ -2826,10 +2844,13 @@ trait RendersLaravelValidation
         // A list of objects, and a map whose VALUES are objects, share the wildcard path.
         $items = is_array($constraints['items'] ?? null) ? $constraints['items'] : null;
         $values = is_array($constraints['additionalProperties'] ?? null) ? $constraints['additionalProperties'] : null;
+        // An item or value union of an object and a scalar too, as on the property: decoded, `[2]`
+        // satisfied the object member.
+        $isObject = fn(?array $schema): bool => $schema !== null
+            && ($this->laravelSchemaIsObject($schema) || $this->laravelUnionAdmitsObjectButNoArray($schema));
         if (
             $itemDtoClass !== null
-            || ($property['type'] !== 'mixed' && $items !== null && $this->laravelSchemaIsObject($items))
-            || ($property['type'] !== 'mixed' && $values !== null && $this->laravelSchemaIsObject($values))
+            || ($property['type'] !== 'mixed' && ($isObject($items) || $isObject($values)))
         ) {
             $paths[] = $path . '.*';
         }
@@ -2930,7 +2951,8 @@ trait RendersLaravelValidation
      * Whether a subschema describes an object and NOTHING else. A union that also allows an array is
      * ambiguous by design, so it is left to the interpreter rather than refused here. A `oneOf` /
      * `anyOf` whose every member is an object (or `null`) is one: `anyOf: [{type: object}]` refuses
-     * `[1,2]` exactly as `type: object` does.
+     * `[1,2]` exactly as `type: object` does. So is an `allOf` with one part that is: every part has to
+     * hold, and `allOf: [{type: object}]` in a list item or beside `null` in an `anyOf` took `[1,2]`.
      *
      * @param array<array-key, mixed> $schema
      */
@@ -2945,6 +2967,13 @@ trait RendersLaravelValidation
         }
         if ($type !== null) {
             return $type === 'object';
+        }
+
+        $parts = $schema['allOf'] ?? null;
+        foreach (is_array($parts) ? $parts : [] as $part) {
+            if (is_array($part) && $this->laravelSchemaIsObject($part)) {
+                return true;
+            }
         }
 
         foreach (['oneOf', 'anyOf'] as $keyword) {

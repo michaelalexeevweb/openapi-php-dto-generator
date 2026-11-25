@@ -167,6 +167,201 @@ trait RendersSymfonyDto
     }
 
     /**
+     * A property, list item or map value typed as a union COMPONENT of classes with no `discriminator`
+     * (`Shade: {anyOf: [$ref Zebra, $ref Ant]}`), held as the decoded object: `?Shade` becomes `?array`
+     * (`array<string, mixed>`), `array<Shade>` becomes `array<array<string, mixed>>`. A union with a
+     * member that is not an object is held as `mixed`.
+     *
+     * Typed as the union's interface, the serializer had no class to build — the document does not say
+     * which member an object is — and every object was refused, valid ones included: `{"shade":
+     * {"leg": 1}}` came back "must be one of Shade (array given)". The callback judges the decoded
+     * value against the members instead (`symfonyWithRawContainerBranchesInlined()`): `anyOf` at least
+     * one, `oneOf` exactly one.
+     *
+     * @param array<int, SchemaProperty> $properties
+     * @return array<int, SchemaProperty>
+     */
+    private function symfonyWithUndiscriminatedUnionsHeldDecoded(array $properties): array
+    {
+        foreach ($properties as $index => $property) {
+            $held = $this->symfonyUndiscriminatedUnionHeldType($property['type']);
+            if ($held !== $property['type']) {
+                $properties[$index]['type'] = $held;
+            }
+        }
+
+        return $properties;
+    }
+
+    /**
+     * The properties `symfonyWithUndiscriminatedUnionsHeldDecoded()` holds as the decoded value, by
+     * OpenAPI name: nothing is built below them, so every keyword there is the callback's.
+     *
+     * A list of lists of such a union (`array<array<Shade>>`) is one of them too: past the second
+     * container the type says `mixed` already, and the union below was left to the class nothing builds
+     * there — `{"rows": [[{}]]}` was accepted.
+     *
+     * @param array<int, SchemaProperty> $properties
+     * @return array<string, true>
+     */
+    private function symfonyUndiscriminatedUnionsHeldDecoded(string $className, array $properties): array
+    {
+        $schemaProperties = $this->dtoSchemas[$className]['properties'] ?? null;
+        $held = [];
+        foreach ($properties as $property) {
+            $schema = is_array($schemaProperties) ? ($schemaProperties[$property['openApiName']] ?? null) : null;
+            if (
+                $this->symfonyUndiscriminatedUnionHeldType($property['type']) !== $property['type']
+                || (is_array($schema) && $this->symfonyContainerHoldsUndiscriminatedUnion(schema: $schema, className: $className))
+            ) {
+                $held[$property['openApiName']] = true;
+            }
+        }
+
+        return $held;
+    }
+
+    /**
+     * Whether a list or map holds, at any depth, an undiscriminated union component of classes.
+     *
+     * @param array<mixed> $schema
+     */
+    private function symfonyContainerHoldsUndiscriminatedUnion(array $schema, string $className, int $depth = 0): bool
+    {
+        if ($depth >= 8) {
+            return false;
+        }
+        foreach (['items', 'additionalProperties'] as $containerKey) {
+            $inner = $schema[$containerKey] ?? null;
+            if (!is_array($inner)) {
+                continue;
+            }
+            $ref = $inner['$ref'] ?? null;
+            if (
+                is_string($ref)
+                && $this->isUnhydratableUnionClass($this->schemaRefToClassName(ref: $ref, currentSourceFile: $this->getSchemaSourceFile($className)))
+            ) {
+                return true;
+            }
+            if ($this->symfonyContainerHoldsUndiscriminatedUnion(schema: $inner, className: $className, depth: $depth + 1)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The PHP type with every undiscriminated union component of classes in it replaced by the decoded
+     * value it is held as, see `symfonyWithUndiscriminatedUnionsHeldDecoded()`.
+     */
+    private function symfonyUndiscriminatedUnionHeldType(string $type): string
+    {
+        $topLevel = $this->topLevelTypeMembers(ltrim($type, '?'));
+        $heldAsMixed = false;
+        $replaced = preg_replace_callback(
+            pattern: '/\??\\\?[A-Za-z_][A-Za-z0-9_\\\]*/',
+            callback: function (array $match) use (&$heldAsMixed): string {
+                $class = $this->shortClassName(ltrim($match[0], '?\\'));
+                if (!$this->isUnhydratableUnionClass($class)) {
+                    return $match[0];
+                }
+                if (!$this->symfonyUnionHoldsOnlyObjects($class)) {
+                    $heldAsMixed = true;
+
+                    return 'mixed';
+                }
+
+                // The interface stays beside it: a DTO built by hand — a response — still holds a member.
+                return 'array<string, mixed>|' . ltrim($match[0], '?') . (str_starts_with($match[0], '?') ? '|null' : '');
+            },
+            subject: $type,
+        );
+        if ($replaced === null || $replaced === $type) {
+            return $type;
+        }
+        // `mixed` admits null and stands in no union: a top-level member held so takes the whole type.
+        if ($heldAsMixed) {
+            foreach ($topLevel as $member) {
+                $class = $this->shortClassName(ltrim($member, '?\\'));
+                if ($this->isUnhydratableUnionClass($class) && !$this->symfonyUnionHoldsOnlyObjects($class)) {
+                    return 'mixed';
+                }
+            }
+        }
+
+        return $replaced;
+    }
+
+    /**
+     * Whether every member of a union component is an object — a generated class, an inline object, or
+     * a union of those — so the decoded value it is held as is always an `array`.
+     */
+    private function symfonyUnionHoldsOnlyObjects(string $class, int $depth = 0): bool
+    {
+        $schema = $this->dtoSchemas[$class] ?? null;
+        if (!is_array($schema) || $depth >= 8 || ($schema['nullable'] ?? false) === true) {
+            return false;
+        }
+
+        return $this->symfonyBranchesAreObjects(schema: $schema, sourceClass: $class, depth: $depth);
+    }
+
+    /**
+     * @param array<mixed> $schema
+     */
+    private function symfonyBranchesAreObjects(array $schema, string $sourceClass, int $depth): bool
+    {
+        $branches = [];
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            foreach (is_array($schema[$keyword] ?? null) ? $schema[$keyword] : [] as $branch) {
+                $branches[] = $branch;
+            }
+        }
+        if ($branches === []) {
+            return false;
+        }
+        foreach ($branches as $branch) {
+            if (!is_array($branch)) {
+                return false;
+            }
+            $ref = $branch['$ref'] ?? null;
+            if (is_string($ref)) {
+                $target = $this->schemaRefToClassName(ref: $ref, currentSourceFile: $this->getSchemaSourceFile($sourceClass));
+                $definition = $this->dtoSchemas[$target] ?? null;
+                if (
+                    !is_array($definition)
+                    || array_key_exists($target, $this->enumSchemas)
+                    || $this->isScalarAliasSchema($definition)
+                    || ($definition['nullable'] ?? false) === true
+                ) {
+                    return false;
+                }
+                if ($this->rendersAsUnion($definition) && !$this->symfonyUnionHoldsOnlyObjects($target, $depth + 1)) {
+                    return false;
+                }
+
+                continue;
+            }
+            if ($this->isInlineObjectVariant($branch) && ($branch['nullable'] ?? false) !== true) {
+                continue;
+            }
+            if (
+                $depth < 8
+                && !array_key_exists('type', $branch)
+                && (array_key_exists('oneOf', $branch) || array_key_exists('anyOf', $branch))
+                && $this->symfonyBranchesAreObjects(schema: $branch, sourceClass: $sourceClass, depth: $depth + 1)
+            ) {
+                continue;
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
      * A property whose `oneOf`/`anyOf` holds a list of a UNION component beside `null` or a scalar
      * (`oneOf: [{type: array, items: {$ref: Shape}}, {type: integer}]`), typed as that list:
      * `array<Shape>|int`.
@@ -298,6 +493,8 @@ trait RendersSymfonyDto
 
         $properties = $this->symfonyWithUnionListsTyped($className, $properties);
         $properties = $this->symfonyWithFreeFormObjectUnionsHeldAsArray($className, $properties);
+        $heldDecoded = $this->symfonyUndiscriminatedUnionsHeldDecoded($className, $properties);
+        $properties = $this->symfonyWithUndiscriminatedUnionsHeldDecoded($properties);
 
         $useStatements = [];
         if ($this->needsDateTimeImmutableImport($properties)) {
@@ -338,8 +535,9 @@ trait RendersSymfonyDto
         $validationConstraints = $this->filterInterpreterConstraints(
             constraints: $extractedClassConstraints,
             allowScalarKeywords: false,
-            forceScalarOnProperties: $forceRootCallbackBounds,
-            unmaterializedProperties: $this->mixedPropertyNames($properties),
+            // Nothing is built below a union held as the decoded value: the callback judges all of it.
+            forceScalarOnProperties: $forceRootCallbackBounds + $heldDecoded,
+            unmaterializedProperties: $this->mixedPropertyNames($properties) + $heldDecoded,
         );
         $validationConstraints = $this->symfonyWithClassLevelAnyOf(
             filtered: $validationConstraints,
@@ -410,7 +608,11 @@ trait RendersSymfonyDto
         ) {
             $validationParts['methods'] = $this->renderSymfonyStandalonePayloadMethod($params);
         }
-        $validationParts['methods'] .= $this->renderSymfonyScalarUnionCascade($properties);
+        $cascade = $this->renderSymfonyScalarUnionCascade($properties);
+        // After the interpreter's methods, which end on their closing brace: a blank line between them.
+        $validationParts['methods'] = $validationParts['methods'] !== '' && $cascade !== ''
+            ? rtrim($validationParts['methods']) . "\n" . $cascade
+            : $validationParts['methods'] . $cascade;
 
         // Only where an attribute uses it: since NotNull and the empty callback went, many classes
         // carry no constraint at all, and an unused import trips `no_unused_imports` in the consumer.
@@ -729,8 +931,16 @@ trait RendersSymfonyDto
                 $rawHeld[$property['openApiName']] = $typeMembers;
             }
         }
+        // A union component of classes is held as the decoded object wherever it sits — the property, a
+        // list item, a map value: written out in place, members and all.
+        $heldDecoded = $this->symfonyUndiscriminatedUnionsHeldDecoded($className, $rendered);
         $properties = [];
         foreach ($classSchema['properties'] as $name => $propertySchema) {
+            if (is_array($propertySchema) && array_key_exists((string)$name, $heldDecoded)) {
+                $properties[$name] = $this->symfonyNullableLifted($this->symfonyRawContainerInlined($propertySchema));
+
+                continue;
+            }
             if (is_array($propertySchema) && array_key_exists((string)$name, $rawHeld)) {
                 $propertySchema = $this->symfonyHeldUnionBranchesInlined(
                     schema: $this->symfonyContainerUnionReferenceInlined($propertySchema),
@@ -849,6 +1059,32 @@ trait RendersSymfonyDto
         // in that spelling, the keys beside the reference took the place of Indigo's own, which went
         // unchecked. Both halves, as the same union written on the property is judged.
         return $this->objectReferencesWithTheirSiblings($own + $definition);
+    }
+
+    /**
+     * `nullable: true` beside an inlined union, spelled as the null branch it means.
+     *
+     * Beside a `oneOf` whose members declare no `type` of their own (`Shape: {type: object, oneOf:
+     * [{properties: …}, {properties: …}]}`), the null that `nullable` admits matched EVERY member, and
+     * `{"shape": null}` was refused for matching more than one — on a property typed `?Shape`, where the
+     * serializer had always let it through.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<string, mixed>
+     */
+    private function symfonyNullableLifted(array $schema): array
+    {
+        if (($schema['nullable'] ?? null) !== true) {
+            return $schema;
+        }
+        $rest = [];
+        foreach ($schema as $keyword => $value) {
+            if ($keyword !== 'nullable') {
+                $rest[$keyword] = $value;
+            }
+        }
+
+        return ['anyOf' => [['type' => 'null'], $rest]];
     }
 
     /**

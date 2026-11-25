@@ -1,4 +1,4 @@
-# laravel-data mode — 80 files, 23962 lines
+# laravel-data mode — 80 files, 23964 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -21102,6 +21102,8 @@ final class UnionUnderContainer extends Data
     private const array OPENAPI_OBJECT_PATHS = [
         'tree',
         'chain.*',
+        'chainAllOf.*',
+        'listOfUnions.*',
     ];
 
     /**

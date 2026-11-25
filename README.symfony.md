@@ -640,6 +640,13 @@ a value the first class also builds is held as that class — see the
 [support matrix](README.support-matrix.md#divergences). Add a `discriminator` and the union becomes the
 interface above.
 
+An undiscriminated union COMPONENT of classes (`shade: {$ref: Shade}`, `Shade: {anyOf: [$ref Zebra, $ref
+Ant]}`) is an interface the serializer cannot build, so the property — or the list item, or the map
+value — holds the decoded object instead: `array<string, mixed>|Shade`, `array<array<string, mixed>|Shade>`.
+The callback checks that object against the members, `anyOf` at least one, `oneOf` exactly one; a DTO
+built by hand may still put a member there. A union with a member that is not an object is held as
+`mixed`.
+
 An `anyOf` branch that is purely `{type: null}` causes the whole `#[Assert\AtLeastOneOf]` to be
 dropped (the field stays nullable).
 

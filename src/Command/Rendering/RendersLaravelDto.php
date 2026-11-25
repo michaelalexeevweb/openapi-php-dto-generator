@@ -1269,6 +1269,26 @@ trait RendersLaravelDto
      */
     private function laravelNestedDtoExpression(string $dtoClass, string $rawAccess, string $wireName): string
     {
+        // A union COMPONENT of `$ref` classes with no discriminator — a list item, a map value — is
+        // built as the first member whose own schema the value matches, as a property of that type is;
+        // the validator has already decided one does. It used to throw below, a 500 for every valid item.
+        $members = $this->laravelUnionComponentMembers($dtoClass);
+        if ($members !== []) {
+            $lastMember = array_pop($members);
+            $arms = [];
+            foreach ($members as $memberClass) {
+                $arms[] = sprintf(
+                    '%s => %s::fromValidated(%s)',
+                    $this->laravelUnionMemberMatchCondition($memberClass, $rawAccess),
+                    $this->shortClassName($memberClass),
+                    $rawAccess,
+                );
+            }
+            $arms[] = sprintf('default => %s::fromValidated(%s)', $this->shortClassName($lastMember), $rawAccess);
+
+            return sprintf('match (true) { %s }', implode(', ', $arms));
+        }
+
         // A union of objects with no discriminator has no member to choose, so there is nothing to call.
         // Emitting `Interface::fromValidated()` anyway is what produced `Error: Call to undefined method`
         // at request time, for a payload the document allows and the generator had already warned about.
