@@ -991,4 +991,69 @@ trait RendersCommonDtoParts
             static fn(string $member): bool => $member !== '' && $member !== 'null',
         ));
     }
+
+    /**
+     * The names a class's `required` lists — its own, those of its inline `allOf` branches and those of
+     * the components its `allOf` references — that none of those schemas declares in `properties`.
+     * A union class judges itself branch by branch elsewhere and gets none here.
+     *
+     * @param array<array-key, mixed> $schema
+     * @return list<string>
+     */
+    private function undeclaredRequiredNamesOfClass(array $schema, string $sourceClass): array
+    {
+        if (array_key_exists('oneOf', $schema) || array_key_exists('anyOf', $schema)) {
+            return [];
+        }
+        $names = $this->requiredAndDeclaredNamesOfClass(schema: $schema, sourceClass: $sourceClass, depth: 0);
+
+        return array_values(array_diff(array_unique($names['required']), $names['declared']));
+    }
+
+    /**
+     * @param array<array-key, mixed> $schema
+     * @return array{required: list<string>, declared: list<string>}
+     */
+    private function requiredAndDeclaredNamesOfClass(array $schema, string $sourceClass, int $depth): array
+    {
+        $required = [];
+        foreach (is_array($schema['required'] ?? null) ? $schema['required'] : [] as $name) {
+            if (is_string($name) || is_int($name)) {
+                $required[] = (string)$name;
+            }
+        }
+        $declared = [];
+        foreach (is_array($schema['properties'] ?? null) ? array_keys($schema['properties']) : [] as $name) {
+            $declared[] = (string)$name;
+        }
+
+        $branches = is_array($schema['allOf'] ?? null) ? $schema['allOf'] : [];
+        $ref = $schema['$ref'] ?? null;
+        if (is_string($ref)) {
+            $branches[] = ['$ref' => $ref];
+        }
+        // A reference cycle through `allOf` is the document's own error; the depth only keeps it finite.
+        if ($depth > 16) {
+            return ['required' => $required, 'declared' => $declared];
+        }
+        foreach ($branches as $branch) {
+            if (!is_array($branch)) {
+                continue;
+            }
+            $branchRef = $branch['$ref'] ?? null;
+            if (is_string($branchRef)) {
+                $resolved = $this->resolveSchemaNodeByRef($branchRef, $this->getSchemaSourceFile($sourceClass));
+                $branch = $resolved === null ? [] : $resolved[0];
+            }
+            // A union branch is satisfied by one of its members, which says nothing about all of them.
+            if (array_key_exists('oneOf', $branch) || array_key_exists('anyOf', $branch)) {
+                continue;
+            }
+            $below = $this->requiredAndDeclaredNamesOfClass(schema: $branch, sourceClass: $sourceClass, depth: $depth + 1);
+            $required = [...$required, ...$below['required']];
+            $declared = [...$declared, ...$below['declared']];
+        }
+
+        return ['required' => $required, 'declared' => $declared];
+    }
 }

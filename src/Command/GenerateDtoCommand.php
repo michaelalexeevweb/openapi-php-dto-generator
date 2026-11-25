@@ -526,9 +526,10 @@ final class GenerateDtoCommand extends Command
 
     /**
      * Components that only name another one (`X: {$ref: Y}`), redirected to what they name and given
-     * no class of their own — see `redirectPureAliasReferences()`.
+     * no class of their own — see `redirectPureAliasReferences()`. The value is the `$ref` the chain
+     * ends at.
      *
-     * @var array<string, true>
+     * @var array<string, string>
      */
     private array $pureAliasClasses = [];
 
@@ -3118,7 +3119,7 @@ final class GenerateDtoCommand extends Command
                 continue;
             }
             $resolved[$className] = ['ref' => $ref, 'nullable' => $nullable];
-            $this->pureAliasClasses[$className] = true;
+            $this->pureAliasClasses[$className] = $ref;
         }
 
         if ($resolved === []) {
@@ -7048,12 +7049,34 @@ final class GenerateDtoCommand extends Command
      */
     private function unionRefTarget(string $ref): array
     {
-        $target = $this->unionRefTargetChecks($ref);
-        if ($target === [] || !$this->componentAdmitsNull($this->localComponentDefinition($ref) ?? [])) {
+        // A branch naming an alias (`Alias: {$ref: Hen}`) is the class the alias names: the alias gets
+        // no class of its own, and a marker naming it refused every payload (symfony).
+        $target = $this->unionRefTargetChecks($this->pureAliasEndRef($ref));
+        if (
+            $target === []
+            || (
+                !$this->componentAdmitsNull($this->localComponentDefinition($ref) ?? [])
+                && !$this->componentAdmitsNull($this->localComponentDefinition($this->pureAliasEndRef($ref)) ?? [])
+            )
+        ) {
             return $target;
         }
 
         return [...$target, 'nullable' => true];
+    }
+
+    /**
+     * The `$ref` a local alias component's chain ends at (`redirectPureAliasReferences()`); any other
+     * `$ref` as it is.
+     */
+    private function pureAliasEndRef(string $ref): string
+    {
+        $prefix = '#/components/schemas/';
+        if (!str_starts_with($ref, $prefix)) {
+            return $ref;
+        }
+
+        return $this->pureAliasClasses[$this->schemaClassName(substr($ref, strlen($prefix)))] ?? $ref;
     }
 
     /**
@@ -9376,34 +9399,20 @@ final class GenerateDtoCommand extends Command
      * deserialize nested DTO … from non-array value` and every list with `expects object`, and the
      * keywords it carries were checked by nothing.
      *
-     * Kept a class, as before: the schema that writes no keyword at all (`{}`, a bare `description`)
-     * — its class is how a document names a free-form value, and an application may reference it —
-     * a union, an enum, and anything `shapesAnObject()` recognises.
+     * The schema that writes no keyword at all (`{}`, a bare `description`) is one too, as the inline
+     * `{}` is `mixed`. It used to keep an empty final class, which held no scalar and lost every key of
+     * an object (symfony wrote `3` back as `[]`, yii3 died calling a method the class did not have).
+     *
+     * Kept a class: a union, an enum, and anything `shapesAnObject()` recognises.
      *
      * @param array<string, mixed> $schema
      */
     private function isUntypedValueSchema(array $schema): bool
     {
-        if (
-            array_key_exists('type', $schema)
-            || array_key_exists('enum', $schema)
-            || $this->rendersAsUnion($schema)
-            || $this->shapesAnObject($schema)
-        ) {
-            return false;
-        }
-
-        foreach (array_keys($schema) as $keyword) {
-            if (
-                !in_array($keyword, self::ALIAS_ANNOTATION_KEYWORDS, true)
-                && !in_array($keyword, self::NON_ASSERTING_KEYWORDS, true)
-                && !str_starts_with($keyword, 'x-')
-            ) {
-                return true;
-            }
-        }
-
-        return false;
+        return !array_key_exists('type', $schema)
+            && !array_key_exists('enum', $schema)
+            && !$this->rendersAsUnion($schema)
+            && !$this->shapesAnObject($schema);
     }
 
     /**
@@ -12645,10 +12654,15 @@ final class GenerateDtoCommand extends Command
     private function undiscriminatedUnionTypeOf(array $property): ?array
     {
         // The Laravel modes build a PROPERTY typed as such a component into the member it matches, when
-        // every member is a `$ref` class; a list item or map value of it still is not.
+        // every member is a `$ref` class. Laravel builds a list item or map value of it the same way;
+        // laravel-data holds those items as arrays, so they stay warned about there.
         $builtAsMember = in_array($this->attributeMode, [self::ATTRIBUTE_MODE_LARAVEL, self::ATTRIBUTE_MODE_LARAVEL_DATA], true)
             && $this->laravelUndiscriminatedUnionClasses($property) !== [];
-        foreach ([$builtAsMember ? null : $this->laravelDtoClass($property), $this->laravelDtoItemClass($property)] as $candidate) {
+        $itemClass = $this->laravelDtoItemClass($property);
+        $itemBuiltAsMember = $itemClass !== null
+            && $this->attributeMode === self::ATTRIBUTE_MODE_LARAVEL
+            && $this->laravelUnionComponentMembers($itemClass) !== [];
+        foreach ([$builtAsMember ? null : $this->laravelDtoClass($property), $itemBuiltAsMember ? null : $itemClass] as $candidate) {
             if ($candidate === null || array_key_exists($candidate, $this->discriminatorSchemas)) {
                 continue;
             }

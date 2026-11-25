@@ -3,6 +3,33 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.156 — 2026-11-25
+
+- fuzz round eleven: 12 fixes
+- raw union object judged
+- alias union member resolved
+- yii3 union component members checked
+- laravel empty objects written {}
+
+The eleventh fuzz round took the round-ten leftovers and 7 findings from fresh seeds: 9 root causes, 12 fixes,
+each with a test that failed before, and 4 framework limits documented. A fresh run on new seeds found 5:
+3 in the shapes covered before round seven, 2 in unions of several objects.
+
+**Regenerate after upgrading, in every mode.**
+
+- runtime: in a union of a `$ref` class and a member held as a PHP `array` (a free-form or required-only
+  object, or `type: array`), an object the class could not be built from is judged against the class's own
+  keywords — it was accepted with no branch matched;
+- symfony: an alias component (`Alias: {$ref: Hen}`) as a member of a union component is checked as `Hen`
+  (the marker named a class that is never written, so every object was refused); a keyword-less component is
+  `mixed`;
+- laravel: list items and map values of an undiscriminated union component are built, and generation no
+  longer warns that they cannot be; an empty item or map value whose schema admits an object and no array is
+  written back `{}`, not `[]`;
+- laravel-data: a null item of a union list is handled;
+- yii3: a union component member written as `$ref` with siblings is checked in full, the component's own
+  keywords beside its `oneOf` judge the value, and a nullable union counts null once.
+
 ## 2.15.155 — 2026-11-25
 
 - fuzz round ten: 14 fixes

@@ -67,9 +67,17 @@ final class UnhydratableUnionParityTest extends TestCase
 
                 continue;
             }
-            // The Laravel modes build the property as the member it matches, as the inline `Circle|Square`;
-            // the list items of the union are still not built.
-            if (in_array($mode, [GenerationMode::Laravel, GenerationMode::LaravelData], true)) {
+            // Laravel builds the property AND its list items as the member they match, as the inline
+            // `Circle|Square` (testLaravelBuildsTheMatchingMemberInsteadOfDyingOnAnUndefinedMethod), so it
+            // has nothing to warn about.
+            if ($mode === GenerationMode::Laravel) {
+                $this->assertSame(expected: [], actual: $matching, message: implode("\n ", $warnings));
+
+                continue;
+            }
+            // laravel-data builds the property as the member it matches; the list items of the union are
+            // still held as arrays.
+            if ($mode === GenerationMode::LaravelData) {
                 $this->assertCount(
                     expectedCount: 1,
                     haystack: $matching,
@@ -347,6 +355,49 @@ final class UnhydratableUnionParityTest extends TestCase
             } finally {
                 spl_autoload_unregister($loader);
                 $this->deleteRecursively($directory);
+            }
+        }
+    }
+
+    /**
+     * A list item and a map value of a union component of `$ref` classes — `anyOf`, and `oneOf` with a
+     * `null` member — are built as the member they match by laravel, so laravel warns about neither;
+     * laravel-data holds them as arrays and still does.
+     */
+    public function testLaravelDoesNotWarnAboutUnionItemsItBuilds(): void
+    {
+        foreach (['anyOf' => false, 'oneOf' => true] as $keyword => $withNull) {
+            $branches = [['$ref' => '#/components/schemas/Olive'], ['$ref' => '#/components/schemas/Teal']];
+            if ($withNull) {
+                $branches[] = ['type' => 'null'];
+            }
+            $spec = [
+                'openapi' => '3.1.0',
+                'info' => ['title' => 'T', 'version' => '1.0.0'],
+                'components' => [
+                    'schemas' => [
+                        'Probe' => [
+                            'type' => 'object',
+                            'properties' => [
+                                'shade' => ['$ref' => '#/components/schemas/Shade'],
+                                'many' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Shade']],
+                                'byName' => ['type' => 'object', 'additionalProperties' => ['$ref' => '#/components/schemas/Shade']],
+                            ],
+                        ],
+                        'Shade' => [$keyword => $branches],
+                        'Olive' => ['type' => 'object', 'required' => ['leaf'], 'properties' => ['leaf' => ['type' => 'string']]],
+                        'Teal' => ['type' => 'object', 'required' => ['fin'], 'properties' => ['fin' => ['type' => 'integer']]],
+                    ],
+                ],
+            ];
+            foreach ([[GenerationMode::Laravel, 0], [GenerationMode::LaravelData, 2]] as [$mode, $expected]) {
+                $warnings = $this->generate($mode, $spec, 'Items' . ucfirst($keyword));
+                $matching = array_values(array_filter(
+                    array: $warnings,
+                    callback: static fn(string $warning): bool => str_contains($warning, 'an undiscriminated ' . $keyword . ' union'),
+                ));
+                self::assertCount($expected, $matching, $mode->value . ': ' . implode(' ', $warnings));
+                $this->deleteRecursively($this->outputDirectory);
             }
         }
     }

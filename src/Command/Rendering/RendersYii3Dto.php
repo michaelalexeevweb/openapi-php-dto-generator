@@ -109,6 +109,11 @@ trait RendersYii3Dto
     /** Rules that live under `Rule\Date\`, not directly under `Rule\`. */
     private const array YII3_DATE_NAMESPACE_RULES = ['Date', 'DateTime', 'Time'];
 
+    /** Keywords beside a `$ref` that assert nothing about the value (`nullable` is the reference's own). */
+    private const array YII3_ANNOTATION_KEYWORDS = [
+        'nullable', 'description', 'title', 'example', 'examples', 'deprecated', 'readOnly', 'writeOnly', 'default', 'externalDocs',
+    ];
+
     /**
      * The namespace the yii3 file being rendered lives in, for {@see yii3Lib()}.
      *
@@ -2999,13 +3004,19 @@ PHP;
      * its property `enum` moved into an enum type the array does not hold. `{"toucan": {"kiwi": 3}}`
      * passed a `multipleOf: 2`. Only a bare `$ref` (siblings beside it are left as they are).
      *
+     * A member written `{$ref: Hen, properties: {…}}` is spelled out as `allOf: [{$ref: Hen}, {…}]`, the
+     * way the same member inline on a property is read: left as the reference it was, the branch went
+     * to a class the property never holds and was reduced to `x-php-checked-by-class`, so
+     * `{"b": {"tern": "abc"}}` passed Hen's `maxLength: 2` beside a `null` member.
+     *
      * @param array<string, mixed> $propertySchema
      * @return array<string, mixed>
      */
     private function yii3WithUnionComponentInlined(array $propertySchema, string $className): array
     {
         $ref = $propertySchema['$ref'] ?? null;
-        if (!is_string($ref) || array_keys($propertySchema) !== ['$ref']) {
+        $nullable = ($propertySchema['nullable'] ?? null) === true;
+        if (!is_string($ref) || array_keys($propertySchema) !== ($nullable ? ['$ref', 'nullable'] : ['$ref'])) {
             return $propertySchema;
         }
         $componentClass = $this->schemaRefToClassName(ref: $ref, currentSourceFile: $this->getSchemaSourceFile($className));
@@ -3013,8 +3024,49 @@ PHP;
         if (!is_array($definition) || (!is_array($definition['oneOf'] ?? null) && !is_array($definition['anyOf'] ?? null))) {
             return $propertySchema;
         }
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            if (!is_array($definition[$keyword] ?? null)) {
+                continue;
+            }
+            $members = [];
+            foreach ($definition[$keyword] as $member) {
+                $members[] = is_array($member) ? $this->yii3RefWithSiblingsAsAllOf($member) : $member;
+            }
+            $definition[$keyword] = $members;
+        }
 
-        return $definition;
+        return $definition + ($nullable ? ['nullable' => true] : []);
+    }
+
+    /**
+     * A `{$ref: X, <assertions>}` union member as `allOf: [{$ref: X}, {<assertions>}]`: both judge the
+     * value, and the spelling is one the object-branch inlining merges. Any other member as it is — a
+     * bare reference, or one beside annotations and `nullable` only.
+     *
+     * @param array<mixed> $member
+     * @return array<mixed>
+     */
+    private function yii3RefWithSiblingsAsAllOf(array $member): array
+    {
+        if (!is_string($member['$ref'] ?? null)) {
+            return $member;
+        }
+        $siblings = [];
+        $asserts = false;
+        foreach ($member as $keyword => $value) {
+            if ($keyword === '$ref') {
+                continue;
+            }
+            $siblings[$keyword] = $value;
+            if (!in_array($keyword, self::YII3_ANNOTATION_KEYWORDS, true) && !str_starts_with((string)$keyword, 'x-')) {
+                $asserts = true;
+            }
+        }
+        if (!$asserts) {
+            return $member;
+        }
+
+        return ['allOf' => [['$ref' => $member['$ref']], $siblings]];
     }
 
     /**
@@ -3274,22 +3326,59 @@ PHP;
 
         foreach (['oneOf', 'anyOf'] as $keyword) {
             if (is_array($union[$keyword] ?? null) && $union[$keyword] !== []) {
+                $nullable = ($schema['nullable'] ?? false) === true;
                 $members = [];
                 foreach ($union[$keyword] as $member) {
-                    $memberRef = is_array($member) ? $this->referenceOrSingleRefAllOf($member) : null;
-                    $members[] = $memberRef !== null ? $this->yii3MemberSchema($memberRef) : (is_array($member) ? $member : []);
+                    $member = is_array($member) ? $member : [];
+                    // A bare reference is the member's class. Anything else — inline keywords, or a
+                    // reference with assertions beside it (`allOf: [{$ref: Teal}, {required: [zebu]}]`)
+                    // — written out in full: left as it was, the reference went to a class the
+                    // property never holds, and `{"fox": {"marten": "x"}}` passed both members.
+                    $bareRef = is_string($member['$ref'] ?? null) && $this->yii3RefWithSiblingsAsAllOf($member) === $member;
+                    $memberRef = $bareRef || ($this->isSingleRefAllOf($member) && array_keys($member) === ['allOf'])
+                        ? $this->referenceOrSingleRefAllOf($member)
+                        : null;
+                    $member = $memberRef !== null
+                        ? $this->yii3MemberSchema($memberRef)
+                        : $this->inlineNestedContainerValidation(
+                            schema: $this->yii3WithAllOfFragmentsMerged($this->yii3RefWithSiblingsAsAllOf($member), $className),
+                            depth: 2,
+                        );
+                    // Every member is a generated class, so an object: said outright, a member of
+                    // object keywords alone no longer matches the null the branch below admits.
+                    $members[] = $nullable && !array_key_exists('type', $member) ? ['type' => 'object'] + $member : $member;
                 }
                 // `nullable` beside the reference is lost on a list of member schemas, every one of which
                 // refuses null — so null is a member of its own.
-                if (($schema['nullable'] ?? false) === true) {
+                if ($nullable) {
                     $members[] = ['type' => 'null'];
                 }
 
-                return [$keyword => $members];
+                return $this->yii3UnionOwnKeywords($union, $className) + [$keyword => $members];
             }
         }
 
         return null;
+    }
+
+    /**
+     * The object keywords a union component carries beside its `oneOf`/`anyOf` — `type`, `required`,
+     * `properties` — which judge every member alike. A union checked as its members' list lost them:
+     * `{"plain": {"value": "x", "kind": "mail"}}` passed the component's `value: {type: integer}`.
+     *
+     * @param array<mixed> $union
+     * @return array<string, mixed>
+     */
+    private function yii3UnionOwnKeywords(array $union, string $className): array
+    {
+        $own = [];
+        foreach (['type', 'required', 'properties'] as $keyword) {
+            if (array_key_exists($keyword, $union)) {
+                $own[$keyword] = $union[$keyword];
+            }
+        }
+
+        return $own === [] ? [] : $this->inlineNestedContainerValidation(schema: $own, depth: 2);
     }
 
     /**

@@ -1249,6 +1249,15 @@ trait RendersRuntimeDto
         // accepted `{}`.
         $objectConstraints = [...$objectConstraints, ...$this->classLevelUnionsBesideAllOf(className: $className, extracted: $extracted)];
 
+        // A `required` name the class does not declare — the one exception to "`required` is not
+        // here": no property carries a flag for it, so nothing else would ask. The deserializer asks
+        // it of the raw body; a component's own list and the root's were checked by nothing, and
+        // `{"vole": "x"}` was built into a class that requires `panda`.
+        $undeclaredRequired = $this->undeclaredRequiredNamesOfClass(schema: $schema, sourceClass: $className);
+        if ($undeclaredRequired !== []) {
+            $objectConstraints['required'] = $undeclaredRequired;
+        }
+
         // A SCHEMA for the keys the class does not declare: each such value must match it. Not
         // emitted, an `{"a":1,"b":2}` against `additionalProperties: {type: string}` was accepted.
         if (!$closed && is_array($schema['additionalProperties'] ?? null) && is_array($extracted['additionalProperties'] ?? null)) {

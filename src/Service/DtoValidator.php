@@ -11,6 +11,7 @@ use JsonException;
 use LogicException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Contract\JsonShapeAwareValidatorInterface;
+use ReflectionClass;
 use stdClass;
 use Symfony\Component\HttpFoundation\File\File;
 use TypeError;
@@ -134,6 +135,11 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
      * @var list<mixed>|null
      */
     private ?array $listOfTheArrayMember = null;
+
+    /**
+     * @var array<string, array{required: list<string>, properties: array<string, array<string, mixed>>}|null>
+     */
+    private array $rawObjectRulesCache = [];
 
     /**
      * This validator for values whose JSON objects are still `stdClass`, so that an empty PHP array
@@ -832,7 +838,22 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
             }
 
             if ($this->rawValueLeavesClassBranchUndecided(value: $value, branch: $branch)) {
-                $undecidedBranches++;
+                // Undecided only while the class's own rules have nothing against the raw object. A
+                // missing `required` name or a property value its rule refuses rules the class out —
+                // counted undecided instead, `oneOf: [{required: [hyena]}, $ref Umber]` accepted
+                // `{"vole": 7}` against `Umber.vole: string` with no branch matched.
+                $classRefusals = $this->rawObjectRefusalsOfClass(
+                    subject: $subject,
+                    value: $value,
+                    className: (string)$branch['x-php-instanceof'],
+                    depth: $depth,
+                );
+                if ($classRefusals === []) {
+                    $undecidedBranches++;
+
+                    continue;
+                }
+                array_push($errors, ...$classRefusals);
 
                 continue;
             }
@@ -957,6 +978,98 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
 
         return is_string($className)
             && $this->isRawObjectFor(value: $value, className: $className);
+    }
+
+    /**
+     * What a generated class's own rules say against a raw object it was not built from: a `required`
+     * name the object lacks, or a property whose value its rule refuses. Empty when nothing refutes it,
+     * which leaves the branch undecided — and always for a class that cannot be judged this way: an
+     * abstract one (a variant decides), one with no metadata, or a check that could not be finished.
+     *
+     * Only what the class states for certain is asked. A `required` property is missing only when its
+     * constructor has no default to fill it and it is neither `readOnly` nor `writeOnly`; a `null`
+     * value is left to the class, whose map does not say whether it admits one.
+     *
+     * @return list<string>
+     */
+    private function rawObjectRefusalsOfClass(string $subject, mixed $value, string $className, int $depth): array
+    {
+        $payload = $this->objectPayloadForConstraints($value);
+        $rules = $this->rawObjectRulesOf($className);
+        if ($payload === null || $rules === null) {
+            return [];
+        }
+
+        $properties = [];
+        foreach ($rules['properties'] as $wireName => $propertyRules) {
+            $properties[$wireName] = ($payload[$wireName] ?? null) === null ? [] : $propertyRules;
+        }
+        $refusals = $this->validateConstraints(
+            subject: $subject,
+            value: $value,
+            constraints: ['required' => $rules['required'], 'properties' => $properties],
+            depth: $depth + 1,
+        );
+
+        return $this->incompleteVerdict($refusals) === [] ? array_values(array_unique($refusals)) : [];
+    }
+
+    /**
+     * The `required` wire names and per-property rules of a generated class, read off its static
+     * metadata, or null when the class cannot be judged from them. See {@see rawObjectRefusalsOfClass()}.
+     *
+     * @return array{required: list<string>, properties: array<string, array<string, mixed>>}|null
+     */
+    private function rawObjectRulesOf(string $className): ?array
+    {
+        if (array_key_exists($className, $this->rawObjectRulesCache)) {
+            return $this->rawObjectRulesCache[$className];
+        }
+        if (!class_exists($className) || !is_subclass_of($className, GeneratedDtoInterface::class)) {
+            return $this->rawObjectRulesCache[$className] = null;
+        }
+        $reflection = new ReflectionClass($className);
+        if ($reflection->isAbstract()) {
+            return $this->rawObjectRulesCache[$className] = null;
+        }
+
+        $defaults = [];
+        foreach ($reflection->getConstructor()?->getParameters() ?? [] as $parameter) {
+            $defaults[$parameter->getName()] = $parameter->isDefaultValueAvailable();
+        }
+
+        $required = [];
+        $properties = [];
+        foreach ($className::getNormalizationMap() as $propertyName => $entry) {
+            $metadata = $entry['metadata'];
+            $wireName = $metadata['openApiName'] ?? null;
+            if (!is_string($wireName) || ($metadata['isParameter'] ?? false) === true) {
+                continue;
+            }
+            $constraints = $metadata['constraints'] ?? [];
+            $properties[$wireName] = is_array($constraints) ? $constraints : [];
+            if (
+                ($metadata['required'] ?? false) === true
+                && ($metadata['readOnly'] ?? false) !== true
+                && ($metadata['writeOnly'] ?? false) !== true
+                && ($defaults[$propertyName] ?? true) === false
+            ) {
+                $required[] = $wireName;
+            }
+        }
+
+        // The names the class requires without declaring them (`getObjectConstraints()`): the raw
+        // object is the one place such a name can be.
+        $objectMethod = [$className, 'getObjectConstraints'];
+        $objectConstraints = is_callable($objectMethod) ? $objectMethod() : [];
+        $undeclared = is_array($objectConstraints) ? ($objectConstraints['required'] ?? []) : [];
+        foreach (is_array($undeclared) ? $undeclared : [] as $name) {
+            if (is_string($name)) {
+                $required[] = $name;
+            }
+        }
+
+        return $this->rawObjectRulesCache[$className] = ['required' => $required, 'properties' => $properties];
     }
 
     private function isRawObjectFor(mixed $value, string $className): bool

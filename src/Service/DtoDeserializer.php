@@ -730,7 +730,8 @@ final class DtoDeserializer implements DtoDeserializerInterface
         // only thing these can be asked about — a per-property rule cannot express any of them — and
         // until 2.15.16 this mode emitted them nowhere and checked none, while Symfony and yii3
         // refused the same payloads. `properties` and `required` are not among them by construction
-        // (see `RendersRuntimeDto::resolveObjectConstraints()`), so nothing here reports twice.
+        // (see `RendersRuntimeDto::resolveObjectConstraints()`), so nothing here reports twice — but for
+        // the `required` names the class does not declare, which no property flag asks for.
         $objectConstraints = $this->resolveOpenApiObjectConstraints($reflection);
         unset($objectConstraints['additionalProperties']);
         if ($objectConstraints !== []) {

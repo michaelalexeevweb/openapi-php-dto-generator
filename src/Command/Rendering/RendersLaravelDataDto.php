@@ -732,6 +732,10 @@ trait RendersLaravelDataDto
      * — accepted, written back as `{}` — when it requires none. The guard refuses the null item before
      * that, as it refuses one of a discriminated union.
      *
+     * The items of an undiscriminated union (`items: {$ref: Shade}`, Shade a `oneOf` with a null
+     * member) have no `#[DataCollectionOf]`: they stay the decoded arrays, checked by the interpreter,
+     * so nothing builds an object out of a null item and the document's null is accepted.
+     *
      * @param SchemaProperty $property
      */
     private function laravelDataRefusesNullItems(array $property): bool
@@ -741,6 +745,7 @@ trait RendersLaravelDataDto
         return $target !== null
             && $target['many']
             && !$this->laravelDataIsMorphBase($target['class'])
+            && !$this->laravelDataIsUnionInterface($target['class'])
             && $this->laravelItemsNullable($property);
     }
 

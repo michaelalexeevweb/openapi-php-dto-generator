@@ -886,10 +886,16 @@ trait RendersLaravelDto
             // VALUES are DTOs or enums has to be flattened first — otherwise the objects reach
             // `json_encode()`, which sees only public state and writes `{}` for a DTO whose properties
             // are private. `array_map()` over one array keeps the string keys, so the map survives.
+            // A value the document types as an object — `{type: object}`, or an object member of a
+            // union without an array one — is `{}` when empty; `toJsonObjects()` alone wrote the empty
+            // value back as `[]`, since `array_is_list([])` holds.
             $valueClass = $this->laravelDtoItemClass($property);
-            $mapped = $valueClass === null
-                ? $propertyAccess
-                : sprintf('array_map(%s, %s)', $this->laravelItemToWireMapper($valueClass, $this->laravelItemsNullable($property)), $propertyAccess);
+            $objectValues = $valueClass === null ? $this->laravelObjectItemWriter($property) : null;
+            $mapped = match (true) {
+                $valueClass !== null => sprintf('array_map(%s, %s)', $this->laravelItemToWireMapper($valueClass, $this->laravelItemsNullable($property)), $propertyAccess),
+                $objectValues !== null => sprintf('array_map(%s, %s)', $objectValues, $propertyAccess),
+                default => $propertyAccess,
+            };
 
             return $nullable
                 ? sprintf('%s === null ? null : self::toJsonObjects(%s)', $propertyAccess, $mapped)
@@ -920,6 +926,17 @@ trait RendersLaravelDto
             return $nullable
                 ? sprintf('%s === null ? null : array_map(%s, array_values(%s))', $propertyAccess, $mapper, $propertyAccess)
                 : sprintf('array_map(%s, array_values(%s))', $mapper, $propertyAccess);
+        }
+
+        // A list whose items are objects only through a union or an `allOf`, or one list further down
+        // (`items: {anyOf: [{type: object}, {type: integer}]}`, `items: {type: array, items: {type:
+        // object}}`): an empty item is `{}`. `toJsonValue()` cannot tell it from an empty list and
+        // wrote `[]`; the writer asks the schema instead.
+        $objectItems = $this->laravelObjectItemWriter($property);
+        if ($objectItems !== null) {
+            $wire = sprintf('array_map(%s, array_values(%s))', $objectItems, $propertyAccess);
+
+            return $nullable ? sprintf('%s === null ? null : %s', $propertyAccess, $wire) : $wire;
         }
 
         // A container whose type says nothing about its items — the items are a union of classes, or
@@ -999,6 +1016,61 @@ trait RendersLaravelDto
     }
 
     /**
+     * The closure that writes one item (of a list) or value (of a map) whose schema admits an object
+     * and no array — `{type: object}`, `anyOf: [{type: object}, {type: integer}]`, `allOf: [{type:
+     * object}]` — possibly under further lists (`items: {type: array, items: {type: object}}`). An
+     * array there IS the object, so it is written as one, `{}` when empty; anything else goes through
+     * `toJsonValue()`. Null when the container is not such a list or map, or the items could also be
+     * an array: a union with an array member is left to the value, as before.
+     *
+     * @param SchemaProperty $property
+     */
+    private function laravelObjectItemWriter(array $property): ?string
+    {
+        if (($property['isShapeUnion'] ?? false) === true || !str_starts_with(ltrim($property['type'], '?'), 'array')) {
+            return null;
+        }
+        $constraints = $this->laravelConstraintsFor($property);
+        $isMap = ($property['isMap'] ?? null) === true;
+        $containerTypes = $this->laravelAdmittedJsonTypes($constraints);
+        if ($containerTypes === null || array_values(array_diff($containerTypes, ['null'])) !== [$isMap ? 'object' : 'array']) {
+            return null;
+        }
+
+        $schema = $constraints[$isMap ? 'additionalProperties' : 'items'] ?? null;
+        $depth = 0;
+        while (is_array($schema)) {
+            $types = $this->laravelAdmittedJsonTypes($schema);
+            if ($types === null) {
+                return null;
+            }
+            if (in_array('object', $types, true) && !in_array('array', $types, true)) {
+                // A list of `{type: object}` items, at the top, is already written by the list-of-maps
+                // mapper; this writer is for what that one does not reach.
+                // A union member beside the object may be a generated class or an enum, which
+                // `toJsonValue()` writes; a plain `type: object` leaves nothing but null beside an array.
+                $composed = array_intersect(['anyOf', 'oneOf', 'allOf'], array_keys($schema)) !== [];
+                $writer = sprintf(
+                    'static fn(mixed $item): mixed => is_array($item) ? self::toJsonObjects($item) : %s',
+                    $composed ? 'self::toJsonValue($item)' : '$item',
+                );
+                for ($level = 0; $level < $depth; $level++) {
+                    $writer = sprintf('static fn(mixed $row): mixed => is_array($row) ? array_map(%s, array_values($row)) : $row', $writer);
+                }
+
+                return $writer;
+            }
+            if (array_values(array_diff($types, ['null'])) !== ['array']) {
+                return null;
+            }
+            $schema = $schema['items'] ?? null;
+            $depth++;
+        }
+
+        return null;
+    }
+
+    /**
      * A bare `array`: no item type the generator could name, so the value decides how it is written.
      *
      * @param SchemaProperty $property
@@ -1014,7 +1086,7 @@ trait RendersLaravelDto
     private function laravelNeedsJsonValueHelper(array $properties): bool
     {
         foreach ($properties as $property) {
-            if (($property['writeOnly'] ?? null) !== true && $this->laravelIsUntypedContainer($property)) {
+            if (($property['writeOnly'] ?? null) !== true && ($this->laravelIsUntypedContainer($property) || str_contains((string)$this->laravelObjectItemWriter($property), 'toJsonValue'))) {
                 return true;
             }
         }
@@ -1228,7 +1300,7 @@ trait RendersLaravelDto
     private function laravelNeedsJsonObjectHelper(array $properties): bool
     {
         foreach ($properties as $property) {
-            if (($property['isMap'] ?? null) === true || $this->laravelDescribesListOfMaps($property['type'])) {
+            if (($property['isMap'] ?? null) === true || $this->laravelDescribesListOfMaps($property['type']) || $this->laravelObjectItemWriter($property) !== null) {
                 return true;
             }
         }

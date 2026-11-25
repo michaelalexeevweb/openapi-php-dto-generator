@@ -381,9 +381,14 @@ final class DtoNormalizer implements DtoNormalizerInterface
         // `dependentRequired`, `not`, a top-level conditional. The deserializer asks the same question
         // of the RAW body; a DTO built by hand never passed through it, so it is asked again here of
         // the payload the object reports. `properties` and `required` are not in this set by
-        // construction, so nothing is reported twice.
-        $objectConstraints = $this->resolveOpenApiObjectConstraintsByClass($dto::class);
-        unset($objectConstraints['additionalProperties']);
+        // construction, so nothing is reported twice. The one `required` the set does carry names keys
+        // the class does not declare: the object cannot hold them, so only the raw body the
+        // deserializer read can answer, and a DTO built by hand is not asked.
+        $objectConstraints = array_filter(
+            array: $this->resolveOpenApiObjectConstraintsByClass($dto::class),
+            callback: static fn(string|int $keyword): bool => !in_array($keyword, ['additionalProperties', 'required'], true),
+            mode: ARRAY_FILTER_USE_KEY,
+        );
         if ($objectConstraints !== []) {
             // Named for the same reason the deserializer names it: an empty subject leaves the
             // message starting with its own separator. At the root there is no property name to use,

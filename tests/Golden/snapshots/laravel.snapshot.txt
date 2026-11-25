@@ -1,4 +1,4 @@
-# laravel mode — 106 files, 31257 lines
+# laravel mode — 106 files, 31304 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -20716,7 +20716,7 @@ final class NestedContainers implements JsonSerializable
         }
 
         if ($this->isMapsByKeyProvided()) {
-            $result['mapsByKey'] = $this->mapsByKey === null ? null : self::toJsonObjects($this->mapsByKey);
+            $result['mapsByKey'] = $this->mapsByKey === null ? null : self::toJsonObjects(array_map(static fn(mixed $item): mixed => is_array($item) ? self::toJsonObjects($item) : $item, $this->mapsByKey));
         }
 
         if ($this->isDateRowsProvided()) {
@@ -27637,13 +27637,37 @@ final class TreeNode implements JsonSerializable
     }
 
     /**
+     * A value whose type the document leaves open — the items of a list of a union of classes, or a
+     * union of a list and a map — written as the wire needs it, at every level: a generated DTO as its
+     * `toArray()`, an enum as its value, a keyed array as an object, a list as a list.
+     */
+    private static function toJsonValue(mixed $value): mixed
+    {
+        if ($value instanceof BackedEnum) {
+            return $value->value;
+        }
+        if (is_object($value) && method_exists($value, 'toArray')) {
+            $array = $value->toArray();
+
+            return $array === [] ? new stdClass() : $array;
+        }
+        if (!is_array($value)) {
+            return $value;
+        }
+
+        $converted = array_map(self::toJsonValue(...), $value);
+
+        return array_is_list($value) ? $converted : (object)$converted;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function toArray(): array
     {
         $result = [];
         $result['label'] = $this->label;
-        $result['children'] = self::toJsonObjects($this->children);
+        $result['children'] = self::toJsonObjects(array_map(static fn(mixed $item): mixed => is_array($item) ? self::toJsonObjects($item) : self::toJsonValue($item), $this->children));
 
         return $result;
     }
@@ -28976,6 +29000,29 @@ final class UnionUnderContainer implements JsonSerializable
     }
 
     /**
+     * A map is a JSON object, at every level: `type: object` says so, and an empty one must encode as
+     * `{}` rather than `[]`. A list stays a list. A generated DTO among the values is written as its
+     * `toArray()` and an enum as its value — `json_encode()` would write the DTO's private state as `{}`.
+     */
+    private static function toJsonObjects(array $value, bool $asObject = true): array|object
+    {
+        $converted = [];
+        foreach ($value as $key => $item) {
+            // A nested value decides for itself: a list stays a list, a keyed array becomes an object.
+            // The caller decides for the value it owns, because an EMPTY map is a list by
+            // `array_is_list()` and must still encode as `{}`.
+            $converted[$key] = match (true) {
+                is_array($item) => self::toJsonObjects($item, !array_is_list($item)),
+                $item instanceof BackedEnum => $item->value,
+                is_object($item) && method_exists($item, 'toArray') => $item->toArray() ?: new stdClass(),
+                default => $item,
+            };
+        }
+
+        return $asObject ? (object)$converted : $converted;
+    }
+
+    /**
      * A value whose type the document leaves open — the items of a list of a union of classes, or a
      * union of a list and a map — written as the wire needs it, at every level: a generated DTO as its
      * `toArray()`, an enum as its value, a keyed array as an object, a list as a list.
@@ -29007,17 +29054,17 @@ final class UnionUnderContainer implements JsonSerializable
         $result = [];
 
         if ($this->isChainProvided()) {
-            $result['chain'] = $this->chain === null ? null : array_map(self::toJsonValue(...), array_values($this->chain));
+            $result['chain'] = $this->chain === null ? null : array_map(static fn(mixed $item): mixed => is_array($item) ? self::toJsonObjects($item) : self::toJsonValue($item), array_values($this->chain));
         }
 
         if ($this->isChainAllOfProvided()) {
-            $result['chainAllOf'] = $this->chainAllOf === null ? null : array_map(self::toJsonValue(...), array_values($this->chainAllOf));
+            $result['chainAllOf'] = $this->chainAllOf === null ? null : array_map(static fn(mixed $item): mixed => is_array($item) ? self::toJsonObjects($item) : self::toJsonValue($item), array_values($this->chainAllOf));
         }
 
         $result['tree'] = $this->tree->toArray() ?: (object)[];
 
         if ($this->isListOfUnionsProvided()) {
-            $result['listOfUnions'] = $this->listOfUnions === null ? null : array_map(self::toJsonValue(...), array_values($this->listOfUnions));
+            $result['listOfUnions'] = $this->listOfUnions === null ? null : array_map(static fn(mixed $item): mixed => is_array($item) ? self::toJsonObjects($item) : self::toJsonValue($item), array_values($this->listOfUnions));
         }
 
         return $result;
