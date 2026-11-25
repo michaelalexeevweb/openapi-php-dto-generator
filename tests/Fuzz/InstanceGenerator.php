@@ -13,7 +13,9 @@ use stdClass;
  * Only mutations whose invalidity is certain under JSON Schema 2020-12 / OpenAPI are produced. Union
  * branches are disjoint by JSON type (or by a single-member `kind` enum), so a branch's mutation is kept
  * only when its value's JSON type is admitted by that branch and by no other — then it cannot match a
- * sibling. Bound mutations are skipped beside an `enum`, where they would break two keywords at once.
+ * sibling — save in a union of two object members, whose object mutations are kept and left to
+ * `FuzzSpec` and the reference oracle to sort out. Bound mutations are skipped beside an `enum`, where
+ * they would break two keywords at once.
  *
  * JSON objects are `stdClass` throughout, so `{}` encodes as `{}` and never as `[]`.
  *
@@ -153,6 +155,16 @@ final class InstanceGenerator
                 if ($sibling['t'] === 'object' && $sibling['required'] !== []) {
                     $this->validTags[] = 'besideRequiringObject';
                 }
+            }
+        }
+
+        if (($node['objectPair'] ?? false) === true) {
+            $this->validTags[] = 'unionObjectPair';
+            // An object of one of the two members: Symfony's serializer tries the classes in the order
+            // of the DECLARED type, which need not be the schema's, and the first it tries is built
+            // whether or not the value is one (support matrix, "an object only a LATER member … accepts").
+            if ($branch['t'] === 'object') {
+                $this->validTags[] = 'objectOfPair';
             }
         }
 
@@ -715,6 +727,10 @@ final class InstanceGenerator
             || in_array(true, array_map(static fn(array $branch): bool => $branch['nullable'] ?? false, $node['branches']), true)
         );
         $classMember = self::classMemberTags($node);
+        // Two object members share the JSON type, so a broken object of one could be a valid one of the
+        // other. Its mutations are kept all the same, tagged; `FuzzSpec` drops the ones the reference
+        // oracle finds the union still accepts.
+        $objectPair = ($node['objectPair'] ?? false) === true;
         $mutations = [];
         foreach ($node['branches'] as $index => $branch) {
             $others = [];
@@ -728,7 +744,8 @@ final class InstanceGenerator
             }
             foreach ($this->mutations($branch) as $inner) {
                 $type = self::jsonType($inner['value']);
-                if (!in_array($type, self::admittedTypes($branch), true) || in_array($type, $others, true)) {
+                $sharedObject = $objectPair && $type === 'object' && $branch['t'] === 'object';
+                if (!in_array($type, self::admittedTypes($branch), true) || (in_array($type, $others, true) && !$sharedObject)) {
                     continue;
                 }
                 // A scalar sent to a union with a class member meets the framework's class hydration
@@ -741,6 +758,7 @@ final class InstanceGenerator
                     ...($temporalBesideNull ? ['unionTemporalBesideNull'] : []),
                     ...($withTemporal && $type === 'integer' ? ['integerBesideTemporal'] : []),
                     ...($scalar ? $classMember : []),
+                    ...($objectPair ? ['unionObjectPair'] : []),
                     ...$inner['tags'],
                 ];
                 $mutations[] = ['kind' => $inner['kind'], 'value' => $inner['value'], 'tags' => $tags];

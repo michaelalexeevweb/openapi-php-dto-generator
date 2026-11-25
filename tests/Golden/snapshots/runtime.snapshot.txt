@@ -22917,7 +22917,7 @@ final class User implements GeneratedDtoInterface, Stringable
         $constraints = [];
         $constraints['id'] = ['type' => 'integer'];
         $constraints['name'] = ['type' => 'string'];
-        $constraints['pet'] = ['nullable' => true];
+        $constraints['pet'] = ['nullable' => true, 'allOf' => [['anyOf' => [['x-php-instanceof' => 'GoldenCorpus\Cat'], ['x-php-instanceof' => 'GoldenCorpus\Dog'], ['x-php-instanceof' => 'GoldenCorpus\Dog2'], ['x-php-instanceof' => 'GoldenCorpus\Animal2AnyOf4']]]]];
         $constraints['createdAt'] = ['type' => 'string', 'format' => 'date-time'];
 
         return $constraints;

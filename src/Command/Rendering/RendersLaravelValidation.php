@@ -1352,6 +1352,10 @@ trait RendersLaravelValidation
             if ($matchedClass !== null) {
                 $this->laravelRecordRecursiveFold($matchedClass);
             }
+            // A union of classes is built as the first member whose own schema the value matches.
+            foreach ($this->laravelUndiscriminatedUnionClasses($property) as $memberClass) {
+                $this->laravelRecordRecursiveFold($memberClass);
+            }
         }
 
         // Root assertions and property assertions occupy separate slots. Every JSON property name
@@ -1388,6 +1392,14 @@ trait RendersLaravelValidation
         // only name which declared key is required. Carried nowhere, the root accepted `{}`.
         $objectLevel = [...$objectLevel, ...$this->classLevelUnionsBesideAllOf(className: $className, extracted: $extracted)];
 
+        // A `required` name the class does not declare. The rule map holds the declared properties
+        // only, so such a name reached no rule at any level: `{}` passed a root that requires `zed`,
+        // and `{"tail": "x"}` a nested class that requires `ear`. The raw payload still has the key.
+        $undeclaredRequired = $this->laravelUndeclaredRequiredNames(schema: $schema, sourceClass: $className);
+        if ($undeclaredRequired !== []) {
+            $objectLevel['required'] = $undeclaredRequired;
+        }
+
         $objectLevel = $this->laravelWithClosedObjectFlag(
             schema: $schema,
             objectLevel: $objectLevel,
@@ -1406,6 +1418,71 @@ trait RendersLaravelValidation
         }
 
         return $objectLevel;
+    }
+
+    /**
+     * The names a class's `required` lists — its own, those of its inline `allOf` branches and those of
+     * the components its `allOf` references — that none of those schemas declares in `properties`.
+     * A union class judges itself branch by branch elsewhere and gets none here.
+     *
+     * @param array<array-key, mixed> $schema
+     * @return list<string>
+     */
+    private function laravelUndeclaredRequiredNames(array $schema, string $sourceClass): array
+    {
+        if (array_key_exists('oneOf', $schema) || array_key_exists('anyOf', $schema)) {
+            return [];
+        }
+        $names = $this->laravelRequiredAndDeclaredNames(schema: $schema, sourceClass: $sourceClass, depth: 0);
+
+        return array_values(array_diff(array_unique($names['required']), $names['declared']));
+    }
+
+    /**
+     * @param array<array-key, mixed> $schema
+     * @return array{required: list<string>, declared: list<string>}
+     */
+    private function laravelRequiredAndDeclaredNames(array $schema, string $sourceClass, int $depth): array
+    {
+        $required = [];
+        foreach (is_array($schema['required'] ?? null) ? $schema['required'] : [] as $name) {
+            if (is_string($name) || is_int($name)) {
+                $required[] = (string)$name;
+            }
+        }
+        $declared = [];
+        foreach (is_array($schema['properties'] ?? null) ? array_keys($schema['properties']) : [] as $name) {
+            $declared[] = (string)$name;
+        }
+
+        $branches = is_array($schema['allOf'] ?? null) ? $schema['allOf'] : [];
+        $ref = $schema['$ref'] ?? null;
+        if (is_string($ref)) {
+            $branches[] = ['$ref' => $ref];
+        }
+        // A reference cycle through `allOf` is the document's own error; the depth only keeps it finite.
+        if ($depth > 16) {
+            return ['required' => $required, 'declared' => $declared];
+        }
+        foreach ($branches as $branch) {
+            if (!is_array($branch)) {
+                continue;
+            }
+            $branchRef = $branch['$ref'] ?? null;
+            if (is_string($branchRef)) {
+                $resolved = $this->resolveSchemaNodeByRef($branchRef, $this->getSchemaSourceFile($sourceClass));
+                $branch = $resolved === null ? [] : $resolved[0];
+            }
+            // A union branch is satisfied by one of its members, which says nothing about all of them.
+            if (array_key_exists('oneOf', $branch) || array_key_exists('anyOf', $branch)) {
+                continue;
+            }
+            $below = $this->laravelRequiredAndDeclaredNames(schema: $branch, sourceClass: $sourceClass, depth: $depth + 1);
+            $required = [...$required, ...$below['required']];
+            $declared = [...$declared, ...$below['declared']];
+        }
+
+        return ['required' => $required, 'declared' => $declared];
     }
 
     /**
@@ -2162,7 +2239,7 @@ trait RendersLaravelValidation
         }
 
         if ($nestedClass !== null) {
-            $merged = [...$schema, ...$nested];
+            $merged = $this->laravelMergedFold(local: $schema, nested: $nested);
             $admitsNull = $this->laravelNestedValueAdmitsNull(
                 property: $property,
                 className: $target,
@@ -2187,10 +2264,29 @@ trait RendersLaravelValidation
         // in silence.
         $containerKey = $this->laravelContainerValueKey($property);
         $schema[$containerKey] = array_key_exists($containerKey, $schema) && is_array($schema[$containerKey])
-            ? [...$schema[$containerKey], ...$nested]
+            ? $this->laravelMergedFold(local: $schema[$containerKey], nested: $nested)
             : $nested;
 
         return $schema;
+    }
+
+    /**
+     * A property's own schema with its class's fold laid over it. The two `required` lists are joined,
+     * not replaced: `{allOf: [$ref Shape], required: [paw]}` lost `paw` to Shape's own list, and a
+     * payload without it passed.
+     *
+     * @param array<string, mixed> $local
+     * @param array<string, mixed> $nested
+     * @return array<string, mixed>
+     */
+    private function laravelMergedFold(array $local, array $nested): array
+    {
+        $merged = [...$local, ...$nested];
+        if (is_array($local['required'] ?? null) && is_array($nested['required'] ?? null)) {
+            $merged['required'] = array_values(array_unique([...$local['required'], ...$nested['required']]));
+        }
+
+        return $merged;
     }
 
     /**
@@ -2561,6 +2657,8 @@ trait RendersLaravelValidation
         if ($properties !== []) {
             $schema['properties'] = $properties;
         }
+        // The object slot's `required` names what the class does not declare; the declared ones join it.
+        $required = [...$required, ...(is_array($objectLevel['required'] ?? null) ? $objectLevel['required'] : [])];
         if ($required !== []) {
             $schema['required'] = $required;
         }
@@ -2965,6 +3063,65 @@ trait RendersLaravelValidation
         return $class === null
             ? null
             : sprintf("self::validateOpenApiNode(%s, ['x-openapi-recurse' => %s], '', 0) === []", $valueAccess, $this->phpStringLiteral($class));
+    }
+
+    /**
+     * The classes of a union of them (see `unionClassMembers()`) that the value alone has to choose
+     * between: `[]` where an inline `discriminator` names the member instead — Laravel mode dispatches
+     * on it, and laravel-data builds such a union its own way (README.support-matrix, "an inline
+     * `discriminator` on a property").
+     *
+     * A list member beside them is no class (`Olive|Teal|array`): the classes are still chosen between,
+     * for a JSON object — the caller tells it from the list by its keys. Left out, laravel-data
+     * resolved the FIRST class's rules on every value, and a valid list or Teal was refused for Olive's
+     * `required`.
+     *
+     * @param SchemaProperty $property
+     * @return list<string>
+     */
+    private function laravelUndiscriminatedUnionClasses(array $property): array
+    {
+        $constraints = $property['constraints'] ?? [];
+        // The discriminator may also sit one level down, inside the union a nullable wrapper holds.
+        $levels = [$constraints];
+        foreach (['anyOf', 'oneOf'] as $keyword) {
+            foreach (is_array($constraints[$keyword] ?? null) ? $constraints[$keyword] : [] as $branch) {
+                $levels[] = is_array($branch) ? $branch : [];
+            }
+        }
+        foreach ($levels as $level) {
+            if (array_key_exists('x-discriminator-property', $level) || array_key_exists('discriminator', $level)) {
+                return [];
+            }
+        }
+
+        $members = array_filter(
+            array: $this->unionMembersBesideNull($property['type']),
+            callback: static fn(string $member): bool => $member !== 'array',
+        );
+
+        return $this->unionClassMembers(implode('|', $members));
+    }
+
+    /**
+     * The PHP condition under which `$valueAccess` is a JSON object one of the classes of such a union
+     * may be built from: an array, and beside a list member one with keys.
+     */
+    private function laravelUnionClassesObjectCondition(string $phpType, string $valueAccess): string
+    {
+        return $this->unionHasArrayMember($phpType)
+            ? sprintf('is_array(%1$s) && !array_is_list(%1$s)', $valueAccess)
+            : sprintf('is_array(%s)', $valueAccess);
+    }
+
+    /**
+     * The PHP condition under which `$valueAccess` matches the folded schema of one member of a union of
+     * classes (see `laravelUndiscriminatedUnionClasses()`); its fold is recorded by
+     * `laravelInterpreterConstraints()`.
+     */
+    private function laravelUnionMemberMatchCondition(string $className, string $valueAccess): string
+    {
+        return sprintf("self::validateOpenApiNode(%s, ['x-openapi-recurse' => %s], '', 0) === []", $valueAccess, $this->phpStringLiteral($className));
     }
 
     /**

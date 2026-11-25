@@ -328,12 +328,18 @@ All measured and pinned; the full table with reasons is in
 
 - ignores an inline `discriminator` written on a property (`oneOf` + `discriminator` with no component
   base): the first member is validated and built. laravel-data dispatches through an abstract morph base,
-  and only a component union gets one — write the union as a component and reference it. Any union of
-  classes is read that way, at any depth, an inline object's property included;
+  and only a component union gets one — write the union as a component and reference it. Any
+  discriminated union of classes is read that way, at any depth, an inline object's property included. A
+  union of classes with NO discriminator (`anyOf: [$ref Olive, $ref Teal]`) on a property is built as the
+  first member whose own schema the value matches: the class takes the property away from laravel-data's
+  inferred rules and its cast pipe, and builds the member in its constructor;
 - checks the extra keys `additionalProperties: {schema}` admits but does not keep them: the `Data` class
   holds declared properties only, so a valid extra key is not in `toArray()`;
 - keeps the PHP array where runtime casts a map to `stdClass`, so an empty map encodes as `[]` rather
-  than `{}` — the same difference Symfony mode has, for the same reason;
+  than `{}` — the same difference Symfony mode has, for the same reason. An empty generated OBJECT is
+  written `{}`: the class overrides `transform()` for a nested one (and a list or map of them), and
+  `toJson()` / `toResponse()` where the class itself may be empty. `json_encode($dto)` of an empty root
+  still gives `[]` — laravel-data declares `jsonSerialize(): array`;
 - drops sub-second precision from a `format: date-time` **response** (its transformer takes one format
   string, which cannot say "keep the precision the payload carried"); the emitted `#[WithCast]` accepts
   all four patterns on the way in;

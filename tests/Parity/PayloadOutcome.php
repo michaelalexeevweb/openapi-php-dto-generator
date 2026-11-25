@@ -17,6 +17,7 @@ final readonly class PayloadOutcome
      *     `validate()`, Laravel's `fails()`); the boolean parity verdicts have always let such a throwable
      *     surface as a test error rather than count it as a refusal, and `accepted()` keeps that
      * @param object|null $dto the object an accepted payload was built into, where the mode hands one back
+     * @param string|null $encoded the JSON the accepted DTO is written back as, where the mode writes one
      */
     private function __construct(
         public PayloadVerdict $verdict,
@@ -25,10 +26,11 @@ final readonly class PayloadOutcome
         public string $detail,
         public bool $fromValidationEngine,
         public ?object $dto = null,
+        public ?string $encoded = null,
     ) {
     }
 
-    public static function accepted(?object $dto = null): self
+    public static function accepted(?object $dto = null, ?string $encoded = null): self
     {
         return new self(
             verdict: PayloadVerdict::Accepted,
@@ -37,6 +39,7 @@ final readonly class PayloadOutcome
             detail: '',
             fromValidationEngine: false,
             dto: $dto,
+            encoded: $encoded,
         );
     }
 

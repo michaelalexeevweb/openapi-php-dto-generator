@@ -5,13 +5,17 @@ declare(strict_types=1);
 namespace OpenapiPhpDtoGenerator\Tests\Parity;
 
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
+use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
+use OpenapiPhpDtoGenerator\Service\DtoNormalizer;
 use OpenapiPhpDtoGenerator\Tests\GenerationMode;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
+use Symfony\Component\HttpFoundation\Request;
 
 /**
- * A property whose schema is a union of OBJECTS with no `discriminator` cannot be hydrated in ANY mode,
- * and the document says so at generation time rather than the request finding out.
+ * A property whose schema is a union of OBJECTS with no `discriminator` cannot be hydrated by the framework
+ * modes, and the document says so at generation time rather than the request finding out. Runtime mode
+ * builds the member the payload matches since 2.15.152, and is not warned.
  *
  * Nothing can turn such a payload back into a member: the document does not say which member a given
  * object is, and choosing by structure would be a guess two overlapping branches could not settle. Every
@@ -52,6 +56,13 @@ final class UnhydratableUnionParityTest extends TestCase
                 callback: static fn(string $warning): bool => str_contains($warning, 'an undiscriminated oneOf union'),
             ));
 
+            // Runtime builds the member the payload matches (see
+            // testRuntimeBuildsTheMemberThePayloadMatches), so it has nothing to warn about.
+            if ($mode === GenerationMode::Runtime) {
+                $this->assertSame(expected: [], actual: $matching);
+
+                continue;
+            }
             // Two properties reach the same union: directly, and as the items of an array.
             $this->assertCount(
                 expectedCount: 2,
@@ -142,6 +153,114 @@ final class UnhydratableUnionParityTest extends TestCase
         }
     }
 
+    /**
+     * Runtime mode is the exception: the owner's `getConstraints()` names the members as branches, and
+     * `DtoDeserializer` builds a payload into the member it matches — directly, as a list item and as a
+     * map value — as it does for an inline `Circle|Square`. Under `oneOf` a payload two members accept is
+     * refused rather than built as the first. It used to refuse every payload with
+     * `Unsupported type: Shape`.
+     */
+    public function testRuntimeBuildsTheMemberThePayloadMatches(): void
+    {
+        $this->generate(GenerationMode::Runtime);
+        $namespace = 'UnionWarn' . GenerationMode::Runtime->tag();
+        $directory = $this->outputDirectory;
+        spl_autoload_register($loader = static function (string $class) use ($directory, $namespace): void {
+            if (!str_starts_with($class, $namespace . chr(92))) {
+                return;
+            }
+            $file = $directory . '/' . substr($class, strlen($namespace) + 1) . '.php';
+            if (is_file($file)) {
+                require $file;
+            }
+        });
+        $deserialize = static fn(string $json): object => (new DtoDeserializer())->deserialize(Request::create(
+            uri: '/',
+            method: 'POST',
+            server: ['CONTENT_TYPE' => 'application/json'],
+            content: $json,
+        ), $namespace . chr(92) . 'Probe');
+        try {
+            $probe = $deserialize('{"shape":{"a":2},"many":[{"r":1},{"a":3}],"ok":{"r":1}}');
+            self::assertInstanceOf($namespace . chr(92) . 'Square', $probe->getShape());
+            self::assertSame(
+                expected: [$namespace . chr(92) . 'Circle', $namespace . chr(92) . 'Square'],
+                actual: array_map(static fn(object $item): string => $item::class, $probe->getMany()),
+            );
+            self::assertSame(
+                expected: '{"shape":{"a":2},"many":[{"r":1},{"a":3}],"ok":{"r":1}}',
+                actual: (new DtoNormalizer())->validateAndNormalizeToJson($probe),
+            );
+
+            foreach (['{"shape":{"r":1,"a":2},"many":[],"ok":{"r":1}}', '{"shape":{"r":1},"many":[{"r":1,"a":2}],"ok":{"r":1}}'] as $both) {
+                try {
+                    $deserialize($both);
+                    self::fail('a oneOf payload both members accept must be refused: ' . $both);
+                } catch (RuntimeException $thrown) {
+                    self::assertStringContainsString('matches more than one allowed oneOf branch', $thrown->getMessage());
+                }
+            }
+            try {
+                $deserialize('{"shape":{"x":1},"many":[],"ok":{"r":1}}');
+                self::fail('a payload no member accepts must be refused');
+            } catch (RuntimeException $thrown) {
+                self::assertStringContainsString('"shape.r"', $thrown->getMessage());
+            }
+        } finally {
+            spl_autoload_unregister($loader);
+        }
+    }
+
+    /**
+     * A member the union writes inline gets a class of its own (`TileAnyOf2`), and runtime builds it from
+     * the same `getConstraints()` branches as a `$ref` member — the property, list items and map values.
+     */
+    public function testRuntimeBuildsAnInlineMemberOfAComponentUnion(): void
+    {
+        $spec = self::spec();
+        $spec['components']['schemas']['Tile'] = ['anyOf' => [
+            ['$ref' => '#/components/schemas/Circle'],
+            ['type' => 'object', 'required' => ['eel'], 'properties' => ['eel' => ['type' => 'integer']]],
+        ]];
+        $spec['components']['schemas']['Board'] = [
+            'type' => 'object',
+            'properties' => [
+                'tile' => ['$ref' => '#/components/schemas/Tile'],
+                'tiles' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Tile']],
+                'byName' => ['type' => 'object', 'additionalProperties' => ['$ref' => '#/components/schemas/Tile']],
+            ],
+        ];
+        $this->generate(GenerationMode::Runtime, $spec, 'InlineMember');
+        $namespace = 'UnionWarn' . GenerationMode::Runtime->tag() . 'InlineMember';
+        $directory = $this->outputDirectory;
+        spl_autoload_register($loader = static function (string $class) use ($directory, $namespace): void {
+            $file = $directory . '/' . substr($class, strlen($namespace) + 1) . '.php';
+            if (str_starts_with($class, $namespace . chr(92)) && is_file($file)) {
+                require $file;
+            }
+        });
+        $deserialize = static fn(string $json): object => (new DtoDeserializer())->deserialize(Request::create(
+            uri: '/',
+            method: 'POST',
+            server: ['CONTENT_TYPE' => 'application/json'],
+            content: $json,
+        ), $namespace . chr(92) . 'Board');
+        try {
+            $json = '{"tile":{"eel":4},"tiles":[{"r":1},{"eel":2}],"byName":{"a":{"eel":3}}}';
+            $board = $deserialize($json);
+            self::assertInstanceOf($namespace . chr(92) . 'TileAnyOf2', $board->getTile());
+            self::assertSame($json, (new DtoNormalizer())->validateAndNormalizeToJson($board));
+            try {
+                $deserialize('{"tile":{"eel":"x"}}');
+                self::fail('a payload no member accepts must be refused');
+            } catch (RuntimeException) {
+                self::addToAssertionCount(1);
+            }
+        } finally {
+            spl_autoload_unregister($loader);
+        }
+    }
+
     public function testInlineObjectUnionMembersAreDiagnosedInEveryMode(): void
     {
         foreach (['oneOf', 'anyOf'] as $keyword) {
@@ -158,7 +277,7 @@ final class UnhydratableUnionParityTest extends TestCase
                         array: $warnings,
                         callback: static fn(string $warning): bool => str_contains($warning, 'an undiscriminated ' . $keyword . ' union'),
                     ));
-                    self::assertCount(3, $matching, $mode->value . ': ' . implode(' ', $warnings));
+                    self::assertCount($mode === GenerationMode::Runtime ? 0 : 3, $matching, $mode->value . ': ' . implode(' ', $warnings));
                     foreach ($matching as $warning) {
                         self::assertStringContainsString('Add a discriminator to Shape', $warning);
                     }

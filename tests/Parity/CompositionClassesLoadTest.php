@@ -138,28 +138,31 @@ final class CompositionClassesLoadTest extends TestCase
     #[DataProvider('unionBranchNames')]
     public function testUnionBranchesNamingATypeEachAreNamedApart(array $schemas, array $expectedFiles, array $absentFiles = []): void
     {
-        $namespace = 'UnionBranchNames' . substr(md5((string)json_encode($schemas)), 0, 10);
-        $target = $this->outputDirectory . '/' . $namespace;
-        mkdir($target, 0o755, true);
+        // Every mode: the names are decided before any mode renders, and a collision stopped them all.
+        foreach (GenerationMode::cases() as $mode) {
+            $namespace = 'UnionBranchNames' . $mode->tag() . substr(md5((string)json_encode($schemas)), 0, 10);
+            $target = $this->outputDirectory . '/' . $namespace;
+            mkdir($target, 0o755, true);
 
-        (new GenerateDtoCommand())->generateFromArray(
-            openApi: [
-                'openapi' => '3.0.3',
-                'info' => ['title' => 'T', 'version' => '1.0.0'],
-                'components' => ['schemas' => $schemas],
-            ],
-            outputDirectory: $target,
-            namespace: $namespace,
-            mode: GenerationMode::Runtime->value,
-        );
+            (new GenerateDtoCommand())->generateFromArray(
+                openApi: [
+                    'openapi' => '3.0.3',
+                    'info' => ['title' => 'T', 'version' => '1.0.0'],
+                    'components' => ['schemas' => $schemas],
+                ],
+                outputDirectory: $target,
+                namespace: $namespace,
+                mode: $mode->value,
+            );
 
-        $listed = scandir($target);
-        $this->assertIsArray($listed);
-        foreach ($expectedFiles as $file) {
-            $this->assertContains($file, $listed);
-        }
-        foreach ($absentFiles as $file) {
-            $this->assertNotContains($file, $listed);
+            $listed = scandir($target);
+            $this->assertIsArray($listed);
+            foreach ($expectedFiles as $file) {
+                $this->assertContains($file, $listed, $mode->value);
+            }
+            foreach ($absentFiles as $file) {
+                $this->assertNotContains($file, $listed, $mode->value);
+            }
         }
     }
 
@@ -201,6 +204,24 @@ final class CompositionClassesLoadTest extends TestCase
             [...self::probe(['anyOf' => [['$ref' => '#/components/schemas/Lime'], ['type' => 'integer', 'enum' => [-6]]]]), ...$lime],
             ['ProbeF.php', 'Lime.php'],
             ['ProbeFAnyOf2.php'],
+        ];
+        // Two inline objects stopped generation in every mode on `DTO schema name collision for ProbeF`.
+        $catObject = ['type' => 'object', 'properties' => ['cat' => ['type' => 'integer']], 'required' => ['cat']];
+        $dogObject = ['type' => 'object', 'properties' => ['dog' => ['type' => 'integer']], 'required' => ['dog']];
+        yield 'two objects under anyOf' => [
+            self::probe(['anyOf' => [$catObject, $dogObject]]),
+            ['ProbeFAnyOf1.php', 'ProbeFAnyOf2.php'],
+            ['ProbeF.php'],
+        ];
+        yield 'two objects under oneOf' => [
+            self::probe(['oneOf' => [$catObject, $dogObject]]),
+            ['ProbeFOneOf1.php', 'ProbeFOneOf2.php'],
+            ['ProbeF.php'],
+        ];
+        yield 'two allOf-wrapped objects' => [
+            self::probe(['anyOf' => [['allOf' => [$catObject]], ['allOf' => [$dogObject]]]]),
+            ['ProbeFAnyOf1.php', 'ProbeFAnyOf2.php'],
+            ['ProbeF.php'],
         ];
         yield 'two allOf-wrapped enums' => [
             self::probe(['anyOf' => [['allOf' => [['type' => 'string', 'enum' => ['red']]]], ['allOf' => [['type' => 'integer', 'enum' => [3]]]]]]),

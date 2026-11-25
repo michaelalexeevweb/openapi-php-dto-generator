@@ -16,7 +16,8 @@ namespace OpenapiPhpDtoGenerator\Tests\Fuzz;
  *
  * Every node is satisfiable by construction: bounds are drawn around a value that satisfies them, an
  * enum lists values the other keywords admit, and union branches are disjoint by JSON type (or carry a
- * discriminator), so "matches exactly one branch" is decidable from the type alone.
+ * discriminator), so "matches exactly one branch" is decidable from the type alone — except in a union of
+ * two object members ({@see objectPairNode()}), whose draws `FuzzSpec` has the reference oracle confirm.
  */
 final class SchemaGrammar
 {
@@ -48,10 +49,15 @@ final class SchemaGrammar
 
     private const array DISCRIMINATOR_TAGS = ['circle', 'square', 'hexagon', 'oval'];
 
+    /**
+     * `$pairs` decides, on a stream of its own, whether a union is drawn as one of two OBJECT members: a
+     * seed that draws none keeps the very document it drew before unions of objects were fuzzed.
+     */
     public function __construct(
         private readonly FuzzRandom $random,
         private readonly bool $openApi31,
         private readonly NameAllocator $names,
+        private readonly ?FuzzRandom $pairs = null,
     ) {
     }
 
@@ -71,7 +77,9 @@ final class SchemaGrammar
             'array' => $this->arrayNode($depth),
             'object' => $this->objectNode($depth),
             'map' => $this->mapNode($depth),
-            'union' => $this->unionNode($depth),
+            'union' => $depth + 1 < self::MAX_DEPTH && ($this->pairs?->chance(0.3) ?? false)
+                ? $this->objectPairNode($depth)
+                : $this->unionNode($depth),
             'discriminated' => $this->discriminatedNode($depth),
         };
 
@@ -330,7 +338,8 @@ final class SchemaGrammar
     }
 
     /**
-     * Two to three branches, pairwise disjoint by JSON type group; at most one object-like branch.
+     * Two to three branches, pairwise disjoint by JSON type group; at most one object-like branch. Two
+     * object members come from {@see objectPairNode()}.
      *
      * @return array<string, mixed>
      */
@@ -347,6 +356,94 @@ final class SchemaGrammar
         }
 
         return ['t' => 'union', 'op' => $this->random->pick(['oneOf', 'anyOf']), 'branches' => $branches];
+    }
+
+    /**
+     * A union of TWO object members and no discriminator — the shape {@see unionNode()} never draws, as
+     * its branches are disjoint by JSON type. The members either share a key (both declare it, with
+     * one schema, and may both require it) or have none in common; each mostly requires a key of its
+     * own, so a value of one is seldom a value of the other, but not always: under `oneOf` a value both
+     * take is no valid instance, and `FuzzSpec` asks the reference oracle which draws still mean what
+     * they say. Now and then a scalar member stands beside the two. How each member is SPELLED — a
+     * `$ref` component, inline, an `allOf` split — is the renderer's choice, as for any object.
+     *
+     * @return array<string, mixed>
+     */
+    private function objectPairNode(int $depth): array
+    {
+        $first = $this->objectNode($depth + 1);
+        $second = $this->objectNode($depth + 1);
+        $overlap = $this->random->chance(0.5);
+
+        // The second member's own keys, the first's left out: shared only where chosen to be.
+        $ownProperties = [];
+        foreach ($second['props'] as $name => $child) {
+            if (!array_key_exists($name, $first['props'])) {
+                $ownProperties[$name] = $child;
+            }
+        }
+        if ($ownProperties === []) {
+            $spare = $this->random->pick(array_values(array_diff(self::PROPERTY_NAMES, array_keys($first['props']))));
+            $ownProperties[$spare] = $this->node($depth + 2);
+        }
+        $required = array_values(array_intersect($second['required'], array_keys($ownProperties)));
+        if ($overlap) {
+            $shared = $this->random->pick(array_keys($first['props']));
+            $ownProperties = [$shared => $first['props'][$shared]] + $ownProperties;
+            if ($this->random->chance(0.6)) {
+                $required = [$shared, ...$required];
+                $first['required'] = array_values(array_unique([$shared, ...$first['required']]));
+            }
+        }
+        $second['props'] = $ownProperties;
+        $second['required'] = $required;
+
+        $branches = [];
+        foreach ([[$first, $second], [$second, $first]] as [$member, $other]) {
+            // Mostly a key of its own required, so the two tell themselves apart by presence.
+            if ($this->random->chance(0.75)) {
+                $own = array_values(array_diff(array_keys($member['props']), array_keys($other['props'])));
+                if ($own !== [] && array_intersect($own, $member['required']) === []) {
+                    $member['required'] = [...$member['required'], $this->random->pick($own)];
+                }
+            }
+            $member['nullable'] = false;
+            $branches[] = $member;
+        }
+        if ($this->random->chance(0.35)) {
+            $branches[] = $this->node(depth: $depth + 1, excludedGroups: ['object', 'null'], allowNullable: false);
+        }
+
+        return [
+            't' => 'union',
+            'op' => $this->random->pick(['oneOf', 'anyOf']),
+            'branches' => $this->random->shuffle($branches),
+            'objectPair' => true,
+            'overlap' => $overlap,
+        ];
+    }
+
+    /**
+     * Whether a node holds a union of two object members anywhere — the shape whose draws the reference
+     * oracle has to confirm.
+     *
+     * @param array<string, mixed> $node
+     */
+    public static function holdsObjectPair(mixed $node): bool
+    {
+        if (!is_array($node)) {
+            return false;
+        }
+        if (($node['objectPair'] ?? false) === true) {
+            return true;
+        }
+        foreach ($node as $child) {
+            if (self::holdsObjectPair($child)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

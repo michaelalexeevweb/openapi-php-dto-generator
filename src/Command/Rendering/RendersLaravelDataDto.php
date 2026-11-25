@@ -204,6 +204,35 @@ trait RendersLaravelDataDto
             ];
         }
 
+        // An EMPTY object goes out as `[]`: laravel-data transforms a `Data` into a PHP array, and an
+        // empty one cannot say it was an object — `{"owl":{}}` came back `{"owl":[]}`, and a root with
+        // nothing set as `[]`. The class puts a `\stdClass` back in its own `transform()` where a nested
+        // `Data` came out empty, and in `toJson()` / `toResponse()` where it is empty itself; Laravel
+        // mode writes `(object)[]` in the same places.
+        $emptyObjectWrite = $this->laravelDataEmptyObjectWrite(
+            properties: $properties,
+            namespace: $namespace,
+            useStatements: $useStatements,
+        );
+        if ($wireNameRestore === null && $emptyObjectWrite['writesNested']) {
+            $wireNameRestore = [
+                'namesLiteral' => null,
+                'contextRef' => $this->libraryClassRef(
+                    fqcn: 'Spatie\LaravelData\Support\Transformation\TransformationContext',
+                    namespace: $namespace,
+                    useStatements: $useStatements,
+                ),
+                'contextFactoryRef' => $this->libraryClassRef(
+                    fqcn: 'Spatie\LaravelData\Support\Transformation\TransformationContextFactory',
+                    namespace: $namespace,
+                    useStatements: $useStatements,
+                ),
+                'optionalRef' => null,
+                'reflectionRef' => null,
+                'propertyRef' => null,
+            ];
+        }
+
         // A date beside a non-string scalar is cast only when a string arrives — see the template.
         // A date beside a string enum (`BoxA|DateTimeImmutable`) is cast only when a string arrives
         // that is no case of the enum: the constructor turns the case into the enum, and the date
@@ -223,10 +252,24 @@ trait RendersLaravelDataDto
                 );
             }
         }
+        // A union of classes (`Circle|Oval`) is built by the constructor, as the member the value
+        // matches. laravel-data's cast pipe otherwise builds the FIRST class from every value, and a
+        // member's own enum cast threw `CannotCastEnum` on the other member's tag — a 500.
+        $uncastUnionNames = [];
+        foreach ($properties as $property) {
+            if ($this->laravelUndiscriminatedUnionClasses($property) !== []) {
+                $uncastUnionNames[] = $property['name'];
+            }
+        }
         $temporalUnionCast = null;
-        if ($temporalUnionNames !== []) {
+        if ($temporalUnionNames !== [] || $uncastUnionNames !== []) {
             $temporalUnionCast = [
-                'namesLiteral' => '[' . implode(', ', array_map($this->phpStringLiteral(...), $temporalUnionNames)) . ']',
+                'namesLiteral' => $temporalUnionNames === []
+                    ? null
+                    : '[' . implode(', ', array_map($this->phpStringLiteral(...), $temporalUnionNames)) . ']',
+                'uncastLiteral' => $uncastUnionNames === []
+                    ? null
+                    : '[' . implode(', ', array_map($this->phpStringLiteral(...), $uncastUnionNames)) . ']',
                 'enumsLiteral' => $enumBesideDateEntries === [] ? null : '[' . implode(', ', $enumBesideDateEntries) . ']',
                 'pipelineRef' => $this->libraryClassRef('Spatie\LaravelData\DataPipeline', $namespace, $useStatements),
                 'castPipeRef' => $this->libraryClassRef(
@@ -324,6 +367,7 @@ trait RendersLaravelDataDto
             'declaresProperties' => $declaresProperties,
             'declaredParams' => $this->inSchemaOrder($className, $params),
             'wireNameRestore' => $wireNameRestore,
+            'emptyObjectWrite' => $emptyObjectWrite,
             'temporalUnionCast' => $temporalUnionCast,
             'parameterReads' => $this->laravelParameterReads($properties),
             'rulesKeyType' => $this->laravelRulesKeyType(array_column($rules, 'path')),
@@ -998,6 +1042,25 @@ trait RendersLaravelDataDto
                 $enumCast,
             );
         }
+        // `Olive|Teal`: laravel-data casts such a union to ONE of its classes whatever the payload says,
+        // so `{"dog": 1}` was refused for Olive's `cat`. The member is built here instead, as the first
+        // class whose own schema the value matches — the validator has already decided one does.
+        $unionDataClasses = $enumItemClass === null && $unionDataClass === null ? $this->laravelUndiscriminatedUnionClasses($property) : [];
+        if ($unionDataClasses !== []) {
+            $lastDataClass = array_pop($unionDataClasses);
+            $arms = [];
+            foreach ($unionDataClasses as $memberClass) {
+                $arms[] = sprintf('%s => %s::from(%s)', $this->laravelUnionMemberMatchCondition($memberClass, $variable), $memberClass, $variable);
+            }
+            $arms[] = sprintf('default => %s::from(%s)', $lastDataClass, $variable);
+            $enumCast = sprintf(
+                '%s ? match (true) { %s } : (%s)',
+                $this->laravelUnionClassesObjectCondition(phpType: $property['type'], valueAccess: $variable),
+                implode(', ', $arms),
+                $enumCast,
+            );
+            $unionDataClass = $lastDataClass;
+        }
         $propertyType = $declaredType;
         $parameterType = $declaredType;
         if ($enumCast !== $variable) {
@@ -1049,6 +1112,57 @@ trait RendersLaravelDataDto
             // A promoted property unless the class inherits it from a morph base, where redeclaring a
             // readonly property would be a fatal.
             'promoted' => true,
+        ];
+    }
+
+    /**
+     * What the class needs to write an empty object as `{}`: the properties whose value is a nested
+     * `Data` (`owl` => wire name), and those whose ITEMS are one (`array<Shape>`), for `transform()`;
+     * and, where no property is always written, the refs for its own `toJson()` and `toResponse()`.
+     *
+     * @param array<int, SchemaProperty> $properties
+     * @param array<int, string> $useStatements
+     * @return array{writesNested: bool, nestedLiteral: string|null, itemsLiteral: string|null, rootMayBeEmpty: bool, stdClassRef: string, dataRef: string, jsonResponseRef: string|null}
+     */
+    private function laravelDataEmptyObjectWrite(array $properties, string $namespace, array &$useStatements): array
+    {
+        $nested = [];
+        $items = [];
+        $rootMayBeEmpty = true;
+        foreach ($properties as $property) {
+            if (($property['writeOnly'] ?? null) === true) {
+                continue;
+            }
+            if ($this->propertyIsRequiredOnInput($property)) {
+                $rootMayBeEmpty = false;
+            }
+            $nestedClass = $this->laravelDtoClass($property);
+            $itemClass = $this->laravelDtoItemClass($property);
+            if (
+                ($nestedClass !== null && !$this->laravelIsEnumClass($nestedClass))
+                || $this->unionClassMembers($property['type']) !== []
+                || $this->unionClassBesideScalars($property['type']) !== null
+            ) {
+                $nested[$property['name']] = $property['openApiName'];
+            } elseif ($itemClass !== null && !$this->laravelIsEnumClass($itemClass)) {
+                $items[$property['name']] = $property['openApiName'];
+            }
+        }
+
+        $anyEmpty = $nested !== [] || $items !== [] || $rootMayBeEmpty;
+
+        return [
+            'writesNested' => $nested !== [] || $items !== [],
+            'nestedLiteral' => $nested === [] ? null : $this->renderPhpArrayLiteral($nested, 2),
+            'itemsLiteral' => $items === [] ? null : $this->renderPhpArrayLiteral($items, 2),
+            'rootMayBeEmpty' => $rootMayBeEmpty,
+            'stdClassRef' => $anyEmpty ? $this->libraryClassRef('stdClass', $namespace, $useStatements) : 'stdClass',
+            'dataRef' => $nested !== [] || $items !== []
+                ? $this->libraryClassRef('Spatie\LaravelData\Contracts\BaseData', $namespace, $useStatements)
+                : 'BaseData',
+            'jsonResponseRef' => $rootMayBeEmpty
+                ? $this->libraryClassRef('Illuminate\Http\JsonResponse', $namespace, $useStatements)
+                : null,
         ];
     }
 
@@ -1128,6 +1242,11 @@ trait RendersLaravelDataDto
         // `Shade|string` as well: laravel-data takes the union for its class member and resolved the
         // class's rules on every value, so a valid string was refused for the object's `required`.
         $target = $itemClass ?? $this->laravelDtoClass($property) ?? $this->unionClassBesideScalars($property['type']);
+        // `Olive|Teal` as well: laravel-data resolved the FIRST class's rules on every value, so a valid
+        // Teal was refused for Olive's `required`. The emitted union interpreter judges the members.
+        if ($target === null && $this->laravelUndiscriminatedUnionClasses($property) !== []) {
+            return true;
+        }
         if ($target === null) {
             return false;
         }

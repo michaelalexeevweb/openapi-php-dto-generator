@@ -842,17 +842,11 @@ final class NormalizationParityTest extends TestCase
                 'json' => '{"kid":{}}',
                 'runtime' => ['kid' => ['#object' => []]],
                 'symfony' => ['kid' => []],
+                // laravel-data transforms an empty nested `Data` to `[]` as well; the generated class
+                // puts the object back in its own `transform()`.
                 'reason' => 'the serializer has no notion of the wire shape either: an object with '
                     . 'nothing to write leaves as `[]` unless the caller passes '
                     . 'AbstractObjectNormalizer::PRESERVE_EMPTY_OBJECTS',
-                'diverges' => [
-                    'laravel-data' => [
-                        'expected' => ['kid' => []],
-                        'reason' => 'the transformation is spatie\'s, and its normalizer has no notion '
-                            . 'of the wire shape — the same limit it declares on an empty map, reached '
-                            . 'through a nested object instead',
-                    ],
-                ],
             ],
             'deep nesting' => [
                 'schema' => self::object(['a' => ['$ref' => '#/components/schemas/A']], ['a']),

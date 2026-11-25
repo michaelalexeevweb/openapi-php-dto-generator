@@ -6267,6 +6267,49 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * Runtime: a `$ref` to a component that is a union of classes and no `discriminator`
+     * (`Shade: {oneOf: [$ref Olive, $ref Teal]}`) is checked like the same union written inline — each
+     * branch "is that class". The property is typed with the union's interface, which names no members;
+     * these branches in the owner's `getConstraints()` are what `DtoDeserializer` builds the payload from,
+     * and `oneOf` says a payload two members accept is refused. Applied at every level the extractor
+     * reaches, so list items and map values of the union carry them too.
+     *
+     * @param array<string, mixed> $propertySchema
+     * @return array<string, mixed>
+     */
+    private function runtimeClassUnionSpelledOut(array $propertySchema): array
+    {
+        $ref = $propertySchema['$ref'] ?? null;
+        if ($this->attributeMode !== self::ATTRIBUTE_MODE_RUNTIME || !is_string($ref) || !str_starts_with($ref, '#/components/schemas/')) {
+            return $propertySchema;
+        }
+        $interface = $this->schemaClassName($this->componentNameInPointer($ref));
+        $target = $this->dtoSchemas[$interface] ?? null;
+        if (!is_array($target) || array_key_exists('discriminator', $target) || $this->bareUnionBranches($target) === null) {
+            return $propertySchema;
+        }
+        // The members the interface was given — `$ref` branches and the classes written for inline
+        // object branches (`AnimalOneOf3`) alike, in declaration order.
+        $branches = [];
+        foreach ($this->unionInterfacesByClass as $member => $interfaces) {
+            if (in_array($interface, $interfaces, true) && array_key_exists($member, $this->dtoSchemas)) {
+                $branches[] = ['$ref' => '#/components/schemas/' . $member];
+            }
+        }
+        if (count($branches) < 2) {
+            return $propertySchema;
+        }
+        $spelled = [];
+        foreach ($propertySchema as $keyword => $value) {
+            if ($keyword !== '$ref') {
+                $spelled[$keyword] = $value;
+            }
+        }
+
+        return [...$spelled, is_array($target['oneOf'] ?? null) ? 'oneOf' : 'anyOf' => $branches];
+    }
+
+    /**
      * @param array<string, mixed> $propertySchema
      * @return array<string, mixed>
      */
@@ -6282,6 +6325,7 @@ final class GenerateDtoCommand extends Command
         }
 
         $propertySchema = $this->normalizeNullableBranchInAllOf($propertySchema);
+        $propertySchema = $this->runtimeClassUnionSpelledOut($propertySchema);
         // Applied HERE rather than where the property schemas are prepared, because that is not the
         // only entrance: Symfony, Laravel and Yii3 modes extract the constraints of a whole CLASS
         // straight from its registered schema, so anything done to the prepared property schema was
@@ -6488,6 +6532,12 @@ final class GenerateDtoCommand extends Command
                     // reached the constructor as a bare array: a TypeError.
                     if ($mapping === null && $this->attributeMode === self::ATTRIBUTE_MODE_LARAVEL) {
                         $mapping = $this->implicitDiscriminatorMapping(['oneOf' => $variants]);
+                    }
+                    // The runtime deserializer tries every class member of a bare `oneOf` and refuses a
+                    // second match; a declared discriminator lets the tag choose instead, even with no
+                    // map to check it against — members that overlap apart from the tag are its point.
+                    if ($mapping === null && is_string($propertyName) && $this->attributeMode === self::ATTRIBUTE_MODE_RUNTIME) {
+                        $constraints['x-discriminator-property'] = $propertyName;
                     }
                     if (is_string($propertyName) && is_array($mapping) && $mapping !== []) {
                         $classMap = [];
@@ -8314,11 +8364,9 @@ final class GenerateDtoCommand extends Command
         foreach ($variants as $index => $variant) {
             $branchKinds[$index] = is_array($variant) ? $this->unionBranchTypeOfItsOwn($variant, $ownerClassName) : null;
         }
-        $branchesNamingATypeOfTheirOwn = count(array_filter($branchKinds, static fn(?string $kind): bool => $kind !== null));
-        // Two inline OBJECTS are an undiscriminated union of classes, which no mode can hydrate; that
-        // keeps failing on the shared name rather than generating classes nothing can pick between.
-        $objectBranches = count(array_filter($branchKinds, static fn(?string $kind): bool => $kind === 'class'));
-        $nameBranchesApart = $branchesNamingATypeOfTheirOwn > 1 && $objectBranches <= 1;
+        // Two or more inline branches that each become a type — two objects too — each take a name of
+        // their own; sharing the property's name stopped a valid document on a name collision.
+        $nameBranchesApart = count(array_filter($branchKinds, static fn(?string $kind): bool => $kind !== null)) > 1;
 
         foreach ($variants as $index => $variant) {
             if (!is_array($variant)) {
@@ -8751,6 +8799,17 @@ final class GenerateDtoCommand extends Command
                     inlined: $this->inlineScalarAliasBranches(propertySchema: $schema, ownerClassName: $ownerClassName, depth: $depth + 1),
                     original: $schema,
                 );
+            }
+
+            // A list one level down names its items' alias the way the property's own list does
+            // (`withAliasesInlined()`): `anyOf: [{type: array, items: {$ref: Spoke}}]` with `Spoke` a
+            // scalar union was typed `array<Spoke>`, a class that is never written — Symfony refused
+            // every list at deserialization, runtime died on `unknown type`. A list is no class, so
+            // rewriting its items collides with nothing.
+            if ($this->soleTypeBesidesNull($schema['type'] ?? null) === 'array' && is_array($schema['items'] ?? null)) {
+                $schema['items'] = $this->inlineScalarAliasValue(schema: $schema['items'], ownerClassName: $ownerClassName, depth: $depth + 1);
+
+                return $schema;
             }
 
             // Any other inline subschema is left exactly as written: one that shapes an object is
@@ -12175,15 +12234,19 @@ final class GenerateDtoCommand extends Command
     /**
      * Reports a property whose schema is a union of OBJECTS with no `discriminator`.
      *
-     * Such a union is emitted as an interface its members implement, and NOTHING can turn a payload back
-     * into one of them: the document does not say which member a given object is, and picking by structure
-     * would be a guess two overlapping branches could not settle. Every mode therefore fails on a payload
-     * the document allows, and each fails differently and late — measured:
+     * Such a union is emitted as an interface its members implement, and the framework modes cannot turn a
+     * payload back into one of them: the document does not say which member a given object is, and their
+     * hydrators build a DECLARED type, which an interface is not. Each of them fails on a payload the
+     * document allows, differently and late — measured:
      *
-     *     runtime       RuntimeException: Unsupported type: Shape
      *     symfony       NotNormalizableValueException: … must be one of "Shape" ("array" given)
      *     laravel       Error: Call to undefined method Shape::fromValidated()
      *     laravel-data  TypeError: Argument #1 ($shape) must be of type Shape, array given
+     *
+     * Runtime mode is not warned: the owner's `getConstraints()` names the members as branches, and
+     * `DtoDeserializer` builds the payload into the member it matches, as it does for an inline
+     * `Olive|Teal` — the first under `anyOf`, the only one under `oneOf`. It used to refuse every payload
+     * with `Unsupported type: Shape`.
      *
      * A 500 at request time for a shape the generator could see at build time is the actual defect, so it
      * is named here instead. Generation still succeeds: the interface and its members are useful as types,
@@ -12197,6 +12260,9 @@ final class GenerateDtoCommand extends Command
      */
     private function warnAboutUnhydratableUnionProperties(string $className, array $properties): void
     {
+        if ($this->attributeMode === self::ATTRIBUTE_MODE_RUNTIME) {
+            return;
+        }
         foreach ($properties as $property) {
             $target = $this->undiscriminatedUnionTypeOf($property);
             if ($target === null) {
@@ -12204,8 +12270,8 @@ final class GenerateDtoCommand extends Command
             }
 
             $warning = sprintf(
-                'Property "%s" of %s refers to %s, an undiscriminated %s union: no mode can hydrate a '
-                    . 'payload into it. Add a discriminator to %s, or type the property as one member.',
+                'Property "%s" of %s refers to %s, an undiscriminated %s union: this mode cannot hydrate a '
+                    . 'payload into it (runtime mode can). Add a discriminator to %s, or type the property as one member.',
                 $property['openApiName'],
                 $className,
                 $target['class'],

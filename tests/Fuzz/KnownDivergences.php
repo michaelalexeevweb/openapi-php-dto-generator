@@ -179,6 +179,13 @@ final class KnownDivergences
                 'modes' => [GenerationMode::Symfony],
                 'category' => 'wrong-refuse',
                 'kinds' => ['valid'],
+                'tagsAll' => ['unionObjectPair', 'objectOfPair'],
+                'row' => 'support matrix: "an object only a LATER member of an inline undiscriminated union of classes accepts" (symfony/serializer 7.4.10 builds the first class it tries)',
+            ],
+            [
+                'modes' => [GenerationMode::Symfony],
+                'category' => 'wrong-refuse',
+                'kinds' => ['valid'],
                 'tagsAny' => ['nullItem:nullable-temporal', 'nullItem:nullable-enum', 'nullMapValue:nullable-temporal', 'nullMapValue:nullable-enum'],
                 'row' => 'support matrix: "a `null` ITEM of a nullable list of dates or enums", or a `null` VALUE of such a map (symfony refuses)',
             ],

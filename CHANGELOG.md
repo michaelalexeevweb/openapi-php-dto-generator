@@ -3,6 +3,39 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.152 — 2026-11-25
+
+- fuzz round seven: 16 fixes
+- unions of classes: exactly one
+- component class unions hydrated
+- inline object branches named apart
+- laravel class unions built
+- dependencies updated
+
+The seventh fuzz round took the round-six leftovers and the fresh findings, and widened the fuzz grammar to
+unions of several objects, which it never generated before: 10 root causes, 16 fixes, each with a test that
+failed before, and 12 framework limits documented.
+
+**Regenerate after upgrading, in every mode.**
+
+- every mode: a property `anyOf` / `oneOf` of two or more inline objects no longer stops generation on a name
+  collision; each branch becomes `<Owner><Property>AnyOfN` / `OneOfN`;
+- runtime: under `oneOf: [$ref Olive, $ref Teal]` without a discriminator every member is tried, and a
+  payload both accept is refused (it was built as the first, the other keys dropped); a property, list item
+  or map value typed with a union COMPONENT of classes (`comp: $ref Shade`) is built as the member it matches
+  — it was `Unsupported type: Shade`. The members are read from the owner's `getConstraints()`, where the
+  generator now spells that union as branches; no new class or attribute;
+- symfony: an inline class branch is held to its own class in `Assert\AtLeastOneOf` (valid objects were
+  refused); a wrapped list of a scalar-union component is a plain list;
+- laravel: a union of generated classes is built as the first member its schema accepts (it was a TypeError);
+  laravel-data validates the whole union and builds the matching member; a `required` name the class does
+  not declare is enforced at every level;
+- yii3: no `#[ToString]` ahead of a date beside a boolean and a number; booleans in a raw union check take
+  only `true` / `false`; a union of two classes beside a list loads.
+
+Dependencies: the locked dev set is updated to what CI already installs — symfony 7.4.24, twig 3.31.1,
+illuminate 13, phpstan 2.3 — with no open security advisory.
+
 ## 2.15.151 — 2026-11-25
 
 - fuzz round six: 16 fixes

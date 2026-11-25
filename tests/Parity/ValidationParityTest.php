@@ -9745,13 +9745,144 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * @param array<string, mixed> $schema
+     */
+    #[DataProvider('twoObjectsBesideAListCases')]
+    public function testAUnionOfTwoObjectsBesideAListLoadsAndJudgesEveryMember(
+        GenerationMode $mode,
+        string $key,
+        array $schema,
+        string $validJson,
+        string $invalidJson,
+    ): void {
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => false],
+            actual: $this->verdict($mode, self::probeSpec($schema), 'two-objects-beside-a-list-' . $key, $validJson, $invalidJson),
+            message: $mode->value . ': ' . $key,
+        );
+    }
+
+    /**
+     * Two inline object members and a list member, no discriminator. yii3 declared `array` twice — once
+     * for the list, once to hold the union of classes as the decoded array — and the class did not load:
+     * `Duplicate type array is redundant`. laravel-data resolved the FIRST class's rules on every value,
+     * so a valid list and a valid object of the later member were refused for `gecko`.
+     */
+    public static function twoObjectsBesideAListCases(): iterable
+    {
+        $schema = ['oneOf' => [
+            ['type' => 'object', 'properties' => ['gecko' => ['type' => 'integer']], 'required' => ['gecko']],
+            ['type' => 'object', 'properties' => ['koala' => ['type' => 'integer']], 'required' => ['koala']],
+            ['type' => 'array', 'minItems' => 2],
+        ]];
+        $cases = [
+            'the first member' => ['{"gecko":1}', '{"gecko":"x"}'],
+            'the list member' => ['[1,2]', '[1]'],
+            'the later member' => ['{"koala":1}', '{"koala":"x"}'],
+        ];
+        foreach ($cases as $key => [$valid, $invalid]) {
+            foreach (GenerationMode::cases() as $mode) {
+                yield $key . ' / ' . $mode->value => [$mode, $key, $schema, '{"f":' . $valid . '}', '{"f":' . $invalid . '}'];
+            }
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     */
+    #[DataProvider('dateBesideTwoScalarKindsCases')]
+    public function testADateBesideTwoNonStringScalarKindsHoldsEveryValueItsSchemaAccepts(
+        GenerationMode $mode,
+        string $key,
+        array $schema,
+        string $validJson,
+        string $invalidJson,
+    ): void {
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => false],
+            actual: $this->verdict($mode, self::probeSpec($schema), 'date-beside-two-scalars-' . $key, $validJson, $invalidJson),
+            message: $mode->value . ': ' . $key,
+        );
+    }
+
+    /**
+     * A `format: date` member beside two of boolean, integer and number. yii3 stringified the value
+     * ahead of `#[ToDateTime]`, and the cast read `"1"` and `"2.5"` back as the declared `int`: `true`
+     * was refused by the integer's bound, `2.5` by both numeric branches or held truncated as 2.
+     */
+    public static function dateBesideTwoScalarKindsCases(): iterable
+    {
+        $date = ['type' => 'string', 'format' => 'date'];
+        $shade = ['anyOf' => [$date, ['type' => 'boolean'], ['type' => 'integer', 'maximum' => -1]]];
+        $flute = ['anyOf' => [$date, ['type' => 'boolean'], ['type' => 'number', 'minimum' => 5]]];
+        $oboe = ['anyOf' => [$date, ['type' => 'integer', 'maximum' => 0], ['type' => 'number', 'minimum' => 2.2]]];
+        $gong = ['anyOf' => [$date, ['type' => 'integer'], ['type' => 'number', 'minimum' => 2.2]]];
+        $cases = [
+            'boolean beside a bounded integer' => [$shade, 'true', '5'],
+            'false beside a bounded integer' => [$shade, 'false', '0'],
+            'boolean beside a bounded number' => [$flute, 'true', '4.5'],
+            'false beside a bounded number' => [$flute, 'false', '-1'],
+            // `1` and `0` are no booleans: the raw check let them pass as one, and the integer was
+            // then held as a timestamp date out of its branch's bounds.
+            'one is no boolean beside a bounded integer' => [$shade, 'true', '1'],
+            'zero is no boolean beside a bounded number' => [$flute, 'false', '0'],
+            'fraction beside a bounded integer' => [$oboe, '2.5', '1.5'],
+            'fraction beside an integer' => [$gong, '2.5', '1.5'],
+            // Neighbours that already held.
+            'date beside a boolean and an integer' => [$shade, '"2024-01-02"', '3'],
+            'number beside a boolean' => [$flute, '6.5', 'null'],
+            'date beside two numerics' => [$gong, '"2024-01-02"', 'true'],
+        ];
+        foreach ($cases as $key => [$schema, $valid, $invalid]) {
+            foreach (GenerationMode::cases() as $mode) {
+                yield $key . ' / ' . $mode->value => [$mode, $key, $schema, '{"f":' . $valid . '}', '{"f":' . $invalid . '}'];
+            }
+        }
+    }
+
+    /**
+     * Yii3 holds the boolean or the fraction beside a date and a second non-string scalar as sent: no
+     * `#[ToString]` ahead of `#[ToDateTime]` there, as the cast cannot turn its `"1"` or `"2.5"` back
+     * while `int` is declared. `true` became 1 and `2.5` became 2.
+     */
+    public function testYii3HoldsABooleanOrAFractionBesideADateAndAnotherScalarAsSent(): void
+    {
+        $date = ['type' => 'string', 'format' => 'date'];
+        $held = function (array $propertySchema, string $key, mixed $value): mixed {
+            $fqcn = $this->generate(self::probeSpec($propertySchema), $this->namespaceFor(GenerationMode::Yii3, $key), 'yii3');
+            $input = (new Yii3Container())->hydrateValidatedInput(class: $fqcn, payload: ['f' => $value]);
+            $this->assertTrue(method_exists($input, 'getF'));
+            $this->assertTrue($input->getValidationResult()->isValid(), $key);
+
+            return $input->getF();
+        };
+
+        $shade = ['anyOf' => [$date, ['type' => 'boolean'], ['type' => 'integer', 'maximum' => -1]]];
+        $this->assertTrue($held($shade, 'held shade', true));
+        $this->assertFalse($held($shade, 'held shade', false));
+        $flute = ['anyOf' => [$date, ['type' => 'boolean'], ['type' => 'number', 'minimum' => 5]]];
+        $this->assertTrue($held($flute, 'held flute', true));
+        $this->assertFalse($held($flute, 'held flute', false));
+        $this->assertSame(6.5, $held($flute, 'held flute', 6.5));
+        $oboe = ['anyOf' => [$date, ['type' => 'integer', 'maximum' => 0], ['type' => 'number', 'minimum' => 2.2]]];
+        $this->assertSame(2.5, $held($oboe, 'held oboe', 2.5));
+        $gong = ['anyOf' => [$date, ['type' => 'integer'], ['type' => 'number', 'minimum' => 2.2]]];
+        $this->assertSame(2.5, $held($gong, 'held gong', 2.5));
+        $this->assertSame('2024-01-02', $held($gong, 'held gong', '2024-01-02')->format('Y-m-d'));
+
+        // Controls: no date, and a date beside one scalar kind alone.
+        $this->assertTrue($held(['anyOf' => [['type' => 'boolean'], ['type' => 'integer', 'exclusiveMaximum' => 0]]], 'held lamp', true));
+        $this->assertTrue($held(['anyOf' => [['type' => 'string', 'format' => 'date-time'], ['type' => 'boolean']]], 'held drum', true));
+        $this->assertSame(7, $held(['anyOf' => [$date, ['type' => 'integer']]], 'held integer', 7));
+    }
+
+    /**
      * Yii3 holds a boolean beside a date as the boolean it was. `#[ToString]`, there to keep an
      * integer from `#[ToDateTime]`'s timestamp reading, turned `true` into `"1"`, and a declared type
      * that keeps `string` held it so: read back as `"1"`, and judged as a string by the rules. Where
-     * the type keeps `string`, the integer is now the one read as a timestamp, and where it does not,
-     * the boolean still reads back as `1` — both the README.support-matrix row "an integer for a
-     * `oneOf` of `format: date`, `integer` and `null`": the hydrator has no attribute that tells the
-     * two apart.
+     * the type keeps `string`, or declares a boolean beside the integer, the integer is now the one
+     * read as a timestamp — the README.support-matrix row "an integer for a `oneOf` of `format: date`,
+     * `integer` and `null`": the hydrator has no attribute that tells the two apart.
      */
     public function testYii3HoldsABooleanBesideADateAsSent(): void
     {
@@ -9776,11 +9907,14 @@ final class ValidationParityTest extends TestCase
         $this->assertInstanceOf(DateTimeImmutable::class, $held('2024-01-02'));
         $this->assertInstanceOf(DateTimeImmutable::class, $held(7));
 
-        // Without `string` in the declared type the integer is kept, and the boolean is not.
+        // Without `string` in the declared type the boolean is kept too, and the integer is still
+        // the one read as a timestamp: the cast cannot turn a stringified `true` back while `int` is
+        // declared, so no `#[ToString]` is emitted beside a boolean and an integer.
         $spec = self::probeSpec(['oneOf' => [['type' => 'boolean'], ['type' => 'integer'], ['type' => 'string', 'format' => 'date']]]);
         $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::Yii3, 'boolean beside an integer and a date'), 'yii3');
-        $this->assertSame(1, $held(true));
-        $this->assertSame(7, $held(7));
+        $this->assertTrue($held(true));
+        $this->assertFalse($held(false));
+        $this->assertInstanceOf(DateTimeImmutable::class, $held(7));
         $this->assertInstanceOf(DateTimeImmutable::class, $held('2024-01-02'));
     }
 
@@ -10021,9 +10155,9 @@ final class ValidationParityTest extends TestCase
                     ['oneOf' => $petUnion['oneOf'], 'discriminator' => ['propertyName' => 'kind']],
                     ['type' => 'null'],
                 ]]]) + ['Cat' => ['type' => 'object', 'properties' => ['kind' => $kindOf('Cat')]], 'Dog' => ['type' => 'object', 'properties' => ['kind' => $kindOf('Dog')]]],
+                // laravel-data no longer builds the first member here: the union reaches it as one of
+                // classes with no mapping to dispatch on, so the member the value matches is built.
                 ['{}' => true, '{"cub":{"kind":"Cat"}}' => true, '{"cub":{"kind":"Dog"}}' => true, '{"cub":null}' => true, '{"cub":{"kind":"cow"}}' => false],
-                // README.support-matrix "an inline `discriminator` on a property".
-                ['laravel-data' => ['{"cub":{"kind":"Dog"}}' => false]],
             ],
             // LV-A: an `anyOf` inner union.
             'nullable inline discriminated anyOf' => [
@@ -10281,11 +10415,54 @@ final class ValidationParityTest extends TestCase
                     '{"owl":{"fox":{"tail":"x"}}}' => false,
                 ],
                 // README.support-matrix "a `required` name no property declares": Symfony refuses the
-                // sent key, and both Laravel modes emit no rule for a name the nested class lacks.
+                // sent key. Both Laravel modes emitted nothing for a name the nested class lacks, and
+                // accepted the payload without it.
                 [
                     'symfony' => ['{"fox":{"ear":1,"tail":"x"}}' => false, '{"owl":{"fox":{"ear":1,"tail":"x"}}}' => false],
-                    'laravel' => ['{"fox":{"tail":"x"}}' => true, '{"owl":{"fox":{"tail":"x"}}}' => true],
-                    'laravel-data' => ['{"fox":{"tail":"x"}}' => true, '{"owl":{"fox":{"tail":"x"}}}' => true],
+                ],
+            ],
+            // The same name on a referenced component's own `required`, on the ROOT class's and on a
+            // component reached through `allOf` beside a `required` of the property's own.
+            'required name a component does not declare' => [
+                '3.1.0',
+                ['Shape' => ['type' => 'object', 'properties' => ['tail' => ['type' => 'string']], 'required' => ['ear']]]
+                + $probe(['owl' => $ref('Shape')]),
+                [
+                    '{}' => true,
+                    '{"owl":{"ear":1,"tail":"x"}}' => true,
+                    '{"owl":{"ear":null}}' => true,
+                    '{"owl":{"tail":"x"}}' => false,
+                    '{"owl":{}}' => false,
+                ],
+                // README.support-matrix "a `required` name no property declares": runtime and Symfony
+                // judge the built object, which the undeclared key never reaches.
+                [
+                    'runtime' => ['{"owl":{"tail":"x"}}' => true, '{"owl":{}}' => true],
+                    'symfony' => ['{"owl":{"tail":"x"}}' => true, '{"owl":{}}' => true],
+                ],
+            ],
+            'required name the root class does not declare' => [
+                '3.1.0',
+                ['Shape' => ['type' => 'object', 'properties' => ['tail' => ['type' => 'string']], 'required' => ['ear']]]
+                + ['Probe' => ['type' => 'object', 'required' => ['zed'], 'properties' => [
+                    'fox' => ['type' => 'string'],
+                    'owl' => ['allOf' => [$ref('Shape')], 'required' => ['paw']],
+                ]]],
+                [
+                    '{"zed":1}' => true,
+                    '{"zed":1,"fox":"a"}' => true,
+                    '{"fox":"a"}' => false,
+                    '{}' => false,
+                    '{"zed":1,"owl":{"tail":"x","paw":1,"ear":1}}' => true,
+                    '{"zed":1,"owl":{"tail":"x","paw":1}}' => false,
+                    '{"zed":1,"owl":{"tail":"x","ear":1}}' => false,
+                ],
+                // README.support-matrix "a `required` name no property declares": runtime, Symfony and
+                // yii3 judge the built object at the root; Symfony also refuses the sent nested key.
+                [
+                    'runtime' => ['{"fox":"a"}' => true, '{}' => true, '{"zed":1,"owl":{"tail":"x","paw":1}}' => true],
+                    'symfony' => ['{"fox":"a"}' => true, '{}' => true, '{"zed":1,"owl":{"tail":"x","paw":1,"ear":1}}' => false],
+                    'yii3' => ['{"fox":"a"}' => true, '{}' => true],
                 ],
             ],
             // Y12: a `$ref` to an object without properties refuses null.
@@ -12810,6 +12987,38 @@ final class ValidationParityTest extends TestCase
                 '{"list":[5]}' => false,
             ],
         ];
+        // A list of a scalar UNION component wrapped in a one-branch `anyOf`, an `allOf`, or a `oneOf`
+        // beside null was typed `array<Spoke>` — a class never written. Symfony refused every list at
+        // deserialization (`must be one of "Spoke[]"`), runtime died on `unknown type "Spoke"` for the
+        // `allOf`. The bare list (`wagon`) and a list of a scalar ALIAS (`raft`) already worked.
+        $spokes = ['type' => 'array', 'items' => $ref('Spoke')];
+        yield 'a wrapped list of a scalar union component' => [
+            '3.1.0',
+            [
+                'Probe' => $probe([
+                    'wagon' => $spokes,
+                    'cart' => ['anyOf' => [$spokes]],
+                    'sled' => ['allOf' => [$spokes]],
+                    'barge' => ['oneOf' => [$spokes, ['type' => 'null']]],
+                    'raft' => ['anyOf' => [['type' => 'array', 'items' => $ref('Plank')]]],
+                ]),
+                'Spoke' => ['oneOf' => [['type' => 'string'], ['type' => 'integer']]],
+                'Plank' => ['type' => 'string'],
+            ],
+            [
+                '{"wagon":["a",3]}' => true,
+                '{"wagon":[true]}' => false,
+                '{"cart":["a",3]}' => true,
+                '{"cart":[true]}' => false,
+                '{"sled":["a",3]}' => true,
+                '{"sled":[true]}' => false,
+                '{"barge":["a",3]}' => true,
+                '{"barge":null}' => true,
+                '{"barge":[true]}' => false,
+                '{"raft":["a"]}' => true,
+                '{"raft":[3]}' => false,
+            ],
+        ];
     }
 
     /**
@@ -12829,23 +13038,32 @@ final class ValidationParityTest extends TestCase
         }
         $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
         $olive = ['type' => 'object', 'required' => ['cat'], 'properties' => ['cat' => ['type' => 'string']]];
+        $teal = ['type' => 'object', 'required' => ['dog'], 'properties' => ['dog' => ['type' => 'integer']]];
         $spec = [
             'openapi' => '3.0.3',
             'info' => ['title' => 'T', 'version' => '1.0.0'],
             'components' => ['schemas' => [
                 'Olive' => $olive,
-                'Teal' => ['type' => 'object', 'required' => ['dog'], 'properties' => ['dog' => ['type' => 'integer']]],
+                'Teal' => $teal,
                 'Probe' => ['type' => 'object', 'properties' => [
                     'bison' => ['anyOf' => [$ref('Olive'), $ref('Teal')]],
                     'heron' => ['oneOf' => [$ref('Olive'), $ref('Teal')]],
                     'okapi' => ['anyOf' => [$olive, $ref('Teal')]],
+                    // Two INLINE members: each is named apart, as `<Owner><Property>AnyOf1` and `…AnyOf2`.
+                    'lynx' => ['anyOf' => [$olive, $teal]],
+                    'puma' => ['oneOf' => [$olive, $teal]],
+                    'ibex' => ['anyOf' => [['allOf' => [$olive]], ['allOf' => [$teal]]]],
                 ]],
             ]],
         ];
         $symfonyUnasserted = [];
-        foreach (['bison', 'heron', 'okapi'] as $name) {
+        foreach (['bison', 'heron', 'okapi', 'lynx', 'puma', 'ibex'] as $name) {
             $symfonyUnasserted['{"' . $name . '":{"dog":1}}'] = null;
         }
+        // The serializer builds ONE member and drops the other's key, so a value both `oneOf` members
+        // accept is no longer seen whole by the time the validator runs — as for `heron`'s references.
+        $symfonyUnasserted['{"puma":{"cat":"a","dog":1}}'] = null;
+        $symfonyUnasserted['{"heron":{"cat":"a","dog":1}}'] = null;
 
         $this->assertSame(
             expected: [],
@@ -12862,13 +13080,30 @@ final class ValidationParityTest extends TestCase
                     '{"heron":{"dog":"x"}}' => false,
                     '{"heron":{"dog":1}}' => true,
                     '{"heron":{"cat":"a"}}' => true,
+                    // Both referenced members accept it. The runtime built the first and stopped, so the
+                    // second match went unseen and `dog` was dropped on the way out.
+                    '{"heron":{"cat":"a","dog":1}}' => false,
+                    '{"bison":{"cat":"a","dog":1}}' => true,
                     '{"okapi":{}}' => false,
                     '{"okapi":{"dog":"x"}}' => false,
                     '{"okapi":{"dog":1}}' => true,
                     '{"okapi":{"cat":"a"}}' => true,
+                    '{"lynx":{}}' => false,
+                    '{"lynx":{"dog":"x"}}' => false,
+                    '{"lynx":{"dog":1}}' => true,
+                    '{"lynx":{"cat":"a"}}' => true,
+                    '{"lynx":5}' => false,
+                    '{"puma":{}}' => false,
+                    '{"puma":{"dog":"x"}}' => false,
+                    '{"puma":{"dog":1}}' => true,
+                    '{"puma":{"cat":"a"}}' => true,
+                    '{"puma":{"cat":"a","dog":1}}' => false,
+                    '{"ibex":{}}' => false,
+                    '{"ibex":{"dog":"x"}}' => false,
+                    '{"ibex":{"dog":1}}' => true,
+                    '{"ibex":{"cat":"a"}}' => true,
                 ],
                 diverging: ['symfony' => $symfonyUnasserted],
-                skippedModes: [GenerationMode::Laravel, GenerationMode::LaravelData],
             ),
         );
 
@@ -12880,6 +13115,139 @@ final class ValidationParityTest extends TestCase
         $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::Yii3, 'inline undiscriminated union of objects'), 'yii3');
         $held = (new Yii3Container())->hydrate($fqcn, ['bison' => ['dog' => 1]]);
         $this->assertSame(expected: ['dog' => 1], actual: $held->bison ?? null);
+
+        // Both Laravel modes build the member the payload matches: Laravel handed the array to a
+        // constructor typed `Olive|Teal` (a TypeError, a 500), laravel-data cast every value to the first
+        // class and refused a Teal for Olive's `cat`.
+        foreach ([GenerationMode::Laravel, GenerationMode::LaravelData] as $mode) {
+            foreach (['{"bison":{"dog":1}}', '{"bison":{"cat":"a"}}', '{"puma":{"dog":1}}', '{"puma":{"cat":"a"}}'] as $json) {
+                $this->assertSame(
+                    expected: $json,
+                    actual: $this->writtenBack($mode, $spec, 'inline undiscriminated union of objects', $json),
+                    message: $mode->value,
+                );
+            }
+        }
+    }
+
+    /**
+     * An empty object goes out as `{}` in both Laravel modes — nested, as an item of a list or a map of
+     * them, and at the root. laravel-data transforms a `Data` into a PHP array, so an empty one was
+     * written `[]`: `{"owl":{}}` came back `{"owl":[]}`, and `{}` as `[]`. `json_encode()` of the
+     * laravel-data object itself still writes `[]` at the root: the `jsonSerialize()` it reaches is
+     * declared `: array` upstream (README.support-matrix, "an empty map on the wire").
+     */
+    public function testAnEmptyObjectIsWrittenBackAsAnObject(): void
+    {
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Shape' => ['type' => 'object', 'properties' => ['tail' => ['type' => 'string']]],
+                'Probe' => ['type' => 'object', 'properties' => [
+                    'owl' => $ref('Shape'),
+                    'bats' => ['type' => 'array', 'items' => $ref('Shape')],
+                    'yaks' => ['type' => 'object', 'additionalProperties' => $ref('Shape')],
+                ]],
+            ]],
+        ];
+        $payloads = [
+            '{}',
+            '{"owl":{}}',
+            '{"owl":{"tail":"x"}}',
+            '{"bats":[{},{"tail":"x"}]}',
+            '{"yaks":{"a":{}}}',
+        ];
+        foreach ([GenerationMode::Laravel, GenerationMode::LaravelData] as $mode) {
+            foreach ($payloads as $json) {
+                $this->assertSame(
+                    expected: $json,
+                    actual: $this->writtenBack($mode, $spec, 'empty object written back', $json),
+                    message: $mode->value,
+                );
+            }
+        }
+
+        $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::LaravelData, 'empty object written back'), 'laravel-data');
+        $dto = $this->payloadOutcome(GenerationMode::LaravelData, $fqcn, '{}')->dto;
+        $this->assertSame(expected: '[]', actual: json_encode($dto));
+    }
+
+    /**
+     * A property typed with a union COMPONENT of classes and no `discriminator` (`comp: $ref Shade`,
+     * `Shade: {anyOf: [$ref Olive, $ref Teal]}`) is built as the member the payload matches, as the
+     * inline `anyOf: [$ref Olive, $ref Teal]` is — directly, as a list item, and under `oneOf` only when
+     * exactly one member matches. The runtime refused every payload with `Unsupported type: Shade`: the
+     * union's interface was handed to the cast as if it were a class. yii3 holds the decoded object and
+     * checks it against every member. The other three still cannot build one and say so at generation
+     * time (README.support-matrix, "hydration of a union of OBJECTS with no `discriminator`").
+     */
+    public function testAnUndiscriminatedUnionComponentOfClassesIsBuiltAsItsMatchingMember(): void
+    {
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Olive' => ['type' => 'object', 'required' => ['cat'], 'properties' => ['cat' => ['type' => 'integer']]],
+                'Teal' => ['type' => 'object', 'required' => ['dog'], 'properties' => ['dog' => ['type' => 'integer']]],
+                'Shade' => ['anyOf' => [$ref('Olive'), $ref('Teal')]],
+                'Hue' => ['oneOf' => [$ref('Olive'), $ref('Teal')]],
+                'Probe' => ['type' => 'object', 'properties' => [
+                    'comp' => $ref('Shade'),
+                    'compOne' => $ref('Hue'),
+                    'many' => ['type' => 'array', 'items' => $ref('Hue')],
+                ]],
+            ]],
+        ];
+        $key = 'undiscriminated union component of classes';
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: $spec,
+                key: $key,
+                payloads: [
+                    '{"comp":{"cat":1}}' => true,
+                    '{"comp":{"dog":1}}' => true,
+                    '{"comp":{"cat":1,"dog":2}}' => true,
+                    '{"comp":{}}' => false,
+                    '{"comp":{"dog":"x"}}' => false,
+                    '{"comp":5}' => false,
+                    '{"compOne":{"cat":1}}' => true,
+                    '{"compOne":{"dog":1}}' => true,
+                    '{"compOne":{"cat":1,"dog":2}}' => false,
+                    '{"compOne":{}}' => false,
+                    '{"many":[{"cat":1},{"dog":2}]}' => true,
+                    '{"many":[{"cat":1,"dog":2}]}' => false,
+                ],
+                skippedModes: [GenerationMode::Symfony, GenerationMode::Laravel, GenerationMode::LaravelData],
+            ),
+        );
+
+        $built = function (string $json) use ($spec, $key): array {
+            $fqcn = $this->generate($spec, $this->namespaceFor(GenerationMode::Runtime, $key), 'runtime');
+            $dto = (new DtoDeserializer())->deserialize(Request::create(
+                uri: '/',
+                method: 'POST',
+                server: ['CONTENT_TYPE' => 'application/json'],
+                content: $json,
+            ), $fqcn);
+            $classes = [];
+            foreach (['getComp', 'getCompOne'] as $getter) {
+                $member = $dto->{$getter}();
+                $classes[] = is_object($member) ? substr(strrchr($member::class, '\\') ?: $member::class, 1) : null;
+            }
+
+            return $classes;
+        };
+        $this->assertSame(expected: ['Olive', null], actual: $built('{"comp":{"cat":1}}'));
+        $this->assertSame(expected: ['Teal', 'Teal'], actual: $built('{"comp":{"dog":1},"compOne":{"dog":2}}'));
+        $this->assertSame(expected: [null, 'Olive'], actual: $built('{"compOne":{"cat":1}}'));
+        $this->assertSame(
+            expected: '{"comp":{"dog":1},"compOne":{"cat":2}}',
+            actual: $this->runtimeRoundTrip($spec, $key, '{"comp":{"dog":1},"compOne":{"cat":2}}'),
+        );
     }
 
     /**
@@ -13098,6 +13466,23 @@ final class ValidationParityTest extends TestCase
         $accepts = fn(string $json): bool => $this->runtimeOutcome($fqcn, $json)->isAccepted();
 
         return ['valid' => $accepts($validJson), 'invalid' => $accepts($invalidJson)];
+    }
+
+    /**
+     * The JSON a mode writes back for a payload it accepted (see `RunsPayloadsThroughModes`), or its
+     * verdict and the evidence when it did not accept it.
+     *
+     * @param array<string, mixed> $spec
+     */
+    private function writtenBack(GenerationMode $mode, array $spec, string $key, string $json): string
+    {
+        $fqcn = $this->generate($spec, $this->namespaceFor($mode, $key), $mode->value);
+        if ($mode === GenerationMode::LaravelData) {
+            LaravelDataContainer::boot();
+        }
+        $outcome = $this->payloadOutcome($mode, $fqcn, $json, self::SYMFONY_REQUEST_PAYLOAD_CONTEXT);
+
+        return $outcome->encoded ?? sprintf('%s (%s: %s)', $outcome->verdict->value, $outcome->stage, $outcome->detail);
     }
 
     /**

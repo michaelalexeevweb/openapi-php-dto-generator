@@ -547,7 +547,7 @@ trait RendersYii3Dto
             if ($this->yii3IsUnionInterface($property['type']) || $this->yii3IsUnionOfClasses($property['type'])) {
                 $docType = $type . '|array<string, mixed>';
                 $createDocType = $type;
-                $type = str_starts_with($type, '?') ? substr($type, 1) . '|array|null' : $type . '|array';
+                $type = $this->yii3WithArrayMember($type);
             }
             // An enum beside a scalar keeps the value AS SENT: with `Scope|int` the hydrator, finding no
             // builtin member for `"all"`, fell back to casting it — `"all"` and `"nope"` both became 0, and
@@ -567,15 +567,15 @@ trait RendersYii3Dto
             // type without it. Not beside a generated class, which is what an array is built into.
             if ($this->yii3HoldsArrayForEnum($property['type'])) {
                 $heldEnumType = $type;
-                $type = str_starts_with($type, '?') ? substr($type, 1) . '|array|null' : $type . '|array';
+                $type = $this->yii3WithArrayMember($type);
             }
             $type = $this->yii3WithUnionClassFirst(type: $type, phpType: $property['type']);
             // Beside a `bool` member the class is never built: the native caster runs first and makes
             // any array `true`, so `{"owl": {"egret": 5}}` was held — and validated — as `true`. With
             // `array` declared the array is kept as sent, and the interpreter judges it against the
             // class's branch.
-            if ($this->yii3UnionClassBesideBool($property['type']) && !in_array('array', explode('|', $type), true)) {
-                $type = str_starts_with($type, '?') ? substr($type, 1) . '|array|null' : $type . '|array';
+            if ($this->yii3UnionClassBesideBool($property['type'])) {
+                $type = $this->yii3WithArrayMember($type);
             }
         }
         $wireBoolean = $this->yii3IsWireBoolean($property);
@@ -1034,14 +1034,22 @@ trait RendersYii3Dto
             // `string` is there — `true` was read back as `"1"` and refused by the enum and the date.
             // A boolean needs no protection (`ToDateTime` leaves it alone); an integer is then read
             // as a timestamp, the README.support-matrix row on an integer beside a date.
+            // Nor beside two of `bool`, `int` and `float`: the cast tries the declared members in
+            // PHP's fixed order, `int` before `float` before `bool`, so `"1"` from `true` became 1 or
+            // 1.0 and `"2.5"` became 2 — refused by the integer's own bounds, or held truncated.
+            // `ToDateTime` leaves a boolean and a float alone, so without `ToString` both are held
+            // as sent, and only an integer beside them is read as a timestamp — checked on the raw
+            // value first, see `$readsIntegerAsTimestamp`.
             $unionMembers = $this->yii3TypeMembers($property['type']);
             // An enum member declares `string` and `int` beside it too (see `renderYii3Parameter()`).
             $declaresString = in_array('string', $unionMembers, true) || $this->yii3UnionEnumMember($property['type']) !== null;
             $stringifiedScalarStaysAString = $declaresString
                 && (in_array('bool', $unionMembers, true) || in_array('int', $unionMembers, true));
+            $castCannotTellScalarsApart = count(array_intersect(['bool', 'int', 'float'], $unionMembers)) > 1;
             if (
                 count($unionMembers) > 1
                 && !$stringifiedScalarStaysAString
+                && !$castCannotTellScalarsApart
                 && !in_array('array', $unionMembers, true)
                 // Nor beside a generated class, which arrives as an array `ToString` would empty.
                 && $this->unionClassBesideScalars($property['type']) === null
@@ -1566,7 +1574,13 @@ trait RendersYii3Dto
             }
             $fqcn = $this->yii3RuleClass($scalar[0]);
             $ruleImports[] = $fqcn;
-            $memberRule = 'new ' . $this->yii3Lib($scalar[0], $fqcn) . '()';
+            // A boolean member takes the JSON `true` and `false` alone. The rule's defaults take `1`,
+            // `0`, `"1"` and `"0"` as well: beside a date, an integer out of its branch's bounds
+            // passed as a boolean, was held as a timestamp date, and nothing after the hydration
+            // saw the integer again.
+            $memberRule = $member === 'bool'
+                ? 'new ' . $this->yii3Lib($scalar[0], $fqcn) . '(trueValue: true, falseValue: false, strict: true)'
+                : 'new ' . $this->yii3Lib($scalar[0], $fqcn) . '()';
             // A numeric member carries its branch's enum and bounds: beside a date member and an
             // array-typed one no `#[ToString]` protects the int, `#[ToDateTime]` reads it as a Unix
             // timestamp, and `{"raven": 4}` was held as 1970-01-01T00:00:04 against `enum: [3]`.
@@ -1648,6 +1662,20 @@ trait RendersYii3Dto
         }
 
         return $rules;
+    }
+
+    /**
+     * The PHP type with `array` among its members — once: a union of classes beside a list member
+     * (`oneOf: [{type: object}, {type: object}, {type: array}]`) already declares one, and a second
+     * `array` is a compile error, `Duplicate type array is redundant`, that kept the class from loading.
+     */
+    private function yii3WithArrayMember(string $type): string
+    {
+        if (in_array('array', explode('|', ltrim($type, '?')), true)) {
+            return $type;
+        }
+
+        return str_starts_with($type, '?') ? substr($type, 1) . '|array|null' : $type . '|array';
     }
 
     /**
@@ -2887,7 +2915,13 @@ PHP;
         foreach ($properties as $property) {
             $name = $property['openApiName'];
             $propertySchema = $schema['properties'][$name] ?? null;
-            if (!is_array($propertySchema) || !$this->yii3HoldsUnionClassAsArray($property['type'])) {
+            // A union of two or more classes is held as the decoded array too: its `allOf`-wrapped
+            // object branches (`anyOf: [{allOf: [Olive…]}, {allOf: [Teal…]}]`) were left for classes
+            // never built, and `{"ibex": {}}` passed both members' `required`.
+            if (
+                !is_array($propertySchema)
+                || (!$this->yii3HoldsUnionClassAsArray($property['type']) && !$this->yii3IsUnionOfClasses($property['type']))
+            ) {
                 continue;
             }
             $propertySchema = $this->yii3WithUnionComponentInlined($propertySchema, $className);

@@ -221,8 +221,11 @@ trait RendersSymfonyDto
                 }
                 $itemClass = $this->schemaRefToClassName(ref: $ref, currentSourceFile: $this->getSchemaSourceFile($className));
                 $definition = $this->dtoSchemas[$itemClass] ?? null;
+                // A union of SCALARS (`Spoke: oneOf: [string, integer]`) is no class: typed
+                // `array<Spoke>`, the serializer refused every list as one of a class never written.
                 if (
                     !is_array($definition)
+                    || $this->isScalarAliasSchema($definition)
                     || ((!is_array($definition['oneOf'] ?? null) || $definition['oneOf'] === [])
                         && (!is_array($definition['anyOf'] ?? null) || $definition['anyOf'] === []))
                 ) {
@@ -2586,7 +2589,7 @@ PHP;
         }
 
         $branches = [];
-        foreach ($anyOf as $branch) {
+        foreach ($anyOf as $branchIndex => $branch) {
             // An inline enum branch is hydrated into the PHP enum generated for it, so holding
             // that enum is the member check — `Type('string')` beside a `Choice` refused every
             // member, because by then it was no string.
@@ -2604,7 +2607,7 @@ PHP;
                 && !$this->isFreeFormObjectSchema($branch)
                 ? $this->unionClassBesideScalars($property['type'])
                     ?? $this->symfonyLoneDtoClass($property['type'])
-                    ?? $this->symfonyInlineBranchClassBesideReferences(phpType: $property['type'], branches: $anyOf)
+                    ?? $this->symfonyInlineBranchClassBesideReferences(phpType: $property['type'], branches: $anyOf, branchIndex: $branchIndex)
                 : null;
             // A `format: date` / `date-time` branch is hydrated into the `DateTimeImmutable` the PHP
             // type names, so holding one IS the branch: `Type('string')` refused every valid date,
@@ -2637,9 +2640,12 @@ PHP;
      * `ProbeOkapi` of `ProbeOkapi|Teal`: the one generated class of the type no `$ref` branch names.
      * `Type('array')` refused it there, the value being by then no array.
      *
+     * Two or more inline object branches are named apart (`ProbeLynxAnyOf1|ProbeLynxAnyOf2`), in branch
+     * order: the n-th inline object branch is held as the n-th such class.
+     *
      * @param array<mixed> $branches
      */
-    private function symfonyInlineBranchClassBesideReferences(string $phpType, array $branches): ?string
+    private function symfonyInlineBranchClassBesideReferences(string $phpType, array $branches, int|string $branchIndex): ?string
     {
         $referenced = [];
         foreach ($branches as $branch) {
@@ -2656,7 +2662,19 @@ PHP;
             }
         }
 
-        return count($inline) === 1 ? $inline[0] : null;
+        if (count($inline) === 1) {
+            return $inline[0];
+        }
+        $inlineObjectBranches = array_keys(array_filter(
+            array: $branches,
+            callback: fn(mixed $branch): bool => is_array($branch)
+                && ($branch['type'] ?? null) === 'object'
+                && !array_key_exists('x-php-instanceof', $branch)
+                && !$this->isFreeFormObjectSchema($branch),
+        ));
+        $position = array_search($branchIndex, $inlineObjectBranches, true);
+
+        return $inline !== [] && count($inline) === count($inlineObjectBranches) && is_int($position) ? $inline[$position] : null;
     }
 
     /**

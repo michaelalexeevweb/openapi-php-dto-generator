@@ -281,7 +281,10 @@ final class SchemaRenderer
             $branches[] = ['type' => 'null'];
         }
         $schema = [$node['op'] => $branches];
-        if ($this->random->chance(0.3)) {
+        // Two object members stay inline: as a component of its own the union is one the generator
+        // WARNS it cannot hydrate in four modes (no discriminator to pick a member by) — documented at
+        // generation time, not a finding. The roll is kept, so the draws after it do not move.
+        if ($this->random->chance(0.3) && ($node['objectPair'] ?? false) !== true) {
             $name = $this->names->next();
             $this->components[$name] = $schema;
             $schema = ['$ref' => '#/components/schemas/' . $name];

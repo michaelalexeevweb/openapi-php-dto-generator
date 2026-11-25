@@ -904,6 +904,37 @@ trait RendersCommonDtoParts
     }
 
     /**
+     * The generated classes of a union holding TWO or more of them — `Olive|Teal`, `Olive|Teal|null`,
+     * `Olive|Teal|string` — in declaration order, or `[]` for any other type. Beside them only scalars,
+     * enums and `DateTimeImmutable` may stand: a plain `array` member makes a JSON object ambiguous
+     * between a class and the free-form value, and that is left alone.
+     *
+     * The wire value alone does not say which class it is, so a mode building one has to ask each
+     * member's own schema — the validator has already decided that one of them matches.
+     *
+     * @return list<string>
+     */
+    private function unionClassMembers(string $phpType): array
+    {
+        $classes = [];
+        foreach ($this->unionMembersBesideNull($phpType) as $member) {
+            if (in_array($member, ['string', 'int', 'float', 'bool', 'DateTimeImmutable'], true)) {
+                continue;
+            }
+            $short = $this->shortClassName($member);
+            if ($short === 'DateTimeImmutable' || array_key_exists($short, $this->enumSchemas)) {
+                continue;
+            }
+            if (!array_key_exists($short, $this->dtoSchemas)) {
+                return [];
+            }
+            $classes[] = $short;
+        }
+
+        return count($classes) >= 2 ? $classes : [];
+    }
+
+    /**
      * Whether a union also holds a plain `array` beside its members — the list a JSON array arrives as,
      * which a class member must then tell apart from a JSON object by its keys.
      */

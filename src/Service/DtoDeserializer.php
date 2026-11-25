@@ -1078,6 +1078,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                         arrayItemTemporalFormat: $paramMeta['arrayItemTemporalFormat'],
                         nestedArrayItemType: $paramMeta['nestedArrayItemType'],
                         nestedArrayItemsNullable: $paramMeta['nestedArrayItemsNullable'],
+                        constraints: is_array($paramMeta['fieldConstraints']) ? $paramMeta['fieldConstraints'] : [],
                     );
                 } else {
                     $value = $this->castUnionValue(
@@ -1085,6 +1086,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                         typeNames: $this->discriminatedUnionMember(typeNames: $paramMeta['typeNames'], value: $rawValue, constraints: $paramMeta['fieldConstraints']),
                         rawValue: $rawValue,
                         rawWasProvided: $rawWasProvided,
+                        exactlyOne: $this->unionMustMatchExactlyOne($paramMeta['fieldConstraints']),
                         rawSource: $castSource,
                         arrayItemType: $paramMeta['arrayItemType'],
                         schemaAllowsNull: $paramMeta['schemaAllowsNull'],
@@ -2222,7 +2224,8 @@ final class DtoDeserializer implements DtoDeserializerInterface
      * Casts a pre-resolved raw value to one of the given union types.
      *
      * @param array<int, string> $typeNames
-     * @param ReflectionClass<object> $dtoReflection
+     * @param ReflectionClass<object>|null $dtoReflection null for the members of a union interface,
+     *     which are classes and need no temporal format read off the owner
      */
     private function castUnionValue(
         string $paramName,
@@ -2232,7 +2235,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         string $rawSource,
         ?string $arrayItemType,
         bool $schemaAllowsNull,
-        ReflectionClass $dtoReflection,
+        ?ReflectionClass $dtoReflection,
         ?string $openApiFormat,
         bool $allowsAssociativeArray,
         bool $alsoAllowsJsonList = false,
@@ -2240,6 +2243,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         ?string $arrayItemTemporalFormat = null,
         ?string $nestedArrayItemType = null,
         bool $nestedArrayItemsNullable = false,
+        bool $exactlyOne = false,
     ): mixed {
         // A missing value here always belongs to a required parameter: optional
         // missing params are short-circuited in deserialize() before this call,
@@ -2270,6 +2274,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 arrayItemTemporalFormat: $arrayItemTemporalFormat,
                 nestedArrayItemType: $nestedArrayItemType,
                 nestedArrayItemsNullable: $nestedArrayItemsNullable,
+                exactlyOne: $exactlyOne,
             );
         } finally {
             $this->unionTrialDepth--;
@@ -2278,6 +2283,75 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 $this->unionTrialArrayResults = [];
             }
         }
+    }
+
+    /**
+     * Whether a union property's constraints are a `oneOf` with no `discriminator` to pick the member:
+     * the payload must then match exactly one class member, not merely the first. Where a discriminator
+     * is declared, its tag chooses — the validator checks the built member against it — and members that
+     * overlap apart from the tag are the norm, not a second match.
+     */
+    private function unionMustMatchExactlyOne(mixed $constraints): bool
+    {
+        return is_array($constraints)
+            && is_array($constraints['oneOf'] ?? null)
+            && !array_key_exists('x-discriminator-map', $constraints)
+            && !array_key_exists('x-discriminator-property', $constraints);
+    }
+
+    /**
+     * Whether a union member is built from an object payload — a generated class, or a union interface
+     * nested in this one — and so counts toward a `oneOf`'s single match.
+     */
+    private function isObjectUnionMember(string $typeName): bool
+    {
+        return $this->resolveTypeKind($typeName) === 'dto' || interface_exists($typeName);
+    }
+
+    /**
+     * The member classes a property or item typed with a generated union INTERFACE is built from, and
+     * whether exactly one may accept the payload — read from the owner's `getConstraints()`, where the
+     * generator spells such a union as `oneOf` / `anyOf` branches "is that class". Null for any other
+     * type, or when the constraints name no member of it.
+     *
+     * @param array<array-key, mixed> $constraints
+     * @return array{members: list<string>, exactlyOne: bool}|null
+     */
+    private function unionMembersFromConstraints(string $typeName, array $constraints): ?array
+    {
+        if (!interface_exists($typeName)) {
+            return null;
+        }
+        $branches = is_array($constraints['oneOf'] ?? null) ? $constraints['oneOf'] : ($constraints['anyOf'] ?? null);
+        if (!is_array($branches)) {
+            return null;
+        }
+        $members = [];
+        foreach ($branches as $branch) {
+            $member = is_array($branch) ? ($branch['x-php-instanceof'] ?? null) : null;
+            if (is_string($member) && is_subclass_of($member, $typeName)) {
+                $members[] = $member;
+            }
+        }
+
+        return $members === [] ? null : ['members' => $members, 'exactlyOne' => $this->unionMustMatchExactlyOne($constraints)];
+    }
+
+    /**
+     * The constraints of a container's members: its `items`, or its `additionalProperties` schema.
+     *
+     * @param array<array-key, mixed> $constraints
+     * @return array<array-key, mixed>
+     */
+    private static function containerItemConstraints(array $constraints): array
+    {
+        foreach (['items', 'additionalProperties'] as $keyword) {
+            if (is_array($constraints[$keyword] ?? null)) {
+                return $constraints[$keyword];
+            }
+        }
+
+        return [];
     }
 
     /**
@@ -2318,8 +2392,15 @@ final class DtoDeserializer implements DtoDeserializerInterface
      * The branch loop of `castUnionValue()`: the first type the value casts to wins, in declaration
      * order; when none does, every branch's complaint is reported.
      *
+     * Under `oneOf` (`$exactlyOne`) a CLASS that accepted the value does not end the loop: every later
+     * class member is tried on the same raw value, and a second one that accepts it refuses the value.
+     * Building the first and stopping let `{"cat": 1, "dog": 2}` through `oneOf: [$ref Olive, $ref Teal]`
+     * as an Olive, `dog` dropped — the validator judges a class branch by the object it is handed and
+     * never saw the raw value Teal would also have taken. A scalar member keeps first-match: a query
+     * string casts to more than one of them, and the validator counts those on the JSON value.
+     *
      * @param array<int, string> $typeNames
-     * @param ReflectionClass<object> $dtoReflection
+     * @param ReflectionClass<object>|null $dtoReflection
      */
     private function castFirstMatchingUnionBranch(
         string $paramName,
@@ -2328,7 +2409,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         string $rawSource,
         ?string $arrayItemType,
         bool $schemaAllowsNull,
-        ReflectionClass $dtoReflection,
+        ?ReflectionClass $dtoReflection,
         ?string $openApiFormat,
         bool $allowsAssociativeArray,
         bool $alsoAllowsJsonList,
@@ -2336,10 +2417,16 @@ final class DtoDeserializer implements DtoDeserializerInterface
         ?string $arrayItemTemporalFormat,
         ?string $nestedArrayItemType,
         bool $nestedArrayItemsNullable,
+        bool $exactlyOne = false,
     ): mixed {
         $errors = [];
+        $matched = false;
+        $match = null;
         foreach ($typeNames as $typeName) {
-            $temporalFormat = $typeName === DateTimeImmutable::class
+            if ($matched && !$this->isObjectUnionMember($typeName)) {
+                continue;
+            }
+            $temporalFormat = $typeName === DateTimeImmutable::class && $dtoReflection !== null
                 ? $this->resolveTemporalFormat(
                     reflection: $dtoReflection,
                     paramName: $paramName,
@@ -2348,7 +2435,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 : null;
 
             try {
-                return $this->castValue(
+                $cast = $this->castValue(
                     value: $rawValue,
                     paramName: $paramName,
                     typeName: $typeName,
@@ -2367,8 +2454,26 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     nestedArrayItemsNullable: $nestedArrayItemsNullable,
                 );
             } catch (RuntimeException $e) {
-                $errors[] = $e->getMessage();
+                if (!$matched) {
+                    $errors[] = $e->getMessage();
+                }
+
+                continue;
             }
+            if ($matched) {
+                throw new RuntimeException(
+                    message: $this->finalizeParamMessage("param \"{$paramName}\" matches more than one allowed oneOf branch"),
+                );
+            }
+            // A null, where the schema allows one, is no member at all: every class "accepts" it.
+            if (!$exactlyOne || !is_object($cast) || !$this->isObjectUnionMember($typeName)) {
+                return $cast;
+            }
+            $matched = true;
+            $match = $cast;
+        }
+        if ($matched) {
+            return $match;
         }
 
         throw new RuntimeException(implode("\n", array_values(array_unique(DtoServiceSupport::finalizeMessages($errors, 'param "')))));
@@ -2919,6 +3024,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
         };
     }
 
+    /**
+     * @param array<array-key, mixed> $constraints the field's constraints, which name the members of a union interface
+     */
     private function castValue(
         mixed $value,
         string $paramName,
@@ -2936,6 +3044,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         ?string $nestedArrayItemType = null,
         bool $nestedArrayItemsNullable = false,
         bool $alsoAllowsJsonList = false,
+        array $constraints = [],
     ): mixed {
         $paramPath ??= $paramName;
         if ($value === null) {
@@ -3083,6 +3192,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     arrayItemTemporalFormat: $arrayItemTemporalFormat,
                     nestedArrayItemType: $nestedArrayItemType,
                     nestedArrayItemsNullable: $nestedArrayItemsNullable,
+                    itemConstraints: self::containerItemConstraints($constraints),
                 );
             }
         }
@@ -3171,6 +3281,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 arrayItemTemporalFormat: $arrayItemTemporalFormat,
                 nestedArrayItemType: $nestedArrayItemType,
                 nestedArrayItemsNullable: $nestedArrayItemsNullable,
+                itemConstraints: self::containerItemConstraints($constraints),
             );
         }
 
@@ -3244,6 +3355,23 @@ final class DtoDeserializer implements DtoDeserializerInterface
             );
         }
 
+        $union = $this->unionMembersFromConstraints(typeName: $typeName, constraints: $constraints);
+        if ($union !== null) {
+            return $this->castUnionValue(
+                paramName: $paramPath,
+                typeNames: $union['members'],
+                rawValue: $value,
+                rawWasProvided: true,
+                rawSource: $source,
+                arrayItemType: null,
+                schemaAllowsNull: $schemaAllowsNull,
+                dtoReflection: null,
+                openApiFormat: null,
+                allowsAssociativeArray: false,
+                exactlyOne: $union['exactlyOne'],
+            );
+        }
+
         throw new RuntimeException(
             message: "Unsupported type: {$typeName}",
         );
@@ -3251,6 +3379,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
     /**
      * @param array<array-key, mixed> $items
+     * @param array<array-key, mixed> $itemConstraints
      * @return array<array-key, mixed>
      */
     private function castArrayItems(
@@ -3262,6 +3391,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         ?string $arrayItemTemporalFormat = null,
         ?string $nestedArrayItemType = null,
         bool $nestedArrayItemsNullable = false,
+        array $itemConstraints = [],
     ): array {
         $normalized = [];
         $errors = [];
@@ -3284,6 +3414,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     arrayItemTemporalFormat: $arrayItemTemporalFormat,
                     nestedArrayItemType: $nestedArrayItemType,
                     nestedArrayItemsNullable: $nestedArrayItemsNullable,
+                    itemConstraints: $itemConstraints,
                 );
             } catch (RuntimeException $e) {
                 $errors[] = $e->getMessage();
@@ -3324,6 +3455,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
         };
     }
 
+    /**
+     * @param array<array-key, mixed> $itemConstraints
+     */
     private function castArrayItemValue(
         mixed $itemValue,
         string $arrayItemType,
@@ -3333,6 +3467,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         ?string $arrayItemTemporalFormat = null,
         ?string $nestedArrayItemType = null,
         bool $nestedArrayItemsNullable = false,
+        array $itemConstraints = [],
     ): mixed {
         // A null element is accepted only when the items schema declares it nullable
         // (items: {nullable: true} or type containing null); otherwise it falls through
@@ -3435,6 +3570,23 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 dtoClass: $targetClass,
                 source: $source,
                 paramPath: $itemPath,
+            );
+        }
+
+        $union = $this->unionMembersFromConstraints(typeName: $arrayItemType, constraints: $itemConstraints);
+        if ($union !== null) {
+            return $this->castUnionValue(
+                paramName: $itemPath,
+                typeNames: $union['members'],
+                rawValue: $itemValue,
+                rawWasProvided: true,
+                rawSource: $source,
+                arrayItemType: null,
+                schemaAllowsNull: false,
+                dtoReflection: null,
+                openApiFormat: null,
+                allowsAssociativeArray: false,
+                exactlyOne: $union['exactlyOne'],
             );
         }
 
@@ -4355,12 +4507,14 @@ final class DtoDeserializer implements DtoDeserializerInterface
                             arrayItemTemporalFormat: $paramMeta['arrayItemTemporalFormat'],
                             nestedArrayItemType: $paramMeta['nestedArrayItemType'],
                             nestedArrayItemsNullable: $paramMeta['nestedArrayItemsNullable'],
+                            constraints: is_array($paramMeta['fieldConstraints']) ? $paramMeta['fieldConstraints'] : [],
                         )
                         : $this->castUnionValue(
                             paramName: $name,
                             typeNames: $this->discriminatedUnionMember(typeNames: $paramMeta['typeNames'], value: $value, constraints: $paramMeta['fieldConstraints']),
                             rawValue: $value,
                             rawWasProvided: true,
+                            exactlyOne: $this->unionMustMatchExactlyOne($paramMeta['fieldConstraints']),
                             rawSource: 'json',
                             arrayItemType: $paramMeta['arrayItemType'],
                             schemaAllowsNull: $paramMeta['schemaAllowsNull'],

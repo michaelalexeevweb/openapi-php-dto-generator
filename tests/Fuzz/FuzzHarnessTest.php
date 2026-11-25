@@ -291,6 +291,121 @@ final class FuzzHarnessTest extends TestCase
     }
 
     /**
+     * Unions of two object members — `$ref` components and inline ones, keys shared and not, `oneOf` and
+     * `anyOf` — are drawn now. The grammar kept every union's branches disjoint by JSON type, so the
+     * class-union defects in every mode went unfuzzed.
+     */
+    public function testTheGrammarDrawsUnionsOfTwoObjectMembers(): void
+    {
+        $seen = [];
+        foreach (range(1, 80) as $seed) {
+            $spec = FuzzSpec::generate(seed: $seed, propertyCount: 4);
+            $document = $spec->document();
+            foreach ($spec->cases as $name => $case) {
+                if (!SchemaGrammar::holdsObjectPair($case['node'])) {
+                    continue;
+                }
+                $pair = self::objectPairIn($case['node']);
+                $this->assertNotNull($pair);
+                $seen['overlap:' . var_export($pair['overlap'], true)] = true;
+                $seen[$pair['op']] = true;
+                $objects = array_filter($pair['branches'], static fn(array $branch): bool => $branch['t'] === 'object');
+                $this->assertCount(2, $objects);
+                $required = array_map(static fn(array $branch): array => $branch['required'], array_values($objects));
+                $seen['sharedRequired:' . var_export(array_intersect(...$required) !== [], true)] = true;
+
+                $schema = $document['components']['schemas']['Probe']['properties'][$name];
+                foreach (self::unionBranchListsIn($schema) as $branches) {
+                    foreach ($branches as $branch) {
+                        $seen[array_key_exists('$ref', $branch) ? 'refMember' : 'inlineMember'] = true;
+                    }
+                }
+                // Never a component union of its own: that one is warned about at generation time.
+                $this->assertArrayNotHasKey('$ref', $schema);
+            }
+        }
+
+        foreach (['overlap:true', 'overlap:false', 'oneOf', 'anyOf', 'sharedRequired:true', 'sharedRequired:false', 'refMember', 'inlineMember'] as $expected) {
+            $this->assertArrayHasKey($expected, $seen, $expected);
+        }
+    }
+
+    /**
+     * Every draw for a union of two objects says what it means on the finished document: a valid value
+     * the reference oracle takes, a mutation it refuses — one of the other member is dropped, and a
+     * value both members take under `oneOf` is kept as a refusal.
+     */
+    public function testADrawForAUnionOfTwoObjectsIsConfirmedByTheReferenceOracle(): void
+    {
+        $checked = 0;
+        foreach (range(1, 80) as $seed) {
+            $spec = FuzzSpec::generate(seed: $seed, propertyCount: 4);
+            foreach ($spec->cases as $name => $case) {
+                if (!SchemaGrammar::holdsObjectPair($case['node'])) {
+                    continue;
+                }
+                $oracle = new ReferenceOracle($spec->document([$name]));
+                $this->assertNotFalse($oracle->accepts(FuzzSpec::payload($name, $case['valid']['value'])), 'seed ' . $seed);
+                foreach ($case['mutations'] as $mutation) {
+                    $this->assertNotTrue($oracle->accepts(FuzzSpec::payload($name, $mutation['value'])), 'seed ' . $seed . ' ' . $mutation['kind']);
+                }
+                $checked++;
+            }
+        }
+
+        $this->assertGreaterThan(0, $checked);
+    }
+
+    /**
+     * Without the stream that decides on them no union of two objects is drawn — which is what keeps a
+     * seed that draws none on the document it drew before.
+     */
+    public function testNoUnionOfTwoObjectsIsDrawnWithoutItsOwnStream(): void
+    {
+        foreach (range(1, 40) as $seed) {
+            $grammar = new SchemaGrammar(random: new FuzzRandom($seed), openApi31: true, names: new NameAllocator());
+            $this->assertFalse(SchemaGrammar::holdsObjectPair($grammar->node(depth: 1)));
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $node
+     * @return array<string, mixed>|null
+     */
+    private static function objectPairIn(array $node): ?array
+    {
+        if (($node['objectPair'] ?? false) === true) {
+            return $node;
+        }
+        foreach ($node as $child) {
+            if (is_array($child) && ($found = self::objectPairIn($child)) !== null) {
+                return $found;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     * @return list<array<int, mixed>>
+     */
+    private static function unionBranchListsIn(array $schema): array
+    {
+        $lists = [];
+        foreach ($schema as $key => $value) {
+            if (($key === 'oneOf' || $key === 'anyOf') && is_array($value)) {
+                $lists[] = array_values(array_filter($value, is_array(...)));
+            }
+            if (is_array($value)) {
+                $lists = [...$lists, ...self::unionBranchListsIn($value)];
+            }
+        }
+
+        return $lists;
+    }
+
+    /**
      * @param array<string, mixed> $schemas
      */
     #[DataProvider('referenceVerdicts')]
@@ -316,6 +431,17 @@ final class FuzzHarnessTest extends TestCase
         yield 'JSON array for an object' => [$probe(['type' => 'object']), '{"fox":[1]}', false];
         yield '3.0 nullable' => [$probe(['type' => 'string', 'nullable' => true]), '{"fox":null}', true];
         yield 'oneOf counts matches' => [$probe(['oneOf' => [['type' => 'integer'], ['type' => 'number']]]), '{"fox":2}', false];
+        // Two object members that share a key: a value both take is no `oneOf` instance, one only the
+        // second takes is; `anyOf` takes both.
+        $teal = ['Teal' => ['type' => 'object', 'properties' => ['hyena' => ['type' => 'string'], 'lemur' => ['type' => 'integer']], 'required' => ['hyena']]];
+        $overlapping = static fn(string $keyword): array => $probe([$keyword => [
+            ['$ref' => '#/components/schemas/Teal'],
+            ['type' => 'object', 'properties' => ['hyena' => ['type' => 'string'], 'otter' => ['type' => 'boolean']], 'required' => ['otter']],
+        ]], $teal);
+        yield 'oneOf over overlapping objects refuses a value both take' => [$overlapping('oneOf'), '{"fox":{"hyena":"a","otter":true}}', false];
+        yield 'oneOf over overlapping objects takes a value one takes' => [$overlapping('oneOf'), '{"fox":{"otter":true}}', true];
+        yield 'anyOf over overlapping objects takes a value both take' => [$overlapping('anyOf'), '{"fox":{"hyena":"a","otter":true}}', true];
+        yield 'oneOf over overlapping objects refuses a value neither takes' => [$overlapping('oneOf'), '{"fox":{"lemur":1}}', false];
         yield 'required' => [$probe(['type' => 'object', 'properties' => ['a' => ['type' => 'string']], 'required' => ['a']]), '{"fox":{}}', false];
         yield 'closed object' => [$probe(['type' => 'object', 'additionalProperties' => false]), '{"fox":{"b":1}}', false];
         yield 'impossible date' => [$probe(['type' => 'string', 'format' => 'date']), '{"fox":"2026-02-30"}', false];

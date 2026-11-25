@@ -329,10 +329,20 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
 {% if temporalUnionCast|default(null) is not null %}
 
     /**
-     * laravel-data's own pipeline, with one change: a property typed a date beside another scalar
-     * (`int|DateTimeImmutable`) is cast only when a string arrives — and beside a string enum, only a
-     * string that is no case of it. Its date cast is otherwise handed every value — `true`, `-27` and the
-     * enum's `red` included — and throws on each, a 500 for a payload the rules accepted.
+     * laravel-data's own pipeline, with its cast pipe narrowed.
+{% if temporalUnionCast.namesLiteral is not null %}
+     *
+     * A property typed a date beside another scalar (`int|DateTimeImmutable`) is cast only when a string
+     * arrives — and beside a string enum, only a string that is no case of it. Its date cast is otherwise
+     * handed every value — `true`, `-27` and the enum's `red` included — and throws on each, a 500 for a
+     * payload the rules accepted.
+{% endif %}
+{% if temporalUnionCast.uncastLiteral is not null %}
+     *
+     * A property typed a union of classes is not cast at all: the constructor builds the member the
+     * value matches. The pipe built the FIRST class from every value, and that class's own casts threw
+     * on the other member's fields.
+{% endif %}
      */
     public static function pipeline(): {{ temporalUnionCast.pipelineRef }}
     {
@@ -341,9 +351,16 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
             replacement: new class({{ temporalUnionCast.containerRef }}::getInstance()->make({{ temporalUnionCast.configRef }}::class)) extends {{ temporalUnionCast.castPipeRef }} {
                 protected function shouldBeCasted({{ temporalUnionCast.propertyRef }} $property, mixed $value): bool
                 {
+{% if temporalUnionCast.uncastLiteral is not null %}
+                    if (in_array($property->name, {{ temporalUnionCast.uncastLiteral|raw }}, true)) {
+                        return false;
+                    }
+{% endif %}
+{% if temporalUnionCast.namesLiteral is not null %}
                     if (!is_string($value) && in_array($property->name, {{ temporalUnionCast.namesLiteral|raw }}, true)) {
                         return false;
                     }
+{% endif %}
 {% if temporalUnionCast.enumsLiteral is not null %}
                     // A case of the enum beside the date is the enum, not a date to parse.
                     foreach ({{ temporalUnionCast.enumsLiteral|raw }}[$property->name] ?? [] as $enum) {
@@ -362,16 +379,26 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
 {% if wireNameRestore|default(null) is not null %}
 
     /**
+{% if wireNameRestore.namesLiteral is not null %}
      * laravel-data's own transform, with the wire names PHP reads as integers put back. It
      * `array_merge()`s the result with the additional data, which renumbers an integer key, so
      * `{"2": …}` came out as a list. The renumbered keys keep their positions, and those follow the
      * properties in declaration order, skipping what was not written.
+{% else %}
+     * laravel-data's own transform, with an empty nested object written as one.
+{% endif %}
+{% if emptyObjectWrite.writesNested|default(false) %}
+     *
+     * A nested `Data` with nothing set transforms to `[]`, which JSON writes as a list: `{"owl":{}}` came
+     * back `{"owl":[]}`. Such a value — and such an item of a list or map of them — goes out as `{}`.
+{% endif %}
      *
      * @return array<array-key, mixed>
      */
     public function transform(
         null|{{ wireNameRestore.contextFactoryRef }}|{{ wireNameRestore.contextRef }} $transformationContext = null,
     ): array {
+{% if wireNameRestore.namesLiteral is not null %}
         $wireNamesByProperty = {{ wireNameRestore.namesLiteral|raw }};
         $wireNames = [];
         foreach ((new {{ wireNameRestore.reflectionRef }}($this))->getProperties({{ wireNameRestore.propertyRef }}::IS_PUBLIC) as $property) {
@@ -388,8 +415,63 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
         foreach ($transformed as $key => $value) {
             $restored[is_int($key) ? (array_shift($wireNames) ?? $key) : $key] = $value;
         }
+{% else %}
+        /** @var array<array-key, mixed> $restored */
+        $restored = parent::transform($transformationContext);
+{% endif %}
+{% if emptyObjectWrite.nestedLiteral|default(null) is not null %}
+        foreach ({{ emptyObjectWrite.nestedLiteral|raw }} as $propertyName => $wireName) {
+            if (($restored[$wireName] ?? null) === [] && $this->{$propertyName} instanceof {{ emptyObjectWrite.dataRef }}) {
+                $restored[$wireName] = new {{ emptyObjectWrite.stdClassRef }}();
+            }
+        }
+{% endif %}
+{% if emptyObjectWrite.itemsLiteral|default(null) is not null %}
+        foreach ({{ emptyObjectWrite.itemsLiteral|raw }} as $propertyName => $wireName) {
+            $source = $this->{$propertyName};
+            if (!is_array($restored[$wireName] ?? null) || !is_iterable($source)) {
+                continue;
+            }
+            foreach ($source as $key => $item) {
+                if ($item instanceof {{ emptyObjectWrite.dataRef }} && ($restored[$wireName][$key] ?? null) === []) {
+                    $restored[$wireName][$key] = new {{ emptyObjectWrite.stdClassRef }}();
+                }
+            }
+        }
+{% endif %}
 
         return $restored;
+    }
+{% endif %}
+{% if emptyObjectWrite.rootMayBeEmpty|default(false) %}
+
+    /**
+     * The JSON of the object, `{}` where nothing is set: laravel-data encodes its transformed ARRAY,
+     * and an empty one is `[]`. `json_encode()` of the object itself still writes `[]` — the
+     * `jsonSerialize()` it reaches is declared `: array` upstream, so no override can return an object.
+     *
+     * @param int $options
+     */
+    public function toJson($options = 0): string
+    {
+        $transformed = $this->transform();
+
+        return (string)json_encode($transformed === [] ? new {{ emptyObjectWrite.stdClassRef }}() : $transformed, $options);
+    }
+
+    /**
+     * The response laravel-data builds, with an empty object written as `{}` rather than `[]`.
+     *
+     * @param \Illuminate\Http\Request $request
+     */
+    public function toResponse($request): {{ emptyObjectWrite.jsonResponseRef }}
+    {
+        $response = parent::toResponse($request);
+        if ($response->getContent() === '[]') {
+            $response->setData(new {{ emptyObjectWrite.stdClassRef }}());
+        }
+
+        return $response;
     }
 {% endif %}
 {% if morphGuard|default(null) is not null %}

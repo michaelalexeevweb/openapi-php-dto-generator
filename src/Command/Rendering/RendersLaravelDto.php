@@ -573,6 +573,30 @@ trait RendersLaravelDto
                 $raw,
             );
         }
+        // `Olive|Teal`: two classes, and the array alone does not say which. Handed over raw, the
+        // constructor threw a TypeError — a 500 on every valid object. The validator has already decided
+        // the value matches a member (and, for `oneOf`, exactly one), so the first member whose own
+        // schema accepts it is the one built.
+        $unionClasses = $this->laravelUndiscriminatedUnionClasses($property);
+        if ($unionClasses !== []) {
+            $access = sprintf('$data[%s]', $key);
+            $arms = [];
+            $lastClass = array_pop($unionClasses);
+            foreach ($unionClasses as $memberClass) {
+                $arms[] = sprintf(
+                    '%s => %s',
+                    $this->laravelUnionMemberMatchCondition($memberClass, $access),
+                    $this->laravelNestedDtoExpression(dtoClass: $memberClass, rawAccess: $access, wireName: $property['openApiName']),
+                );
+            }
+            $arms[] = 'default => ' . $this->laravelNestedDtoExpression(dtoClass: $lastClass, rawAccess: $access, wireName: $property['openApiName']);
+            $raw = sprintf(
+                '(%s ? match (true) { %s } : (%s))',
+                $this->laravelUnionClassesObjectCondition(phpType: $property['type'], valueAccess: $access),
+                implode(', ', $arms),
+                $raw,
+            );
+        }
 
         $itemsNullable = $this->laravelItemsNullable($property);
         $inlineDiscriminator = $this->laravelInlineDiscriminator($property);

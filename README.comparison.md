@@ -196,7 +196,7 @@ fails if the wording drifts apart between modes.
 | Jane | no class, property is `mixed` | the type is thrown away |
 | OG `php-dt` | branches merged into one flat class | a cat carrying `bark` passes |
 | league | validates against the schema, no classes | ✅, but there is no object |
-| **this library** | interface + a class per branch, no hydration, a warning at generation | the type survives and the limit is named |
+| **this library** | interface + a class per branch; runtime builds the branch the payload matches (exactly one under `oneOf`), a framework mode that cannot build an interface warns at generation | the type survives and the limit is named |
 
 ## Shape of the generated class
 

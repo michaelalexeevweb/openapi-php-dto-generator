@@ -241,18 +241,19 @@ trait RunsPayloadsThroughModes
         // `toArray()` cannot write — a null item of a list of classes — was a `TypeError` here, a 500
         // the request side never showed.
         try {
-            json_encode($dto, JSON_THROW_ON_ERROR);
+            $encoded = json_encode($dto, JSON_THROW_ON_ERROR);
         } catch (Throwable $crash) {
             return PayloadOutcome::crashed(stage: 'serialize', throwable: $crash);
         }
 
-        return PayloadOutcome::accepted();
+        return PayloadOutcome::accepted(dto: is_object($dto) ? $dto : null, encoded: $encoded);
     }
 
     /**
      * laravel-data mode goes through the package's own entry point, and through a REQUEST: its default
      * `validation_strategy` is `OnlyRequests`, so `from($array)` would hydrate without validating anything.
-     * The request is also where the emitted interpreter finds the raw body it needs.
+     * The request is also where the emitted interpreter finds the raw body it needs. The built Data is
+     * then written back with `toJson()`, as `laravelOutcome()` encodes its DTO.
      *
      * @param class-string $fqcn
      */
@@ -262,7 +263,7 @@ trait RunsPayloadsThroughModes
             json: $json,
             work: static function (LaravelRequest $request) use ($fqcn): PayloadOutcome {
                 try {
-                    $fqcn::from($request);
+                    $dto = $fqcn::from($request);
                 } catch (ValidationException $refusal) {
                     return PayloadOutcome::refused(
                         stage: 'validate',
@@ -273,7 +274,16 @@ trait RunsPayloadsThroughModes
                     return PayloadOutcome::crashed(stage: 'hydrate', throwable: $crash);
                 }
 
-                return PayloadOutcome::accepted();
+                // The response side, as a controller returning the Data writes it: a value the object
+                // holds but cannot transform is a 500 the request side never showed, and the JSON is
+                // what the write-back assertions compare.
+                try {
+                    $encoded = $dto->toJson();
+                } catch (Throwable $crash) {
+                    return PayloadOutcome::crashed(stage: 'serialize', throwable: $crash);
+                }
+
+                return PayloadOutcome::accepted(dto: $dto, encoded: $encoded);
             },
         );
         assert($outcome instanceof PayloadOutcome);

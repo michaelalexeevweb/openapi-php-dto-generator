@@ -26,7 +26,7 @@ package, and no spec parsing at runtime.
   framework's own validation output.
 
 ```bash
-composer require michaelalexeevweb/openapi-php-dto-generator:^2.15.151
+composer require michaelalexeevweb/openapi-php-dto-generator:^2.15.152
 ```
 
 ---
@@ -192,8 +192,9 @@ malformed `uri-template` is refused here and accepted by both Jane and league; a
 - **PATCH is expressible.** "Absent" and "sent as `null`" stay different values — a sentinel, an `Optional`
   member, or an uninitialised typed property, depending on the mode. OpenAPI Generator makes every property
   nullable with `= null`, so the two collapse into one and a partial update cannot be written correctly.
-- **An undiscriminated `anyOf` stays honest.** You get an interface plus one class per branch, and a warning
-  at generation time saying it will not be hydrated. Others flatten the branches into a single class — where
+- **An undiscriminated `anyOf` stays honest.** You get an interface plus one class per branch. Runtime mode
+  builds the branch the payload matches; a mode whose framework cannot build an interface warns at
+  generation time instead. Others flatten the branches into a single class — where
   a cat carrying `bark` passes — or drop the property to `mixed`.
 
 ### Fast, because the checks are emitted code

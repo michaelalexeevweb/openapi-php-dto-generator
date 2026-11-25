@@ -1,4 +1,4 @@
-# laravel-data mode — 80 files, 23334 lines
+# laravel-data mode — 80 files, 23966 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -366,11 +366,14 @@ namespace GoldenCorpus;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
+use stdClass;
 
 use function is_string;
+use function json_encode;
 use function trim;
 
 /**
@@ -392,6 +395,35 @@ final class ApiTest2403 extends Data
     public function __construct(
         public readonly string $message = 'Access Denied.',
     ) {
+    }
+
+    /**
+     * The JSON of the object, `{}` where nothing is set: laravel-data encodes its transformed ARRAY,
+     * and an empty one is `[]`. `json_encode()` of the object itself still writes `[]` — the
+     * `jsonSerialize()` it reaches is declared `: array` upstream, so no override can return an object.
+     *
+     * @param int $options
+     */
+    public function toJson($options = 0): string
+    {
+        $transformed = $this->transform();
+
+        return (string)json_encode($transformed === [] ? new stdClass() : $transformed, $options);
+    }
+
+    /**
+     * The response laravel-data builds, with an empty object written as `{}` rather than `[]`.
+     *
+     * @param \Illuminate\Http\Request $request
+     */
+    public function toResponse($request): JsonResponse
+    {
+        $response = parent::toResponse($request);
+        if ($response->getContent() === '[]') {
+            $response->setData(new stdClass());
+        }
+
+        return $response;
     }
 
     /**
@@ -1032,11 +1064,14 @@ namespace GoldenCorpus;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
+use stdClass;
 
 use function is_string;
+use function json_encode;
 use function trim;
 
 /**
@@ -1058,6 +1093,35 @@ final class ApiTest403 extends Data
     public function __construct(
         public readonly string $message = 'Access Denied.',
     ) {
+    }
+
+    /**
+     * The JSON of the object, `{}` where nothing is set: laravel-data encodes its transformed ARRAY,
+     * and an empty one is `[]`. `json_encode()` of the object itself still writes `[]` — the
+     * `jsonSerialize()` it reaches is declared `: array` upstream, so no override can return an object.
+     *
+     * @param int $options
+     */
+    public function toJson($options = 0): string
+    {
+        $transformed = $this->transform();
+
+        return (string)json_encode($transformed === [] ? new stdClass() : $transformed, $options);
+    }
+
+    /**
+     * The response laravel-data builds, with an empty object written as `{}` rather than `[]`.
+     *
+     * @param \Illuminate\Http\Request $request
+     */
+    public function toResponse($request): JsonResponse
+    {
+        $response = parent::toResponse($request);
+        if ($response->getContent() === '[]') {
+            $response->setData(new stdClass());
+        }
+
+        return $response;
     }
 
     /**
@@ -2865,10 +2929,12 @@ namespace GoldenCorpus;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
+use stdClass;
 
 use function array_key_exists;
 use function array_map;
@@ -2877,6 +2943,7 @@ use function filter_var;
 use function is_array;
 use function is_numeric;
 use function is_string;
+use function json_encode;
 use function trim;
 
 /**
@@ -2966,6 +3033,35 @@ final class ApiTestLegacyPostQueryParams extends Data
             },
             default => $value,
         };
+    }
+
+    /**
+     * The JSON of the object, `{}` where nothing is set: laravel-data encodes its transformed ARRAY,
+     * and an empty one is `[]`. `json_encode()` of the object itself still writes `[]` — the
+     * `jsonSerialize()` it reaches is declared `: array` upstream, so no override can return an object.
+     *
+     * @param int $options
+     */
+    public function toJson($options = 0): string
+    {
+        $transformed = $this->transform();
+
+        return (string)json_encode($transformed === [] ? new stdClass() : $transformed, $options);
+    }
+
+    /**
+     * The response laravel-data builds, with an empty object written as `{}` rather than `[]`.
+     *
+     * @param \Illuminate\Http\Request $request
+     */
+    public function toResponse($request): JsonResponse
+    {
+        $response = parent::toResponse($request);
+        if ($response->getContent() === '[]') {
+            $response->setData(new stdClass());
+        }
+
+        return $response;
     }
 
     /**
@@ -4210,13 +4306,17 @@ use Closure;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Attributes\MapName;
 use Spatie\LaravelData\Attributes\WithoutValidation;
+use Spatie\LaravelData\Contracts\BaseData;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
+use Spatie\LaravelData\Support\Transformation\TransformationContext;
+use Spatie\LaravelData\Support\Transformation\TransformationContextFactory;
 use stdClass;
 
 use function array_column;
@@ -4231,6 +4331,7 @@ use function is_array;
 use function is_numeric;
 use function is_string;
 use function json_decode;
+use function json_encode;
 use function property_exists;
 use function sprintf;
 use function trim;
@@ -4355,6 +4456,59 @@ final class ApiTestSerializationGetQueryParams extends Data
             },
             default => $value,
         };
+    }
+
+    /**
+     * laravel-data's own transform, with an empty nested object written as one.
+     *
+     * A nested `Data` with nothing set transforms to `[]`, which JSON writes as a list: `{"owl":{}}` came
+     * back `{"owl":[]}`. Such a value — and such an item of a list or map of them — goes out as `{}`.
+     *
+     * @return array<array-key, mixed>
+     */
+    public function transform(
+        null|TransformationContextFactory|TransformationContext $transformationContext = null,
+    ): array {
+        /** @var array<array-key, mixed> $restored */
+        $restored = parent::transform($transformationContext);
+        foreach ([
+            'filter' => 'filter',
+        ] as $propertyName => $wireName) {
+            if (($restored[$wireName] ?? null) === [] && $this->{$propertyName} instanceof BaseData) {
+                $restored[$wireName] = new stdClass();
+            }
+        }
+
+        return $restored;
+    }
+
+    /**
+     * The JSON of the object, `{}` where nothing is set: laravel-data encodes its transformed ARRAY,
+     * and an empty one is `[]`. `json_encode()` of the object itself still writes `[]` — the
+     * `jsonSerialize()` it reaches is declared `: array` upstream, so no override can return an object.
+     *
+     * @param int $options
+     */
+    public function toJson($options = 0): string
+    {
+        $transformed = $this->transform();
+
+        return (string)json_encode($transformed === [] ? new stdClass() : $transformed, $options);
+    }
+
+    /**
+     * The response laravel-data builds, with an empty object written as `{}` rather than `[]`.
+     *
+     * @param \Illuminate\Http\Request $request
+     */
+    public function toResponse($request): JsonResponse
+    {
+        $response = parent::toResponse($request);
+        if ($response->getContent() === '[]') {
+            $response->setData(new stdClass());
+        }
+
+        return $response;
     }
 
     /**
@@ -4620,6 +4774,7 @@ use Closure;
 use DateTimeImmutable;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Attributes\WithCast;
@@ -4628,11 +4783,13 @@ use Spatie\LaravelData\Casts\DateTimeInterfaceCast;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 use Spatie\LaravelData\Transformers\DateTimeInterfaceTransformer;
+use stdClass;
 
 use function array_column;
 use function array_merge;
 use function in_array;
 use function is_string;
+use function json_encode;
 use function trim;
 
 /**
@@ -4663,6 +4820,35 @@ final class ApiTestSerializationGetQueryParamsFilter extends Data
         #[WithTransformer(DateTimeInterfaceTransformer::class, format: 'Y-m-d')]
         public readonly DateTimeImmutable|Optional $since = new Optional(),
     ) {
+    }
+
+    /**
+     * The JSON of the object, `{}` where nothing is set: laravel-data encodes its transformed ARRAY,
+     * and an empty one is `[]`. `json_encode()` of the object itself still writes `[]` — the
+     * `jsonSerialize()` it reaches is declared `: array` upstream, so no override can return an object.
+     *
+     * @param int $options
+     */
+    public function toJson($options = 0): string
+    {
+        $transformed = $this->transform();
+
+        return (string)json_encode($transformed === [] ? new stdClass() : $transformed, $options);
+    }
+
+    /**
+     * The response laravel-data builds, with an empty object written as `{}` rather than `[]`.
+     *
+     * @param \Illuminate\Http\Request $request
+     */
+    public function toResponse($request): JsonResponse
+    {
+        $response = parent::toResponse($request);
+        if ($response->getContent() === '[]') {
+            $response->setData(new stdClass());
+        }
+
+        return $response;
     }
 
     /**
@@ -4797,12 +4983,15 @@ namespace GoldenCorpus;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
+use stdClass;
 
 use function is_string;
+use function json_encode;
 use function trim;
 
 /**
@@ -4830,6 +5019,35 @@ final class ApiTestSharedPathGetQueryParams extends Data
     public function __construct(
         public readonly string|Optional $cursor = new Optional(),
     ) {
+    }
+
+    /**
+     * The JSON of the object, `{}` where nothing is set: laravel-data encodes its transformed ARRAY,
+     * and an empty one is `[]`. `json_encode()` of the object itself still writes `[]` — the
+     * `jsonSerialize()` it reaches is declared `: array` upstream, so no override can return an object.
+     *
+     * @param int $options
+     */
+    public function toJson($options = 0): string
+    {
+        $transformed = $this->transform();
+
+        return (string)json_encode($transformed === [] ? new stdClass() : $transformed, $options);
+    }
+
+    /**
+     * The response laravel-data builds, with an empty object written as `{}` rather than `[]`.
+     *
+     * @param \Illuminate\Http\Request $request
+     */
+    public function toResponse($request): JsonResponse
+    {
+        $response = parent::toResponse($request);
+        if ($response->getContent() === '[]') {
+            $response->setData(new stdClass());
+        }
+
+        return $response;
     }
 
     /**
@@ -5280,8 +5498,11 @@ use Illuminate\Validation\Validator;
 use LogicException;
 use OverflowException;
 use Spatie\LaravelData\Attributes\WithoutValidation;
+use Spatie\LaravelData\Contracts\BaseData;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
+use Spatie\LaravelData\Support\Transformation\TransformationContext;
+use Spatie\LaravelData\Support\Transformation\TransformationContextFactory;
 use stdClass;
 
 use function array_column;
@@ -5545,6 +5766,32 @@ final class ApplicatorRefs extends Data
         #[WithoutValidation]
         public readonly ApplicatorRefsKeyed|Optional $keyed = new Optional(),
     ) {
+    }
+
+    /**
+     * laravel-data's own transform, with an empty nested object written as one.
+     *
+     * A nested `Data` with nothing set transforms to `[]`, which JSON writes as a list: `{"owl":{}}` came
+     * back `{"owl":[]}`. Such a value — and such an item of a list or map of them — goes out as `{}`.
+     *
+     * @return array<array-key, mixed>
+     */
+    public function transform(
+        null|TransformationContextFactory|TransformationContext $transformationContext = null,
+    ): array {
+        /** @var array<array-key, mixed> $restored */
+        $restored = parent::transform($transformationContext);
+        foreach ([
+            'poisonedKey' => 'poisonedKey',
+            'conditional' => 'conditional',
+            'keyed' => 'keyed',
+        ] as $propertyName => $wireName) {
+            if (($restored[$wireName] ?? null) === [] && $this->{$propertyName} instanceof BaseData) {
+                $restored[$wireName] = new stdClass();
+            }
+        }
+
+        return $restored;
     }
 
     /**
@@ -6306,11 +6553,13 @@ namespace GoldenCorpus;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\Validator;
 use LogicException;
 use OverflowException;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
+use stdClass;
 
 use function array_column;
 use function array_is_list;
@@ -6327,6 +6576,7 @@ use function is_float;
 use function is_int;
 use function is_object;
 use function is_string;
+use function json_encode;
 use function mb_strlen;
 use function preg_match;
 use function preg_match_all;
@@ -6386,6 +6636,35 @@ final class ApplicatorRefsConditional extends Data
     public function __construct(
         public readonly string|Optional $label = new Optional(),
     ) {
+    }
+
+    /**
+     * The JSON of the object, `{}` where nothing is set: laravel-data encodes its transformed ARRAY,
+     * and an empty one is `[]`. `json_encode()` of the object itself still writes `[]` — the
+     * `jsonSerialize()` it reaches is declared `: array` upstream, so no override can return an object.
+     *
+     * @param int $options
+     */
+    public function toJson($options = 0): string
+    {
+        $transformed = $this->transform();
+
+        return (string)json_encode($transformed === [] ? new stdClass() : $transformed, $options);
+    }
+
+    /**
+     * The response laravel-data builds, with an empty object written as `{}` rather than `[]`.
+     *
+     * @param \Illuminate\Http\Request $request
+     */
+    public function toResponse($request): JsonResponse
+    {
+        $response = parent::toResponse($request);
+        if ($response->getContent() === '[]') {
+            $response->setData(new stdClass());
+        }
+
+        return $response;
     }
 
     /**
@@ -6810,11 +7089,13 @@ namespace GoldenCorpus;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\Validator;
 use LogicException;
 use OverflowException;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
+use stdClass;
 
 use function array_column;
 use function array_is_list;
@@ -6831,6 +7112,7 @@ use function is_float;
 use function is_int;
 use function is_object;
 use function is_string;
+use function json_encode;
 use function mb_strlen;
 use function preg_match;
 use function preg_match_all;
@@ -6887,6 +7169,35 @@ final class ApplicatorRefsKeyed extends Data
     public function __construct(
         public readonly string|Optional $trigger = new Optional(),
     ) {
+    }
+
+    /**
+     * The JSON of the object, `{}` where nothing is set: laravel-data encodes its transformed ARRAY,
+     * and an empty one is `[]`. `json_encode()` of the object itself still writes `[]` — the
+     * `jsonSerialize()` it reaches is declared `: array` upstream, so no override can return an object.
+     *
+     * @param int $options
+     */
+    public function toJson($options = 0): string
+    {
+        $transformed = $this->transform();
+
+        return (string)json_encode($transformed === [] ? new stdClass() : $transformed, $options);
+    }
+
+    /**
+     * The response laravel-data builds, with an empty object written as `{}` rather than `[]`.
+     *
+     * @param \Illuminate\Http\Request $request
+     */
+    public function toResponse($request): JsonResponse
+    {
+        $response = parent::toResponse($request);
+        if ($response->getContent() === '[]') {
+            $response->setData(new stdClass());
+        }
+
+        return $response;
     }
 
     /**
@@ -7299,11 +7610,13 @@ namespace GoldenCorpus;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\Validator;
 use LogicException;
 use OverflowException;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
+use stdClass;
 
 use function array_column;
 use function array_is_list;
@@ -7317,6 +7630,7 @@ use function in_array;
 use function is_array;
 use function is_object;
 use function is_string;
+use function json_encode;
 use function preg_match;
 use function preg_match_all;
 use function sprintf;
@@ -7363,6 +7677,35 @@ final class ApplicatorRefsPoisonedKey extends Data
     public function __construct(
         public readonly string|Optional $trigger = new Optional(),
     ) {
+    }
+
+    /**
+     * The JSON of the object, `{}` where nothing is set: laravel-data encodes its transformed ARRAY,
+     * and an empty one is `[]`. `json_encode()` of the object itself still writes `[]` — the
+     * `jsonSerialize()` it reaches is declared `: array` upstream, so no override can return an object.
+     *
+     * @param int $options
+     */
+    public function toJson($options = 0): string
+    {
+        $transformed = $this->transform();
+
+        return (string)json_encode($transformed === [] ? new stdClass() : $transformed, $options);
+    }
+
+    /**
+     * The response laravel-data builds, with an empty object written as `{}` rather than `[]`.
+     *
+     * @param \Illuminate\Http\Request $request
+     */
+    public function toResponse($request): JsonResponse
+    {
+        $response = parent::toResponse($request);
+        if ($response->getContent() === '[]') {
+            $response->setData(new stdClass());
+        }
+
+        return $response;
     }
 
     /**
@@ -8462,8 +8805,11 @@ use LogicException;
 use OverflowException;
 use Spatie\LaravelData\Attributes\DataCollectionOf;
 use Spatie\LaravelData\Attributes\WithoutValidation;
+use Spatie\LaravelData\Contracts\BaseData;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
+use Spatie\LaravelData\Support\Transformation\TransformationContext;
+use Spatie\LaravelData\Support\Transformation\TransformationContextFactory;
 use stdClass;
 
 use function array_column;
@@ -8480,6 +8826,7 @@ use function get_object_vars;
 use function implode;
 use function in_array;
 use function is_array;
+use function is_iterable;
 use function is_object;
 use function is_string;
 use function json_decode;
@@ -8550,6 +8897,36 @@ final class ChainLink extends Data
         #[DataCollectionOf(ChainTag::class)]
         public readonly array|Optional $tags = new Optional(),
     ) {
+    }
+
+    /**
+     * laravel-data's own transform, with an empty nested object written as one.
+     *
+     * A nested `Data` with nothing set transforms to `[]`, which JSON writes as a list: `{"owl":{}}` came
+     * back `{"owl":[]}`. Such a value — and such an item of a list or map of them — goes out as `{}`.
+     *
+     * @return array<array-key, mixed>
+     */
+    public function transform(
+        null|TransformationContextFactory|TransformationContext $transformationContext = null,
+    ): array {
+        /** @var array<array-key, mixed> $restored */
+        $restored = parent::transform($transformationContext);
+        foreach ([
+            'tags' => 'tags',
+        ] as $propertyName => $wireName) {
+            $source = $this->{$propertyName};
+            if (!is_array($restored[$wireName] ?? null) || !is_iterable($source)) {
+                continue;
+            }
+            foreach ($source as $key => $item) {
+                if ($item instanceof BaseData && ($restored[$wireName][$key] ?? null) === []) {
+                    $restored[$wireName][$key] = new stdClass();
+                }
+            }
+        }
+
+        return $restored;
     }
 
     /**
@@ -9083,7 +9460,10 @@ use LogicException;
 use OverflowException;
 use Spatie\LaravelData\Attributes\DataCollectionOf;
 use Spatie\LaravelData\Attributes\WithoutValidation;
+use Spatie\LaravelData\Contracts\BaseData;
 use Spatie\LaravelData\Data;
+use Spatie\LaravelData\Support\Transformation\TransformationContext;
+use Spatie\LaravelData\Support\Transformation\TransformationContextFactory;
 use stdClass;
 
 use function array_column;
@@ -9100,6 +9480,7 @@ use function get_object_vars;
 use function implode;
 use function in_array;
 use function is_array;
+use function is_iterable;
 use function is_object;
 use function is_string;
 use function json_decode;
@@ -9175,6 +9556,36 @@ final class ChainMiddle extends Data
         #[DataCollectionOf(ChainLink::class)]
         public readonly array $links,
     ) {
+    }
+
+    /**
+     * laravel-data's own transform, with an empty nested object written as one.
+     *
+     * A nested `Data` with nothing set transforms to `[]`, which JSON writes as a list: `{"owl":{}}` came
+     * back `{"owl":[]}`. Such a value — and such an item of a list or map of them — goes out as `{}`.
+     *
+     * @return array<array-key, mixed>
+     */
+    public function transform(
+        null|TransformationContextFactory|TransformationContext $transformationContext = null,
+    ): array {
+        /** @var array<array-key, mixed> $restored */
+        $restored = parent::transform($transformationContext);
+        foreach ([
+            'links' => 'links',
+        ] as $propertyName => $wireName) {
+            $source = $this->{$propertyName};
+            if (!is_array($restored[$wireName] ?? null) || !is_iterable($source)) {
+                continue;
+            }
+            foreach ($source as $key => $item) {
+                if ($item instanceof BaseData && ($restored[$wireName][$key] ?? null) === []) {
+                    $restored[$wireName][$key] = new stdClass();
+                }
+            }
+        }
+
+        return $restored;
     }
 
     /**
@@ -10485,8 +10896,11 @@ use LogicException;
 use OverflowException;
 use Spatie\LaravelData\Attributes\DataCollectionOf;
 use Spatie\LaravelData\Attributes\WithoutValidation;
+use Spatie\LaravelData\Contracts\BaseData;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
+use Spatie\LaravelData\Support\Transformation\TransformationContext;
+use Spatie\LaravelData\Support\Transformation\TransformationContextFactory;
 use stdClass;
 
 use function array_column;
@@ -10511,6 +10925,7 @@ use function is_bool;
 use function is_finite;
 use function is_float;
 use function is_int;
+use function is_iterable;
 use function is_object;
 use function is_scalar;
 use function is_string;
@@ -10659,6 +11074,37 @@ final class Containers extends Data
         $this->datesByDay = $datesByDay;
         $this->timestamps = $timestamps;
         $this->tagsByKey = $tagsByKey;
+    }
+
+    /**
+     * laravel-data's own transform, with an empty nested object written as one.
+     *
+     * A nested `Data` with nothing set transforms to `[]`, which JSON writes as a list: `{"owl":{}}` came
+     * back `{"owl":[]}`. Such a value — and such an item of a list or map of them — goes out as `{}`.
+     *
+     * @return array<array-key, mixed>
+     */
+    public function transform(
+        null|TransformationContextFactory|TransformationContext $transformationContext = null,
+    ): array {
+        /** @var array<array-key, mixed> $restored */
+        $restored = parent::transform($transformationContext);
+        foreach ([
+            'shapes' => 'shapes',
+            'tagsByKey' => 'tagsByKey',
+        ] as $propertyName => $wireName) {
+            $source = $this->{$propertyName};
+            if (!is_array($restored[$wireName] ?? null) || !is_iterable($source)) {
+                continue;
+            }
+            foreach ($source as $key => $item) {
+                if ($item instanceof BaseData && ($restored[$wireName][$key] ?? null) === []) {
+                    $restored[$wireName][$key] = new stdClass();
+                }
+            }
+        }
+
+        return $restored;
     }
 
     /**
@@ -11477,9 +11923,11 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\Validator;
 use OverflowException;
 use Spatie\LaravelData\Data;
+use stdClass;
 
 use function array_is_list;
 use function array_key_exists;
@@ -11533,6 +11981,35 @@ final class CountMap extends Data
 
     public function __construct()
     {
+    }
+
+    /**
+     * The JSON of the object, `{}` where nothing is set: laravel-data encodes its transformed ARRAY,
+     * and an empty one is `[]`. `json_encode()` of the object itself still writes `[]` — the
+     * `jsonSerialize()` it reaches is declared `: array` upstream, so no override can return an object.
+     *
+     * @param int $options
+     */
+    public function toJson($options = 0): string
+    {
+        $transformed = $this->transform();
+
+        return (string)json_encode($transformed === [] ? new stdClass() : $transformed, $options);
+    }
+
+    /**
+     * The response laravel-data builds, with an empty object written as `{}` rather than `[]`.
+     *
+     * @param \Illuminate\Http\Request $request
+     */
+    public function toResponse($request): JsonResponse
+    {
+        $response = parent::toResponse($request);
+        if ($response->getContent() === '[]') {
+            $response->setData(new stdClass());
+        }
+
+        return $response;
     }
 
     /**
@@ -16868,8 +17345,11 @@ use LogicException;
 use OverflowException;
 use Spatie\LaravelData\Attributes\DataCollectionOf;
 use Spatie\LaravelData\Attributes\WithoutValidation;
+use Spatie\LaravelData\Contracts\BaseData;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
+use Spatie\LaravelData\Support\Transformation\TransformationContext;
+use Spatie\LaravelData\Support\Transformation\TransformationContextFactory;
 use stdClass;
 
 use function array_column;
@@ -16893,6 +17373,7 @@ use function is_bool;
 use function is_finite;
 use function is_float;
 use function is_int;
+use function is_iterable;
 use function is_object;
 use function is_string;
 use function json_decode;
@@ -17110,6 +17591,44 @@ final class Test2 extends Data
         $this->types = $types;
         $this->user = $user;
         $this->userType = $userType;
+    }
+
+    /**
+     * laravel-data's own transform, with an empty nested object written as one.
+     *
+     * A nested `Data` with nothing set transforms to `[]`, which JSON writes as a list: `{"owl":{}}` came
+     * back `{"owl":[]}`. Such a value — and such an item of a list or map of them — goes out as `{}`.
+     *
+     * @return array<array-key, mixed>
+     */
+    public function transform(
+        null|TransformationContextFactory|TransformationContext $transformationContext = null,
+    ): array {
+        /** @var array<array-key, mixed> $restored */
+        $restored = parent::transform($transformationContext);
+        foreach ([
+            'user' => 'user',
+            'userType' => 'userType',
+        ] as $propertyName => $wireName) {
+            if (($restored[$wireName] ?? null) === [] && $this->{$propertyName} instanceof BaseData) {
+                $restored[$wireName] = new stdClass();
+            }
+        }
+        foreach ([
+            'tags' => 'tags',
+        ] as $propertyName => $wireName) {
+            $source = $this->{$propertyName};
+            if (!is_array($restored[$wireName] ?? null) || !is_iterable($source)) {
+                continue;
+            }
+            foreach ($source as $key => $item) {
+                if ($item instanceof BaseData && ($restored[$wireName][$key] ?? null) === []) {
+                    $restored[$wireName][$key] = new stdClass();
+                }
+            }
+        }
+
+        return $restored;
     }
 
     /**
@@ -17835,15 +18354,18 @@ namespace GoldenCorpus;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\ValidatorAwareRule;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
+use stdClass;
 
 use function array_column;
 use function array_merge;
 use function in_array;
 use function is_string;
+use function json_encode;
 use function trim;
 
 /**
@@ -17870,6 +18392,35 @@ final class Test2UserType extends Data
     public function __construct(
         public readonly string|Optional $region = new Optional(),
     ) {
+    }
+
+    /**
+     * The JSON of the object, `{}` where nothing is set: laravel-data encodes its transformed ARRAY,
+     * and an empty one is `[]`. `json_encode()` of the object itself still writes `[]` — the
+     * `jsonSerialize()` it reaches is declared `: array` upstream, so no override can return an object.
+     *
+     * @param int $options
+     */
+    public function toJson($options = 0): string
+    {
+        $transformed = $this->transform();
+
+        return (string)json_encode($transformed === [] ? new stdClass() : $transformed, $options);
+    }
+
+    /**
+     * The response laravel-data builds, with an empty object written as `{}` rather than `[]`.
+     *
+     * @param \Illuminate\Http\Request $request
+     */
+    public function toResponse($request): JsonResponse
+    {
+        $response = parent::toResponse($request);
+        if ($response->getContent() === '[]') {
+            $response->setData(new stdClass());
+        }
+
+        return $response;
     }
 
     /**
@@ -19994,8 +20545,11 @@ use Illuminate\Validation\Validator;
 use LogicException;
 use OverflowException;
 use Spatie\LaravelData\Attributes\WithoutValidation;
+use Spatie\LaravelData\Contracts\BaseData;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
+use Spatie\LaravelData\Support\Transformation\TransformationContext;
+use Spatie\LaravelData\Support\Transformation\TransformationContextFactory;
 use stdClass;
 
 use function array_column;
@@ -20410,6 +20964,30 @@ final class UnionUnderContainer extends Data
         $this->chain = $chain;
         $this->chainAllOf = $chainAllOf;
         $this->listOfUnions = $listOfUnions;
+    }
+
+    /**
+     * laravel-data's own transform, with an empty nested object written as one.
+     *
+     * A nested `Data` with nothing set transforms to `[]`, which JSON writes as a list: `{"owl":{}}` came
+     * back `{"owl":[]}`. Such a value — and such an item of a list or map of them — goes out as `{}`.
+     *
+     * @return array<array-key, mixed>
+     */
+    public function transform(
+        null|TransformationContextFactory|TransformationContext $transformationContext = null,
+    ): array {
+        /** @var array<array-key, mixed> $restored */
+        $restored = parent::transform($transformationContext);
+        foreach ([
+            'tree' => 'tree',
+        ] as $propertyName => $wireName) {
+            if (($restored[$wireName] ?? null) === [] && $this->{$propertyName} instanceof BaseData) {
+                $restored[$wireName] = new stdClass();
+            }
+        }
+
+        return $restored;
     }
 
     /**
@@ -21790,7 +22368,10 @@ use OverflowException;
 use Spatie\LaravelData\Attributes\WithCast;
 use Spatie\LaravelData\Attributes\WithoutValidation;
 use Spatie\LaravelData\Casts\DateTimeInterfaceCast;
+use Spatie\LaravelData\Contracts\BaseData;
 use Spatie\LaravelData\Data;
+use Spatie\LaravelData\Support\Transformation\TransformationContext;
+use Spatie\LaravelData\Support\Transformation\TransformationContextFactory;
 use stdClass;
 
 use function array_column;
@@ -21972,6 +22553,30 @@ final class User extends Data
         #[WithCast(DateTimeInterfaceCast::class, format: ['Y-m-d\TH:i:sP', 'Y-m-d\TH:i:s.uP', 'Y-m-d\TH:i:sp', 'Y-m-d\TH:i:s.up', 'Y-m-d H:i:s', 'Y-m-d\TH:i:s'])]
         public readonly DateTimeImmutable $createdAt,
     ) {
+    }
+
+    /**
+     * laravel-data's own transform, with an empty nested object written as one.
+     *
+     * A nested `Data` with nothing set transforms to `[]`, which JSON writes as a list: `{"owl":{}}` came
+     * back `{"owl":[]}`. Such a value — and such an item of a list or map of them — goes out as `{}`.
+     *
+     * @return array<array-key, mixed>
+     */
+    public function transform(
+        null|TransformationContextFactory|TransformationContext $transformationContext = null,
+    ): array {
+        /** @var array<array-key, mixed> $restored */
+        $restored = parent::transform($transformationContext);
+        foreach ([
+            'pet' => 'pet',
+        ] as $propertyName => $wireName) {
+            if (($restored[$wireName] ?? null) === [] && $this->{$propertyName} instanceof BaseData) {
+                $restored[$wireName] = new stdClass();
+            }
+        }
+
+        return $restored;
     }
 
     /**
@@ -22629,7 +23234,10 @@ use Spatie\LaravelData\Attributes\WithCast;
 use Spatie\LaravelData\Attributes\WithTransformer;
 use Spatie\LaravelData\Attributes\WithoutValidation;
 use Spatie\LaravelData\Casts\DateTimeInterfaceCast;
+use Spatie\LaravelData\Contracts\BaseData;
 use Spatie\LaravelData\Data;
+use Spatie\LaravelData\Support\Transformation\TransformationContext;
+use Spatie\LaravelData\Support\Transformation\TransformationContextFactory;
 use Spatie\LaravelData\Transformers\DateTimeInterfaceTransformer;
 use stdClass;
 
@@ -22730,6 +23338,30 @@ final class User2 extends Data
         #[WithTransformer(DateTimeInterfaceTransformer::class, format: 'Y-m-d')]
         public readonly DateTimeImmutable $createdAt,
     ) {
+    }
+
+    /**
+     * laravel-data's own transform, with an empty nested object written as one.
+     *
+     * A nested `Data` with nothing set transforms to `[]`, which JSON writes as a list: `{"owl":{}}` came
+     * back `{"owl":[]}`. Such a value — and such an item of a list or map of them — goes out as `{}`.
+     *
+     * @return array<array-key, mixed>
+     */
+    public function transform(
+        null|TransformationContextFactory|TransformationContext $transformationContext = null,
+    ): array {
+        /** @var array<array-key, mixed> $restored */
+        $restored = parent::transform($transformationContext);
+        foreach ([
+            'pet' => 'pet',
+        ] as $propertyName => $wireName) {
+            if (($restored[$wireName] ?? null) === [] && $this->{$propertyName} instanceof BaseData) {
+                $restored[$wireName] = new stdClass();
+            }
+        }
+
+        return $restored;
     }
 
     /**

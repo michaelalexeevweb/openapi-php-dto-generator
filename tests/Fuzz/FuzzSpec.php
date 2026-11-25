@@ -14,6 +14,11 @@ use stdClass;
  */
 final readonly class FuzzSpec
 {
+    /** Where the stream that decides on unions of two objects starts, relative to the seed. */
+    private const int PAIR_STREAM_OFFSET = 7_919_000;
+
+    private const int VALID_DRAW_ATTEMPTS = 6;
+
     /**
      * @param array<string, array{node: array<string, mixed>, schema: array<string, mixed>, valid: array{value: mixed, tags: array<int, string>}, mutations: array<int, array{kind: string, value: mixed, tags: array<int, string>}>}> $cases
      * @param array<string, mixed> $components
@@ -31,7 +36,12 @@ final readonly class FuzzSpec
         $random = new FuzzRandom($seed);
         $openApi31 = $random->chance(0.6);
         $names = new NameAllocator();
-        $grammar = new SchemaGrammar(random: $random, openApi31: $openApi31, names: $names);
+        $grammar = new SchemaGrammar(
+            random: $random,
+            openApi31: $openApi31,
+            names: $names,
+            pairs: new FuzzRandom($seed + self::PAIR_STREAM_OFFSET),
+        );
         $renderer = new SchemaRenderer(random: $random, openApi31: $openApi31, names: $names);
         $instances = new InstanceGenerator($random);
 
@@ -46,7 +56,62 @@ final readonly class FuzzSpec
             ];
         }
 
-        return new self(seed: $seed, openApi31: $openApi31, cases: $cases, components: $renderer->components());
+        $components = $renderer->components();
+        foreach ($cases as $name => $case) {
+            if (!SchemaGrammar::holdsObjectPair($case['node'])) {
+                continue;
+            }
+            $confirmed = self::confirmedByReference(
+                name: $name,
+                case: $case,
+                document: self::documentFor(openApi31: $openApi31, properties: [$name => $case['schema']], components: $components),
+                instances: $instances,
+            );
+            if ($confirmed === null) {
+                // No draw a union of two objects takes exactly once: nothing to expect of it.
+                $cases = array_filter($cases, static fn(string $key): bool => $key !== $name, ARRAY_FILTER_USE_KEY);
+
+                continue;
+            }
+            $cases[$name] = $confirmed;
+        }
+
+        return new self(seed: $seed, openApi31: $openApi31, cases: $cases, components: $components);
+    }
+
+    /**
+     * The case with its draws held to what they claim, by the reference oracle on the finished document.
+     * Two object members of a union share the JSON type, so a value drawn for one may be a value of the
+     * other as well: under `oneOf` that is no valid instance but a refusal — kept as one, of kind
+     * `matchesTwoMembers` — and a broken object of one member may be a sound one of the other, which is
+     * no refusal at all and is dropped. A valid value is drawn again until one is taken exactly once;
+     * null when none is. Runs after every case is drawn, so its own draws move nothing else.
+     *
+     * @param array{node: array<string, mixed>, schema: array<string, mixed>, valid: array{value: mixed, tags: array<int, string>}, mutations: array<int, array{kind: string, value: mixed, tags: array<int, string>}>} $case
+     * @param array<string, mixed> $document
+     * @return array{node: array<string, mixed>, schema: array<string, mixed>, valid: array{value: mixed, tags: array<int, string>}, mutations: array<int, array{kind: string, value: mixed, tags: array<int, string>}>}|null
+     */
+    private static function confirmedByReference(string $name, array $case, array $document, InstanceGenerator $instances): ?array
+    {
+        $oracle = new ReferenceOracle($document);
+        $mutations = array_values(array_filter(
+            array: $case['mutations'],
+            callback: static fn(array $mutation): bool => $oracle->accepts(self::payload($name, $mutation['value'])) !== true,
+        ));
+
+        $valid = $case['valid'];
+        for ($attempt = 0; $attempt < self::VALID_DRAW_ATTEMPTS; $attempt++) {
+            $verdict = $oracle->accepts(self::payload($name, $valid['value']));
+            if ($verdict !== false) {
+                return [...$case, 'valid' => $valid, 'mutations' => $mutations];
+            }
+            if ($attempt === 0) {
+                $mutations[] = ['kind' => 'matchesTwoMembers', 'value' => $valid['value'], 'tags' => [...$valid['tags'], 'unionObjectPair']];
+            }
+            $valid = $instances->validInstance($case['node']);
+        }
+
+        return null;
     }
 
     /**
