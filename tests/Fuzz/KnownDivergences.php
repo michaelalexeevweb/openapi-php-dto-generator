@@ -126,6 +126,16 @@ final class KnownDivergences
                 'row' => 'support matrix: "`additionalProperties: false` / `unevaluatedProperties: false` on a DTO-shaped schema"',
             ],
             [
+                'modes' => [GenerationMode::Symfony],
+                'category' => 'wrong-accept',
+                // Any refusal of an undiscriminated union of objects that one member owes ONLY to a key
+                // it does not declare (`additionalProperties: false` or `{schema}`): the serializer
+                // builds that member's class without the key. yii3 holds the union decoded and refuses.
+                'kinds' => [''],
+                'tagsAll' => [FuzzSpec::REFUSED_ONLY_BY_UNDECLARED_KEY],
+                'row' => 'support matrix: "`additionalProperties: false` / `unevaluatedProperties: false` on a DTO-shaped schema" and "a key `additionalProperties: {schema}` admits beside the named properties" (symfony, a member of an undiscriminated union of classes included)',
+            ],
+            [
                 'modes' => [GenerationMode::Symfony, GenerationMode::Yii3],
                 'category' => 'wrong-accept',
                 'kinds' => [''],
@@ -179,8 +189,10 @@ final class KnownDivergences
                 'modes' => [GenerationMode::Symfony],
                 'category' => 'wrong-refuse',
                 'kinds' => ['valid'],
+                // `objectOfPair`: the value is no instance of the member whose generated class name sorts
+                // first — the class the serializer tries first ({@see FuzzRunner::tagObjectsOfAPair()}).
                 'tagsAll' => ['unionObjectPair', 'objectOfPair'],
-                'row' => 'support matrix: "an object only a LATER member of an inline undiscriminated union of classes accepts" (symfony/serializer 7.4.10 builds the first class it tries)',
+                'row' => 'support matrix: "an object only a member whose class name does not sort first of an inline undiscriminated union of classes accepts" (symfony builds the class it tries first)',
             ],
             [
                 'modes' => [GenerationMode::Symfony],

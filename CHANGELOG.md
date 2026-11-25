@@ -3,6 +3,35 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.154 — 2026-11-25
+
+- fuzz round nine: 15 fixes
+- union branch classes marked
+- discriminated unions hoisted everywhere
+- numeric discriminator keys accepted
+- yii3 date beside classes kept
+- laravel-data date beside classes cast
+
+The ninth fuzz round took the round-eight leftovers and 10 findings from fresh seeds: 12 root causes, 15 fixes,
+each with a test that failed before, and 9 framework limits documented. A fresh run on new seeds found 5:
+4 in the shapes covered before round seven, 1 in unions of several objects (from 8).
+
+**Regenerate after upgrading, in every mode.**
+
+- runtime: every branch of a `oneOf` / `anyOf` that becomes a generated class — an inline object, an `allOf`
+  around a `$ref`, a `$ref` with keys beside it — is named in `getConstraints()`, so each branch judges only
+  its own class (a valid payload was refused as matching two branches); an inline `anyOf` with a
+  discriminator dispatches by its tag;
+- symfony: a discriminated union on a property of an inline object that is itself a union branch, a list
+  item or a map value becomes a `#[DiscriminatorMap]` interface (the first member was built); numeric mapping
+  keys (`"1"`) generate;
+- laravel-data: a date string beside class members is cast (it was a 500); nested unions are built per member;
+  lists of union items are usable;
+- yii3: no `#[ToString]` on a date union with a generated class in it — the object was turned into `""` and
+  lost, so invalid objects passed and valid ones read back as null.
+
+Fuzz harness: the shrinker keeps the mutated keyword only on the schemas the payload reaches.
+
 ## 2.15.153 — 2026-11-25
 
 - fuzz round eight: 15 fixes

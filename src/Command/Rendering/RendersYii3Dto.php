@@ -184,7 +184,7 @@ trait RendersYii3Dto
      *
      * @param array<int, SchemaProperty> $properties
      * @param array<string> $unionTypes
-     * @param array{propertyName: string, mapping: array<string, string>}|null $discriminator
+     * @param array{propertyName: string, mapping: array<array-key, string>}|null $discriminator
      */
     private function renderYii3DtoClass(
         string $namespace,
@@ -1051,8 +1051,10 @@ trait RendersYii3Dto
                 && !$stringifiedScalarStaysAString
                 && !$castCannotTellScalarsApart
                 && !in_array('array', $unionMembers, true)
-                // Nor beside a generated class, which arrives as an array `ToString` would empty.
-                && $this->unionClassBesideScalars($property['type']) === null
+                // Nor beside a generated class — one or several — which arrives as an array `ToString`
+                // would empty. The `array` the property declares beside two classes is added after
+                // `$property['type']` was made, so the check above does not see it.
+                && !$this->unionHasGeneratedClassMember($property['type'])
                 && !($property['schemaNullable'] ?? $property['nullable'])
             ) {
                 $ruleImports[] = 'Yiisoft\Hydrator\Attribute\Parameter\ToString';
@@ -1868,7 +1870,7 @@ trait RendersYii3Dto
      * the interpreter's job, exactly as it is in Laravel mode.
      *
      * @param array<string> $unionTypes
-     * @param array{propertyName: string, mapping: array<string, string>}|null $discriminator
+     * @param array{propertyName: string, mapping: array<array-key, string>}|null $discriminator
      */
     private function renderYii3UnionInterface(
         string $namespace,

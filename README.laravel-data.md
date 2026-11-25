@@ -332,7 +332,11 @@ All measured and pinned; the full table with reasons is in
   discriminated union of classes is read that way, at any depth, an inline object's property included. A
   union of classes with NO discriminator (`anyOf: [$ref Olive, $ref Teal]`) on a property is built as the
   first member whose own schema the value matches: the class takes the property away from laravel-data's
-  inferred rules and its cast pipe, and builds the member in its constructor;
+  inferred rules and its cast pipe, and builds the member in its constructor — below the root too, where
+  until 2.15.154 the FIRST member's rules were added and a valid later member was refused. A LIST of such
+  a union COMPONENT (`items: {$ref: Shade}`) holds its items as the decoded arrays, checked by the
+  interpreter: `#[DataCollectionOf]` takes a `Data` class, and on the interface it was a 500 for every
+  request to the holder;
 - checks the extra keys `additionalProperties: {schema}` admits but does not keep them: the `Data` class
   holds declared properties only, so a valid extra key is not in `toArray()`;
 - keeps the PHP array where runtime casts a map to `stdClass`, so an empty map encodes as `[]` rather

@@ -904,6 +904,23 @@ trait RendersCommonDtoParts
     }
 
     /**
+     * Whether a union names a generated DTO class among its members, however many — `Shade|string`,
+     * `DateTimeImmutable|Olive|Teal`. Unlike `unionClassBesideScalars()` it does not ask which one: such
+     * a value arrives as a JSON object whatever class it becomes.
+     */
+    private function unionHasGeneratedClassMember(string $phpType): bool
+    {
+        foreach ($this->unionMembersBesideNull($phpType) as $member) {
+            $short = $this->shortClassName($member);
+            if (array_key_exists($short, $this->dtoSchemas) && !array_key_exists($short, $this->enumSchemas)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * The generated classes of a union holding TWO or more of them — `Olive|Teal`, `Olive|Teal|null`,
      * `Olive|Teal|string` — in declaration order, or `[]` for any other type. Beside them only scalars,
      * enums and `DateTimeImmutable` may stand: a plain `array` member makes a JSON object ambiguous

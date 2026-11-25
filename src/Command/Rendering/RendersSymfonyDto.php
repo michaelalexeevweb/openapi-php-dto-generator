@@ -260,7 +260,7 @@ trait RendersSymfonyDto
      *
      * @param array<int, SchemaProperty> $properties
      * @param array<int, string> $unionTypes
-     * @param array{propertyName: string, mapping: array<string, string>}|null $discriminator
+     * @param array{propertyName: string, mapping: array<array-key, string>}|null $discriminator
      */
     private function renderSymfonyDtoClass(
         string $namespace,
@@ -1145,7 +1145,7 @@ PHP;
      * what lets the Symfony serializer denormalize the payload into the right branch.
      *
      * @param array<int, string> $unionTypes
-     * @param array{propertyName: string, mapping: array<string, string>}|null $discriminator
+     * @param array{propertyName: string, mapping: array<array-key, string>}|null $discriminator
      * @param array<int, SchemaProperty> $sharedProperties the base's own properties, for an allOf base
      */
     private function renderSymfonyUnionInterface(
@@ -1190,7 +1190,7 @@ PHP;
                 $this->appendImportForClass($imports, $mappedClass, $namespace, $className);
                 $entries[] = sprintf(
                     "'%s' => %s::class",
-                    $this->escapeSingleQuoted($discriminatorValue),
+                    $this->escapeSingleQuoted((string)$discriminatorValue),
                     $this->formatClassNameForNamespace($mappedClass, $namespace),
                 );
             }
@@ -1235,7 +1235,7 @@ PHP;
      * discriminated unions share (`ShapeA` and `ShapeB` both `oneOf: [Circle, Square]`) has none, so
      * the interface had no members, rendered as a class and failed on variables only a class has.
      *
-     * @param array{propertyName: string, mapping: array<string, string>}|null $discriminator
+     * @param array{propertyName: string, mapping: array<array-key, string>}|null $discriminator
      * @return array<int, string>
      */
     private function symfonyDiscriminatedMembers(string $className, ?array $discriminator): array

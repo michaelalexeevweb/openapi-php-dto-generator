@@ -68,7 +68,7 @@ use Twig\TwigFilter;
  *   properties: array<int, SchemaProperty>,
  *   extends: string|null,
  *   unionTypes: array<string>,
- *   discriminator: array{propertyName: string, mapping: array<string, string>}|null,
+ *   discriminator: array{propertyName: string, mapping: array<array-key, string>}|null,
  *   abstract?: bool
  * }
  */
@@ -404,7 +404,7 @@ final class GenerateDtoCommand extends Command
     /** @var array<string, array<int, string>> */
     public array $unionInterfacesByClass = [];
 
-    /** @var array<string, array{propertyName: string, mapping: array<string, string>}> */
+    /** @var array<string, array{propertyName: string, mapping: array<array-key, string>}> */
     public array $discriminatorSchemas = [];
 
     /**
@@ -1362,7 +1362,18 @@ final class GenerateDtoCommand extends Command
      */
     private function withNullableDiscriminatedUnionsFlattened(array $schema, array $components, int $depth): array
     {
-        if (!is_array($schema['properties'] ?? null) || $depth >= self::SHAPE_PROBE_DEPTH) {
+        if ($depth >= self::SHAPE_PROBE_DEPTH) {
+            return $schema;
+        }
+        // An inline object is a class wherever it is written — a `oneOf` / `anyOf` / `allOf` branch, a
+        // list item, a tuple slot, a map value — and its properties are walked like a component's. The
+        // walk followed `properties` alone, so a wrapped union one branch down kept its wrapper and lost
+        // its discriminator: symfony built the first member, laravel built every tag as the first one.
+        $schema = $this->withInlineSubschemasMapped(
+            schema: $schema,
+            map: fn(array $subschema, string $segment): array => $this->withNullableDiscriminatedUnionsFlattened(schema: $subschema, components: $components, depth: $depth + 1),
+        );
+        if (!is_array($schema['properties'] ?? null)) {
             return $schema;
         }
         foreach ($schema['properties'] as $propertyName => $property) {
@@ -1372,6 +1383,38 @@ final class GenerateDtoCommand extends Command
                     components: $components,
                     depth: $depth + 1,
                 );
+            }
+        }
+
+        return $schema;
+    }
+
+    /**
+     * The schema with each INLINE subschema an object can sit in — a `oneOf` / `anyOf` / `allOf` branch,
+     * `items`, a `prefixItems` slot, an `additionalProperties` schema — passed through `$map` with the
+     * path segment it sits at (`oneOf0`, `items`, `prefixItems1`, `additionalProperties`). A `$ref` is
+     * left alone: the component it names is walked as a component.
+     *
+     * @param array<mixed> $schema
+     * @param callable(array<mixed>, string): array<mixed> $map
+     * @return array<mixed>
+     */
+    private function withInlineSubschemasMapped(array $schema, callable $map): array
+    {
+        $inline = static fn(mixed $subschema): bool => is_array($subschema) && !array_key_exists('$ref', $subschema);
+        foreach (['oneOf', 'anyOf', 'allOf', 'prefixItems'] as $listKey) {
+            if (!is_array($schema[$listKey] ?? null)) {
+                continue;
+            }
+            $mapped = [];
+            foreach ($schema[$listKey] as $index => $subschema) {
+                $mapped[$index] = $inline($subschema) ? $map($subschema, $listKey . $index) : $subschema;
+            }
+            $schema[$listKey] = $mapped;
+        }
+        foreach (['items', 'additionalProperties'] as $schemaKey) {
+            if ($inline($schema[$schemaKey] ?? null)) {
+                $schema[$schemaKey] = $map($schema[$schemaKey], $schemaKey);
             }
         }
 
@@ -1498,8 +1541,9 @@ final class GenerateDtoCommand extends Command
     /**
      * The walk under one schema: its properties and its composition branches, at any depth — an inline
      * object's property is a class's property as much as a component's is. The schema itself is never replaced: a component that IS a
-     * union already has the component spelling. List items and map values stay inline: there the inline
-     * spelling is the one each mode already checks item by item.
+     * union already has the component spelling, and so does a union that IS a list item or a map value:
+     * there the inline spelling is the one each mode already checks item by item. An inline object as
+     * the item or the value is walked like any other — its properties are a class's.
      *
      * @param array<mixed> $schema
      * @param list<string> $segments the path so far, spelled into the hoisted name
@@ -1509,26 +1553,20 @@ final class GenerateDtoCommand extends Command
      */
     private function withDiscriminatedUnionsHoisted(array $schema, array $segments, array &$takenClassNames, array &$hoisted): array
     {
-        // An inline object written as a `oneOf` / `anyOf` / `allOf` branch is a class too, and its
-        // properties are that class's: a discriminated union there was left inline, and symfony built
-        // its first member while yii3 checked the first member's tag.
-        foreach (['oneOf', 'anyOf', 'allOf'] as $compositionKey) {
-            if (!is_array($schema[$compositionKey] ?? null)) {
-                continue;
-            }
-            $branches = [];
-            foreach ($schema[$compositionKey] as $index => $branch) {
-                $branches[$index] = is_array($branch) && !array_key_exists('$ref', $branch)
-                    ? $this->withDiscriminatedUnionsHoisted(
-                        schema: $branch,
-                        segments: [...$segments, $compositionKey . $index],
-                        takenClassNames: $takenClassNames,
-                        hoisted: $hoisted,
-                    )
-                    : $branch;
-            }
-            $schema[$compositionKey] = $branches;
-        }
+        // An inline object written as a `oneOf` / `anyOf` / `allOf` branch, a list item or a map value
+        // is a class too, and its properties are that class's: a discriminated union there was left
+        // inline, and symfony built its first member while yii3 checked the first member's tag.
+        $schema = $this->withInlineSubschemasMapped(
+            schema: $schema,
+            map: function (array $subschema, string $segment) use ($segments, &$takenClassNames, &$hoisted): array {
+                return $this->withDiscriminatedUnionsHoisted(
+                    schema: $subschema,
+                    segments: [...$segments, $segment],
+                    takenClassNames: $takenClassNames,
+                    hoisted: $hoisted,
+                );
+            },
+        );
         if (!is_array($schema['properties'] ?? null)) {
             return $schema;
         }
@@ -4772,8 +4810,11 @@ final class GenerateDtoCommand extends Command
         $normalizedMapping = [];
         $targetToSource = [];
 
-        foreach ($mapping as $mappingValue => $ref) {
-            if (!is_string($mappingValue) || $mappingValue === '') {
+        foreach ($mapping as $mappingKey => $ref) {
+            // A numeric key — `{"1": Red}`, valid OpenAPI — is an integer once the document is decoded.
+            // The tag on the wire is still the string, and every consumer compares it as one.
+            $mappingValue = (string)$mappingKey;
+            if ($mappingValue === '') {
                 throw new RuntimeException(
                     message: sprintf('Discriminator mapping key must be a non-empty string in %s.', $className),
                 );
@@ -6093,14 +6134,19 @@ final class GenerateDtoCommand extends Command
      * Runtime: a union branch that synthesizes a class of its own — an inline object, a `$ref` with
      * keywords beside it, an `allOf` merged into one object — is "is that class", as a bare `$ref` is.
      *
-     * Spelled out instead, the branch read `type: object` to `DtoDeserializer`, so an `array` member
-     * beside it took the JSON object as a map and the class was never built; and the spelling itself
-     * lost what the class checks — the inherited properties of the `$ref`, an enum typed as a class,
-     * a nested reference. Marked, the class is tried first and judges the value itself. Only beside an
-     * `array` member — inline, or a `$ref` to a list component — the one that took the object, and only where the branch and the class it became
-     * are unambiguous: one such branch, one class in the type no other branch names. A branch that
-     * `require`s a name it does not declare stays spelled out: the class holds no such key, and only
-     * the spelling can ask the payload for it.
+     * `DtoDeserializer` builds the one class that accepts the payload, and the validator counts the
+     * branches again against that BUILT object. Spelled out, a branch judged the object of another
+     * class: an open `{type: object, properties: {stoat: …}}` matched a built `{marten: 1}` whose
+     * `stoat` the other class had dropped, and an `allOf` around a `$ref` lost its `$ref` half and
+     * matched any object — a valid payload was refused as matching two `oneOf` branches. Beside an
+     * `array` member the spelling read `type: object`, so the JSON object was taken as a map and the
+     * class was never built. Marked, each class judges the value itself, inherited properties, enums
+     * and nested references included.
+     *
+     * The branches that become classes are matched to the classes of the PHP type in order — the type
+     * lists its members in branch order, a bare `$ref` naming its own target — and only when the two
+     * counts agree. A branch that `require`s a name it does not declare stays spelled out: the class
+     * holds no such key, and only the spelling can ask the payload for it.
      *
      * @param array<string, mixed> $constraints
      * @param array<string, mixed> $propertySchema
@@ -6117,9 +6163,9 @@ final class GenerateDtoCommand extends Command
             if (!is_array($variants) || !array_is_list($variants) || !is_array($branches) || !array_is_list($branches) || count($branches) < count($variants)) {
                 continue;
             }
+            $typeMembers = explode('|', ltrim($type, '?'));
             $classIndexes = [];
             $namedByOthers = [];
-            $besideAnArrayMember = false;
             foreach ($variants as $index => $variant) {
                 if (is_bool($variant)) {
                     continue;
@@ -6128,45 +6174,70 @@ final class GenerateDtoCommand extends Command
                 if (!is_array($variant)) {
                     continue 2;
                 }
-                // A `$ref` to a list component is that list member: beside it the object branch was
-                // spelled out, and lost its enum and reference checks.
-                $arrayAliasRef = $variant['$ref'] ?? null;
-                if (
-                    $this->soleTypeBesidesNull($variant['type'] ?? null) === 'array'
-                    || (is_string($arrayAliasRef) && $this->arrayAliasDefinition($arrayAliasRef) !== null)
-                ) {
-                    $besideAnArrayMember = true;
-                }
                 if ($this->unionBranchTypeOfItsOwn($variant, $ownerClassName) === 'class') {
-                    if ($this->requiresAnUndeclaredName($variant)) {
-                        continue 2;
-                    }
                     $classIndexes[] = $index;
-                } elseif (is_string($variant['$ref'] ?? null)) {
-                    $namedByOthers[] = $this->schemaRefToClassName($variant['$ref'], $this->getSchemaSourceFile($ownerClassName) ?? $this->rootSpecFile);
+
+                    continue;
+                }
+                $ref = $variant['$ref'] ?? null;
+                $referencedClass = is_string($ref)
+                    ? $this->schemaRefToClassName($ref, $this->getSchemaSourceFile($ownerClassName) ?? $this->rootSpecFile)
+                    : null;
+                if ($referencedClass !== null) {
+                    $namedByOthers[] = $referencedClass;
+                }
+                // A branch that holds an object as the decoded array — a map, a free-form object, a
+                // nested union — leaves a payload no class was built from, where a marked branch is
+                // undecided: only the spelling can still refuse it.
+                $heldAs = $referencedClass !== null && in_array($referencedClass, $typeMembers, true)
+                    ? null
+                    : (is_string($ref) ? $this->localComponentDefinition($ref) : $variant);
+                if ($heldAs !== null && $this->unionBranchAdmitsAnObject($heldAs)) {
+                    continue 2;
                 }
             }
-            if (!$besideAnArrayMember || count($classIndexes) !== 1) {
+            if ($classIndexes === []) {
                 continue;
             }
             $candidates = array_values(array_filter(
-                array: explode('|', ltrim($type, '?')),
+                array: $typeMembers,
                 callback: fn(string $member): bool => array_key_exists($member, $this->dtoSchemas) && !in_array($member, $namedByOthers, true),
             ));
-            if (count($candidates) !== 1) {
+            if (count($candidates) !== count($classIndexes)) {
                 continue;
             }
-            $branchIndex = $classIndexes[0];
-            $marker = ['x-php-instanceof' => ltrim(($this->schemaNamespaces[$candidates[0]] ?? $this->baseNamespace) . '\\' . $candidates[0], '\\')];
-            $branch = $branches[$branchIndex];
-            if (is_array($branch) && ($branch['nullable'] ?? null) === true) {
-                $marker['nullable'] = true;
+            foreach ($classIndexes as $position => $branchIndex) {
+                $variant = $variants[$branchIndex];
+                if (!is_array($variant) || $this->requiresAnUndeclaredName($variant)) {
+                    continue;
+                }
+                $marker = ['x-php-instanceof' => ltrim(($this->schemaNamespaces[$candidates[$position]] ?? $this->baseNamespace) . '\\' . $candidates[$position], '\\')];
+                $branch = $branches[$branchIndex];
+                if (is_array($branch) && ($branch['nullable'] ?? null) === true) {
+                    $marker['nullable'] = true;
+                }
+                $branches[$branchIndex] = $marker;
             }
-            $branches[$branchIndex] = $marker;
             $constraints[$unionKey] = $branches;
         }
 
         return $constraints;
+    }
+
+    /**
+     * Whether a union branch that is no class of its own may still take a JSON object: `type: object`
+     * (a map, a free-form object), or no type at all beside no `enum` / `const`.
+     *
+     * @param array<string, mixed> $branch
+     */
+    private function unionBranchAdmitsAnObject(array $branch): bool
+    {
+        $type = $branch['type'] ?? null;
+        if ($type === null) {
+            return !array_key_exists('enum', $branch) && !array_key_exists('const', $branch) && !$this->isNullOnlyBranch($branch);
+        }
+
+        return $type === 'object' || (is_array($type) && in_array('object', $type, true));
     }
 
     /**
@@ -6580,27 +6651,32 @@ final class GenerateDtoCommand extends Command
                     // component spelling already reads it. laravel mode hydrates an inline union only
                     // through the dispatch below, so without it every payload, valid ones included,
                     // reached the constructor as a bare array: a TypeError.
+                    // The runtime builds by the map as well: with the tag alone it built the first member
+                    // that took the payload, so `{"kind": "Blue", "wing": "x"}` became a Red under `anyOf`
+                    // — `wing` an extra key there — and passed.
                     $laravelMode = in_array($this->attributeMode, [self::ATTRIBUTE_MODE_LARAVEL, self::ATTRIBUTE_MODE_LARAVEL_DATA], true);
-                    if ($mapping === null && $laravelMode) {
+                    if ($mapping === null && ($laravelMode || $this->attributeMode === self::ATTRIBUTE_MODE_RUNTIME)) {
                         $mapping = $this->implicitDiscriminatorMapping(['oneOf' => $variants]);
                     }
                     // The runtime deserializer tries every class member of a bare `oneOf` and refuses a
                     // second match; a declared discriminator lets the tag choose instead, even with no
                     // map to check it against — members that overlap apart from the tag are its point.
-                    if ($mapping === null && is_string($propertyName) && $this->attributeMode === self::ATTRIBUTE_MODE_RUNTIME) {
+                    if ($mapping === [] && is_string($propertyName) && $this->attributeMode === self::ATTRIBUTE_MODE_RUNTIME) {
                         $constraints['x-discriminator-property'] = $propertyName;
                     }
                     if (is_string($propertyName) && is_array($mapping) && $mapping !== []) {
                         $classMap = [];
                         foreach ($mapping as $discriminatorValue => $ref) {
-                            if (!is_string($discriminatorValue) || !is_string($ref)) {
+                            // A numeric key — `{"1": Red}` — is an integer once the document is decoded,
+                            // and was dropped with the discriminator it belonged to.
+                            if (!is_string($ref)) {
                                 continue;
                             }
                             $mappedClass = $this->schemaRefToClassName($ref);
                             if ($mappedClass === 'mixed') {
                                 continue;
                             }
-                            $classMap[$discriminatorValue] = $mappedClass;
+                            $classMap[(string)$discriminatorValue] = $mappedClass;
                         }
                         // laravel-data too: matched branch by branch, members that overlap apart from
                         // the tag refused every valid payload as matching twice.
@@ -10885,7 +10961,7 @@ final class GenerateDtoCommand extends Command
     /**
      * @param array<int, SchemaProperty> $properties
      * @param array<string> $unionTypes
-     * @param array{propertyName: string, mapping: array<string, string>}|null $discriminator
+     * @param array{propertyName: string, mapping: array<array-key, string>}|null $discriminator
      * @return array<int, string>
      */
     private function collectGeneratedClassImports(

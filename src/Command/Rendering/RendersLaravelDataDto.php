@@ -255,8 +255,14 @@ trait RendersLaravelDataDto
         // A union of classes (`Circle|Oval`) is built by the constructor, as the member the value
         // matches. laravel-data's cast pipe otherwise builds the FIRST class from every value, and a
         // member's own enum cast threw `CannotCastEnum` on the other member's tag — a 500.
+        // Beside a date (`DateTimeImmutable|Olive|Teal`) the date list above already keeps every
+        // non-string away from the cast, and the string a date arrives as still needs it: left out
+        // of the cast altogether, the raw string reached the constructor, a `TypeError` 500.
         $uncastUnionNames = [];
         foreach ($properties as $property) {
+            if (in_array($property['name'], $temporalUnionNames, true)) {
+                continue;
+            }
             if ($this->laravelUndiscriminatedUnionClasses($property) !== [] || $this->laravelInlineDiscriminator($property) !== null) {
                 $uncastUnionNames[] = $property['name'];
             }
@@ -502,7 +508,7 @@ trait RendersLaravelDataDto
             $this->appendImportForClass($useStatements, $memberClass, $namespace, $className);
             $memberRef = $this->formatClassNameForNamespace($memberClass, $namespace);
             $members[] = [
-                'value' => $this->phpStringLiteral($discriminatorValue),
+                'value' => $this->phpStringLiteral((string)$discriminatorValue),
                 'class' => $memberRef,
             ];
             if (array_key_exists($memberClass, $this->laravelDataMorphReach())) {
@@ -924,6 +930,12 @@ trait RendersLaravelDataDto
             $enumItemClass = $itemClass;
             $itemClass = null;
         }
+        // Nor is a union with no discriminator, which stays an interface: spatie resolves the attribute
+        // while it builds the class's config, so every request to the holder was a `CannotFindDataClass`
+        // 500, `{}` included. The items stay the decoded arrays, checked by the emitted interpreter.
+        if ($itemClass !== null && $this->laravelDataIsUnionInterface($itemClass)) {
+            $itemClass = null;
+        }
 
         if ($this->laravelDataSuppressesInferredNestedRules($property, $itemClass)) {
             $attributes[] = sprintf(
@@ -1073,7 +1085,7 @@ trait RendersLaravelDataDto
             $tagAccess = sprintf('%s[%s]', $variable, $this->phpStringLiteral($inlineDiscriminator['propertyName']));
             $arms = [];
             foreach ($inlineDiscriminator['mapping'] as $tagValue => $taggedClass) {
-                $arms[] = sprintf('%s => %s::from(%s)', $this->phpStringLiteral($tagValue), $this->shortClassName($taggedClass), $variable);
+                $arms[] = sprintf('%s => %s::from(%s)', $this->phpStringLiteral((string)$tagValue), $this->shortClassName($taggedClass), $variable);
                 // Any member: what matters below is that the parameter takes the payload array.
                 $unionDataClass = $this->shortClassName($taggedClass);
             }
@@ -1221,6 +1233,21 @@ trait RendersLaravelDataDto
         }
 
         return implode('|', array_unique($widened));
+    }
+
+    /**
+     * Whether a generated class is emitted as an INTERFACE in this mode: a `oneOf` / `anyOf` component
+     * with no discriminator. A discriminated one is the abstract morph base `renderLaravelDataMorphBase()`
+     * writes, a `Data` class like any other.
+     */
+    private function laravelDataIsUnionInterface(string $className): bool
+    {
+        $schema = $this->dtoSchemas[$className] ?? null;
+
+        return is_array($schema)
+            && (array_key_exists('oneOf', $schema) || array_key_exists('anyOf', $schema))
+            && !array_key_exists($className, $this->discriminatorSchemas)
+            && !$this->laravelIsAllOfDiscriminatorBase($className);
     }
 
     /**

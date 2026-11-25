@@ -1153,7 +1153,7 @@ trait RendersLaravelDto
         $arms = [];
         foreach ($discriminator['mapping'] as $value => $variant) {
             $this->appendImportForClass($imports, $variant, $namespace, $dtoClassName . 'FormRequest');
-            $arms[] = ['value' => $value, 'variant' => $this->shortClassName($variant)];
+            $arms[] = ['value' => (string)$value, 'variant' => $this->shortClassName($variant)];
         }
         $imports = array_values(array_unique($imports));
         sort($imports);
@@ -1297,7 +1297,7 @@ trait RendersLaravelDto
     /**
      * The variant a payload's discriminator names, built from that payload.
      *
-     * @param array<string, string> $mapping discriminator value => class
+     * @param array<array-key, string> $mapping discriminator value => class; a numeric value is an int key
      */
     private function laravelDiscriminatorMatch(string $rawAccess, string $propertyName, array $mapping): string
     {
@@ -1305,7 +1305,7 @@ trait RendersLaravelDto
         foreach ($mapping as $discriminatorValue => $targetClass) {
             $arms[] = sprintf(
                 '%s => %s::fromValidated(%s)',
-                $this->phpStringLiteral($discriminatorValue),
+                $this->phpStringLiteral((string)$discriminatorValue),
                 $this->shortClassName($targetClass),
                 $rawAccess,
             );

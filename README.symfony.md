@@ -619,18 +619,24 @@ public function show(#[MapRequestPayload] ShapeRequest $request): Response
 }
 ```
 
-A discriminated `oneOf` / `anyOf` of `$ref`s written INLINE on a component's property gets the same
-treatment: it becomes an interface of its own, named after the schema and the property (`Probe.shape` →
-`ProbeShape`), and the property is typed by it. Typed `Circle|Oval` instead, the serializer would build
+A discriminated `oneOf` / `anyOf` of `$ref`s written INLINE on a property gets the same treatment —
+a component's property, or one of an inline object at any depth: a nested object, a `oneOf` / `anyOf`
+branch, a list item, a map value. It becomes an interface of its own, named after the schema and the
+path (`Probe.shape` → `ProbeShape`, `Probe.pens[].shape` → `ProbePensItemsShape`), and the property is
+typed by it. Nullable — `null` beside the members, `nullable: true`, or the union wrapped in
+`oneOf: [{…}, {type: null}]` — the property takes `?ProbeShape`. Typed `Circle|Oval` instead, the serializer would build
 the first member every time under `#[MapRequestPayload]`, which collects that member's failures rather
 than trying the next one.
 
 An UNDISCRIMINATED inline union of classes (`anyOf: [$ref Olive, $ref Teal]`, or an inline object beside a
 `$ref`) has nothing to map, so it stays typed `Olive|Teal` and is checked by
 `#[Assert\AtLeastOneOf([new Assert\Type(Olive::class), new Assert\Type(Teal::class)])]` with
-`#[Assert\Valid]`. The serializer builds the first member it can; under `#[MapRequestPayload]` it
-collects that member's missing properties rather than trying the next, so an object only a LATER member
-accepts is refused on symfony/serializer 7.4.10 — see the
+`#[Assert\Valid]`. The serializer tries the member classes in the order PropertyInfo reports them —
+sorted by class NAME, not as declared: `ProbeFox|Green` is tried as `Green` first, and an inline member's
+generated name (`ProbeFox`) takes part. Under `#[MapRequestPayload]` it collects the first class's missing
+properties rather than trying the next, so an object only a member whose class name does not sort first
+accepts is refused (`oneOf: [$ref Zebra, $ref Ant]` refuses `{"stripe": 1}` for `Ant`'s missing `leg`), and
+a value the first class also builds is held as that class — see the
 [support matrix](README.support-matrix.md#divergences). Add a `discriminator` and the union becomes the
 interface above.
 

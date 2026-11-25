@@ -2027,7 +2027,7 @@ trait RendersLaravelValidation
      * carry it — once `laravelDiscriminatorDispatch()` has turned it into checks per variant.
      *
      * @param SchemaProperty $property
-     * @return array{propertyName: string, mapping: array<string, string>}|null
+     * @return array{propertyName: string, mapping: array<array-key, string>}|null
      */
     private function laravelInlineDiscriminator(array $property): ?array
     {
@@ -2688,7 +2688,7 @@ trait RendersLaravelValidation
      *
      * @param array<int|string, mixed> $variants
      * @param array<int, mixed> $branchConstraints
-     * @param array<string, string> $classMap
+     * @param array<array-key, string> $classMap
      * @return array<string, mixed>|null
      */
     private function laravelDiscriminatorDispatch(
@@ -2722,7 +2722,7 @@ trait RendersLaravelValidation
         ]];
         foreach ($classMap as $value => $class) {
             $allOf[] = [
-                'if' => ['type' => 'object', 'properties' => [$propertyName => ['const' => $value]], 'required' => [$propertyName]],
+                'if' => ['type' => 'object', 'properties' => [$propertyName => ['const' => (string)$value]], 'required' => [$propertyName]],
                 'then' => $branchByClass[$class] ?? [],
             ];
         }
@@ -3372,22 +3372,21 @@ trait RendersLaravelValidation
      * The nested class a property hands its validation to, and the path below the property it applies
      * at: the property itself for a nested DTO, `<property>.*` for a list or map of them.
      *
-     * A union of generated classes counts as its first member only below the root — `$belowRoot` — where
-     * laravel-data's own inference never reaches, see `laravelDataFirstUnionMember()`.
+     * A union of generated classes hands its validation to no one member: the constructor builds the
+     * member the value matches, and the interpreter checks it against every member. Below the root
+     * laravel-data added the FIRST member's rules there until 2.15.154, and a valid later member was
+     * refused for them.
      *
      * @param SchemaProperty $property
      * @return array{class: string, suffix: string}|null
      */
-    private function laravelComposedChild(array $property, bool $belowRoot = false): ?array
+    private function laravelComposedChild(array $property): ?array
     {
         $segment = $this->laravelPathSegment($property['openApiName']);
         $nestedClass = $this->laravelDtoClass($property);
         $itemClass = $this->laravelDtoItemClass($property);
-        $firstMember = $belowRoot ? $this->laravelDataFirstUnionMember($property) : null;
         if ($nestedClass !== null) {
             $child = ['class' => $nestedClass, 'suffix' => $segment];
-        } elseif ($firstMember !== null) {
-            $child = ['class' => $firstMember, 'suffix' => $segment];
         } elseif ($itemClass !== null && !$this->laravelIsEnumClass($itemClass)) {
             $child = ['class' => $itemClass, 'suffix' => $segment . '.*'];
         } else {
@@ -3395,44 +3394,6 @@ trait RendersLaravelValidation
         }
 
         return $this->laravelComposesNested($child['class']) ? $child : null;
-    }
-
-    /**
-     * laravel-data builds a property typed by a union of generated classes (`Circle|Oval`) as its FIRST
-     * member, and checks it as that member too — on the root class, through its own rule inference. Below
-     * the root nothing did: the union's interpreter check saw the branches without the enums they had
-     * moved into the PHP type, let a tag through, and the cast to the first member's enum was a
-     * `CannotCastEnum` 500. The first member's rules are added where the union sits, as on the root.
-     *
-     * @param SchemaProperty $property
-     */
-    private function laravelDataFirstUnionMember(array $property): ?string
-    {
-        if ($this->attributeMode !== self::ATTRIBUTE_MODE_LARAVEL_DATA || str_contains($property['type'], '<')) {
-            return null;
-        }
-        // An inline `discriminator` names the member, and the constructor builds that one: the dispatch
-        // checks it by its tag. The first member's rules refused every valid payload of the others.
-        if ($this->laravelInlineDiscriminator($property) !== null) {
-            return null;
-        }
-        $members = array_values(array_filter(
-            array: explode('|', ltrim($property['type'], '?')),
-            callback: static fn(string $member): bool => !in_array(strtolower($member), ['null', 'optional'], true),
-        ));
-        if (count($members) < 2) {
-            return null;
-        }
-        $classes = [];
-        foreach ($members as $member) {
-            $className = $this->shortClassName(ltrim($member, '\\'));
-            if (!array_key_exists($className, $this->dtoSchemas) || $this->laravelIsEnumClass($className)) {
-                return null;
-            }
-            $classes[] = $className;
-        }
-
-        return $classes[0];
     }
 
     /**
@@ -3449,7 +3410,7 @@ trait RendersLaravelValidation
         $targets = [];
         foreach (array_keys($this->dtoSchemas) as $owner) {
             foreach ($this->getSchemaProperties($owner) as $property) {
-                $child = $this->laravelComposedChild(property: $property, belowRoot: true);
+                $child = $this->laravelComposedChild($property);
                 if ($child !== null) {
                     $targets[$child['class']] = true;
                 }
@@ -3487,7 +3448,7 @@ trait RendersLaravelValidation
                 $rules[] = ['suffix' => $itemPath, 'rules' => $this->laravelRulesLiteral($itemRules)];
             }
 
-            $child = $this->laravelComposedChild(property: $property, belowRoot: true);
+            $child = $this->laravelComposedChild($property);
             if ($child !== null) {
                 $children[] = $child;
             } else {

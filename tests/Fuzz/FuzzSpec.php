@@ -19,6 +19,9 @@ final readonly class FuzzSpec
 
     private const int VALID_DRAW_ATTEMPTS = 6;
 
+    /** The tag of a refusal a union member owes to a key it does not declare, and to nothing else. */
+    public const string REFUSED_ONLY_BY_UNDECLARED_KEY = 'unionMemberRefusesOnlyUndeclaredKey';
+
     /**
      * @param array<string, array{node: array<string, mixed>, schema: array<string, mixed>, valid: array{value: mixed, tags: array<int, string>}, mutations: array<int, array{kind: string, value: mixed, tags: array<int, string>}>}> $cases
      * @param array<string, mixed> $components
@@ -84,8 +87,9 @@ final readonly class FuzzSpec
      * Two object members of a union share the JSON type, so a value drawn for one may be a value of the
      * other as well: under `oneOf` that is no valid instance but a refusal — kept as one, of kind
      * `matchesTwoMembers` — and a broken object of one member may be a sound one of the other, which is
-     * no refusal at all and is dropped. A valid value is drawn again until one is taken exactly once;
-     * null when none is. Runs after every case is drawn, so its own draws move nothing else.
+     * no refusal at all and is dropped; one a member refuses only for a key it does not declare is
+     * tagged {@see REFUSED_ONLY_BY_UNDECLARED_KEY}. A valid value is drawn again until one is taken
+     * exactly once; null when none is. Runs after every case is drawn, so its own draws move nothing else.
      *
      * @param array{node: array<string, mixed>, schema: array<string, mixed>, valid: array{value: mixed, tags: array<int, string>}, mutations: array<int, array{kind: string, value: mixed, tags: array<int, string>}>} $case
      * @param array<string, mixed> $document
@@ -94,10 +98,20 @@ final readonly class FuzzSpec
     private static function confirmedByReference(string $name, array $case, array $document, InstanceGenerator $instances): ?array
     {
         $oracle = new ReferenceOracle($document);
-        $mutations = array_values(array_filter(
-            array: $case['mutations'],
-            callback: static fn(array $mutation): bool => $oracle->accepts(self::payload($name, $mutation['value'])) !== true,
-        ));
+        $mutations = [];
+        foreach ($case['mutations'] as $mutation) {
+            $json = self::payload($name, $mutation['value']);
+            if ($oracle->accepts($json) === true) {
+                continue;
+            }
+            // Refused by some member only for a key that member does not declare: the Symfony serializer
+            // builds its class without the key (support matrix, "`additionalProperties: false` … on a
+            // DTO-shaped schema").
+            if ($oracle->acceptsWithUnionMembersOpen($json) === true) {
+                $mutation['tags'] = [...$mutation['tags'], self::REFUSED_ONLY_BY_UNDECLARED_KEY];
+            }
+            $mutations[] = $mutation;
+        }
 
         $valid = $case['valid'];
         for ($attempt = 0; $attempt < self::VALID_DRAW_ATTEMPTS; $attempt++) {

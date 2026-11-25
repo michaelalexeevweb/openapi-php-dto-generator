@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OpenapiPhpDtoGenerator\Tests\Fuzz;
 
 use OpenapiPhpDtoGenerator\Tests\GenerationMode;
+use OpenapiPhpDtoGenerator\Tests\Parity\PayloadVerdict;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
@@ -12,7 +13,8 @@ use stdClass;
 
 /**
  * The harness's own judgement: which failures it files under a documented row, which shrink steps it
- * accepts, and the reference oracle it asks about a shrunk document. Cheap — nothing is generated.
+ * accepts, and the reference oracle it asks about a shrunk document. Cheap — only the member-order test
+ * generates, two small documents in symfony mode.
  */
 final class FuzzHarnessTest extends TestCase
 {
@@ -273,8 +275,10 @@ final class FuzzHarnessTest extends TestCase
         $runner = new FuzzRunner(outputDirectory: sys_get_temp_dir() . '/fuzz-harness-test', modes: [], propertiesPerSpec: 1);
         $method = new ReflectionMethod(FuzzRunner::class, 'shrinkSchema');
 
+        $value = json_decode('[{"kind":"Umbera","egret":"x"}]');
+
         // Every candidate "still fails": only the guard stands between the shrink and an empty schema.
-        $shrunk = $method->invoke($runner, $document, 'ocelot', static fn(array $candidate): bool => true, [], $kind);
+        $shrunk = $method->invoke($runner, $document, 'ocelot', static fn(array $candidate): bool => true, [], $kind, $value);
 
         $this->assertSame($kept, str_contains((string)json_encode($shrunk), '"maxLength"'), $kind);
     }
@@ -288,6 +292,186 @@ final class FuzzHarnessTest extends TestCase
         // A kind whose keyword the document never held is not held back, nor is a type mutation.
         yield 'wrongType shrinks freely' => ['wrongType:array', false];
         yield 'a keyword the document lacks' => ['patternMismatch', false];
+    }
+
+    /**
+     * The keyword is held where the payload goes, not anywhere in the document: with a `format` on the
+     * mutated property and another on an unrelated one, a shrink that drops the first was kept — the
+     * second still "held" it — and a `looseDateTime` was reported for a string sent where only
+     * `type: null` was left.
+     */
+    public function testAShrinkKeepsTheKeywordOnThePathThePayloadTakes(): void
+    {
+        $document = ['components' => ['schemas' => [
+            'Probe' => ['type' => 'object', 'properties' => ['quokka' => ['$ref' => '#/components/schemas/Ochre']]],
+            'Ochre' => ['type' => 'object', 'properties' => [
+                'tern' => ['type' => 'string', 'format' => 'date-time'],
+                'puffin' => ['oneOf' => [['$ref' => '#/components/schemas/Teal'], ['type' => 'null']]],
+            ]],
+            'Teal' => ['type' => 'string', 'format' => 'date-time'],
+        ]]];
+        $value = json_decode('{"puffin":"2026-01-02"}');
+        $runner = new FuzzRunner(outputDirectory: sys_get_temp_dir() . '/fuzz-harness-test', modes: [], propertiesPerSpec: 1);
+        $method = new ReflectionMethod(FuzzRunner::class, 'shrinkSchema');
+
+        $shrunk = $method->invoke($runner, $document, 'quokka', static fn(array $candidate): bool => true, ['puffin'], 'looseDateTime', $value);
+
+        // The same shrink step the old guard let through: the mutated property's format gone, the
+        // unrelated one kept.
+        $guard = new ReflectionMethod(FuzzRunner::class, 'holdsKeywordAlong');
+        $this->assertTrue($guard->invoke(null, $shrunk, 'quokka', $value, ['format']), (string)json_encode($shrunk));
+        $stale = $document;
+        $stale['components']['schemas']['Ochre']['properties']['puffin'] = ['type' => 'null'];
+        $this->assertFalse($guard->invoke(null, $stale, 'quokka', $value, ['format']));
+        $this->assertTrue($guard->invoke(null, $document, 'quokka', $value, ['format']));
+    }
+
+    /**
+     * A union member that refuses a body only for a key it does not declare — `additionalProperties:
+     * false`, or a `{schema}` the key's value breaks — is built by the Symfony serializer without that
+     * key, so symfony accepts what the document refuses. Matched by kind alone (`extraKeyClosed` on a
+     * DTO site, `in:additional`), the refusals that landed there under another kind — the member the
+     * mutation broke missing a required key, a sibling closed — were reported as symfony defects.
+     */
+    #[DataProvider('unionMembersRefusingOnlyAnUndeclaredKey')]
+    public function testAUnionMemberRefusingOnlyAnUndeclaredKeyIsTheClosedObjectRow(array $schemas, string $json): void
+    {
+        $oracle = new ReferenceOracle(['components' => ['schemas' => $schemas]]);
+
+        $this->assertFalse($oracle->accepts($json));
+        $this->assertTrue($oracle->acceptsWithUnionMembersOpen($json));
+
+        $tags = ['in:union', 'unionObjectPair', FuzzSpec::REFUSED_ONLY_BY_UNDECLARED_KEY];
+        foreach (['missingRequired', 'wrongType:object', 'patternMismatch', 'extraKeyClosed'] as $kind) {
+            $this->assertNotNull(KnownDivergences::explain(mode: GenerationMode::Symfony, category: 'wrong-accept', kind: $kind, tags: $tags), $kind);
+            // yii3 holds the union decoded and checks it against every member: it refuses.
+            $this->assertNull(KnownDivergences::explain(mode: GenerationMode::Yii3, category: 'wrong-accept', kind: $kind, tags: $tags), $kind);
+            $this->assertNull(KnownDivergences::explain(mode: GenerationMode::Runtime, category: 'wrong-accept', kind: $kind, tags: $tags), $kind);
+        }
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>, 1: string}>
+     */
+    public static function unionMembersRefusingOnlyAnUndeclaredKey(): iterable
+    {
+        $red = ['type' => 'object', 'properties' => ['hue' => ['type' => 'integer'], 'tint' => ['type' => 'number']], 'required' => ['hue', 'tint']];
+        $blue = ['type' => 'object', 'properties' => ['tint' => ['type' => 'number']], 'required' => ['tint'], 'additionalProperties' => false];
+        $closed = [
+            'Probe' => ['type' => 'object', 'properties' => ['fox' => ['oneOf' => [['$ref' => '#/components/schemas/Red'], ['$ref' => '#/components/schemas/Blue']]]]],
+            'Red' => $red,
+            'Blue' => $blue,
+        ];
+        yield 'a stray key, closed sibling' => [$closed, '{"fox":{"tint":-2.5,"wolf":1}}'];
+        yield 'a key of the other member, closed sibling' => [$closed, '{"fox":{"tint":-2.5,"hue":"x"}}'];
+        $green = ['type' => 'object', 'properties' => ['shade' => ['type' => 'string']], 'additionalProperties' => ['type' => 'string', 'minLength' => 3]];
+        yield 'an additional value the sibling\'s schema refuses' => [[
+            'Probe' => ['type' => 'object', 'properties' => ['fox' => ['oneOf' => [
+                ['type' => 'object', 'properties' => ['hue' => ['type' => 'boolean'], 'tint' => ['type' => 'string']], 'required' => ['tint']],
+                ['$ref' => '#/components/schemas/Green'],
+            ]]]],
+            'Green' => $green,
+        ], '{"fox":{"hue":false}}'];
+    }
+
+    /**
+     * Opening union members opens nothing else: a closed object that is no union member, and a map's
+     * values, still refuse. Only the class-built view the shrinker guards with opens every class.
+     */
+    public function testOnlyUnionMembersAreOpened(): void
+    {
+        $closed = ['type' => 'object', 'properties' => ['tint' => ['type' => 'number']], 'additionalProperties' => false];
+        $oracle = new ReferenceOracle(['components' => ['schemas' => ['Probe' => ['type' => 'object', 'properties' => ['fox' => $closed]]]]]);
+        $this->assertFalse($oracle->acceptsWithUnionMembersOpen('{"fox":{"tint":1,"wolf":1}}'));
+        $this->assertTrue($oracle->acceptsWithUndeclaredKeysDropped('{"fox":{"tint":1,"wolf":1}}'));
+
+        $map = ['type' => 'object', 'additionalProperties' => ['type' => 'string']];
+        $mapOracle = new ReferenceOracle(['components' => ['schemas' => ['Probe' => ['type' => 'object', 'properties' => ['fox' => ['oneOf' => [$map, ['type' => 'integer']]]]]]]]);
+        $this->assertFalse($mapOracle->acceptsWithUnionMembersOpen('{"fox":{"wolf":1}}'));
+        $this->assertFalse($mapOracle->acceptsWithUndeclaredKeysDropped('{"fox":{"wolf":1}}'));
+
+        // The neighbouring rows keep their own keys.
+        $this->assertNotNull(KnownDivergences::explain(mode: GenerationMode::Yii3, category: 'wrong-accept', kind: 'extraKeyClosed', tags: ['site:dto']));
+        $this->assertNull(KnownDivergences::explain(mode: GenerationMode::Symfony, category: 'wrong-accept', kind: 'missingRequired', tags: ['in:union', 'unionObjectPair']));
+    }
+
+    /**
+     * The draws of a union of two objects carry the tag when, and only when, a member refuses them for an
+     * undeclared key alone.
+     */
+    public function testTheDrawsAreTaggedByTheReferenceOracle(): void
+    {
+        $schemas = self::unionMembersRefusingOnlyAnUndeclaredKey()->current()[0];
+        $document = ['openapi' => '3.1.0', 'components' => ['schemas' => $schemas]];
+        $case = [
+            'node' => [],
+            'schema' => $schemas['Probe']['properties']['fox'],
+            'valid' => ['value' => json_decode('{"tint":1.5}'), 'tags' => ['unionObjectPair']],
+            'mutations' => [
+                ['kind' => 'extraKeyClosed', 'value' => json_decode('{"tint":-2.5,"wolf":1}'), 'tags' => ['in:union']],
+                ['kind' => 'missingRequired', 'value' => json_decode('{"hue":1}'), 'tags' => ['in:union']],
+            ],
+        ];
+        $method = new ReflectionMethod(FuzzSpec::class, 'confirmedByReference');
+
+        $confirmed = $method->invoke(null, 'fox', $case, $document, new InstanceGenerator(new FuzzRandom(1)));
+
+        $this->assertIsArray($confirmed);
+        $this->assertContains(FuzzSpec::REFUSED_ONLY_BY_UNDECLARED_KEY, $confirmed['mutations'][0]['tags']);
+        $this->assertNotContains(FuzzSpec::REFUSED_ONLY_BY_UNDECLARED_KEY, $confirmed['mutations'][1]['tags']);
+    }
+
+    /**
+     * Symfony's PropertyInfo reports a union type's classes sorted by NAME (`Ant|Zebra` for a property
+     * declared `Zebra|Ant`), and the serializer builds the first it tries. `objectOfPair` was set on
+     * every object of the pair — a payload of `Ant`, which symfony builds, was filed under the row too,
+     * and the row read "a LATER member", which `Zebra`, declared first, is not.
+     */
+    public function testAnObjectOfThePairIsTaggedByTheClassThatSortsFirst(): void
+    {
+        $runner = new FuzzRunner(outputDirectory: sys_get_temp_dir() . '/fuzz-harness-pair', modes: [GenerationMode::Symfony], propertiesPerSpec: 1);
+        $generate = new ReflectionMethod(FuzzRunner::class, 'generateChecked');
+        $tag = new ReflectionMethod(FuzzRunner::class, 'tagObjectsOfAPair');
+        $tagged = static function (array $document, string $json) use ($runner, $generate, $tag): bool {
+            $generation = $generate->invoke($runner, $document, GenerationMode::Symfony);
+            $payload = ['property' => 'fox', 'kind' => 'valid', 'json' => $json, 'expected' => PayloadVerdict::Accepted, 'tags' => ['unionObjectPair']];
+
+            return in_array('objectOfPair', $tag->invoke(null, [$payload], $document, $generation['fqcn'])[0]['tags'], true);
+        };
+
+        $byName = ['openapi' => '3.1.0', 'info' => ['title' => 'Fuzz', 'version' => '1.0.0'], 'components' => ['schemas' => [
+            'Probe' => ['type' => 'object', 'properties' => ['fox' => ['oneOf' => [['$ref' => '#/components/schemas/Zebra'], ['$ref' => '#/components/schemas/Ant']]]]],
+            'Zebra' => ['type' => 'object', 'properties' => ['stripe' => ['type' => 'integer']], 'required' => ['stripe']],
+            'Ant' => ['type' => 'object', 'properties' => ['leg' => ['type' => 'integer']], 'required' => ['leg']],
+        ]]];
+        $this->assertTrue($tagged($byName, '{"fox":{"stripe":1}}'), 'the member declared first, sorted last');
+        $this->assertFalse($tagged($byName, '{"fox":{"leg":1}}'), 'the member that sorts first');
+
+        // An inline member's generated name takes part: `ProbeFox` sorts after `Green`.
+        $inline = ['openapi' => '3.1.0', 'info' => ['title' => 'Fuzz', 'version' => '1.0.0'], 'components' => ['schemas' => [
+            'Probe' => ['type' => 'object', 'properties' => ['fox' => ['oneOf' => [
+                ['type' => 'object', 'properties' => ['hue' => ['type' => 'boolean'], 'tint' => ['type' => 'string']], 'required' => ['tint']],
+                ['$ref' => '#/components/schemas/Green'],
+            ]]]],
+            'Green' => ['type' => 'object', 'properties' => ['shade' => ['type' => 'string']], 'additionalProperties' => ['type' => 'string', 'minLength' => 3]],
+        ]]];
+        $this->assertTrue($tagged($inline, '{"fox":{"tint":"ok"}}'), 'the inline member');
+        $this->assertFalse($tagged($inline, '{"fox":{"shade":"x"}}'), 'Green');
+
+        $this->assertNotNull(KnownDivergences::explain(mode: GenerationMode::Symfony, category: 'wrong-refuse', kind: 'valid', tags: ['unionObjectPair', 'objectOfPair']));
+        $this->assertNull(KnownDivergences::explain(mode: GenerationMode::Symfony, category: 'wrong-refuse', kind: 'valid', tags: ['unionObjectPair']));
+    }
+
+    /**
+     * The valid draw of a union of two objects no longer guesses which member symfony builds.
+     */
+    public function testTheGeneratorLeavesTheMemberOrderToTheRunner(): void
+    {
+        foreach (range(1, 40) as $seed) {
+            foreach (FuzzSpec::generate(seed: $seed, propertyCount: 4)->cases as $case) {
+                $this->assertNotContains('objectOfPair', $case['valid']['tags']);
+            }
+        }
     }
 
     /**

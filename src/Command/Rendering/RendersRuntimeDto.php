@@ -941,7 +941,7 @@ trait RendersRuntimeDto
     }
 
     /**
-     * @param array{propertyName: string, mapping: array<string, string>} $discriminator
+     * @param array{propertyName: string, mapping: array<array-key, string>} $discriminator
      * @return array{propertyName: string, mappingEntries: array<int, array{value: string, targetClass: string}>}
      */
     private function resolveDiscriminatorRenderData(array $discriminator, string $namespace): array
@@ -951,7 +951,7 @@ trait RendersRuntimeDto
         $mappingEntries = [];
         foreach ($discriminator['mapping'] as $value => $targetClass) {
             $mappingEntries[] = [
-                'value' => $value,
+                'value' => (string)$value,
                 'targetClass' => $this->formatClassNameForNamespace($targetClass, $namespace),
             ];
         }
@@ -1093,7 +1093,7 @@ trait RendersRuntimeDto
      *
      * @param array<int, SchemaProperty> $properties
      * @param array<int, array<string, mixed>> $constructorParams in the order the constructor declares them
-     * @param array{propertyName: string, mapping: array<string, string>}|null $discriminator
+     * @param array{propertyName: string, mapping: array<array-key, string>}|null $discriminator
      * @return array<int, array{name: string, value: string, given: string, wireName: string, required: bool, declaredType: string, flag: string}>|null
      */
     private function resolveFastHydratorPlan(
@@ -1394,11 +1394,18 @@ trait RendersRuntimeDto
 
         if (is_array($value)) {
             $items = [];
+            $isList = array_is_list($value);
             foreach ($value as $key => $item) {
                 $itemLiteral = $this->renderPhpLiteral($item);
                 if (is_string($key)) {
                     $escapedKey = $this->escapeSingleQuoted($key);
                     $items[] = "'" . $escapedKey . "' => " . $itemLiteral;
+                    continue;
+                }
+                // An integer key of a map — a discriminator mapping's `"1"`, decoded — keeps its key:
+                // dropped, the map came out as a list and its tags as 0, 1, ….
+                if (!$isList) {
+                    $items[] = $key . ' => ' . $itemLiteral;
                     continue;
                 }
 

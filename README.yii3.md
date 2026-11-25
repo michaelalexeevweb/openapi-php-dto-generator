@@ -670,8 +670,9 @@ not name included.
 
 The same holds for the items of a list or map of a union.
 
-A discriminated `oneOf` / `anyOf` of `$ref`s written INLINE on a component's property becomes such an
-interface too, named after the schema and the property (`Probe.shape` → `ProbeShape`): typed
+A discriminated `oneOf` / `anyOf` of `$ref`s written INLINE on a property — a component's, or one of an
+inline object at any depth: a nested object, a union branch, a list item, a map value — becomes such an
+interface too, named after the schema and the path (`Probe.shape` → `ProbeShape`): typed
 `Circle|Oval`, the hydrator built the first member whatever the discriminator said.
 
 A union of an enum and a scalar (`oneOf: [{$ref: Scope}, {type: integer}]`) is declared with `string`

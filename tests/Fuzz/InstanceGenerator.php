@@ -159,13 +159,9 @@ final class InstanceGenerator
         }
 
         if (($node['objectPair'] ?? false) === true) {
+            // Which member's object it is, as the Symfony serializer sees it, depends on the generated
+            // class names: `FuzzRunner::tagObjectsOfAPair()` adds `objectOfPair` once they exist.
             $this->validTags[] = 'unionObjectPair';
-            // An object of one of the two members: Symfony's serializer tries the classes in the order
-            // of the DECLARED type, which need not be the schema's, and the first it tries is built
-            // whether or not the value is one (support matrix, "an object only a LATER member … accepts").
-            if ($branch['t'] === 'object') {
-                $this->validTags[] = 'objectOfPair';
-            }
         }
 
         $besideArray = in_array('array', self::admittedTypes($node), true);

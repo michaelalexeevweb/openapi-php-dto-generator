@@ -10,7 +10,13 @@ use OpenapiPhpDtoGenerator\Tests\LaravelData\LaravelDataContainer;
 use OpenapiPhpDtoGenerator\Tests\Parity\PayloadOutcome;
 use OpenapiPhpDtoGenerator\Tests\Parity\PayloadVerdict;
 use OpenapiPhpDtoGenerator\Tests\Parity\RunsPayloadsThroughModes;
+use ReflectionClass;
+use ReflectionNamedType;
+use ReflectionProperty;
+use ReflectionUnionType;
 use stdClass;
+use Symfony\Component\Serializer\Attribute\Ignore;
+use Symfony\Component\Serializer\Attribute\SerializedName;
 use Throwable;
 
 /**
@@ -74,12 +80,6 @@ final class FuzzRunner
         'unknownDiscriminator' => ['discriminator'],
     ];
 
-    /** Keywords whose value maps NAMES to schemas: their keys are names, never keywords. */
-    private const array NAMED_SCHEMA_MAPS = ['properties', 'patternProperties', 'dependentSchemas', '$defs', 'definitions', 'schemas'];
-
-    /** Keywords whose value is data, not a schema. */
-    private const array DATA_KEYWORDS = ['enum', 'const', 'default', 'example', 'examples', 'required', 'discriminator'];
-
     /** @var array<string, array<string, mixed>> keyed by signature */
     private array $findings = [];
 
@@ -99,6 +99,16 @@ final class FuzzRunner
      * then is it asked after each shrink step: where it misjudges the original it has nothing to say.
      */
     private bool $referenceAgreed = false;
+
+    /**
+     * Whether the case being shrunk is a refusal that holds with every undeclared key dropped. Only then
+     * may no shrink step arrive at one that does not: symfony and yii3 build the body into classes and
+     * never see such a key (support matrix, "`additionalProperties: false` … on a DTO-shaped schema",
+     * and for symfony the member of a union it builds). A step that drops the union around a closed
+     * member, or turns a declared key into an undeclared one, reported a `missingRequired` that was
+     * really that row.
+     */
+    private bool $undeclaredKeysGuarded = false;
 
     private readonly LoadChecker $loadChecker;
 
@@ -182,6 +192,9 @@ final class FuzzRunner
             }
             if ($generation['fqcn'] === null) {
                 continue;
+            }
+            if ($mode === GenerationMode::Symfony) {
+                $payloads = self::tagObjectsOfAPair(payloads: $payloads, document: $document, fqcn: $generation['fqcn']);
             }
             $started = microtime(true);
             foreach ($payloads as $index => $payload) {
@@ -482,6 +495,10 @@ final class FuzzRunner
             $this->originalWarnings = count($this->generateChecked(document: $document, mode: $mode)['warnings']);
             $this->referenceAgreed = $payload['expected'] !== PayloadVerdict::Crashed
                 && (new ReferenceOracle($document))->accepts($property === null ? '{}' : FuzzSpec::payload($property, $value)) === ($payload['expected'] === PayloadVerdict::Accepted);
+            $this->undeclaredKeysGuarded = $property !== null
+                && $payload['expected'] === PayloadVerdict::Refused
+                && in_array($mode, [GenerationMode::Symfony, GenerationMode::Yii3], true)
+                && (new ReferenceOracle($document))->acceptsWithUndeclaredKeysDropped(FuzzSpec::payload($property, $value)) === false;
             if (!$stillFails($document, $property, $value)) {
                 continue;
             }
@@ -500,6 +517,7 @@ final class FuzzRunner
                     stillFails: static fn(array $candidate): bool => $stillFails($candidate, $property, $value),
                     payloadKeys: self::payloadKeys($value),
                     kind: $payload['kind'],
+                    value: $value,
                 );
                 if ($property !== null) {
                     $value = $this->shrinkPayload(
@@ -526,6 +544,7 @@ final class FuzzRunner
 
         $this->originalWarnings = PHP_INT_MAX;
         $this->referenceAgreed = false;
+        $this->undeclaredKeysGuarded = false;
         if (!$found) {
             // Fails only beside other properties — usually collateral of a property that breaks the
             // whole class, which is then reported on its own. Kept, unshrunk, so nothing is lost.
@@ -641,6 +660,19 @@ final class FuzzRunner
         // `notInEnum` gone, a component shrunk to `{}` that admits everything — was kept, and the
         // payload drifted to one the shrunk document admits.
         if ($this->referenceAgreed && $this->referenceDisagrees(document: $document, json: $json, expected: $expected)) {
+            return false;
+        }
+        // Nor into an object symfony builds as the member whose class sorts first, when it is another's.
+        if (
+            $mode === GenerationMode::Symfony
+            && $expected === PayloadVerdict::Accepted
+            && $property !== null
+            && self::missesFirstSortedMember(document: $document, fqcn: $generation['fqcn'], property: $property, value: $value)
+        ) {
+            return false;
+        }
+        // Nor into a refusal only an undeclared key carries: symfony and yii3 never see that key.
+        if ($this->undeclaredKeysGuarded && (new ReferenceOracle($document))->acceptsWithUndeclaredKeysDropped($json) === true) {
             return false;
         }
         // Nor into a documented divergence: a JSON array (symfony, yii3) or a scalar (symfony) where the
@@ -918,24 +950,339 @@ final class FuzzRunner
     }
 
     /**
+     * Tags `objectOfPair` on every valid payload of an undiscriminated union of two objects that is NO
+     * instance of the member whose generated class short name sorts first. Symfony's PropertyInfo
+     * reports a union type's classes sorted by name (`Green|ProbeFox` for a property declared
+     * `ProbeFox|Green`), and the serializer builds the first it tries — the declaration order of the
+     * document says nothing about it, and an inline member's generated name (`ProbeFox`) takes part.
+     * Read off the Symfony classes generated for the document.
+     *
+     * @param array<int, array{property: string|null, kind: string, json: string, expected: PayloadVerdict, tags: array<int, string>}> $payloads
+     * @param array<string, mixed> $document
+     * @param class-string $fqcn the generated Symfony `Probe`
+     * @return array<int, array{property: string|null, kind: string, json: string, expected: PayloadVerdict, tags: array<int, string>}>
+     */
+    private static function tagObjectsOfAPair(array $payloads, array $document, string $fqcn): array
+    {
+        foreach ($payloads as $index => $payload) {
+            if ($payload['kind'] !== 'valid' || $payload['property'] === null || !in_array('unionObjectPair', $payload['tags'], true)) {
+                continue;
+            }
+            $value = json_decode($payload['json'])->{$payload['property']};
+            if (self::missesFirstSortedMember(document: $document, fqcn: $fqcn, property: $payload['property'], value: $value)) {
+                $payloads[$index]['tags'] = [...$payload['tags'], 'objectOfPair'];
+            }
+        }
+
+        return $payloads;
+    }
+
+    /**
+     * Whether the value, walked down the document and the generated Symfony classes side by side, meets
+     * an undiscriminated union of object members whose first class by short name is built from a value
+     * that is no instance of that member's schema.
+     *
+     * @param array<string, mixed> $document
+     * @param class-string $fqcn
+     */
+    private static function missesFirstSortedMember(array $document, string $fqcn, string $property, mixed $value): bool
+    {
+        $schemas = is_array($document['components']['schemas'] ?? null) ? $document['components']['schemas'] : [];
+        $types = self::phpTypesOf(class: $fqcn, wireName: $property);
+
+        return self::missesAt(
+            schema: $schemas['Probe']['properties'][$property] ?? null,
+            value: $value,
+            classes: $types['classes'],
+            itemClasses: $types['items'],
+            schemas: $schemas,
+            depth: 0,
+        );
+    }
+
+    /**
+     * @param array<int, string> $classes the generated classes the PHP type admits at this point
+     * @param array<int, string> $itemClasses the classes its list items or map values are typed as
+     * @param array<string, mixed> $schemas
+     */
+    private static function missesAt(mixed $schema, mixed $value, array $classes, array $itemClasses, array $schemas, int $depth): bool
+    {
+        if (!is_array($schema) || $depth > 16) {
+            return false;
+        }
+        if ($value instanceof stdClass && $classes !== []) {
+            $members = self::objectMembers(schema: $schema, schemas: $schemas, depth: 0);
+            $class = $classes[0];
+            if (count($members) >= 2 && count($classes) >= 2) {
+                usort($classes, static fn(string $left, string $right): int => strcmp(self::shortName($left), self::shortName($right)));
+                $class = $classes[0];
+                $member = self::memberOfClass(class: $class, members: $members, schemas: $schemas);
+                if ($member === null) {
+                    return false;
+                }
+                $verdict = (new ReferenceOracle(['components' => ['schemas' => ['Probe' => $member] + $schemas]]))
+                    ->accepts((string)json_encode($value, JSON_UNESCAPED_SLASHES));
+                if ($verdict === false) {
+                    return true;
+                }
+                $schema = $member;
+            }
+            $properties = self::objectProperties(schema: $schema, schemas: $schemas, depth: 0);
+            foreach (get_object_vars($value) as $key => $inner) {
+                if (!array_key_exists((string)$key, $properties)) {
+                    continue;
+                }
+                $types = self::phpTypesOf(class: $class, wireName: (string)$key);
+                if (self::missesAt(
+                    schema: $properties[(string)$key],
+                    value: $inner,
+                    classes: $types['classes'],
+                    itemClasses: $types['items'],
+                    schemas: $schemas,
+                    depth: $depth + 1,
+                )) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        if ($itemClasses === [] || !($value instanceof stdClass || is_array($value))) {
+            return false;
+        }
+        $container = self::resolved(schema: $schema, schemas: $schemas, depth: 0);
+        $inner = $value instanceof stdClass ? ($container['additionalProperties'] ?? null) : ($container['items'] ?? null);
+        foreach ($value instanceof stdClass ? get_object_vars($value) : $value as $item) {
+            if (self::missesAt(schema: $inner, value: $item, classes: $itemClasses, itemClasses: [], schemas: $schemas, depth: $depth + 1)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The schema behind `$ref` hops and a one-object-member `anyOf` / `oneOf` (a nullable wrapper).
+     *
+     * @param array<string, mixed> $schemas
+     * @return array<string, mixed>
+     */
+    private static function resolved(mixed $schema, array $schemas, int $depth): array
+    {
+        if (!is_array($schema) || $depth > 16) {
+            return [];
+        }
+        if (is_string($schema['$ref'] ?? null) && !array_key_exists('properties', $schema)) {
+            return self::resolved(schema: $schemas[substr($schema['$ref'], strlen('#/components/schemas/'))] ?? null, schemas: $schemas, depth: $depth + 1);
+        }
+        foreach (['anyOf', 'oneOf'] as $keyword) {
+            $members = array_values(array_filter(
+                array: is_array($schema[$keyword] ?? null) ? $schema[$keyword] : [],
+                callback: static fn(mixed $member): bool => !(is_array($member) && ($member['type'] ?? null) === 'null'),
+            ));
+            if (count($members) === 1) {
+                return self::resolved(schema: $members[0], schemas: $schemas, depth: $depth + 1);
+            }
+        }
+
+        return $schema;
+    }
+
+    /**
+     * The object-shaped members of the `anyOf` / `oneOf` the schema is, behind `$ref` hops.
+     *
+     * @param array<string, mixed> $schemas
+     * @return array<int, array<string, mixed>>
+     */
+    private static function objectMembers(mixed $schema, array $schemas, int $depth): array
+    {
+        $schema = self::resolved(schema: $schema, schemas: $schemas, depth: $depth);
+        foreach (['anyOf', 'oneOf'] as $keyword) {
+            if (!is_array($schema[$keyword] ?? null)) {
+                continue;
+            }
+            $members = array_values(array_filter(
+                array: $schema[$keyword],
+                callback: static fn(mixed $member): bool => is_array($member) && self::isObjectShaped(schema: $member, schemas: $schemas, depth: 0),
+            ));
+            if (count($members) >= 2) {
+                return $members;
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * The properties an object schema declares, merged over `$ref` (and its 3.1 siblings) and `allOf`.
+     *
+     * @param array<string, mixed> $schemas
+     * @return array<string, mixed>
+     */
+    private static function objectProperties(mixed $schema, array $schemas, int $depth): array
+    {
+        if (!is_array($schema) || $depth > 16) {
+            return [];
+        }
+        $properties = [];
+        if (is_string($schema['$ref'] ?? null)) {
+            $properties = self::objectProperties(
+                schema: $schemas[substr($schema['$ref'], strlen('#/components/schemas/'))] ?? null,
+                schemas: $schemas,
+                depth: $depth + 1,
+            );
+        }
+        foreach (is_array($schema['allOf'] ?? null) ? $schema['allOf'] : [] as $part) {
+            $properties = [...$properties, ...self::objectProperties(schema: $part, schemas: $schemas, depth: $depth + 1)];
+        }
+        $resolved = self::resolved(schema: $schema, schemas: $schemas, depth: $depth);
+        if ($resolved !== $schema) {
+            $properties = [...$properties, ...self::objectProperties(schema: $resolved, schemas: $schemas, depth: $depth + 1)];
+        }
+
+        return [...$properties, ...(is_array($schema['properties'] ?? null) ? $schema['properties'] : [])];
+    }
+
+    /**
+     * The member whose declared properties are the wire names the class reads.
+     *
+     * @param array<int, array<string, mixed>> $members
+     * @param array<string, mixed> $schemas
+     * @return array<string, mixed>|null
+     */
+    private static function memberOfClass(string $class, array $members, array $schemas): ?array
+    {
+        $wireNames = self::wireNames($class);
+        sort($wireNames);
+        $found = [];
+        foreach ($members as $member) {
+            $declared = array_map('strval', array_keys(self::objectProperties(schema: $member, schemas: $schemas, depth: 0)));
+            sort($declared);
+            if ($declared === $wireNames) {
+                $found[] = $member;
+            }
+        }
+
+        return count($found) === 1 ? $found[0] : null;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private static function wireNames(string $class): array
+    {
+        if (!class_exists($class)) {
+            return [];
+        }
+        $names = [];
+        foreach ((new ReflectionClass($class))->getProperties() as $reflected) {
+            $wireName = self::wireNameOf($reflected);
+            if ($wireName !== null) {
+                $names[] = $wireName;
+            }
+        }
+
+        return $names;
+    }
+
+    /**
+     * The key a property is read from, null for one the serializer ignores.
+     */
+    private static function wireNameOf(ReflectionProperty $reflected): ?string
+    {
+        if ($reflected->isStatic() || $reflected->getAttributes(Ignore::class) !== []) {
+            return null;
+        }
+        foreach ($reflected->getAttributes(SerializedName::class) as $attribute) {
+            $name = $attribute->getArguments()[0] ?? $attribute->getArguments()['serializedName'] ?? null;
+            if (is_string($name)) {
+                return $name;
+            }
+        }
+
+        return $reflected->getName();
+    }
+
+    /**
+     * The generated classes a property's type admits, and those its list items or map values are typed
+     * as (from the `@var` docblock).
+     *
+     * @return array{classes: array<int, string>, items: array<int, string>}
+     */
+    private static function phpTypesOf(string $class, string $wireName): array
+    {
+        if (!class_exists($class)) {
+            return ['classes' => [], 'items' => []];
+        }
+        foreach ((new ReflectionClass($class))->getProperties() as $reflected) {
+            if (self::wireNameOf($reflected) !== $wireName) {
+                continue;
+            }
+            $type = $reflected->getType();
+            $named = match (true) {
+                $type instanceof ReflectionNamedType => [$type],
+                $type instanceof ReflectionUnionType => $type->getTypes(),
+                default => [],
+            };
+            $classes = [];
+            foreach ($named as $member) {
+                if ($member instanceof ReflectionNamedType && !$member->isBuiltin() && class_exists($member->getName())) {
+                    $classes[] = $member->getName();
+                }
+            }
+            $items = [];
+            $namespace = $reflected->getDeclaringClass()->getNamespaceName();
+            if (preg_match('/@var\s+\??(?:array|list)<(?:(?:int|string),\s*)?([A-Za-z0-9_\\\|]+)>/', (string)$reflected->getDocComment(), $match) === 1) {
+                foreach (explode('|', $match[1]) as $name) {
+                    $candidate = str_contains($name, '\\') ? ltrim($name, '\\') : $namespace . '\\' . $name;
+                    if (class_exists($candidate)) {
+                        $items[] = $candidate;
+                    }
+                }
+            }
+
+            return ['classes' => $classes, 'items' => $items];
+        }
+
+        return ['classes' => [], 'items' => []];
+    }
+
+    private static function shortName(string $class): string
+    {
+        $cut = strrpos($class, '\\');
+
+        return $cut === false ? $class : substr($class, $cut + 1);
+    }
+
+    /**
      * Greedy: try every single edit, keep the first that still fails, start over; stop when none does.
      *
      * A candidate that drops every keyword the mutation `$kind` broke is no candidate: the finding
      * keeps the mutation's kind, and a failure carried on by another constraint (a `tooLong` whose
      * `maxLength` went, still refused by an `enum`) would be reported as a defect it does not show —
-     * and filed against the wrong `KnownDivergences` row.
+     * and filed against the wrong `KnownDivergences` row. The keyword is looked for only on the schemas
+     * the payload value meets ({@see schemasAlong()}): anywhere in the document, a `format` dropped
+     * from the mutated property was "kept" by an unrelated property that still had one, and a
+     * `looseDateTime` was reported for what had become a string sent where `type: null` stands.
      *
      * @param array<string, mixed> $document
      * @param callable(array<string, mixed>): bool $stillFails
      * @param array<int, string> $payloadKeys object keys the payload sends; their properties are not removed,
      *     which would turn a declared key into an undeclared one — the documented closed-object divergence
      * @param string $kind the mutation label the finding is reported under
+     * @param mixed $value the payload value of `$property`, decoded with objects as `stdClass`
      * @return array<string, mixed>
      */
-    private function shrinkSchema(array $document, string $property, callable $stillFails, array $payloadKeys = [], string $kind = ''): array
-    {
+    private function shrinkSchema(
+        array $document,
+        string $property,
+        callable $stillFails,
+        array $payloadKeys = [],
+        string $kind = '',
+        mixed $value = null,
+    ): array {
         $mutated = self::MUTATED_KEYWORDS[(string)strtok($kind, ':')] ?? [];
-        if ($mutated !== [] && !self::holdsKeyword(schema: $document, keywords: $mutated)) {
+        if ($mutated !== [] && !self::holdsKeywordAlong(document: $document, property: $property, value: $value, keywords: $mutated)) {
             // The unshrunk document never held it (a mutation drawn some other way): nothing to keep.
             $mutated = [];
         }
@@ -951,7 +1298,7 @@ final class FuzzRunner
                 if ($candidate === $document) {
                     continue;
                 }
-                if ($mutated !== [] && !self::holdsKeyword(schema: $candidate, keywords: $mutated)) {
+                if ($mutated !== [] && !self::holdsKeywordAlong(document: $candidate, property: $property, value: $value, keywords: $mutated)) {
                     continue;
                 }
                 if ($stillFails($candidate)) {
@@ -967,38 +1314,83 @@ final class FuzzRunner
     }
 
     /**
-     * Whether any schema in `$schema` uses one of `$keywords` as a keyword — not as a property name,
-     * nor inside the data of an `enum` or a `default`.
+     * Whether a schema the payload value meets uses one of `$keywords` as a keyword of its own.
      *
+     * @param array<string, mixed> $document
      * @param array<int, string> $keywords
      */
-    private static function holdsKeyword(mixed $schema, array $keywords): bool
+    private static function holdsKeywordAlong(array $document, string $property, mixed $value, array $keywords): bool
     {
-        if (!is_array($schema)) {
-            return false;
-        }
-        foreach ($schema as $key => $value) {
-            if (is_string($key) && in_array($key, $keywords, true) && !array_is_list($schema)) {
-                return true;
-            }
-            if (is_string($key) && in_array($key, self::DATA_KEYWORDS, true)) {
-                continue;
-            }
-            if (is_string($key) && in_array($key, self::NAMED_SCHEMA_MAPS, true) && is_array($value)) {
-                foreach ($value as $named) {
-                    if (self::holdsKeyword(schema: $named, keywords: $keywords)) {
-                        return true;
-                    }
-                }
-
-                continue;
-            }
-            if (self::holdsKeyword(schema: $value, keywords: $keywords)) {
+        foreach (self::schemasAlong(document: $document, property: $property, value: $value) as $schema) {
+            if (array_intersect($keywords, array_map('strval', array_keys($schema))) !== []) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * The schemas a payload value meets from the property down: the property's own, every `$ref`
+     * target and `allOf` / `anyOf` / `oneOf` member on the way, and — below an object — only the
+     * properties (or `additionalProperties`) of the keys it sends, below a list only the items it has.
+     *
+     * @param array<string, mixed> $document
+     * @return array<int, array<string, mixed>>
+     */
+    private static function schemasAlong(array $document, string $property, mixed $value): array
+    {
+        $schemas = is_array($document['components']['schemas'] ?? null) ? $document['components']['schemas'] : [];
+        $found = [];
+        self::collectSchemasAlong(
+            schema: $schemas['Probe']['properties'][$property] ?? null,
+            value: $value,
+            schemas: $schemas,
+            depth: 0,
+            into: $found,
+        );
+
+        return $found;
+    }
+
+    /**
+     * @param array<string, mixed> $schemas
+     * @param array<int, array<string, mixed>> $into
+     */
+    private static function collectSchemasAlong(mixed $schema, mixed $value, array $schemas, int $depth, array &$into): void
+    {
+        if (!is_array($schema) || array_is_list($schema) || $depth > 32) {
+            return;
+        }
+        $into[] = $schema;
+        $next = $depth + 1;
+        if (is_string($schema['$ref'] ?? null)) {
+            self::collectSchemasAlong(
+                schema: $schemas[substr($schema['$ref'], strlen('#/components/schemas/'))] ?? null,
+                value: $value,
+                schemas: $schemas,
+                depth: $next,
+                into: $into,
+            );
+        }
+        foreach (self::COMPOSITION_KEYWORDS as $keyword) {
+            foreach (is_array($schema[$keyword] ?? null) ? $schema[$keyword] : [] as $member) {
+                self::collectSchemasAlong(schema: $member, value: $value, schemas: $schemas, depth: $next, into: $into);
+            }
+        }
+        if ($value instanceof stdClass) {
+            $properties = is_array($schema['properties'] ?? null) ? $schema['properties'] : [];
+            foreach (get_object_vars($value) as $key => $inner) {
+                $child = array_key_exists((string)$key, $properties) ? $properties[(string)$key] : ($schema['additionalProperties'] ?? null);
+                self::collectSchemasAlong(schema: $child, value: $inner, schemas: $schemas, depth: $next, into: $into);
+            }
+        } elseif (is_array($value)) {
+            $prefix = is_array($schema['prefixItems'] ?? null) ? $schema['prefixItems'] : [];
+            foreach (array_values($value) as $index => $inner) {
+                $child = array_key_exists($index, $prefix) ? $prefix[$index] : ($schema['items'] ?? null);
+                self::collectSchemasAlong(schema: $child, value: $inner, schemas: $schemas, depth: $next, into: $into);
+            }
+        }
     }
 
     /**

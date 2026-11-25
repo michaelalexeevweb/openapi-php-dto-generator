@@ -28,6 +28,16 @@ final class ReferenceOracle
     private bool $unsure = false;
 
     /**
+     * Whether an object member of a `oneOf` / `anyOf` lets keys it does not declare through, as the
+     * Symfony serializer does: it builds the member's class from the keys the class has and leaves the
+     * rest behind, `additionalProperties` unread.
+     */
+    private bool $unionMembersOpen = false;
+
+    /** Whether EVERY object that declares properties lets the keys it does not declare through. */
+    private bool $everyObjectOpen = false;
+
+    /**
      * @param array<string, mixed> $document
      */
     public function __construct(array $document)
@@ -41,6 +51,34 @@ final class ReferenceOracle
      */
     public function accepts(string $json): ?bool
     {
+        return $this->judge(json: $json, unionMembersOpen: false, everyObjectOpen: false);
+    }
+
+    /**
+     * Whether the JSON body is valid when every object member of a `oneOf` / `anyOf` that declares
+     * properties ignores the keys it does not declare — `additionalProperties: false` and `additionalProperties: {schema}` unread
+     * there, and only there. A body {@see accepts()} refuses and this one takes is refused by a union
+     * member ONLY for an undeclared key; null when the answer is out of reach.
+     */
+    public function acceptsWithUnionMembersOpen(string $json): ?bool
+    {
+        return $this->judge(json: $json, unionMembersOpen: true, everyObjectOpen: false);
+    }
+
+    /**
+     * Whether the JSON body is valid when every object that declares properties ignores the keys it does
+     * not declare — what a
+     * mode that builds the body into classes first (symfony, yii3) is documented to see.
+     */
+    public function acceptsWithUndeclaredKeysDropped(string $json): ?bool
+    {
+        return $this->judge(json: $json, unionMembersOpen: true, everyObjectOpen: true);
+    }
+
+    private function judge(string $json, bool $unionMembersOpen, bool $everyObjectOpen): ?bool
+    {
+        $this->unionMembersOpen = $unionMembersOpen;
+        $this->everyObjectOpen = $everyObjectOpen;
         $this->unsure = false;
         $decoded = json_decode($json, false);
         if (json_last_error() !== JSON_ERROR_NONE) {
@@ -51,7 +89,11 @@ final class ReferenceOracle
         return $this->unsure ? null : $valid;
     }
 
-    private function valid(mixed $value, mixed $schema, int $depth): bool
+    /**
+     * @param bool $unionMember whether the schema is a `oneOf` / `anyOf` member, or reached from one
+     *     through a `$ref` or an `allOf` without descending into a value
+     */
+    private function valid(mixed $value, mixed $schema, int $depth, bool $unionMember = false): bool
     {
         if (is_bool($schema)) {
             return $schema;
@@ -69,7 +111,7 @@ final class ReferenceOracle
                 return true;
             }
             $target = $this->schemas[substr($schema['$ref'], strlen(self::REF_PREFIX))] ?? null;
-            if (!$this->valid(value: $value, schema: $target, depth: $depth + 1)) {
+            if (!$this->valid(value: $value, schema: $target, depth: $depth + 1, unionMember: $unionMember)) {
                 // 3.0 `nullable` beside the `allOf: [$ref]` idiom is handled where `allOf` is; a bare
                 // `$ref` sibling `nullable` is not a thing the grammar writes.
                 return false;
@@ -96,7 +138,7 @@ final class ReferenceOracle
             }
             $matches = 0;
             foreach ($schema[$keyword] as $branch) {
-                $matches += $this->valid(value: $value, schema: $branch, depth: $depth + 1) ? 1 : 0;
+                $matches += $this->valid(value: $value, schema: $branch, depth: $depth + 1, unionMember: $keyword !== 'allOf' || $unionMember) ? 1 : 0;
             }
             $count = count($schema[$keyword]);
             $holds = match ($keyword) {
@@ -113,7 +155,7 @@ final class ReferenceOracle
             is_string($value) => $this->validString(value: $value, schema: $schema),
             is_int($value) || is_float($value) => $this->validNumber(value: $value, schema: $schema),
             is_array($value) => $this->validList(value: $value, schema: $schema, depth: $depth),
-            $value instanceof stdClass => $this->validObject(value: $value, schema: $schema, depth: $depth),
+            $value instanceof stdClass => $this->validObject(value: $value, schema: $schema, depth: $depth, open: $this->everyObjectOpen || ($unionMember && $this->unionMembersOpen)),
             default => true,
         };
     }
@@ -280,7 +322,7 @@ final class ReferenceOracle
     /**
      * @param array<string, mixed> $schema
      */
-    private function validObject(stdClass $value, array $schema, int $depth): bool
+    private function validObject(stdClass $value, array $schema, int $depth, bool $open): bool
     {
         $members = get_object_vars($value);
         if (is_int($schema['minProperties'] ?? null) && count($members) < $schema['minProperties']) {
@@ -297,6 +339,11 @@ final class ReferenceOracle
         $properties = is_array($schema['properties'] ?? null) ? $schema['properties'] : [];
         $additional = $schema['additionalProperties'] ?? true;
         foreach ($members as $name => $member) {
+            // Only an object that declares properties is a class; a map is held as an array, its values
+            // checked.
+            if ($open && $properties !== [] && !array_key_exists($name, $properties)) {
+                continue;
+            }
             $memberSchema = array_key_exists($name, $properties) ? $properties[$name] : $additional;
             if (!$this->valid(value: $member, schema: $memberSchema, depth: $depth + 1)) {
                 return false;
