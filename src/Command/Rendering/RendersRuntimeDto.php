@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Command\Rendering;
 
-use OpenapiPhpDtoGenerator\Service\DtoValidator;
+use OpenapiPhpDtoGenerator\Service\DtoServiceSupport;
 use RuntimeException;
 
 /**
@@ -330,13 +330,13 @@ trait RendersRuntimeDto
         }
 
         // Named only where a property can hold `{}` as `[]`, so every other class keeps its imports.
-        $emptyJsonObjectFieldsRef = 'EmptyJsonObjectFields';
+        $emptyJsonObjectFieldsRef = 'DtoServiceSupport';
         $needsEmptyJsonObjectFields = array_filter(
             array: $methodProperties,
             callback: static fn(array $property): bool => $property['mayHoldEmptyJsonObject'] && !$property['writeOnly'] && !$property['isParameter'],
         ) !== [];
         if ($needsEmptyJsonObjectFields) {
-            $emptyJsonObjectFieldsRef = $this->libraryClassRef($this->emptyJsonObjectFieldsFqcn(), $namespace, $useStatements);
+            $emptyJsonObjectFieldsRef = $this->libraryClassRef($this->dtoServiceSupportFqcn(), $namespace, $useStatements);
         }
 
         if ($needsUnsetValueImport || $fastHydrator !== null || $needsEmptyJsonObjectFields) {
@@ -851,14 +851,14 @@ trait RendersRuntimeDto
             // an array, and the check would be dead code in every such class.
             'arraysAreObjects' => ($property['isShapeUnion'] ?? false) === true
                 && is_array($property['constraints'] ?? null)
-                && DtoValidator::admitsObjectContainerOnly($property['constraints'])
+                && DtoServiceSupport::admitsObjectContainerOnly($property['constraints'])
                 && preg_match('/(?<![A-Za-z0-9_\\\])(array|mixed)(?![A-Za-z0-9_])/', $property['type']) === 1,
             // …and when the union holds a list AND an object (`anyOf: [{type: array}, {type: object}]`),
             // its PHP type is `array` for both, and `{}` is the same empty array as `[]`. The
-            // deserializer notes which it was in `EmptyJsonObjectFields`; `toArray()` asks it, as
+            // deserializer notes which it was in `DtoServiceSupport`; `toArray()` asks it, as
             // `DtoNormalizer` does, so a `{}` it received is not written back as `[]`.
             'mayHoldEmptyJsonObject' => ($property['isShapeUnion'] ?? false) === true
-                && !(is_array($property['constraints'] ?? null) && DtoValidator::admitsObjectContainerOnly($property['constraints']))
+                && !(is_array($property['constraints'] ?? null) && DtoServiceSupport::admitsObjectContainerOnly($property['constraints']))
                 && preg_match('/(?<![A-Za-z0-9_\\\])(array|mixed)(?![A-Za-z0-9_])/', $property['type']) === 1,
             'hasArrayAdder' => str_starts_with($property['type'], 'array'),
             'arrayAdderMethodName' => 'addItemTo' . ucfirst($property['name']),
@@ -884,17 +884,17 @@ trait RendersRuntimeDto
     }
 
     /**
-     * Where `EmptyJsonObjectFields` lives for these DTOs: beside `GeneratedDtoInterface` when the
+     * Where `DtoServiceSupport` lives for these DTOs: beside `GeneratedDtoInterface` when the
      * services are vendored (they are copied into one flat namespace), in the package otherwise.
      */
-    private function emptyJsonObjectFieldsFqcn(): string
+    private function dtoServiceSupportFqcn(): string
     {
         $servicesNamespace = implode('\\', array_slice(explode('\\', $this->generatedDtoInterfaceImportFqcn), 0, -1));
         if ($servicesNamespace === 'OpenapiPhpDtoGenerator\Contract') {
             $servicesNamespace = 'OpenapiPhpDtoGenerator\Service';
         }
 
-        return $servicesNamespace . '\EmptyJsonObjectFields';
+        return $servicesNamespace . '\DtoServiceSupport';
     }
 
     /**

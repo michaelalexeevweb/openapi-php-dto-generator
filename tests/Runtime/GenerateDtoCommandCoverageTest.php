@@ -199,7 +199,7 @@ final class GenerateDtoCommandCoverageTest extends TestCase
     }
 
     /**
-     * A list-or-object union's `toArray()` asks `EmptyJsonObjectFields` whether its `[]` arrived as
+     * A list-or-object union's `toArray()` asks `DtoServiceSupport` whether its `[]` arrived as
      * `{}`: from the vendored copy when the services are vendored, from the package otherwise — and a
      * class without such a union names it nowhere.
      */
@@ -238,8 +238,8 @@ final class GenerateDtoCommandCoverageTest extends TestCase
             '--dto-generator-namespace' => 'Cli\KennelCommon',
         ]);
         $this->assertSame(0, $exitCode);
-        $this->assertStringContainsString('use Cli\KennelCommon\EmptyJsonObjectFields;', (string)file_get_contents($vendored . '/Kennel.php'));
-        $this->assertStringNotContainsString('EmptyJsonObjectFields', (string)file_get_contents($vendored . '/Perch.php'));
+        $this->assertStringContainsString('use Cli\KennelCommon\DtoServiceSupport;', (string)file_get_contents($vendored . '/Kennel.php'));
+        $this->assertStringNotContainsString('DtoServiceSupport', (string)file_get_contents($vendored . '/Perch.php'));
 
         $packaged = $this->outputDirectory . '/cli-list-or-object-packaged';
         $exitCode = $this->buildTester()->execute([
@@ -248,7 +248,7 @@ final class GenerateDtoCommandCoverageTest extends TestCase
             '--namespace' => 'Cli\PackagedKennels',
         ]);
         $this->assertSame(0, $exitCode);
-        $this->assertStringContainsString('use OpenapiPhpDtoGenerator\Service\EmptyJsonObjectFields;', (string)file_get_contents($packaged . '/Kennel.php'));
+        $this->assertStringContainsString('use OpenapiPhpDtoGenerator\Service\DtoServiceSupport;', (string)file_get_contents($packaged . '/Kennel.php'));
     }
 
     public function testExecuteDerivesGeneratorNamespaceFromCustomDirectory(): void

@@ -2359,10 +2359,11 @@ final class GenerateDtoCommand extends Command
             'Contract/DtoNormalizerInterface.php',
             'Contract/DtoValidatorInterface.php',
             'Contract/DtoDeserializerInterface.php',
+            'Contract/JsonShapeAwareValidatorInterface.php',
             'Service/DtoNormalizer.php',
             'Service/DtoValidator.php',
             'Service/DtoDeserializer.php',
-            'Service/EmptyJsonObjectFields.php',
+            'Service/DtoServiceSupport.php',
         ];
 
         // PSR-7 deserializer is optional: only vendored when explicitly requested, so the

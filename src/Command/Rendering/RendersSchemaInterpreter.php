@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Command\Rendering;
 
-use OpenapiPhpDtoGenerator\Service\DtoValidator;
+use OpenapiPhpDtoGenerator\Service\DtoServiceSupport;
 
 /**
  * The schema INTERPRETER: the walker four of the five modes carry inside the class they emit.
@@ -1937,7 +1937,7 @@ PHP;
         }
 
         if ($hasPattern || $hasPatternProperties || in_array('regex', $usedFormats, true)) {
-            // `DtoValidator::delimitPattern()` spells an ECMA-262 Unicode property name the way PCRE
+            // `DtoServiceSupport::delimitPattern()` spells an ECMA-262 Unicode property name the way PCRE
             // reads it (`\p{Letter}` → `\p{L}`), and so does this copy — but the name table is only
             // worth emitting where a document pattern names a property at all.
             $namesUnicodeProperties = $this->schemaPatternsNameUnicodeProperties($constraints);
@@ -3093,13 +3093,13 @@ PHP,
 
     /**
      * The emitted twin of `DtoValidator::unicodePropertyName()`, its General_Category table written
-     * out from `DtoValidator::UNICODE_GENERAL_CATEGORIES` so the two cannot drift apart. The generated
+     * out from `DtoServiceSupport::UNICODE_GENERAL_CATEGORIES` so the two cannot drift apart. The generated
      * DTO depends on nothing of this package, hence a copy rather than a call.
      */
     private function renderOpenApiUnicodePropertyNameMethod(): string
     {
         $namesByShortName = [];
-        foreach (DtoValidator::UNICODE_GENERAL_CATEGORIES as $name => $shortName) {
+        foreach (DtoServiceSupport::UNICODE_GENERAL_CATEGORIES as $name => $shortName) {
             $namesByShortName[$shortName][] = var_export($name, true);
         }
         $arms = '';
@@ -3137,7 +3137,7 @@ PHP;
      */
     private function patternCompiles(string $pattern): bool
     {
-        $regex = DtoValidator::delimitPattern($pattern);
+        $regex = DtoServiceSupport::delimitPattern($pattern);
 
         set_error_handler(static fn(): bool => true);
         try {

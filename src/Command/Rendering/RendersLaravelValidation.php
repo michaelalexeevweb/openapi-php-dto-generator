@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Command\Rendering;
 
-use OpenapiPhpDtoGenerator\Service\DtoValidator;
+use OpenapiPhpDtoGenerator\Service\DtoServiceSupport;
 use RuntimeException;
 
 /**
@@ -558,7 +558,7 @@ trait RendersLaravelValidation
 
         if ($patternAsRule && array_key_exists('pattern', $schema) && is_string($schema['pattern']) && $this->patternCompiles($schema['pattern'])) {
             // Array form + explicit delimiters: a pattern containing `|` must not split the list.
-            $rules[] = $this->phpStringLiteral('regex:' . DtoValidator::delimitPattern($schema['pattern']));
+            $rules[] = $this->phpStringLiteral('regex:' . DtoServiceSupport::delimitPattern($schema['pattern']));
             $consumed[] = 'pattern';
         }
 

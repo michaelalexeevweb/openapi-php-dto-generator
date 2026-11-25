@@ -13,6 +13,7 @@ use LogicException;
 use OpenapiPhpDtoGenerator\Contract\DtoNormalizerInterface;
 use OpenapiPhpDtoGenerator\Contract\DtoValidatorInterface;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use OpenapiPhpDtoGenerator\Contract\JsonShapeAwareValidatorInterface;
 use ReflectionMethod;
 use RuntimeException;
 use stdClass;
@@ -136,7 +137,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
 
     private function fieldValidator(): DtoValidatorInterface
     {
-        return $this->fieldValidator ??= $this->constraintValidator instanceof DtoValidator
+        return $this->fieldValidator ??= $this->constraintValidator instanceof JsonShapeAwareValidatorInterface
             ? $this->constraintValidator->readingEmptyArraysAsJsonArrays()
             : $this->constraintValidator;
     }
@@ -271,14 +272,14 @@ final class DtoNormalizer implements DtoNormalizerInterface
     /**
      * `{}` the deserializer put into an `array`-typed union field (`anyOf: [{type: array}, {type:
      * object}]`) is the empty PHP array, which `json_encode()` writes as `[]` — the deserializer noted
-     * it in {@see EmptyJsonObjectFields}, and it is written as the object it arrived as.
+     * it in {@see DtoServiceSupport::rememberEmptyJsonObjects()}, and it is written as the object it arrived as.
      *
      * @param array<array-key, mixed> $normalized
      * @return array<array-key, mixed>
      */
     private function withEmptyJsonObjectsRestored(object $dto, array $normalized): array
     {
-        $fields = EmptyJsonObjectFields::of($dto);
+        $fields = DtoServiceSupport::emptyJsonObjectsOf($dto);
         if ($fields === []) {
             return $normalized;
         }
@@ -338,13 +339,13 @@ final class DtoNormalizer implements DtoNormalizerInterface
 
         // Finalised HERE, at the one exit, rather than at the dozen places that build a message.
         // A message this class writes either opens with `field "…"` — the subject label, a name the
-        // document owns — or with an English word; `DtoValidator::finalizeMessage()` capitalises only the second
+        // document owns — or with an English word; `DtoServiceSupport::finalizeMessage()` capitalises only the second
         // kind, and ends both with a full stop. Anything the constraint validator already finalised
         // passes through unchanged, because the operation is idempotent.
         return array_map(
             callback: static fn(string $message): string => str_starts_with($message, 'field "')
-                ? DtoValidator::finalizeMessage($message, 'field "')
-                : DtoValidator::finalizeMessage($message),
+                ? DtoServiceSupport::finalizeMessage($message, 'field "')
+                : DtoServiceSupport::finalizeMessage($message),
             array: $this->validateDtoRecursive(
                 dto: $dto,
                 pathPrefix: '',
@@ -472,14 +473,14 @@ final class DtoNormalizer implements DtoNormalizerInterface
                         is_array($value)
                         && array_is_list($value)
                         && !array_key_exists('type', $constraints)
-                        && DtoValidator::admitsObjectContainerOnly($constraints)
+                        && DtoServiceSupport::admitsObjectContainerOnly($constraints)
                     ) {
                         $value = (object)$value;
                     }
                     // `{}` the deserializer put into an `array`-typed union field is judged as the
                     // object it arrived as and is written back as (see withEmptyJsonObjectsRestored()),
                     // not as the empty list an `array` member with `minItems` would refuse.
-                    if ($value === [] && array_key_exists($propertyName, EmptyJsonObjectFields::of($dto))) {
+                    if ($value === [] && array_key_exists($propertyName, DtoServiceSupport::emptyJsonObjectsOf($dto))) {
                         $value = new stdClass();
                     }
                     array_push(
@@ -643,7 +644,7 @@ final class DtoNormalizer implements DtoNormalizerInterface
                     );
                 }
                 // `{}` the deserializer put into an `array`-typed union field: see withEmptyJsonObjectsRestored().
-                if ($normalized === [] && array_key_exists($getterMeta['propertyName'], EmptyJsonObjectFields::of($dto))) {
+                if ($normalized === [] && array_key_exists($getterMeta['propertyName'], DtoServiceSupport::emptyJsonObjectsOf($dto))) {
                     $normalized = new stdClass();
                 }
                 $result[$getterMeta['outputName']] = $normalized;

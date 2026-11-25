@@ -5686,7 +5686,8 @@ final class GenerateDtoCommandTest extends TestCase
             'DtoValidatorInterface.php',
             'DtoDeserializer.php',
             'DtoDeserializerInterface.php',
-            'EmptyJsonObjectFields.php',
+            'DtoServiceSupport.php',
+            'JsonShapeAwareValidatorInterface.php',
         ];
 
         foreach ($expectedFiles as $file) {
@@ -5697,7 +5698,7 @@ final class GenerateDtoCommandTest extends TestCase
             $this->assertStringNotContainsString('namespace OpenapiPhpDtoGenerator\\', $content);
         }
 
-        // Every library class a copied file names is copied too: `EmptyJsonObjectFields` was added to the
+        // Every library class a copied file names is copied too: a helper class was added to the
         // services in 2.15.148 and left out of the copy list, so vendored code died on `Class not found`.
         $libraryClasses = [];
         foreach ([...(glob(__DIR__ . '/../../src/Service/*.php') ?: []), ...(glob(__DIR__ . '/../../src/Contract/*.php') ?: [])] as $source) {

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Command\Rendering;
 
+use OpenapiPhpDtoGenerator\Service\DtoServiceSupport;
 use OpenapiPhpDtoGenerator\Service\DtoValidator;
 
 /**
@@ -1869,7 +1870,7 @@ PHP;
             && $constraints['pattern'] !== ''
             && $this->patternCompiles($constraints['pattern'])
         ) {
-            $delimited = DtoValidator::delimitPattern($constraints['pattern']);
+            $delimited = DtoServiceSupport::delimitPattern($constraints['pattern']);
             $specs[] = ['name' => 'Regex', 'args' => $this->phpStringLiteral($delimited)];
             $covered[] = 'pattern';
             // Symfony Regex skips empty strings; only forbid them when the pattern does.

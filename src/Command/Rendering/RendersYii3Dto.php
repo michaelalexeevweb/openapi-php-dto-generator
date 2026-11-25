@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Command\Rendering;
 
-use OpenapiPhpDtoGenerator\Service\DtoValidator;
+use OpenapiPhpDtoGenerator\Service\DtoServiceSupport;
 use RuntimeException;
 
 /**
@@ -2135,7 +2135,7 @@ PHP;
 
     private function yii3RegexLiteral(string $pattern): string
     {
-        return $this->phpStringLiteral(DtoValidator::delimitPattern($pattern));
+        return $this->phpStringLiteral(DtoServiceSupport::delimitPattern($pattern));
     }
 
     /**

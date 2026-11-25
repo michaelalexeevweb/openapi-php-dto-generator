@@ -14,6 +14,7 @@ use JsonSerializable;
 use OpenapiPhpDtoGenerator\Contract\DtoDeserializerInterface;
 use OpenapiPhpDtoGenerator\Contract\DtoValidatorInterface;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
+use OpenapiPhpDtoGenerator\Contract\JsonShapeAwareValidatorInterface;
 use PhpToken;
 use ReflectionClass;
 use ReflectionException;
@@ -298,7 +299,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
     /**
      * {@see $constraintValidator} reading an empty array as `[]`, built on first use.
      */
-    private ?DtoValidator $jsonShapesValidator = null;
+    private ?JsonShapeAwareValidatorInterface $jsonShapesValidator = null;
 
     public function __construct(
         ?DtoValidatorInterface $constraintValidator = null,
@@ -487,7 +488,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         if ($errors !== []) {
-            throw new RuntimeException(implode("\n", array_unique(DtoValidator::finalizeMessages($errors, 'param "'))));
+            throw new RuntimeException(implode("\n", array_unique(DtoServiceSupport::finalizeMessages($errors, 'param "'))));
         }
 
         return $result;
@@ -1130,7 +1131,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
         if ($errors !== []) {
             throw $this->withUnreadableBodyHint(
-                exception: new RuntimeException(implode("\n", array_unique(array_filter(DtoValidator::finalizeMessages($errors, 'param "'))))),
+                exception: new RuntimeException(implode("\n", array_unique(array_filter(DtoServiceSupport::finalizeMessages($errors, 'param "'))))),
                 request: $request,
                 bodyData: $bodyData,
                 queryData: $queryData,
@@ -1139,7 +1140,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         $dto = $reflection->newInstanceArgs($args);
-        EmptyJsonObjectFields::remember($dto, $emptyJsonObjectFields);
+        DtoServiceSupport::rememberEmptyJsonObjects($dto, $emptyJsonObjectFields);
 
         // Set tracking flags: all to false first, then mark provided sources.
         foreach ($classMeta['params'] as $paramMeta) {
@@ -1272,7 +1273,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             $hasDefaultValue = $param->isDefaultValueAvailable();
             $fieldConstraints = $constraints[$paramName] ?? null;
             $allowsAssociativeArray = $this->allowsAssociativeArray($fieldConstraints);
-            $alsoAllowsJsonList = $allowsAssociativeArray && is_array($fieldConstraints) && !DtoValidator::admitsObjectContainerOnly($fieldConstraints);
+            $alsoAllowsJsonList = $allowsAssociativeArray && is_array($fieldConstraints) && !DtoServiceSupport::admitsObjectContainerOnly($fieldConstraints);
             $openApiFormat = $this->resolveOpenApiFormat($fieldConstraints);
             $allowsNull = $paramType?->allowsNull() ?? false;
             $isRequired = $this->resolveParameterRequiredFlag(
@@ -1339,7 +1340,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 in_array($arrayItemType, ['array', 'list'], true)
                 && is_array($itemSchema)
                 && $this->allowsAssociativeArray($itemSchema)
-                && !DtoValidator::admitsObjectContainerOnly($itemSchema)
+                && !DtoServiceSupport::admitsObjectContainerOnly($itemSchema)
             ) {
                 $arrayItemType = 'container';
             }
@@ -2333,7 +2334,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             }
         }
 
-        throw new RuntimeException(implode("\n", array_values(array_unique(DtoValidator::finalizeMessages($errors, 'param "')))));
+        throw new RuntimeException(implode("\n", array_values(array_unique(DtoServiceSupport::finalizeMessages($errors, 'param "')))));
     }
 
     /**
@@ -2906,7 +2907,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 if ($schemaAllowsNull) {
                     return null;
                 }
-                throw new RuntimeException(DtoValidator::finalizeMessage(
+                throw new RuntimeException(DtoServiceSupport::finalizeMessage(
                     message: "param \"{$paramPath}\" expects {$typeName}, got null",
                     subject: 'param "',
                 ));
@@ -3261,7 +3262,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         if ($errors !== []) {
-            throw new RuntimeException(implode("\n", DtoValidator::finalizeMessages($errors, 'param "')));
+            throw new RuntimeException(implode("\n", DtoServiceSupport::finalizeMessages($errors, 'param "')));
         }
 
         return $normalized;
@@ -4126,7 +4127,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             $allowedStr = implode(', ', $allowed);
             $actualValue = $this->formatValueForError($value);
             throw new RuntimeException(
-                message: DtoValidator::finalizeMessage(
+                message: DtoServiceSupport::finalizeMessage(
                     message: "param \"{$paramPath}\" expects enum {$enumClass}, got {$actualValue}. Allowed: {$allowedStr}",
                     subject: 'param "',
                 ),
@@ -4245,7 +4246,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
         return static function (array $errors) use ($hydrator, $bodyData, $cast, &$emptyJsonObjectFields): object {
             $dto = $hydrator($bodyData, $cast, $errors);
-            EmptyJsonObjectFields::remember($dto, $emptyJsonObjectFields);
+            DtoServiceSupport::rememberEmptyJsonObjects($dto, $emptyJsonObjectFields);
 
             return $dto;
         };
@@ -4379,7 +4380,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
      */
     private function validateValue(string $subject, mixed $value, array $constraints): array
     {
-        if (!$this->constraintValidator instanceof DtoValidator) {
+        if (!$this->constraintValidator instanceof JsonShapeAwareValidatorInterface) {
             return $this->constraintValidator->validate($subject, $value, $constraints);
         }
 
@@ -4461,7 +4462,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         $subject = (string)$key;
 
         foreach ($patterns as $pattern) {
-            $regex = DtoValidator::delimitPattern($pattern);
+            $regex = DtoServiceSupport::delimitPattern($pattern);
             set_error_handler(static fn(): bool => true);
             try {
                 $matched = preg_match($regex, $subject) === 1;
@@ -4665,7 +4666,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
     /**
      * Whether `{}` went into a field as the empty PHP array, which reads as `[]` from then on — noted
-     * in {@see EmptyJsonObjectFields} so that the write-back says `{}` again.
+     * in {@see DtoServiceSupport::rememberEmptyJsonObjects()} so that the write-back says `{}` again.
      */
     private function isEmptyJsonObjectHeldAsArray(mixed $cast, mixed $raw): bool
     {
@@ -4695,7 +4696,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         if (is_array($value)) {
-            if (DtoValidator::admitsObjectContainerOnly($constraints)) {
+            if (DtoServiceSupport::admitsObjectContainerOnly($constraints)) {
                 return [$this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'object', value: $value)];
             }
 
@@ -4836,7 +4837,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
         if (!array_key_exists($discriminatorKey, $mapping)) {
             $allowedKeys = implode(', ', array_keys($mapping));
             throw new RuntimeException(
-                message: DtoValidator::finalizeMessage(
+                message: DtoServiceSupport::finalizeMessage(
                     message: "param \"{$fullDiscriminatorPath}\" has invalid discriminator value \"{$discriminatorKey}\". Allowed: {$allowedKeys}",
                     subject: 'param "',
                 ),
@@ -4869,7 +4870,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             ? $value
             : $this->getTypeString($value);
 
-        return DtoValidator::finalizeMessage(
+        return DtoServiceSupport::finalizeMessage(
             message: "param \"{$paramPath}\" expects {$expectedType}, got {$actualType}",
             subject: 'param "',
         );
@@ -4890,7 +4891,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
      */
     private function finalizeParamMessage(string $message): string
     {
-        return DtoValidator::finalizeMessage($message, 'param "');
+        return DtoServiceSupport::finalizeMessage($message, 'param "');
     }
 
     private function isStrictIntValue(mixed $value): bool

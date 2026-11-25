@@ -3,6 +3,28 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.150 — 2026-11-25
+
+- runtime services independent
+- shared helpers in DtoServiceSupport
+- JsonShapeAwareValidatorInterface added
+- EmptyJsonObjectFields folded in
+
+Runtime: `DtoDeserializer`, `DtoNormalizer` and `DtoValidator` no longer depend on one another. What they
+shared — the spelling of a message, the ECMA-262 to PCRE pattern translation, one question about a schema's
+containers and the note of a `{}` held as `[]` — lives in one internal class, `Service\DtoServiceSupport`.
+What the deserializer and the normalizer ask of a validator beyond `DtoValidatorInterface` is the new
+`Contract\JsonShapeAwareValidatorInterface`; a validator of your own may implement it. The only name left
+across is the default each constructor builds, `new DtoValidator()`, and a test pins that.
+
+`Service\EmptyJsonObjectFields` (2.15.148) is gone, folded into `DtoServiceSupport`. The public static
+helpers on `DtoValidator` (`finalizeMessage(s)`, `delimitPattern`, `unicodePropertyName`,
+`admitsObjectContainerOnly`, `UNICODE_GENERAL_CATEGORIES`) stay and delegate.
+
+**Vendored services (`--dto-generator-directory`): regenerate.** The copy now holds `DtoServiceSupport.php` and
+`JsonShapeAwareValidatorInterface.php`; delete the stale `EmptyJsonObjectFields.php` the generator left there,
+it is no longer used. Runtime DTOs with a list-or-object union import `DtoServiceSupport` instead.
+
 ## 2.15.149 — 2026-11-25
 
 - fuzz round five: 14 fixes
