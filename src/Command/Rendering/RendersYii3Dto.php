@@ -2065,6 +2065,8 @@ trait RendersYii3Dto
             // the Symfony one reads are dead the moment it is written. They were emitted into every
             // generated class and read by nothing.
             ownsPayloadView: true,
+            // The union around a nested class is not judged on its payload view here: see the parameter.
+            judgesUnionsAroundNestedDtos: false,
         );
 
         if ($block['methods'] === '') {
@@ -2918,37 +2920,69 @@ PHP;
             // A union of two or more classes is held as the decoded array too: its `allOf`-wrapped
             // object branches (`anyOf: [{allOf: [Olive…]}, {allOf: [Teal…]}]`) were left for classes
             // never built, and `{"ibex": {}}` passed both members' `required`.
+            // An untyped union (`mixed`, emitted `string|int|float|bool|array|null`) holds the object as
+            // decoded just the same: a member `allOf: [{type: string}, {$ref: Indigo}]` beside the object
+            // branch types the property that way, and the branch's enum went into an enum type nothing
+            // builds, its `$ref` to an enum component with it.
             if (
                 !is_array($propertySchema)
-                || (!$this->yii3HoldsUnionClassAsArray($property['type']) && !$this->yii3IsUnionOfClasses($property['type']))
+                || (
+                    !$this->yii3HoldsUnionClassAsArray($property['type'])
+                    && !$this->yii3IsUnionOfClasses($property['type'])
+                    && $property['type'] !== 'mixed'
+                )
             ) {
                 continue;
             }
             $propertySchema = $this->yii3WithUnionComponentInlined($propertySchema, $className);
-            foreach (['oneOf', 'anyOf'] as $keyword) {
-                if (!is_array($propertySchema[$keyword] ?? null)) {
+            $schema['properties'][$name] = $this->yii3WithHeldObjectBranchesSpelledOut($propertySchema, $className);
+        }
+
+        return $schema;
+    }
+
+    /**
+     * Every object branch of a union held as the decoded array, written out — the branches of a union
+     * NESTED in a branch as well (`oneOf: [{oneOf: [{…}, {type: object, allOf: [{…}]}]}, {type: null}]`).
+     * The nested union is held as the same array, and its `allOf` branch was reduced to `{type: object}`
+     * or to a branch "the class checks": `{}` passed a `required`.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<string, mixed>
+     */
+    private function yii3WithHeldObjectBranchesSpelledOut(array $schema, string $className, int $depth = 0): array
+    {
+        if ($depth >= 8) {
+            return $schema;
+        }
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            if (!is_array($schema[$keyword] ?? null)) {
+                continue;
+            }
+            foreach ($schema[$keyword] as $index => $branch) {
+                // A bare `$ref` to a component built by `allOf` is the same branch behind a name:
+                // spelled out by its reference, the fragments were still left for the class.
+                $branchRef = is_array($branch) && count($branch) === 1 && is_string($branch['$ref'] ?? null) ? $branch['$ref'] : null;
+                $referencedClass = $branchRef === null
+                    ? null
+                    : $this->schemaRefToClassName(ref: $branchRef, currentSourceFile: $this->getSchemaSourceFile($className));
+                if ($branchRef !== null && is_array($this->dtoSchemas[$referencedClass]['allOf'] ?? null)) {
+                    $branch = $this->yii3ResolvedRefSchema($branchRef, $className);
+                }
+                if (!is_array($branch) || array_key_exists('$ref', $branch)) {
                     continue;
                 }
-                foreach ($propertySchema[$keyword] as $index => $branch) {
-                    // A bare `$ref` to a component built by `allOf` is the same branch behind a name:
-                    // spelled out by its reference, the fragments were still left for the class.
-                    $branchRef = is_array($branch) && count($branch) === 1 && is_string($branch['$ref'] ?? null) ? $branch['$ref'] : null;
-                    $referencedClass = $branchRef === null
-                        ? null
-                        : $this->schemaRefToClassName(ref: $branchRef, currentSourceFile: $this->getSchemaSourceFile($className));
-                    if ($branchRef !== null && is_array($this->dtoSchemas[$referencedClass]['allOf'] ?? null)) {
-                        $branch = $this->yii3ResolvedRefSchema($branchRef, $className);
-                    }
-                    if (!is_array($branch) || array_key_exists('$ref', $branch) || $this->interpreterShadowType($branch) !== 'object') {
-                        continue;
-                    }
-                    $propertySchema[$keyword][$index] = $this->inlineNestedContainerValidation(
-                        schema: $this->yii3WithAllOfFragmentsMerged($branch, $className),
-                        belowMaterialization: true,
-                    );
+                $branch = $this->yii3WithHeldObjectBranchesSpelledOut($branch, $className, $depth + 1);
+                if ($this->interpreterShadowType($branch) !== 'object') {
+                    $schema[$keyword][$index] = $branch;
+
+                    continue;
                 }
+                $schema[$keyword][$index] = $this->inlineNestedContainerValidation(
+                    schema: $this->yii3WithAllOfFragmentsMerged($branch, $className),
+                    belowMaterialization: true,
+                );
             }
-            $schema['properties'][$name] = $propertySchema;
         }
 
         return $schema;

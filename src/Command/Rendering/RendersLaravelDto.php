@@ -578,6 +578,8 @@ trait RendersLaravelDto
         // the value matches a member (and, for `oneOf`, exactly one), so the first member whose own
         // schema accepts it is the one built.
         $unionClasses = $this->laravelUndiscriminatedUnionClasses($property);
+        // A union COMPONENT (`$ref: Shade`) is such a union too, though the type names one class.
+        $builtAsUnionMember = $unionClasses !== [];
         if ($unionClasses !== []) {
             $access = sprintf('$data[%s]', $key);
             $arms = [];
@@ -640,7 +642,7 @@ trait RendersLaravelDto
                 propertyName: $inlineDiscriminator['propertyName'],
                 mapping: $inlineDiscriminator['mapping'],
             ),
-            $dtoClass !== null => $this->laravelNestedDtoExpression(
+            $dtoClass !== null && !$builtAsUnionMember => $this->laravelNestedDtoExpression(
                 dtoClass: $dtoClass,
                 rawAccess: $containerRaw,
                 wireName: $property['openApiName'],

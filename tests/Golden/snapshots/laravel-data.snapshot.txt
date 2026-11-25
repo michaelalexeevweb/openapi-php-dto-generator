@@ -1,4 +1,4 @@
-# laravel-data mode — 80 files, 23966 lines
+# laravel-data mode — 80 files, 23962 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -10882,7 +10882,6 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
-use BackedEnum;
 use Closure;
 use DateTimeImmutable;
 use Illuminate\Container\Container;
@@ -10910,11 +10909,9 @@ use function array_key_exists;
 use function array_keys;
 use function array_map;
 use function array_merge;
-use function array_pop;
 use function array_shift;
 use function array_slice;
-use function array_unique;
-use function array_values;
+use function bin2hex;
 use function explode;
 use function floor;
 use function get_object_vars;
@@ -10927,14 +10924,16 @@ use function is_float;
 use function is_int;
 use function is_iterable;
 use function is_object;
-use function is_scalar;
 use function is_string;
 use function json_decode;
-use function ltrim;
+use function json_encode;
+use function ksort;
+use function pack;
 use function preg_match;
 use function preg_match_all;
 use function preg_split;
 use function property_exists;
+use function serialize;
 use function sprintf;
 use function str_ends_with;
 use function str_replace;
@@ -10942,6 +10941,7 @@ use function str_starts_with;
 use function strlen;
 use function substr;
 use function trim;
+use function var_export;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -10988,40 +10988,79 @@ final class Containers extends Data
      */
     private const array OPENAPI_RECURSIVE_SCHEMAS = [
         'Shape@rules' => [
-            'oneOf' => [
+            'type' => 'object',
+            'allOf' => [
                 [
-                    'type' => 'object',
                     'required' => [
                         'kind',
-                        'radius',
                     ],
                     'properties' => [
                         'kind' => [
-                            'type' => 'string',
-                        ],
-                        'radius' => [
-                            'type' => 'integer',
+                            'enum' => [
+                                'circle',
+                                'square',
+                            ],
                         ],
                     ],
                 ],
                 [
-                    'type' => 'object',
-                    'required' => [
-                        'kind',
-                        'side',
-                    ],
-                    'properties' => [
-                        'kind' => [
-                            'type' => 'string',
+                    'if' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'kind' => [
+                                'const' => 'circle',
+                            ],
                         ],
-                        'side' => [
-                            'type' => 'integer',
+                        'required' => [
+                            'kind',
+                        ],
+                    ],
+                    'then' => [
+                        'type' => 'object',
+                        'required' => [
+                            'kind',
+                            'radius',
+                        ],
+                        'properties' => [
+                            'kind' => [
+                                'type' => 'string',
+                            ],
+                            'radius' => [
+                                'type' => 'integer',
+                            ],
+                        ],
+                    ],
+                ],
+                [
+                    'if' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'kind' => [
+                                'const' => 'square',
+                            ],
+                        ],
+                        'required' => [
+                            'kind',
+                        ],
+                    ],
+                    'then' => [
+                        'type' => 'object',
+                        'required' => [
+                            'kind',
+                            'side',
+                        ],
+                        'properties' => [
+                            'kind' => [
+                                'type' => 'string',
+                            ],
+                            'side' => [
+                                'type' => 'integer',
+                            ],
                         ],
                     ],
                 ],
             ],
             'x-discriminator-property' => 'kind',
-            'x-discriminator-php-property' => 'kind',
             'x-discriminator-map' => [
                 'circle' => 'Circle',
                 'square' => 'Square',
@@ -11646,98 +11685,38 @@ final class Containers extends Data
             $structuredValue = null;
         }
 
-        if (is_array($schema['oneOf'] ?? null)) {
-            $matchingBranches = 0;
-            $nullableBranchAdmitsNull = false;
-            $branchErrors = [];
-            foreach ($schema['oneOf'] as $branch) {
-                if (!is_array($branch)) {
-                    continue;
-                }
-
-                if (is_string($branchClass = $branch['x-php-instanceof'] ?? null) && $branchClass !== '') {
-                    $branchFqcn = __NAMESPACE__ . '\\' . ltrim($branchClass, '\\');
-                    // `{$ref: X, nullable: true}`: X or null.
-                    if ((is_object($value) && $value instanceof $branchFqcn) || ($value === null && ($branch['nullable'] ?? false) === true)) {
-                        $matchingBranches++;
-                    }
-                    continue;
-                }
-
-                // `nullable: true` says "or null": it admits null, and never makes null match twice.
-                if ($normalizedValue === null && ($branch['nullable'] ?? false) === true) {
-                    $nullableBranchAdmitsNull = true;
-                    continue;
-                }
-                if (array_key_exists('type', $branch) && !self::matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
-                    continue;
-                }
-                // Keep why each branch failed: with no match at all those reasons are far more
-                // useful than "does not match any oneOf branch".
-                $errorsForBranch = self::validateOpenApiNode($value, $branch, $path, $depth + 1);
-                if ($errorsForBranch === []) {
-                    $matchingBranches++;
-                    continue;
-                }
-
-                $branchErrors = [...$branchErrors, ...$errorsForBranch];
+        if (array_key_exists('const', $schema)) {
+            $fingerprint = self::jsonValueFingerprint($normalizedValue);
+            if ($fingerprint === null) {
+                $errors[] = sprintf('%s: JSON equality traversal exceeds its limits', $path);
+            } elseif ($fingerprint !== self::jsonValueFingerprint($schema['const'])) {
+                $expected = json_encode($schema['const']);
+                $errors[] = sprintf('%s must equal %s', $path, $expected !== false ? $expected : var_export($schema['const'], true));
             }
+        }
 
-            if ($matchingBranches === 0 && $nullableBranchAdmitsNull) {
-                $matchingBranches = 1;
-            }
-
-            if ($matchingBranches > 1) {
-                $errors[] = sprintf('%s matches more than one allowed oneOf branch', $path);
-            } elseif ($matchingBranches === 0) {
-                $errors = $branchErrors === []
-                    ? [...$errors, self::describeOpenApiUnionMismatch($path, 'oneOf', $schema['oneOf'], $value)]
-                    : [...$errors, ...array_values(array_unique($branchErrors))];
-            }
-
-            if ($matchingBranches === 1) {
-                $discriminatorProperty = is_string($schema['x-discriminator-property'] ?? null)
-                    ? $schema['x-discriminator-property']
-                    : null;
-                $discriminatorPhpProperty = is_string($schema['x-discriminator-php-property'] ?? null)
-                    ? $schema['x-discriminator-php-property']
-                    : null;
-                $discriminatorMap = is_array($schema['x-discriminator-map'] ?? null)
-                    ? $schema['x-discriminator-map']
-                    : null;
-
-                if ($discriminatorProperty !== null && $discriminatorMap !== null && is_object($value)) {
-                    $phpProperty = $discriminatorPhpProperty ?? $discriminatorProperty;
-                    // The DTO keeps its state private: read the discriminator from the payload it
-                    // reports, keyed by the OpenAPI name, and fall back to a public property for a
-                    // hand-written object.
-                    $discriminatorPayload = self::normalizeOpenApiStructuralValue($value);
-                    $discriminatorCarrier = is_array($discriminatorPayload) ? $discriminatorPayload : [];
-                    if (!array_key_exists($discriminatorProperty, $discriminatorCarrier) && !property_exists($value, $phpProperty)) {
-                        $errors[] = sprintf('%s discriminator property %s is required', $path, $discriminatorProperty);
-                    } else {
-                        $discriminatorValue = $discriminatorCarrier[$discriminatorProperty]
-                            ?? (property_exists($value, $phpProperty) ? $value->{$phpProperty} : null);
-                        // A variant whose discriminator is a one-value `enum` holds it as its enum case.
-                        if ($discriminatorValue instanceof BackedEnum) {
-                            $discriminatorValue = $discriminatorValue->value;
-                        }
-                        $mapKey = is_scalar($discriminatorValue) ? (string)$discriminatorValue : null;
-                        if ($mapKey === null || !array_key_exists($mapKey, $discriminatorMap)) {
-                            $errors[] = sprintf(
-                                '%s discriminator %s must be one of: %s',
-                                $path,
-                                $discriminatorProperty,
-                                implode(', ', array_keys($discriminatorMap)),
-                            );
-                        } elseif (is_string($expectedClass = $discriminatorMap[$mapKey]) && $expectedClass !== '') {
-                            $expectedFqcn = __NAMESPACE__ . '\\' . ltrim($expectedClass, '\\');
-                            if (!$value instanceof $expectedFqcn) {
-                                $errors[] = sprintf('%s discriminator %s must match concrete class', $path, $discriminatorProperty);
-                            }
-                        }
+        if (is_array($schema['enum'] ?? null)) {
+            $fingerprint = self::jsonValueFingerprint($normalizedValue);
+            $matches = false;
+            if ($fingerprint !== null) {
+                foreach ($schema['enum'] as $candidate) {
+                    if ($fingerprint === self::jsonValueFingerprint($candidate)) {
+                        $matches = true;
+                        break;
                     }
                 }
+            }
+            if ($fingerprint === null) {
+                $errors[] = sprintf('%s: JSON equality traversal exceeds its limits', $path);
+            } elseif (!$matches) {
+                $allowed = implode(', ', array_map(
+                    static function (mixed $allowedValue): string {
+                        $json = json_encode($allowedValue);
+                        return $json !== false ? $json : var_export($allowedValue, true);
+                    },
+                    $schema['enum'],
+                ));
+                $errors[] = sprintf('%s must be one of: %s', $path, $allowed);
             }
         }
 
@@ -11779,6 +11758,16 @@ final class Containers extends Data
             }
         }
 
+        if (is_array($schema['if'] ?? null)) {
+            if (self::matchesOpenApiNode($value, $schema['if'], $path, $depth + 1)) {
+                if (is_array($schema['then'] ?? null)) {
+                    $errors = [...$errors, ...self::validateOpenApiNode($value, $schema['then'], $path, $depth + 1)];
+                }
+            } elseif (is_array($schema['else'] ?? null)) {
+                $errors = [...$errors, ...self::validateOpenApiNode($value, $schema['else'], $path, $depth + 1)];
+            }
+        }
+
         $listValue = is_array($value) && array_is_list($value);
 
         if ($listValue && ($schema['items'] ?? null) === false) {
@@ -11793,6 +11782,16 @@ final class Containers extends Data
                     ...$errors,
                     ...self::validateOpenApiNode($itemValue, $schema['items'], $path . '[' . $index . ']', $depth + 1),
                 ];
+            }
+        }
+
+        if (is_array($schema['allOf'] ?? null)) {
+            foreach ($schema['allOf'] as $branch) {
+                if (!is_array($branch)) {
+                    continue;
+                }
+
+                $errors = [...$errors, ...self::validateOpenApiNode($value, $branch, $path, $depth + 1)];
             }
         }
 
@@ -11835,53 +11834,6 @@ final class Containers extends Data
         return self::validateOpenApiNode($value, $schema, $path, $depth) === [];
     }
 
-    /**
-     * Every branch was gated out by its declared type, so no branch has a reason to report. Naming the
-     * types the union does accept turns an unactionable sentence into one the caller can act on. Same
-     * wording as the runtime validator, so a payload reads the same whichever mode answered it.
-     *
-     * @param array<int, mixed> $branches
-     */
-    private static function describeOpenApiUnionMismatch(string $path, string $kind, array $branches, mixed $value): string
-    {
-        $types = [];
-        foreach ($branches as $branch) {
-            if (!is_array($branch)) {
-                continue;
-            }
-
-            $declared = is_array($branch['type'] ?? null) ? $branch['type'] : [$branch['type'] ?? null];
-            foreach ($declared as $type) {
-                if (is_string($type) && $type !== '' && !in_array($type, $types, true)) {
-                    $types[] = $type;
-                }
-            }
-        }
-
-        if ($types === []) {
-            return sprintf('%s does not match any %s branch', $path, $kind);
-        }
-
-        $last = array_pop($types);
-        $expected = $types === [] ? $last : implode(', ', $types) . ' or ' . $last;
-
-        return sprintf(
-            '%s does not match any %s branch (expected %s, got %s)',
-            $path,
-            $kind,
-            $expected,
-            match (true) {
-                $value === null => 'null',
-                is_bool($value) => 'boolean',
-                is_int($value) => 'integer',
-                is_float($value) => 'number',
-                is_string($value) => 'string',
-                is_array($value) => array_is_list($value) ? 'array' : 'object',
-                default => 'object',
-            },
-        );
-    }
-
     private static function matchesOpenApiCallbackType(mixed $value, mixed $type): bool
     {
         if (!is_string($type) || $type === '') {
@@ -11904,6 +11856,50 @@ final class Containers extends Data
 
         // Any other object: only its public state is visible, under PHP property names.
         return get_object_vars($value);
+    }
+
+    /**
+     * JSON equality: numeric value, unordered object keys, ordered lists, no scalar coercion.
+     * A missing fingerprint means traversal could not finish; callers must reject it.
+     */
+    private static function jsonValueFingerprint(mixed $value, int $depth = 0): ?string
+    {
+        if ($depth >= 256) {
+            return null;
+        }
+
+        if (is_float($value)) {
+            if (!is_finite($value)) {
+                return serialize($value);
+            }
+            // The upper bound is exclusive: (float)PHP_INT_MAX is already 2^63.
+            if ($value >= PHP_INT_MIN && $value < -(float)PHP_INT_MIN && floor($value) === $value) {
+                $value = (int)$value;
+            } else {
+                // Binary representation stays exact even when serialize_precision is overridden.
+                return 'float:' . bin2hex(pack('E', $value));
+            }
+        }
+        $isObject = is_object($value) || (is_array($value) && !array_is_list($value));
+        if (is_object($value)) {
+            $value = self::normalizeOpenApiStructuralValue($value);
+        }
+        if (!is_array($value)) {
+            return serialize($value);
+        }
+        if ($isObject) {
+            ksort($value, SORT_STRING);
+        }
+        $members = [];
+        foreach ($value as $key => $item) {
+            $fingerprint = self::jsonValueFingerprint($item, $depth + 1);
+            if ($fingerprint === null) {
+                return null;
+            }
+            $members[$key] = $fingerprint;
+        }
+
+        return ($isObject ? 'object:' : 'array:') . serialize($members);
     }
 
     private static function openApiChildPath(string $path, string $propertyName): string

@@ -2743,6 +2743,8 @@ final class GenerateDtoCommand extends Command
             // A union component's branches are value positions too: `Mix: {oneOf: [{type: string},
             // {$ref: Base, properties: {hue: …}}]}` typed the second branch as the bare `Base`, and the
             // `hue` its `required` insists on was dropped on the way in — every valid object refused.
+            // An `allOf` fragment's properties are the component's own: `Beige: {allOf: [{properties:
+            // {raven: {$ref: Ochre, properties: {puffin: …}}}}]}` typed `raven` as the bare `Ochre`.
             foreach (['anyOf', 'oneOf'] as $keyword) {
                 $branches = $schema[$keyword] ?? null;
                 if (!is_array($branches) || !array_is_list($branches)) {
@@ -2753,6 +2755,9 @@ final class GenerateDtoCommand extends Command
                     $rewritten[] = is_array($branch) ? $this->objectReferencesWithTheirSiblings($branch) : $branch;
                 }
                 $schema[$keyword] = $rewritten;
+            }
+            if (is_array($schema['allOf'] ?? null) && array_is_list($schema['allOf'])) {
+                $schema['allOf'] = $this->allOfFragmentsWithObjectReferenceSiblings($schema['allOf'], depth: 0);
             }
             // So are the items of an array alias and the values of a map component: `Ring: {type:
             // array, items: {$ref: Circle, properties: {tail: …}}}` kept the bare `Circle` as its item,
@@ -2817,6 +2822,9 @@ final class GenerateDtoCommand extends Command
                 $schema[$keyword] = $this->objectReferencesWithTheirSiblings($schema[$keyword], $depth + 1);
             }
         }
+        // An `allOf` fragment's properties merge into the object it builds: left out, a property
+        // declared in a fragment kept the bare `$ref` while the same property declared directly got
+        // the merged class, and the keys beside the `$ref` were dropped and checked nowhere.
         foreach (['prefixItems', 'anyOf', 'oneOf'] as $keyword) {
             $branches = $schema[$keyword] ?? null;
             if (!is_array($branches) || !array_is_list($branches)) {
@@ -2828,8 +2836,50 @@ final class GenerateDtoCommand extends Command
             }
             $schema[$keyword] = $rewritten;
         }
+        if (is_array($schema['allOf'] ?? null) && array_is_list($schema['allOf'])) {
+            $schema['allOf'] = $this->allOfFragmentsWithObjectReferenceSiblings($schema['allOf'], $depth + 1);
+        }
 
         return $schema;
+    }
+
+    /**
+     * `objectReferencesWithTheirSiblings()` over the fragments of an `allOf`: a fragment's properties
+     * are the properties of the object the `allOf` builds. Left out, `allOf: [{properties: {raven:
+     * {$ref: Ochre, properties: {puffin: …}}}}]` typed `raven` as the bare `Ochre` — `puffin` was
+     * dropped on the way in and checked nowhere — where the same property declared directly got the
+     * merged class. A fragment that is itself `{$ref: Ochre, properties: {puffin: …}}` becomes the two
+     * fragments `{$ref: Ochre}` and `{properties: {puffin: …}}` side by side: nested one `allOf`
+     * deeper, both the target's keys and the ones beside it were dropped.
+     *
+     * @param list<mixed> $fragments
+     * @return list<mixed>
+     */
+    private function allOfFragmentsWithObjectReferenceSiblings(array $fragments, int $depth): array
+    {
+        $rewritten = [];
+        foreach ($fragments as $fragment) {
+            if (!is_array($fragment)) {
+                $rewritten[] = $fragment;
+                continue;
+            }
+            $wasReference = array_key_exists('$ref', $fragment);
+            $fragment = $this->objectReferencesWithTheirSiblings($fragment, $depth);
+            $inner = $fragment['allOf'] ?? null;
+            // Spliced only when what stays on top beside the new `allOf` is pure annotation: an
+            // `unevaluated*` has to see both halves together, and a `nullable` or `default` means
+            // something to the fragment as a whole — those keep their own scope.
+            $onTop = array_diff(array_keys($fragment), ['allOf', 'description', 'title', 'example', 'examples', 'deprecated', 'externalDocs', '$comment']);
+            if ($wasReference && $onTop === [] && is_array($inner) && array_is_list($inner)) {
+                foreach ($inner as $innerFragment) {
+                    $rewritten[] = $innerFragment;
+                }
+                continue;
+            }
+            $rewritten[] = $fragment;
+        }
+
+        return $rewritten;
     }
 
     /**
@@ -6493,7 +6543,7 @@ final class GenerateDtoCommand extends Command
                 }
                 $extracted = $this->extractValidationConstraints(propertySchema: $besideRef);
                 if ($branchRef !== null) {
-                    $extracted = $this->unionRefBranch(ref: $branchRef, beside: $extracted);
+                    $extracted = $this->unionRefBranch(ref: $branchRef, beside: $extracted, branch: $variant);
                     // The 3.0 deviation once more, for `{allOf: [{$ref: Kind}], nullable: true}` as a
                     // branch: the members arrive with the reference, AFTER the branch's own extraction
                     // relaxed what it had, so the null its `nullable` admits was refused by the enum.
@@ -6530,7 +6580,8 @@ final class GenerateDtoCommand extends Command
                     // component spelling already reads it. laravel mode hydrates an inline union only
                     // through the dispatch below, so without it every payload, valid ones included,
                     // reached the constructor as a bare array: a TypeError.
-                    if ($mapping === null && $this->attributeMode === self::ATTRIBUTE_MODE_LARAVEL) {
+                    $laravelMode = in_array($this->attributeMode, [self::ATTRIBUTE_MODE_LARAVEL, self::ATTRIBUTE_MODE_LARAVEL_DATA], true);
+                    if ($mapping === null && $laravelMode) {
                         $mapping = $this->implicitDiscriminatorMapping(['oneOf' => $variants]);
                     }
                     // The runtime deserializer tries every class member of a bare `oneOf` and refuses a
@@ -6551,7 +6602,9 @@ final class GenerateDtoCommand extends Command
                             }
                             $classMap[$discriminatorValue] = $mappedClass;
                         }
-                        $dispatched = $this->attributeMode === self::ATTRIBUTE_MODE_LARAVEL && $classMap !== []
+                        // laravel-data too: matched branch by branch, members that overlap apart from
+                        // the tag refused every valid payload as matching twice.
+                        $dispatched = $laravelMode && $classMap !== []
                             ? $this->laravelDiscriminatorDispatch(
                                 variants: $variants,
                                 branchConstraints: $branchConstraints,
@@ -6747,9 +6800,10 @@ final class GenerateDtoCommand extends Command
      * before — or nothing, and the union is unvalidatable.
      *
      * @param array<string, mixed> $beside
+     * @param array<string, mixed> $branch the branch as written, to tell whether it is a class of its own
      * @return array<string, mixed>
      */
-    private function unionRefBranch(string $ref, array $beside): array
+    private function unionRefBranch(string $ref, array $beside, array $branch): array
     {
         $target = $this->unionRefTarget($ref);
         if ($target === []) {
@@ -6772,17 +6826,43 @@ final class GenerateDtoCommand extends Command
             if ($asserting === []) {
                 return [...$target, ...$beside];
             }
-            // An OBJECT beside asserting siblings is typed by a class of its own, which need not extend
-            // X, so it is not "is X" either: that class checks itself.
-            $isObjectClass = array_key_exists($this->schemaRefToClassName($ref, $this->constraintSourceFile ?? $this->rootSpecFile), $this->dtoSchemas);
-
-            return $isObjectClass ? $beside : [...$beside, ...$target];
+            // A branch typed by a class of its own — an object reference beside keys that describe more
+            // of it — need not extend X, so it is not "is X" either: that class checks itself. Siblings
+            // that write no such class (`{type: object, allOf: [{$ref: X}]}`, a `maximum` beside the
+            // reference) leave the branch typed `X`: kept alone, they matched every object, and a
+            // `oneOf` refused each valid value of its other branch as matching twice.
+            return $this->unionRefBranchIsAClassOfItsOwn($ref, $branch) ? $beside : [...$beside, ...$target];
         }
         if ($asserting === []) {
             return [...$target, ...$beside];
         }
 
         return ['allOf' => [$target, $asserting], ...array_diff_key($beside, $asserting)];
+    }
+
+    /**
+     * Whether a union branch naming `$ref` is typed by a class written for the branch itself, rather than
+     * by the class the reference names: what `unionBranchTypeOfItsOwn()` decides, with a bare reference
+     * resolved against the document whose constraints are being extracted.
+     *
+     * @param array<string, mixed> $branch
+     */
+    private function unionRefBranchIsAClassOfItsOwn(string $ref, array $branch): bool
+    {
+        if (!array_key_exists('$ref', $branch)) {
+            return $this->unionBranchTypeOfItsOwn($branch, '') === 'class';
+        }
+        $refClass = $this->schemaRefToClassName($ref, $this->constraintSourceFile ?? $this->rootSpecFile);
+        $definition = $this->dtoSchemas[$refClass] ?? null;
+
+        // `referencedObjectSharedWithSiblings()`: only an `unevaluatedProperties` beside an object
+        // reference merges the two into a class of the branch's own.
+        return array_key_exists('unevaluatedProperties', $branch)
+            && !array_key_exists('allOf', $branch)
+            && is_array($definition)
+            && $this->isObjectDtoComponent($refClass)
+            && !array_key_exists('oneOf', $definition)
+            && !array_key_exists('anyOf', $definition);
     }
 
     /**
@@ -10024,7 +10104,44 @@ final class GenerateDtoCommand extends Command
             return null;
         }
 
-        return $this->resolveTemporalPhpDocFormat($items);
+        return $this->resolveTemporalPhpDocFormat($items) ?? $this->nullableUnionTemporalPhpDocFormat($items);
+    }
+
+    /**
+     * The temporal format of an item that is a date OR null: `anyOf: [{type: string, format: date},
+     * {type: 'null'}]`, the date also behind an `allOf` wrapper. The item is typed `?DateTimeImmutable`,
+     * so the getter owes the reader the `Y-m-d` string the plain `format: date` item gets — without it a
+     * map value went out as an RFC 3339 date-time, and the runtime parsed a valid date as one.
+     *
+     * @param array<string, mixed> $items
+     */
+    private function nullableUnionTemporalPhpDocFormat(array $items): ?string
+    {
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            $branches = $items[$keyword] ?? null;
+            if (!is_array($branches) || !array_is_list($branches)) {
+                continue;
+            }
+            $formats = [];
+            foreach ($branches as $branch) {
+                if (!is_array($branch)) {
+                    return null;
+                }
+                $type = $branch['type'] ?? null;
+                if ($type === 'null' || $type === ['null']) {
+                    continue;
+                }
+                $format = $this->resolveTemporalPhpDocFormat($branch);
+                if ($format === null) {
+                    return null;
+                }
+                $formats[$format] = true;
+            }
+
+            return count($formats) === 1 ? array_key_first($formats) : null;
+        }
+
+        return null;
     }
 
     /**
@@ -12293,7 +12410,11 @@ final class GenerateDtoCommand extends Command
      */
     private function undiscriminatedUnionTypeOf(array $property): ?array
     {
-        foreach ([$this->laravelDtoClass($property), $this->laravelDtoItemClass($property)] as $candidate) {
+        // The Laravel modes build a PROPERTY typed as such a component into the member it matches, when
+        // every member is a `$ref` class; a list item or map value of it still is not.
+        $builtAsMember = in_array($this->attributeMode, [self::ATTRIBUTE_MODE_LARAVEL, self::ATTRIBUTE_MODE_LARAVEL_DATA], true)
+            && $this->laravelUndiscriminatedUnionClasses($property) !== [];
+        foreach ([$builtAsMember ? null : $this->laravelDtoClass($property), $this->laravelDtoItemClass($property)] as $candidate) {
             if ($candidate === null || array_key_exists($candidate, $this->discriminatorSchemas)) {
                 continue;
             }

@@ -10,9 +10,10 @@
          beStrictAboutOutputDuringTests="true"
          cacheDirectory=".phpunit.cache">
     <php>
-        <!-- The full suite peaks just above PHP's default 128M; pinned so a plain `vendor/bin/phpunit`
-             behaves the same on every machine and in CI. -->
-        <ini name="memory_limit" value="1G"/>
+        <!-- Every generated class the suite loads stays loaded, so the peak grows with the suite: past
+             1G at 5400 tests. Pinned so a plain `vendor/bin/phpunit` behaves the same on every machine
+             and in CI. -->
+        <ini name="memory_limit" value="2G"/>
     </php>
     <testsuites>
         <testsuite name="OpenAPI Generator Test Suite">

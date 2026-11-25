@@ -1,4 +1,4 @@
-# symfony mode — 77 files, 13436 lines
+# symfony mode — 77 files, 13498 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -11194,6 +11194,7 @@ final class TestPostRequest
                     continue;
                 }
                 if ($this->isGeneratedOpenApiDtoObject($structuredValue[$propertyName])) {
+                    $errors = [...$errors, ...$this->validateOpenApiApplicatorsAroundDto($structuredValue[$propertyName], $propertySchema, $this->openApiChildPath($path, $propertyName), $depth + 1)];
                     continue;
                 }
                 $errors = [
@@ -11299,6 +11300,25 @@ final class TestPostRequest
         return is_object($value)
             && method_exists($value, 'validateOpenApiConstraints')
             && method_exists($value, 'toOpenApiValidationPayload');
+    }
+
+    /**
+     * The union a nested DTO is one branch of: the DTO checks its own keywords — a `not` or `allOf`
+     * beside them included — the enclosing schema judges which of its branches the value matches.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiApplicatorsAroundDto(mixed $value, array $schema, string $path, int $depth): array
+    {
+        $applicators = [];
+        foreach (['oneOf', 'anyOf', 'x-discriminator-property', 'x-discriminator-php-property', 'x-discriminator-map'] as $keyword) {
+            if (array_key_exists($keyword, $schema)) {
+                $applicators[$keyword] = $schema[$keyword];
+            }
+        }
+
+        return $applicators === [] ? [] : $this->validateOpenApiNode($value, $applicators, $path, $depth);
     }
 
     /**
@@ -11846,6 +11866,7 @@ final class TreeNode
                     continue;
                 }
                 if ($this->isGeneratedOpenApiDtoObject($structuredValue[$propertyName])) {
+                    $errors = [...$errors, ...$this->validateOpenApiApplicatorsAroundDto($structuredValue[$propertyName], $propertySchema, $this->openApiChildPath($path, $propertyName), $depth + 1)];
                     continue;
                 }
                 $errors = [
@@ -11871,6 +11892,7 @@ final class TreeNode
                         continue;
                     }
                     if ($this->isGeneratedOpenApiDtoObject($propertyValue)) {
+                        $errors = [...$errors, ...$this->validateOpenApiApplicatorsAroundDto($propertyValue, $extraPropertySchema, $this->openApiChildPath($path, $propertyName), $depth + 1)];
                         $evaluatedProperties[$propertyName] = true;
                         continue;
                     }
@@ -11980,6 +12002,25 @@ final class TreeNode
         return is_object($value)
             && method_exists($value, 'validateOpenApiConstraints')
             && method_exists($value, 'toOpenApiValidationPayload');
+    }
+
+    /**
+     * The union a nested DTO is one branch of: the DTO checks its own keywords — a `not` or `allOf`
+     * beside them included — the enclosing schema judges which of its branches the value matches.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiApplicatorsAroundDto(mixed $value, array $schema, string $path, int $depth): array
+    {
+        $applicators = [];
+        foreach (['oneOf', 'anyOf', 'x-discriminator-property', 'x-discriminator-php-property', 'x-discriminator-map'] as $keyword) {
+            if (array_key_exists($keyword, $schema)) {
+                $applicators[$keyword] = $schema[$keyword];
+            }
+        }
+
+        return $applicators === [] ? [] : $this->validateOpenApiNode($value, $applicators, $path, $depth);
     }
 
     /**
@@ -12607,6 +12648,7 @@ final class UnionUnderContainer
                     continue;
                 }
                 if ($this->isGeneratedOpenApiDtoObject($structuredValue[$propertyName])) {
+                    $errors = [...$errors, ...$this->validateOpenApiApplicatorsAroundDto($structuredValue[$propertyName], $propertySchema, $this->openApiChildPath($path, $propertyName), $depth + 1)];
                     continue;
                 }
                 $errors = [
@@ -12627,6 +12669,7 @@ final class UnionUnderContainer
         if ($listValue && is_array($schema['items'] ?? null)) {
             foreach ($value as $index => $itemValue) {
                 if ($this->isGeneratedOpenApiDtoObject($itemValue)) {
+                    $errors = [...$errors, ...$this->validateOpenApiApplicatorsAroundDto($itemValue, $schema['items'], $path . '[' . $index . ']', $depth + 1)];
                     continue;
                 }
                 $errors = [
@@ -12820,6 +12863,25 @@ final class UnionUnderContainer
         return is_object($value)
             && method_exists($value, 'validateOpenApiConstraints')
             && method_exists($value, 'toOpenApiValidationPayload');
+    }
+
+    /**
+     * The union a nested DTO is one branch of: the DTO checks its own keywords — a `not` or `allOf`
+     * beside them included — the enclosing schema judges which of its branches the value matches.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiApplicatorsAroundDto(mixed $value, array $schema, string $path, int $depth): array
+    {
+        $applicators = [];
+        foreach (['oneOf', 'anyOf', 'x-discriminator-property', 'x-discriminator-php-property', 'x-discriminator-map'] as $keyword) {
+            if (array_key_exists($keyword, $schema)) {
+                $applicators[$keyword] = $schema[$keyword];
+            }
+        }
+
+        return $applicators === [] ? [] : $this->validateOpenApiNode($value, $applicators, $path, $depth);
     }
 
     /**

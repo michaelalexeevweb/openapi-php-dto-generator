@@ -941,7 +941,8 @@ trait RendersLaravelValidation
             $this->importLibraryClass(fqcn: 'InvalidArgumentException', namespace: $namespace, useStatements: $imports);
         }
 
-        foreach ($this->generatedClassesNamedByType($property['type']) as $nested) {
+        // The members a union component is built as are named by the hydration, not by the type.
+        foreach ([...$this->generatedClassesNamedByType($property['type']), ...$this->laravelUndiscriminatedUnionClasses($property)] as $nested) {
             $this->appendImportForClass($imports, $nested, $namespace, $className);
         }
 
@@ -958,6 +959,8 @@ trait RendersLaravelValidation
                 $referenced !== null
                 && $this->attributeMode === self::ATTRIBUTE_MODE_LARAVEL
                 && $this->isUnhydratableUnionClass($referenced)
+                // A property typed as such a component is built as its matching member instead.
+                && !($referenced === $this->laravelDtoClass($property) && $this->laravelUndiscriminatedUnionClasses($property) !== [])
             ) {
                 $this->importLibraryClass(fqcn: 'RuntimeException', namespace: $namespace, useStatements: $imports);
             }
@@ -1369,9 +1372,14 @@ trait RendersLaravelValidation
     /**
      * The object-wide keywords of a class schema, pruned of what the rule map already covers.
      *
+     * `$folded`: the class is spelled out inside another schema — a union branch, a variant, a cycle —
+     * where nothing below it is materialized. The extraction then runs nested in the outer one, which
+     * does not inline references, so `additionalProperties: {$ref: Flag}` scrubbed to nothing and the
+     * branch took any extra key. Inlined here first, as the union-class fold does.
+     *
      * @return array<string, mixed>
      */
-    private function laravelObjectLevelConstraints(string $className): array
+    private function laravelObjectLevelConstraints(string $className, bool $folded = false): array
     {
         $schema = $this->dtoSchemas[$className] ?? [];
         if ($schema === []) {
@@ -1380,7 +1388,9 @@ trait RendersLaravelValidation
 
         $extracted = $this->withConstraintSourceOf(
             className: $className,
-            extraction: fn(): array => $this->extractValidationConstraints($schema),
+            extraction: fn(): array => $this->extractValidationConstraints(
+                $folded ? $this->inlineNestedContainerValidation(schema: $schema, belowMaterialization: true) : $schema,
+            ),
         );
         $objectLevel = [];
         foreach (self::LARAVEL_OBJECT_LEVEL_KEYWORDS as $keyword) {
@@ -2542,8 +2552,9 @@ trait RendersLaravelValidation
      * passed validation and broke the `match` in `fromValidated()`: a 500.
      *
      * The mapping is the class's own, the implicit one included, so a document that writes none is
-     * dispatched by schema name exactly as the hydrator does. laravel mode only: laravel-data builds
-     * its members its own way, and its validation must keep agreeing with that.
+     * dispatched by schema name exactly as the hydrator does. laravel-data too since 2.15.153: its morph
+     * base builds the member the tag names, so members that overlap apart from the tag were refused
+     * there as matching twice.
      *
      * @param array<string, mixed> $definition the union component as the document declared it
      * @param array<string, mixed> $extracted the fold built branch by branch
@@ -2554,7 +2565,7 @@ trait RendersLaravelValidation
         $mapping = $this->discriminatorSchemas[$className]['mapping'] ?? [];
         $variants = $definition['oneOf'] ?? null;
         $branches = $extracted['oneOf'] ?? null;
-        if ($this->attributeMode !== self::ATTRIBUTE_MODE_LARAVEL || $mapping === [] || !is_array($variants) || !is_array($branches)) {
+        if ($mapping === [] || !is_array($variants) || !is_array($branches)) {
             return null;
         }
 
@@ -2636,7 +2647,7 @@ trait RendersLaravelValidation
         // on its own refused an undeclared key, a fifth property past `maxProperties` or a missing
         // `dependentRequired` partner, and the same class reached through a property accepted all three
         // — the undeclared key then vanished on hydration.
-        $objectLevel = $this->laravelObjectLevelConstraints($className);
+        $objectLevel = $this->laravelObjectLevelConstraints(className: $className, folded: $insideRecursiveFold);
 
         if ($properties === [] && $required === [] && $objectLevel === []) {
             return [];
@@ -3028,10 +3039,7 @@ trait RendersLaravelValidation
             }
             $classReferenced = false;
             $objectMembers = 0;
-            foreach ($members as $member) {
-                if (!is_array($member)) {
-                    continue;
-                }
+            foreach ($this->laravelUnionMembersFlattened($members) as $member) {
                 if (array_key_exists('$ref', $member)) {
                     $classReferenced = true;
 
@@ -3051,6 +3059,41 @@ trait RendersLaravelValidation
     }
 
     /**
+     * The members of a union, with a member that is itself only a union (`oneOf: [{oneOf: [A, B]},
+     * {type: null}]`, a nullable wrapper around the real one) replaced by ITS members. Counted at the top
+     * alone, the wrapper was one object member, the free-form `{type: object, required: [gecko]}` inside
+     * it went unseen, and every object was built into the class beside it — `{"gecko": 1}` died in the
+     * constructor for the `crane` the class requires.
+     *
+     * @param array<mixed> $members
+     * @return list<array<mixed>>
+     */
+    private function laravelUnionMembersFlattened(array $members, int $depth = 0): array
+    {
+        $flattened = [];
+        foreach ($members as $member) {
+            if (!is_array($member)) {
+                continue;
+            }
+            $nested = $member['oneOf'] ?? $member['anyOf'] ?? null;
+            if (
+                $depth < 8
+                && is_array($nested)
+                && !array_key_exists('$ref', $member)
+                && !array_key_exists('type', $member)
+                && !array_key_exists('properties', $member)
+            ) {
+                $flattened = [...$flattened, ...$this->laravelUnionMembersFlattened($nested, $depth + 1)];
+
+                continue;
+            }
+            $flattened[] = $member;
+        }
+
+        return $flattened;
+    }
+
+    /**
      * The PHP condition, beside the "array with keys" test, under which `$valueAccess` is built into
      * the union's class; `null` where every such array is the class.
      *
@@ -3067,9 +3110,9 @@ trait RendersLaravelValidation
 
     /**
      * The classes of a union of them (see `unionClassMembers()`) that the value alone has to choose
-     * between: `[]` where an inline `discriminator` names the member instead — Laravel mode dispatches
-     * on it, and laravel-data builds such a union its own way (README.support-matrix, "an inline
-     * `discriminator` on a property").
+     * between: `[]` where an inline `discriminator` names the member instead — both Laravel modes
+     * dispatch on its tag (see `laravelInlineDiscriminator()`). A property typed as a union COMPONENT of
+     * classes counts too, with the component's members (see `laravelUnionComponentMembers()`).
      *
      * A list member beside them is no class (`Olive|Teal|array`): the classes are still chosen between,
      * for a JSON object — the caller tells it from the list by its keys. Left out, laravel-data
@@ -3099,8 +3142,62 @@ trait RendersLaravelValidation
             array: $this->unionMembersBesideNull($property['type']),
             callback: static fn(string $member): bool => $member !== 'array',
         );
+        $classes = $this->unionClassMembers(implode('|', $members));
+        if ($classes !== []) {
+            return $classes;
+        }
 
-        return $this->unionClassMembers(implode('|', $members));
+        // `lynx: {$ref: Shade}` with `Shade: {anyOf: [$ref Olive, $ref Teal]}` — the same choice, spelled
+        // as a component. The property is typed as the interface, which has no factory, so the request
+        // died on the generator's own "no discriminator" throw (laravel) or a TypeError (laravel-data)
+        // for every payload the validator had accepted. The members are known here, so it is built as
+        // the inline `Olive|Teal` is.
+        $component = $this->laravelDtoClass($property);
+
+        return $component === null ? [] : $this->laravelUnionComponentMembers($component);
+    }
+
+    /**
+     * The member classes of a union component of classes with no discriminator (`Shade: {anyOf: [$ref
+     * Olive, $ref Teal]}`), in document order; `[]` for anything else — a member written inline, one that
+     * is itself a union, or a single member, which leaves the class to the "no discriminator" throw.
+     *
+     * @return list<string>
+     */
+    private function laravelUnionComponentMembers(string $className): array
+    {
+        if (!$this->isUnhydratableUnionClass($className)) {
+            return [];
+        }
+        $schema = $this->dtoSchemas[$className] ?? [];
+        $branches = $schema['oneOf'] ?? $schema['anyOf'] ?? null;
+        if (!is_array($branches)) {
+            return [];
+        }
+
+        $members = [];
+        foreach ($branches as $branch) {
+            if ($branch === ['type' => 'null']) {
+                continue;
+            }
+            $ref = is_array($branch) && count($branch) === 1 ? ($branch['$ref'] ?? null) : null;
+            if (!is_string($ref)) {
+                return [];
+            }
+            $member = $this->schemaRefToClassName($ref, $this->constraintSourceFile ?? $this->rootSpecFile);
+            $memberSchema = $this->dtoSchemas[$member] ?? null;
+            if (
+                !is_array($memberSchema)
+                || $this->rendersAsUnion($memberSchema)
+                || array_key_exists($member, $this->discriminatorSchemas)
+                || in_array($member, $members, true)
+            ) {
+                return [];
+            }
+            $members[] = $member;
+        }
+
+        return count($members) >= 2 ? $members : [];
     }
 
     /**
@@ -3312,6 +3409,11 @@ trait RendersLaravelValidation
     private function laravelDataFirstUnionMember(array $property): ?string
     {
         if ($this->attributeMode !== self::ATTRIBUTE_MODE_LARAVEL_DATA || str_contains($property['type'], '<')) {
+            return null;
+        }
+        // An inline `discriminator` names the member, and the constructor builds that one: the dispatch
+        // checks it by its tag. The first member's rules refused every valid payload of the others.
+        if ($this->laravelInlineDiscriminator($property) !== null) {
             return null;
         }
         $members = array_values(array_filter(

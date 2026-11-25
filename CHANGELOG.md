@@ -3,6 +3,36 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.153 — 2026-11-25
+
+- fuzz round eight: 15 fixes
+- $ref siblings inside allOf kept
+- union $ref branch keeps class check
+- nullable date map values read
+- laravel component class unions built
+- laravel-data honours discriminators
+
+The eighth fuzz round took the round-seven leftovers and 22 findings from fresh seeds: 11 root causes, 15 fixes,
+each with a test that failed before, and 4 framework limits documented. A fresh run on new seeds found 10:
+2 in the shapes covered before round seven (from 8), 8 in unions of several objects (from 14).
+
+**Regenerate after upgrading, in every mode.**
+
+- every mode: a property declared in an `allOf` fragment as `{$ref: X, properties: {…}}` gets the same merged
+  class as one declared directly — the keys beside the reference were dropped and unchecked; an `allOf`
+  fragment that is itself a `$ref` with siblings keeps both halves;
+- runtime, symfony: a union branch `{type: object, allOf: [{$ref: Teal}]}` stays "is a Teal" (every object
+  matched it, and a `oneOf` refused the other branch's values as matching twice); runtime reads a map value
+  `anyOf: [{format: date}, {type: null}]` as a date, not a date-time;
+- symfony: a union around a member that has its own interpreter is still counted by the enclosing DTO; a list
+  member whose items are `$ref` with siblings checks both;
+- laravel, laravel-data: a property typed as a union component of classes (`$ref: Shade`) is built as the
+  member it matches (it was an exception or a TypeError); laravel-data honours an inline discriminator and
+  dispatches a component one; union branches with a `$ref` extra-key schema check extra keys;
+- yii3: inline `allOf` branches of a held union are spelled out and checked.
+
+Tests: the suite's `memory_limit` is 2G — every generated class it loads stays loaded, and 5400 tests passed 1G.
+
 ## 2.15.152 — 2026-11-25
 
 - fuzz round seven: 16 fixes

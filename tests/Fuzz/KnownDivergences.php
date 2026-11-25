@@ -203,20 +203,6 @@ final class KnownDivergences
                 'tagsAny' => ['itemsOf:dto', 'itemsOf:discriminated'],
                 'row' => 'support matrix: "a non-object ITEM of a list or map of DTOs" (yii3 drops it)',
             ],
-            [
-                'modes' => [GenerationMode::LaravelData],
-                'category' => 'wrong-accept',
-                'kinds' => [''],
-                'tagsAll' => ['inlineDiscriminator'],
-                'row' => 'support matrix: "an inline `discriminator` on a property (no component base)" (laravel-data validates the first member)',
-            ],
-            [
-                'modes' => [GenerationMode::LaravelData],
-                'category' => 'wrong-refuse',
-                'kinds' => ['valid'],
-                'tagsAll' => ['inlineDiscriminator'],
-                'row' => 'support matrix: "an inline `discriminator` on a property (no component base)" (laravel-data validates the first member)',
-            ],
         ];
     }
 }

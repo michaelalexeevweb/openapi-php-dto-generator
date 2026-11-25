@@ -257,7 +257,7 @@ trait RendersLaravelDataDto
         // member's own enum cast threw `CannotCastEnum` on the other member's tag — a 500.
         $uncastUnionNames = [];
         foreach ($properties as $property) {
-            if ($this->laravelUndiscriminatedUnionClasses($property) !== []) {
+            if ($this->laravelUndiscriminatedUnionClasses($property) !== [] || $this->laravelInlineDiscriminator($property) !== null) {
                 $uncastUnionNames[] = $property['name'];
             }
         }
@@ -703,7 +703,9 @@ trait RendersLaravelDataDto
         // inside that first member then read its discriminator out of the dog's string `toy`: a
         // `TypeError` in `DataMorphClassResolver`, a 500. Walking the first member refuses that value
         // first. A first member that is itself a union base is left alone: its own check would refuse
-        // the other members' payloads outright.
+        // the other members' payloads outright. It holds where an inline `discriminator` names the
+        // member as well: the constructor builds that one, but laravel-data's messages-and-attributes
+        // resolver still walks the first data class of the type, whatever the tag says.
         foreach ($this->unionMembersBesideNull($property['type']) as $member) {
             $memberClass = $this->shortClassName($member);
             if (!array_key_exists($memberClass, $this->dtoSchemas) || $this->laravelIsEnumClass($memberClass)) {
@@ -1061,6 +1063,34 @@ trait RendersLaravelDataDto
             );
             $unionDataClass = $lastDataClass;
         }
+        // `Cat|Dog` with an inline `discriminator`: the tag names the member — the mapping's, else each
+        // member's own name. Built by the first member that validates instead, `{"kind": "Dog", "bark":
+        // 5}` came out a `Cat` — members that overlap apart from the tag both accept it — and `bark` was
+        // dropped. A tag the mapping does not name is refused by the validator first; built without
+        // one, it throws as Laravel mode's hydrator does.
+        $inlineDiscriminator = $enumItemClass === null && $unionDataClass === null ? $this->laravelInlineDiscriminator($property) : null;
+        if ($inlineDiscriminator !== null) {
+            $tagAccess = sprintf('%s[%s]', $variable, $this->phpStringLiteral($inlineDiscriminator['propertyName']));
+            $arms = [];
+            foreach ($inlineDiscriminator['mapping'] as $tagValue => $taggedClass) {
+                $arms[] = sprintf('%s => %s::from(%s)', $this->phpStringLiteral($tagValue), $this->shortClassName($taggedClass), $variable);
+                // Any member: what matters below is that the parameter takes the payload array.
+                $unionDataClass = $this->shortClassName($taggedClass);
+            }
+            $arms[] = sprintf(
+                'default => throw new %s(sprintf(\'Unknown %s "%%s".\', (string)(%s ?? \'\')))',
+                $this->libraryClassRef('InvalidArgumentException', $namespace, $attributeImports),
+                str_replace('%', '%%', $this->escapeSingleQuoted($inlineDiscriminator['propertyName'])),
+                $tagAccess,
+            );
+            $enumCast = sprintf(
+                'is_array(%1$s) ? match (%2$s ?? null) { %3$s } : (%4$s)',
+                $variable,
+                $tagAccess,
+                implode(', ', $arms),
+                $enumCast,
+            );
+        }
         $propertyType = $declaredType;
         $parameterType = $declaredType;
         if ($enumCast !== $variable) {
@@ -1244,7 +1274,7 @@ trait RendersLaravelDataDto
         $target = $itemClass ?? $this->laravelDtoClass($property) ?? $this->unionClassBesideScalars($property['type']);
         // `Olive|Teal` as well: laravel-data resolved the FIRST class's rules on every value, so a valid
         // Teal was refused for Olive's `required`. The emitted union interpreter judges the members.
-        if ($target === null && $this->laravelUndiscriminatedUnionClasses($property) !== []) {
+        if ($target === null && ($this->laravelUndiscriminatedUnionClasses($property) !== [] || $this->laravelInlineDiscriminator($property) !== null)) {
             return true;
         }
         if ($target === null) {

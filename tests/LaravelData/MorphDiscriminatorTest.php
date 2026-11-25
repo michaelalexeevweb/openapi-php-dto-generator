@@ -235,10 +235,12 @@ final class MorphDiscriminatorTest extends TestCase
         yield 'null item of a nullable list' => ['{"maybePets":[null]}', ['maybePets.0']];
         // Neighbours: what was a 422 already stays one.
         yield 'a string for a plain object' => ['{"kennel":"x"}', ['kennel']];
-        // The union's own rules answer a null, under its discriminator.
-        yield 'null for the union' => ['{"pet":null}', ['pet.kind']];
+        // The union's own rules answer a null, under its discriminator; the interpreter, which checks the
+        // union by the member its tag names since 2.15.153, refuses the null object as well.
+        yield 'null for the union' => ['{"pet":null}', ['pet.kind', 'pet']];
         yield 'a string for the list' => ['{"pets":"x"}', ['pets']];
-        yield 'an unmapped discriminator' => ['{"pet":{"kind":"cow"}}', ['pet.kind', 'pet.lives', 'pet.size']];
+        // Judged by the tag alone: a member the tag does not name is not asked for its fields.
+        yield 'an unmapped discriminator' => ['{"pet":{"kind":"cow"}}', ['pet.kind']];
     }
 
     /**

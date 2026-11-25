@@ -110,6 +110,12 @@ trait RendersSchemaInterpreter
      *                              replaces the one emitted here. Yii3 mode does: presence there is an
      *                              uninitialised property, not a boolean flag. Its two constants are read
      *                              by nothing once that swap happens, so they are not emitted either.
+     * @param bool $judgesUnionsAroundNestedDtos whether a nested DTO's skip still judges the `oneOf` /
+     *                                           `anyOf` around it against its payload view. Symfony
+     *                                           needs it: nothing else counts those branches.
+     *                                           Yii3 does not — a union of classes is held as the decoded
+     *                                           array there, and its native rules read the keys the payload
+     *                                           view does not hold (a `required` name no property declares).
      * @return array{consts: string, methods: string}
      */
     private function renderInterpreterBlock(
@@ -120,6 +126,7 @@ trait RendersSchemaInterpreter
         bool $payloadIsHydratedObject = true,
         array $recursiveSchemas = [],
         bool $ownsPayloadView = false,
+        bool $judgesUnionsAroundNestedDtos = true,
     ): array {
         if ($constraints === []) {
             return ['consts' => '', 'methods' => ''];
@@ -146,6 +153,7 @@ trait RendersSchemaInterpreter
             valueKinds: $valueKinds,
             payloadIsHydratedObject: $payloadIsHydratedObject,
             resolvesRecursiveRefs: $recursiveSchemas !== [],
+            judgesUnionsAroundNestedDtos: $judgesUnionsAroundNestedDtos,
         );
 
         // The emitted helpers name every class they use in full — `\BackedEnum`, `\stdClass` — and the
@@ -201,6 +209,7 @@ PHP,
         array $valueKinds,
         bool $payloadIsHydratedObject = true,
         bool $resolvesRecursiveRefs = false,
+        bool $judgesUnionsAroundNestedDtos = true,
     ): string {
         $hasConst = $this->schemaUsesKeyword($constraints, 'const');
         $hasType = $this->schemaUsesKeyword($constraints, 'type');
@@ -305,21 +314,43 @@ PHP,
         // scalar, so the helper would be emitted to answer `false` at four call sites.
         $needsGeneratedDtoSkip = $payloadIsHydratedObject
             && ($hasProperties || $hasPrefixItems || $hasItems || $hasAdditionalProperties);
+        // What the nested DTO cannot see is the union AROUND it: a member class checks its own object
+        // keywords, never the `oneOf` / `anyOf` it is one branch of — only the enclosing schema can count
+        // which branches the value matches. Skipped together with the rest, an overlapping `oneOf` whose
+        // matched member had an interpreter of its own accepted `{}` as matching once. A `not` or an
+        // `allOf` beside the properties is not around the class but part of it — the class checks it
+        // itself, and judging it here too reported every violation twice.
+        $needsNestedDtoApplicators = $judgesUnionsAroundNestedDtos && $needsGeneratedDtoSkip && ($hasOneOf || $hasAnyOf);
         // The guard at each of the four places a nested value is walked into, emitted only when such a
         // value can be a DTO at all.
         $skipNestedDto = static function (
             string $accessor,
+            string $schemaAccessor,
+            string $pathExpression,
             string $indent = '                ',
             string $extraBeforeContinue = '',
-        ) use ($needsGeneratedDtoSkip): string {
+        ) use (
+            $needsGeneratedDtoSkip,
+            $needsNestedDtoApplicators,
+        ): string {
             if (!$needsGeneratedDtoSkip) {
                 return '';
             }
+            $applicators = $needsNestedDtoApplicators
+                ? sprintf(
+                    "%s    \$errors = [...\$errors, ...\$this->validateOpenApiApplicatorsAroundDto(%s, %s, %s, \$depth + 1)];\n",
+                    $indent,
+                    $accessor,
+                    $schemaAccessor,
+                    $pathExpression,
+                )
+                : '';
 
             return sprintf(
-                "%sif (\$this->isGeneratedOpenApiDtoObject(%s)) {\n%s%s    continue;\n%s}\n",
+                "%sif (\$this->isGeneratedOpenApiDtoObject(%s)) {\n%s%s%s    continue;\n%s}\n",
                 $indent,
                 $accessor,
+                $applicators,
                 $extraBeforeContinue,
                 $indent,
                 $indent,
@@ -1016,7 +1047,11 @@ PHP;
             $trackDefined = $needsObjectTracking
                 ? "                \$definedProperties[\$propertyName] = true;\n"
                 : '';
-            $skipNestedDtoProperty = $skipNestedDto('$structuredValue[$propertyName]');
+            $skipNestedDtoProperty = $skipNestedDto(
+                accessor: '$structuredValue[$propertyName]',
+                schemaAccessor: '$propertySchema',
+                pathExpression: '$this->openApiChildPath($path, $propertyName)',
+            );
             $sections[] = <<<PHP
         if (is_array(\$schema['properties'] ?? null) && is_array(\$structuredValue)) {
             foreach (\$schema['properties'] as \$propertyName => \$propertySchema) {
@@ -1171,7 +1206,11 @@ PHP;
             $trackPrefixIndex = $needsItemIndexTracking
                 ? "                \$evaluatedItemIndices[\$index] = true;\n"
                 : '';
-            $skipNestedDtoPrefixItem = $skipNestedDto('$value[$index]');
+            $skipNestedDtoPrefixItem = $skipNestedDto(
+                accessor: '$value[$index]',
+                schemaAccessor: '$itemSchema',
+                pathExpression: "\$path . '[' . \$index . ']'",
+            );
             $sections[] = <<<PHP
         if (\$listValue && is_array(\$schema['prefixItems'] ?? null)) {
 {$prefixOffsetAssignment}            foreach (\$schema['prefixItems'] as \$index => \$itemSchema) {
@@ -1194,7 +1233,11 @@ PHP;
             $trackItemIndex = $needsItemIndexTracking
                 ? "                \$evaluatedItemIndices[\$index] = true;\n"
                 : '';
-            $skipNestedDtoItem = $skipNestedDto('$itemValue');
+            $skipNestedDtoItem = $skipNestedDto(
+                accessor: '$itemValue',
+                schemaAccessor: "\$schema['items']",
+                pathExpression: "\$path . '[' . \$index . ']'",
+            );
             // `items: false` is the BOOLEAN spelling, and it is what closes a tuple: `prefixItems`
             // names the members, `items: false` says there are no others. Only the schema spelling was
             // read here, so a closed tuple accepted any tail — and the constants did not even carry the
@@ -1403,7 +1446,11 @@ PHP;
         }
 PHP,
                 $needsApplicatorItems ? "            \$evaluatedItemIndices += \$this->collectOpenApiApplicatorItems(\$value, \$schema, \$depth);\n" : '',
-                $skipNestedDto('$itemValue'),
+                $skipNestedDto(
+                    accessor: '$itemValue',
+                    schemaAccessor: '$unevaluatedItemsSchema',
+                    pathExpression: "\$path . '[' . \$index . ']'",
+                ),
             );
         }
 
@@ -1420,9 +1467,11 @@ PHP;
 
             if ($hasAdditionalProperties) {
                 $skipNestedDtoExtra = $skipNestedDto(
-                    '$propertyValue',
-                    '                    ',
-                    "                        \$evaluatedProperties[\$propertyName] = true;\n",
+                    accessor: '$propertyValue',
+                    schemaAccessor: '$extraPropertySchema',
+                    pathExpression: '$this->openApiChildPath($path, $propertyName)',
+                    indent: '                    ',
+                    extraBeforeContinue: "                        \$evaluatedProperties[\$propertyName] = true;\n",
                 );
                 $sections[] = <<<PHP
             if (\$extraPropertySchema === false || is_array(\$extraPropertySchema)) {
@@ -1473,7 +1522,12 @@ PHP;
                 }
             }
 PHP,
-                    $skipNestedDto('$propertyValue', '                    '),
+                    $skipNestedDto(
+                        accessor: '$propertyValue',
+                        schemaAccessor: '$unevaluatedProperties',
+                        pathExpression: "\$path . '.' . \$propertyName",
+                        indent: '                    ',
+                    ),
                 );
             }
 
@@ -1840,6 +1894,30 @@ PHP;
         return is_object($value)
             && method_exists($value, 'validateOpenApiConstraints')
             && method_exists($value, 'toOpenApiValidationPayload');
+    }
+PHP;
+        }
+
+        if ($needsNestedDtoApplicators) {
+            $sections[] = <<<'PHP'
+
+    /**
+     * The union a nested DTO is one branch of: the DTO checks its own keywords — a `not` or `allOf`
+     * beside them included — the enclosing schema judges which of its branches the value matches.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<int, string>
+     */
+    private function validateOpenApiApplicatorsAroundDto(mixed $value, array $schema, string $path, int $depth): array
+    {
+        $applicators = [];
+        foreach (['oneOf', 'anyOf', 'x-discriminator-property', 'x-discriminator-php-property', 'x-discriminator-map'] as $keyword) {
+            if (array_key_exists($keyword, $schema)) {
+                $applicators[$keyword] = $schema[$keyword];
+            }
+        }
+
+        return $applicators === [] ? [] : $this->validateOpenApiNode($value, $applicators, $path, $depth);
     }
 PHP;
         }

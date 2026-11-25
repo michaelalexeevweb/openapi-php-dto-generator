@@ -136,13 +136,28 @@ trait RendersSymfonyDto
     }
 
     /**
+     * Read through a member that is only a union itself — `oneOf: [{oneOf: [{type: object, required:
+     * [gecko]}, {…class…}]}, {type: null}]`, the nullable wrapper around the real union. The free-form
+     * member one level down was not seen, the class kept in the type, and the serializer built every
+     * object into it: `{"gecko": 1}` refused for the `crane` the class requires.
+     *
      * @param array<mixed> $schema
      */
-    private function symfonyUnionHasFreeFormObjectMember(array $schema): bool
+    private function symfonyUnionHasFreeFormObjectMember(array $schema, int $depth = 0): bool
     {
         foreach (['oneOf', 'anyOf'] as $keyword) {
             foreach (is_array($schema[$keyword] ?? null) ? $schema[$keyword] : [] as $branch) {
                 if (is_array($branch) && $this->isFreeFormObjectSchema($branch)) {
+                    return true;
+                }
+                if (
+                    $depth < 8
+                    && is_array($branch)
+                    && !array_key_exists('$ref', $branch)
+                    && !array_key_exists('type', $branch)
+                    && !array_key_exists('properties', $branch)
+                    && $this->symfonyUnionHasFreeFormObjectMember($branch, $depth + 1)
+                ) {
                     return true;
                 }
             }
@@ -687,6 +702,11 @@ trait RendersSymfonyDto
      * against a map of a nullable union component), and as a bare `items` / `additionalProperties` it
      * extracted to nothing and accepted every invalid one.
      *
+     * Where the property's type names no generated class at all (`oneOf: [{$ref: Teal}, {type: object,
+     * additionalProperties: false}]` is held as `?array`), an object `$ref` branch is written out too:
+     * "is a Teal" was never true of the array, so `{"panda": -12}` matched no branch and `{}` matched
+     * only the closed member.
+     *
      * @param array<string, mixed> $classSchema
      * @return array<string, mixed>
      */
@@ -697,28 +717,95 @@ trait RendersSymfonyDto
         }
         $rawHeld = [];
         // Typed as rendered: a list of a union component beside a scalar is `array<Shape>|int`, and
-        // the serializer builds its variants.
-        foreach ($this->symfonyWithUnionListsTyped($className, $this->getSchemaProperties($className)) as $property) {
-            if (in_array('array', explode('|', ltrim($property['type'], '?')), true)) {
-                $rawHeld[$property['openApiName']] = true;
+        // the serializer builds its variants; a union with a free-form or closed empty object member
+        // is held as the decoded `array`, its classes dropped.
+        $rendered = $this->symfonyWithFreeFormObjectUnionsHeldAsArray(
+            className: $className,
+            properties: $this->symfonyWithUnionListsTyped($className, $this->getSchemaProperties($className)),
+        );
+        foreach ($rendered as $property) {
+            $typeMembers = explode('|', ltrim($property['type'], '?'));
+            if (in_array('array', $typeMembers, true)) {
+                $rawHeld[$property['openApiName']] = $typeMembers;
             }
         }
         $properties = [];
         foreach ($classSchema['properties'] as $name => $propertySchema) {
             if (is_array($propertySchema) && array_key_exists((string)$name, $rawHeld)) {
-                $propertySchema = $this->symfonyContainerUnionReferenceInlined($propertySchema);
-                foreach (['oneOf', 'anyOf'] as $keyword) {
-                    foreach (is_array($propertySchema[$keyword] ?? null) ? $propertySchema[$keyword] : [] as $index => $branch) {
-                        if (is_array($branch) && $this->isContainerBranch($branch)) {
-                            $propertySchema[$keyword][$index] = $this->symfonyRawContainerInlined($branch);
-                        }
-                    }
-                }
+                $propertySchema = $this->symfonyHeldUnionBranchesInlined(
+                    schema: $this->symfonyContainerUnionReferenceInlined($propertySchema),
+                    className: $className,
+                    holdsNoClass: $this->symfonyTypeHoldsNoGeneratedClass($rawHeld[(string)$name]),
+                );
             }
             $properties[$name] = $propertySchema;
         }
 
         return ['properties' => $properties] + $classSchema;
+    }
+
+    /**
+     * The `oneOf` / `anyOf` branches of a union held as the decoded array, see
+     * `symfonyWithRawContainerBranchesInlined()` — a union NESTED in a branch included, which is held as
+     * the same array.
+     *
+     * An inline object branch written with `allOf` is merged and written out as well. It was left for
+     * the class it names, which the array never becomes: the filter reduced it to `{type: object}`,
+     * `required` and `properties` gone, so `{}` matched it — and `{"gecko": 1}` matched it beside the
+     * branch that requires `gecko`, refused as matching twice.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<string, mixed>
+     */
+    private function symfonyHeldUnionBranchesInlined(array $schema, string $className, bool $holdsNoClass, int $depth = 0): array
+    {
+        if ($depth >= 8) {
+            return $schema;
+        }
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            foreach (is_array($schema[$keyword] ?? null) ? $schema[$keyword] : [] as $index => $branch) {
+                if (!is_array($branch)) {
+                    continue;
+                }
+                if ($this->isContainerBranch($branch) || ($holdsNoClass && $this->splitBranchReference($branch)[0] !== null)) {
+                    $schema[$keyword][$index] = $this->symfonyRawContainerInlined($branch);
+
+                    continue;
+                }
+                if (array_key_exists('$ref', $branch)) {
+                    continue;
+                }
+                $branch = $this->symfonyHeldUnionBranchesInlined(
+                    schema: $branch,
+                    className: $className,
+                    holdsNoClass: $holdsNoClass,
+                    depth: $depth + 1,
+                );
+                if (is_array($branch['allOf'] ?? null) && $this->interpreterShadowType($branch) === 'object') {
+                    $branch = $this->symfonyRawContainerInlined($this->classSchemaWithInlineAllOfMerged(schemaDefinition: $branch, className: $className));
+                }
+                $schema[$keyword][$index] = $branch;
+            }
+        }
+
+        return $schema;
+    }
+
+    /**
+     * Whether a rendered property type names no generated class or enum: every member a PHP type of its
+     * own, so the serializer hydrates nothing the property's union branches name.
+     *
+     * @param list<string> $typeMembers
+     */
+    private function symfonyTypeHoldsNoGeneratedClass(array $typeMembers): bool
+    {
+        foreach ($typeMembers as $member) {
+            if (array_key_exists($member, $this->dtoSchemas) || array_key_exists($member, $this->enumSchemas)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -758,7 +845,10 @@ trait RendersSymfonyDto
             }
         }
 
-        return $own + $definition;
+        // The component as written still holds `items: {$ref: Indigo, properties: {ferret: …}}`; inlined
+        // in that spelling, the keys beside the reference took the place of Indigo's own, which went
+        // unchecked. Both halves, as the same union written on the property is judged.
+        return $this->objectReferencesWithTheirSiblings($own + $definition);
     }
 
     /**

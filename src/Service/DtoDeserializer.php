@@ -1388,10 +1388,13 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 )
                 : null;
 
-            // Pre-compute temporal format for DateTimeImmutable[] array items.
-            // The items schema (fieldConstraints['items']) may carry format: date, which must
-            // be propagated so date-only strings are accepted without a time component.
-            $itemsConstraints = is_array($fieldConstraints['items'] ?? null) ? $fieldConstraints['items'] : null;
+            // Pre-compute temporal format for DateTimeImmutable[] array items and map values.
+            // The items schema (fieldConstraints['items']) or the value schema of a map
+            // (fieldConstraints['additionalProperties']) may carry format: date, which must be
+            // propagated so date-only strings are accepted without a time component. Read from the
+            // getter's docblock alone, a map value `anyOf: [{format: date}, {type: 'null'}]` — which
+            // carries none — was parsed as a date-time: every date refused, every date-time accepted.
+            $itemsConstraints = is_array($itemSchema) ? $itemSchema : null;
             $arrayItemTemporalFormat = ($arrayItemType === DateTimeImmutable::class)
                 ? $this->resolveTemporalFormat(
                     reflection: $reflection,
