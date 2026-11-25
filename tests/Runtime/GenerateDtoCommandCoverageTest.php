@@ -198,6 +198,59 @@ final class GenerateDtoCommandCoverageTest extends TestCase
         $this->assertStringContainsString('namespace Cli\Generated;', $content);
     }
 
+    /**
+     * A list-or-object union's `toArray()` asks `EmptyJsonObjectFields` whether its `[]` arrived as
+     * `{}`: from the vendored copy when the services are vendored, from the package otherwise — and a
+     * class without such a union names it nowhere.
+     */
+    public function testAListOrObjectUnionNamesTheEmptyObjectNotesWhereTheServicesLive(): void
+    {
+        $spec = $this->writeSpec(
+            contents: <<<'YAML'
+                openapi: 3.0.3
+                info:
+                  title: CLI list or object
+                  version: 1.0.0
+                paths: { }
+                components:
+                  schemas:
+                    Kennel:
+                      type: object
+                      properties:
+                        fox:
+                          anyOf:
+                            - {type: array, items: {type: integer}}
+                            - {type: object}
+                        hen: {type: object}
+                    Perch:
+                      type: object
+                      properties:
+                        wren: {type: string}
+                YAML,
+        );
+
+        $vendored = $this->outputDirectory . '/cli-list-or-object';
+        $exitCode = $this->buildTester()->execute([
+            '--file' => $spec,
+            '--directory' => $vendored,
+            '--namespace' => 'Cli\Kennels',
+            '--dto-generator-directory' => $this->outputDirectory . '/cli-list-or-object-common',
+            '--dto-generator-namespace' => 'Cli\KennelCommon',
+        ]);
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString('use Cli\KennelCommon\EmptyJsonObjectFields;', (string)file_get_contents($vendored . '/Kennel.php'));
+        $this->assertStringNotContainsString('EmptyJsonObjectFields', (string)file_get_contents($vendored . '/Perch.php'));
+
+        $packaged = $this->outputDirectory . '/cli-list-or-object-packaged';
+        $exitCode = $this->buildTester()->execute([
+            '--file' => $spec,
+            '--directory' => $packaged,
+            '--namespace' => 'Cli\PackagedKennels',
+        ]);
+        $this->assertSame(0, $exitCode);
+        $this->assertStringContainsString('use OpenapiPhpDtoGenerator\Service\EmptyJsonObjectFields;', (string)file_get_contents($packaged . '/Kennel.php'));
+    }
+
     public function testExecuteDerivesGeneratorNamespaceFromCustomDirectory(): void
     {
         $spec = $this->writeSpec(

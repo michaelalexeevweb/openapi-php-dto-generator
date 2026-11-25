@@ -104,7 +104,8 @@ final class FuzzHarnessTest extends TestCase
 
     /**
      * `{}` for an object that requires a key beside an `array` member, or for a bare list, is the `[]`
-     * yii3 decodes it to: tagged, and filed under the empty-container row for yii3 alone.
+     * symfony and yii3 decode it to: tagged, and filed under the empty-container row for those two
+     * (`anyOf: [{type: object, minProperties: 1}, {type: array}]` took `{}` in symfony too).
      */
     public function testAnEmptyObjectBesideAListIsTheEmptyContainerRow(): void
     {
@@ -126,13 +127,54 @@ final class FuzzHarnessTest extends TestCase
             $this->assertNotSame([], $empty, $label);
             foreach ($empty as $mutation) {
                 $this->assertSame($besideList, in_array('emptyBesideArray', $mutation['tags'], true), $label);
-                $row = KnownDivergences::explain(mode: GenerationMode::Yii3, category: 'wrong-accept', kind: $mutation['kind'], tags: $mutation['tags']);
-                $this->assertSame($besideList, $row !== null, $label);
+                foreach ([GenerationMode::Symfony, GenerationMode::Yii3] as $mode) {
+                    $row = KnownDivergences::explain(mode: $mode, category: 'wrong-accept', kind: $mutation['kind'], tags: $mutation['tags']);
+                    $this->assertSame($besideList, $row !== null, $label . ', ' . $mode->value);
+                }
             }
         }
+        $this->assertNotNull(KnownDivergences::explain(mode: GenerationMode::Symfony, category: 'wrong-accept', kind: 'tooFewProperties', tags: ['in:union', 'site:map', 'emptyBesideArray']));
         $tags = ['in:union', 'site:dto', 'emptyBesideArray'];
         $this->assertNull(KnownDivergences::explain(mode: GenerationMode::Runtime, category: 'wrong-accept', kind: 'missingRequired', tags: $tags));
+        $this->assertNull(KnownDivergences::explain(mode: GenerationMode::Laravel, category: 'wrong-accept', kind: 'missingRequired', tags: $tags));
         $this->assertNull(KnownDivergences::explain(mode: GenerationMode::Yii3, category: 'wrong-refuse', kind: 'missingRequired', tags: $tags));
+    }
+
+    /**
+     * `{}` is also drawn as a VALID instance of an object member that asks for no key beside an `array`
+     * member — the runtime once refused it on re-validation, judged as the list member's `minItems`,
+     * and the fuzzer never sent it. Symfony and yii3 still read it as `[]`: their refusal is the
+     * empty-container row; every other mode must accept it.
+     */
+    public function testAValidEmptyObjectIsDrawnBesideAListMember(): void
+    {
+        $object = ['t' => 'object', 'props' => ['dingo' => ['t' => 'string']], 'required' => [], 'additional' => null];
+        $requiring = ['required' => ['dingo']] + $object;
+        $list = ['t' => 'array', 'items' => ['t' => 'integer'], 'minItems' => 1, 'unique' => false];
+        $unions = [
+            'beside a list' => [['t' => 'union', 'op' => 'oneOf', 'branches' => [$object, $list]], true],
+            'requiring a key, beside a list' => [['t' => 'union', 'op' => 'anyOf', 'branches' => [$requiring, $list]], false],
+            'beside an integer' => [['t' => 'union', 'op' => 'anyOf', 'branches' => [$object, ['t' => 'integer']]], false],
+        ];
+        foreach ($unions as $label => [$union, $drawn]) {
+            $tagged = [];
+            foreach (range(1, 40) as $seed) {
+                $instance = (new InstanceGenerator(new FuzzRandom($seed)))->validInstance($union);
+                if (in_array('emptyBesideArray', $instance['tags'], true)) {
+                    $this->assertEquals(expected: new stdClass(), actual: $instance['value'], message: $label);
+                    $tagged[] = $instance['tags'];
+                }
+            }
+            $this->assertSame($drawn, $tagged !== [], $label);
+        }
+
+        $tags = ['emptyBesideArray'];
+        foreach ([GenerationMode::Symfony, GenerationMode::Yii3] as $mode) {
+            $this->assertNotNull(KnownDivergences::explain(mode: $mode, category: 'wrong-refuse', kind: 'valid', tags: $tags), $mode->value);
+        }
+        foreach ([GenerationMode::Runtime, GenerationMode::Laravel, GenerationMode::LaravelData] as $mode) {
+            $this->assertNull(KnownDivergences::explain(mode: $mode, category: 'wrong-refuse', kind: 'valid', tags: $tags), $mode->value);
+        }
     }
 
     /**

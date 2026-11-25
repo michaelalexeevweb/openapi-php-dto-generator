@@ -818,6 +818,18 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
         }
 
         $segment = array_shift($segments);
+{% if rawPathsSelectMembers %}
+        // `{kind=cat}` names no property: the paths behind it belong to the member of a discriminated
+        // union that the tag `cat` selects, and are walked only when the node's `kind` says so.
+        if (str_starts_with($segment, '{') && str_ends_with($segment, '}') && str_contains($segment, '=')) {
+            [$tag, $tagValue] = explode('=', substr($segment, 1, -1), 2);
+            if (!$node instanceof {{ stdClassRef }} || !property_exists($node, $tag) || $node->{$tag} !== $tagValue) {
+                return [];
+            }
+
+            return self::rawNodesAt($node, $segments, $path);
+        }
+{% endif %}
         if ($segment === '*') {
             // `*` stands for both an array index and a map key, so a JSON object node is walked too.
             if ($node instanceof {{ stdClassRef }}) {

@@ -329,7 +329,17 @@ trait RendersRuntimeDto
             $runtimeExceptionRef = $this->libraryClassRef('RuntimeException', $namespace, $useStatements);
         }
 
-        if ($needsUnsetValueImport || $fastHydrator !== null) {
+        // Named only where a property can hold `{}` as `[]`, so every other class keeps its imports.
+        $emptyJsonObjectFieldsRef = 'EmptyJsonObjectFields';
+        $needsEmptyJsonObjectFields = array_filter(
+            array: $methodProperties,
+            callback: static fn(array $property): bool => $property['mayHoldEmptyJsonObject'] && !$property['writeOnly'] && !$property['isParameter'],
+        ) !== [];
+        if ($needsEmptyJsonObjectFields) {
+            $emptyJsonObjectFieldsRef = $this->libraryClassRef($this->emptyJsonObjectFieldsFqcn(), $namespace, $useStatements);
+        }
+
+        if ($needsUnsetValueImport || $fastHydrator !== null || $needsEmptyJsonObjectFields) {
             $useStatements = array_values(array_unique($useStatements));
             sort($useStatements);
         }
@@ -377,6 +387,7 @@ trait RendersRuntimeDto
             'closureRef' => $closureRef,
             'runtimeExceptionRef' => $runtimeExceptionRef,
             'jsonExceptionRef' => $jsonExceptionRef,
+            'emptyJsonObjectFieldsRef' => $emptyJsonObjectFieldsRef,
             'aliasAssignments' => $aliasAssignments,
             // A base keeps the four parameter methods even when its own maps are empty: its children
             // call `parent::getParameterSources()`, and a parent that skipped the method turns that
@@ -650,6 +661,7 @@ trait RendersRuntimeDto
      *     presenceAlwaysTrue: bool,
      *     isMap: bool,
      *     arraysAreObjects: bool,
+     *     mayHoldEmptyJsonObject: bool,
      *     hasArrayAdder: bool,
      *     arrayAdderMethodName: string,
      *     arrayAdderItemType: string,
@@ -660,6 +672,7 @@ trait RendersRuntimeDto
      *     objectGetterMethodName: string,
      *     objectGetterReturnType: string,
      *     objectGetterDocReturnType: ?string,
+     *     writeOnly: bool,
      *     isParameter: bool,
      * }
      */
@@ -840,6 +853,13 @@ trait RendersRuntimeDto
                 && is_array($property['constraints'] ?? null)
                 && DtoValidator::admitsObjectContainerOnly($property['constraints'])
                 && preg_match('/(?<![A-Za-z0-9_\\\])(array|mixed)(?![A-Za-z0-9_])/', $property['type']) === 1,
+            // …and when the union holds a list AND an object (`anyOf: [{type: array}, {type: object}]`),
+            // its PHP type is `array` for both, and `{}` is the same empty array as `[]`. The
+            // deserializer notes which it was in `EmptyJsonObjectFields`; `toArray()` asks it, as
+            // `DtoNormalizer` does, so a `{}` it received is not written back as `[]`.
+            'mayHoldEmptyJsonObject' => ($property['isShapeUnion'] ?? false) === true
+                && !(is_array($property['constraints'] ?? null) && DtoValidator::admitsObjectContainerOnly($property['constraints']))
+                && preg_match('/(?<![A-Za-z0-9_\\\])(array|mixed)(?![A-Za-z0-9_])/', $property['type']) === 1,
             'hasArrayAdder' => str_starts_with($property['type'], 'array'),
             'arrayAdderMethodName' => 'addItemTo' . ucfirst($property['name']),
             'arrayAdderItemType' => $this->resolveArrayItemPhpType($property['type']),
@@ -861,6 +881,20 @@ trait RendersRuntimeDto
                 || ($property['inHeader'] ?? false)
                 || ($property['inCookie'] ?? false),
         ];
+    }
+
+    /**
+     * Where `EmptyJsonObjectFields` lives for these DTOs: beside `GeneratedDtoInterface` when the
+     * services are vendored (they are copied into one flat namespace), in the package otherwise.
+     */
+    private function emptyJsonObjectFieldsFqcn(): string
+    {
+        $servicesNamespace = implode('\\', array_slice(explode('\\', $this->generatedDtoInterfaceImportFqcn), 0, -1));
+        if ($servicesNamespace === 'OpenapiPhpDtoGenerator\Contract') {
+            $servicesNamespace = 'OpenapiPhpDtoGenerator\Service';
+        }
+
+        return $servicesNamespace . '\EmptyJsonObjectFields';
     }
 
     /**

@@ -1018,9 +1018,19 @@ trait RendersYii3Dto
             // elsewhere the raw check below refuses the null before it gets that far. Nor beside an
             // `array` member: `ToString` makes every array `""`, and `oneOf: [{type: array}, {format:
             // date}]` refused `[]` as missing.
+            // Nor where it cannot be undone: the cast only turns `"7"` back into 7 when the declared
+            // type has no `string` to keep it as `"7"`, and never turns `"1"` back into `true` while
+            // `string` is there — `true` was read back as `"1"` and refused by the enum and the date.
+            // A boolean needs no protection (`ToDateTime` leaves it alone); an integer is then read
+            // as a timestamp, the README.support-matrix row on an integer beside a date.
             $unionMembers = $this->yii3TypeMembers($property['type']);
+            // An enum member declares `string` and `int` beside it too (see `renderYii3Parameter()`).
+            $declaresString = in_array('string', $unionMembers, true) || $this->yii3UnionEnumMember($property['type']) !== null;
+            $stringifiedScalarStaysAString = $declaresString
+                && (in_array('bool', $unionMembers, true) || in_array('int', $unionMembers, true));
             if (
                 count($unionMembers) > 1
+                && !$stringifiedScalarStaysAString
                 && !in_array('array', $unionMembers, true)
                 // Nor beside a generated class, which arrives as an array `ToString` would empty.
                 && $this->unionClassBesideScalars($property['type']) === null

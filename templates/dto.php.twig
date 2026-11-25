@@ -435,6 +435,8 @@ interface {{ className }}
         $result['{{ property.openApiName|php_string }}'] = {{ property.temporalUnionOutput }};
 {% elseif property.arraysAreObjects %}
         $result['{{ property.openApiName|php_string }}'] = is_array($this->{{ property.name }}) ? (object)$this->{{ property.name }} : {% if property.getterUsesSentinel %}$this->{{ property.methodName }}(){% else %}$this->{{ property.name }}{% endif %};
+{% elseif property.mayHoldEmptyJsonObject %}
+        $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === [] && array_key_exists('{{ property.name|php_string }}', {{ emptyJsonObjectFieldsRef }}::of($this)) ? (object)[] : {% if property.getterUsesSentinel %}$this->{{ property.methodName }}(){% else %}$this->{{ property.name }}{% endif %};
 {% elseif property.returnKind == 'temporal' or property.getterUsesSentinel %}
         $result['{{ property.openApiName|php_string }}'] = $this->{{ property.methodName }}();
 {% elseif property.isMap and property.valuesAreMaps %}
@@ -462,6 +464,8 @@ interface {{ className }}
             $result['{{ property.openApiName|php_string }}'] = {{ property.temporalUnionOutput }};
 {% elseif property.arraysAreObjects %}
             $result['{{ property.openApiName|php_string }}'] = is_array($this->{{ property.name }}) ? (object)$this->{{ property.name }} : {% if property.getterUsesSentinel %}$this->{{ property.methodName }}(){% else %}$this->{{ property.name }}{% endif %};
+{% elseif property.mayHoldEmptyJsonObject %}
+            $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === [] && array_key_exists('{{ property.name|php_string }}', {{ emptyJsonObjectFieldsRef }}::of($this)) ? (object)[] : {% if property.getterUsesSentinel %}$this->{{ property.methodName }}(){% else %}$this->{{ property.name }}{% endif %};
 {% elseif property.returnKind == 'temporal' or property.getterUsesSentinel %}
             $result['{{ property.openApiName|php_string }}'] = $this->{{ property.methodName }}();
 {% elseif property.isMap and property.valuesAreMaps %}

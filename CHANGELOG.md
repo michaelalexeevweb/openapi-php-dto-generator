@@ -3,6 +3,35 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.149 — 2026-11-25
+
+- fuzz round five: 14 fixes
+- nullable $ref union branches admit null
+- spelled-out branches keep enums
+- {} kept in list-or-object unions
+- discriminated member paths by tag
+- symfony map of nullable lists
+
+The fifth fuzz round took the round-four leftovers and 15 findings from fresh seeds: 15 root causes, 14 fixes,
+each with a test that failed before, and 5 framework limits documented. A fresh run on new seeds is down to 5
+findings, from 15.
+
+**Regenerate after upgrading, in every mode.**
+
+- runtime: a union branch `$ref` to a component that admits null (`nullable: true`, 3.1 `[object, "null"]`)
+  admits null; an inline object branch beside a `$ref` to a list component is checked as its class, enums and
+  `$ref` properties included; `{}` taken by the object member of `anyOf: [{type: array}, {type: object}]` is
+  re-validated as an object and written back as `{}` by `toArray()` / `jsonSerialize()` too;
+- symfony: a discriminated union on a property of an inline object that is itself a union branch is hoisted,
+  so the tag selects the member; a map of nullable lists of a class is declared `array<string, array<Fox>>`
+  (every non-empty list was refused); `anyOf: [$ref Lime, {type: object}]` is held as an array and judged by
+  the callback; an inline branch that requires an undeclared name keeps that `required`;
+- laravel, laravel-data: each member of a discriminated union has its object paths checked only when the tag
+  selects it (a valid square was refused for the triangle's `hue`); an object type asserted only through
+  `allOf` counts as the object branch, so a JSON list goes to the list member;
+- yii3: no `#[ToString]` on a date union that keeps `string` beside a boolean or integer (`true` became `"1"`);
+  enums of a raw-held inline object branch are checked.
+
 ## 2.15.148 — 2026-11-25
 
 - fuzz round four: 26 fixes

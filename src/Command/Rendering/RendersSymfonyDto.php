@@ -85,6 +85,72 @@ trait RendersSymfonyDto
     }
 
     /**
+     * A property whose `oneOf`/`anyOf` has a free-form `{type: object}` member beside a generated
+     * class, held as the plain `array` the free-form member is. A member that declares no properties
+     * but closes the object (`additionalProperties: false`) is held so as well: the empty class it
+     * became dropped every key, so the extra one it forbids was never seen.
+     *
+     * Typed `Lime|array`, the serializer tried the class first, and under `#[MapRequestPayload]` the
+     * object it could not build was a collected error: `{"fox": {"any": 1}}` was refused for a missing
+     * `hue`, and `{"fox": {"hue": 5}}` for its type, although the free-form member admits both. Any
+     * object the class admits the free-form member admits too, so the class is never needed to hold
+     * the value; the callback still judges the whole `anyOf` / `oneOf` against the decoded array.
+     *
+     * @param array<int, SchemaProperty> $properties
+     * @return array<int, SchemaProperty>
+     */
+    private function symfonyWithFreeFormObjectUnionsHeldAsArray(string $className, array $properties): array
+    {
+        $schemaProperties = $this->dtoSchemas[$className]['properties'] ?? null;
+        if (!is_array($schemaProperties)) {
+            return $properties;
+        }
+        foreach ($properties as $index => $property) {
+            $schema = $schemaProperties[$property['openApiName']] ?? null;
+            if (!is_array($schema) || !$this->symfonyUnionHasFreeFormObjectMember($schema)) {
+                continue;
+            }
+            $members = $this->topLevelTypeMembers(ltrim($property['type'], '?'));
+            $kept = [];
+            $droppedAClass = false;
+            foreach ($members as $member) {
+                $short = $this->shortClassName($member);
+                if (array_key_exists($short, $this->dtoSchemas) && !array_key_exists($short, $this->enumSchemas)) {
+                    $droppedAClass = true;
+
+                    continue;
+                }
+                $kept[] = $member;
+            }
+            if (!$droppedAClass) {
+                continue;
+            }
+            if (!in_array('array', $kept, true)) {
+                $kept[] = 'array';
+            }
+            $properties[$index]['type'] = (str_starts_with($property['type'], '?') ? '?' : '') . implode('|', $kept);
+        }
+
+        return $properties;
+    }
+
+    /**
+     * @param array<mixed> $schema
+     */
+    private function symfonyUnionHasFreeFormObjectMember(array $schema): bool
+    {
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            foreach (is_array($schema[$keyword] ?? null) ? $schema[$keyword] : [] as $branch) {
+                if (is_array($branch) && $this->isFreeFormObjectSchema($branch)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * A property whose `oneOf`/`anyOf` holds a list of a UNION component beside `null` or a scalar
      * (`oneOf: [{type: array, items: {$ref: Shape}}, {type: integer}]`), typed as that list:
      * `array<Shape>|int`.
@@ -212,6 +278,7 @@ trait RendersSymfonyDto
         }
 
         $properties = $this->symfonyWithUnionListsTyped($className, $properties);
+        $properties = $this->symfonyWithFreeFormObjectUnionsHeldAsArray($className, $properties);
 
         $useStatements = [];
         if ($this->needsDateTimeImmutableImport($properties)) {
@@ -2401,6 +2468,8 @@ PHP;
             || $this->anyOfBranchCarriesPattern($anyOf)
             || $this->anyOfBranchOutgrowsItsAttribute($anyOf)
             || $this->anyOfBranchCarriesUnspelledEnum(property: $property, branches: $anyOf)
+            || $this->anyOfBranchRequiresAnUndeclaredName($anyOf)
+            || $this->symfonyUnionHasFreeFormObjectMember(['anyOf' => $anyOf])
             || $property['type'] === 'mixed'
         ) {
             return null;
@@ -2420,7 +2489,9 @@ PHP;
             // as a `$ref` one is: `Type('array')` refused every valid object, which by then was no
             // array. The class checks its own keywords through the union cascade.
             // Beside nothing but `null` (`?ProbeLemur`), the class is the type itself.
+            // A free-form `{type: object}` has no class of its own: it is the `array` it is held as.
             $inlineClass = is_array($branch) && ($branch['type'] ?? null) === 'object' && !array_key_exists('x-php-instanceof', $branch)
+                && !$this->isFreeFormObjectSchema($branch)
                 ? $this->unionClassBesideScalars($property['type']) ?? $this->symfonyLoneDtoClass($property['type'])
                 : null;
             // A `format: date` / `date-time` branch is hydrated into the `DateTimeImmutable` the PHP
@@ -2447,6 +2518,26 @@ PHP;
         }
 
         return count($branches) >= 2 ? '#[Assert\AtLeastOneOf([' . implode(', ', $branches) . '])]' : null;
+    }
+
+    /**
+     * Whether an inline object branch of a property-level `anyOf` requires a name its `properties` do
+     * not declare. The class generated for the branch drops that name, so `Type(ProbeFox)` stood in for
+     * a branch it does not check: `{"fox": {"tail": "x"}}` passed `required: [ear]`. Such an `anyOf` is
+     * the callback's, which reads the branch whole — as a plain object property keeps its callback
+     * (README.support-matrix, "a required name no property declares").
+     *
+     * @param array<mixed> $branches
+     */
+    private function anyOfBranchRequiresAnUndeclaredName(array $branches): bool
+    {
+        foreach ($branches as $branch) {
+            if (is_array($branch) && ($branch['type'] ?? null) === 'object' && $this->requiresAnUndeclaredName($branch)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

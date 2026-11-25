@@ -1476,8 +1476,8 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
-     * The walk under one schema: its properties, at any depth — an inline object's property is a class's
-     * property as much as a component's is. The schema itself is never replaced: a component that IS a
+     * The walk under one schema: its properties and its composition branches, at any depth — an inline
+     * object's property is a class's property as much as a component's is. The schema itself is never replaced: a component that IS a
      * union already has the component spelling. List items and map values stay inline: there the inline
      * spelling is the one each mode already checks item by item.
      *
@@ -1489,6 +1489,26 @@ final class GenerateDtoCommand extends Command
      */
     private function withDiscriminatedUnionsHoisted(array $schema, array $segments, array &$takenClassNames, array &$hoisted): array
     {
+        // An inline object written as a `oneOf` / `anyOf` / `allOf` branch is a class too, and its
+        // properties are that class's: a discriminated union there was left inline, and symfony built
+        // its first member while yii3 checked the first member's tag.
+        foreach (['oneOf', 'anyOf', 'allOf'] as $compositionKey) {
+            if (!is_array($schema[$compositionKey] ?? null)) {
+                continue;
+            }
+            $branches = [];
+            foreach ($schema[$compositionKey] as $index => $branch) {
+                $branches[$index] = is_array($branch) && !array_key_exists('$ref', $branch)
+                    ? $this->withDiscriminatedUnionsHoisted(
+                        schema: $branch,
+                        segments: [...$segments, $compositionKey . $index],
+                        takenClassNames: $takenClassNames,
+                        hoisted: $hoisted,
+                    )
+                    : $branch;
+            }
+            $schema[$compositionKey] = $branches;
+        }
         if (!is_array($schema['properties'] ?? null)) {
             return $schema;
         }
@@ -2544,7 +2564,7 @@ final class GenerateDtoCommand extends Command
             if (!array_key_exists('nullable', $propertySchema) && $this->arrayAliasAllowsNull($ref)) {
                 $propertySchema['nullable'] = true;
             }
-            if (!array_key_exists('nullable', $propertySchema) && $this->unionHasNullAdmittingArrayAliasBranch($propertySchema)) {
+            if (!array_key_exists('nullable', $propertySchema) && $this->unionHasNullAdmittingRefBranch($propertySchema)) {
                 $propertySchema['nullable'] = true;
             }
             $alias = is_string($ref) ? $this->scalarAliasDefinition($ref, $sourceFile) : null;
@@ -2566,22 +2586,27 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
-     * A `oneOf` / `anyOf` with a bare `$ref` branch to an array alias that admits null —
-     * `oneOf: [{$ref: Saffron}, {type: integer}]` with `Saffron: {type: array, nullable: true}`. The
-     * branch is typed as the list, so the null it admits has to reach the property the same way it
-     * does for a property that IS that reference; left on the target, symfony refused the null at
-     * deserialization, yii3 in its type rule, and laravel-data died on the constructor.
+     * A `oneOf` / `anyOf` with a bare `$ref` branch to a component that admits null —
+     * `oneOf: [{$ref: Saffron}, {type: integer}]` with `Saffron: {type: array, nullable: true}`, or
+     * `anyOf: [{$ref: Mauve}, {type: string}]` with `Mauve: {type: object, nullable: true}` (3.1:
+     * `type: [object, "null"]`). The branch admits null, so the null has to reach the property the
+     * same way it does for a property that IS that reference; left on the target, runtime refused the
+     * null at deserialization, symfony refused it at deserialization or in its not-null callback, yii3
+     * in its type rule, laravel in its union rule, and laravel-data died on the constructor.
      *
      * @param array<string, mixed> $schema
      */
-    private function unionHasNullAdmittingArrayAliasBranch(array $schema): bool
+    private function unionHasNullAdmittingRefBranch(array $schema): bool
     {
         if (array_key_exists('$ref', $schema)) {
             return false;
         }
         foreach (['oneOf', 'anyOf'] as $unionKey) {
             foreach (is_array($schema[$unionKey] ?? null) ? $schema[$unionKey] : [] as $branch) {
-                if (is_array($branch) && array_keys($branch) === ['$ref'] && is_string($branch['$ref']) && $this->arrayAliasAllowsNull($branch['$ref'])) {
+                if (!is_array($branch) || array_keys($branch) !== ['$ref'] || !is_string($branch['$ref'])) {
+                    continue;
+                }
+                if ($this->arrayAliasAllowsNull($branch['$ref']) || $this->componentAdmitsNull($this->localComponentDefinition($branch['$ref']) ?? [])) {
                     return true;
                 }
             }
@@ -5913,6 +5938,56 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * Runtime: an inline object union branch with the enums of its properties kept as members — an
+     * inline `enum`, and a bare `$ref` to an enum component — at any depth of inline objects.
+     *
+     * Each such property becomes a PHP enum, so the extraction drops its members as the type's
+     * business. A branch spelled out rather than marked as its class (`withOwnUnionBranchClassMarked()`)
+     * is the check the payload meets as a plain array, where no enum type was ever built: the branch
+     * read `{egret: {type: integer}}` and passed `-84` for `enum: [-18]`. Kept, the members also judge
+     * a built class, whose enum value the validator compares by its backing value.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<string, mixed>
+     */
+    private function withPropertyEnumsSpelledOut(array $schema): array
+    {
+        if (!is_array($schema['properties'] ?? null)) {
+            return $schema;
+        }
+        $properties = [];
+        foreach ($schema['properties'] as $name => $property) {
+            if (!is_array($property)) {
+                $properties[$name] = $property;
+
+                continue;
+            }
+            $ref = $property['$ref'] ?? null;
+            if (is_string($ref)) {
+                $className = $this->schemaRefToClassName($ref, $this->constraintSourceFile ?? $this->rootSpecFile);
+                $enum = $this->enumSchemas[$className] ?? null;
+                $properties[$name] = array_keys($property) === ['$ref'] && is_array($enum)
+                    ? [
+                        'type' => $enum['type'] === 'int' ? 'integer' : 'string',
+                        'enum' => array_values($enum['values']),
+                        'x-php-inline-enum' => true,
+                        ...($this->componentAdmitsNull($this->localComponentDefinition($ref) ?? []) ? ['nullable' => true] : []),
+                    ]
+                    : $property;
+
+                continue;
+            }
+            if (is_array($property['enum'] ?? null) && $property['enum'] !== []) {
+                $property['x-php-inline-enum'] = true;
+            }
+            $properties[$name] = $this->withPropertyEnumsSpelledOut($property);
+        }
+        $schema['properties'] = $properties;
+
+        return $schema;
+    }
+
+    /**
      * Runtime: a union branch that synthesizes a class of its own — an inline object, a `$ref` with
      * keywords beside it, an `allOf` merged into one object — is "is that class", as a bare `$ref` is.
      *
@@ -5920,7 +5995,7 @@ final class GenerateDtoCommand extends Command
      * beside it took the JSON object as a map and the class was never built; and the spelling itself
      * lost what the class checks — the inherited properties of the `$ref`, an enum typed as a class,
      * a nested reference. Marked, the class is tried first and judges the value itself. Only beside an
-     * `array` member, the one that took the object, and only where the branch and the class it became
+     * `array` member — inline, or a `$ref` to a list component — the one that took the object, and only where the branch and the class it became
      * are unambiguous: one such branch, one class in the type no other branch names. A branch that
      * `require`s a name it does not declare stays spelled out: the class holds no such key, and only
      * the spelling can ask the payload for it.
@@ -5951,7 +6026,13 @@ final class GenerateDtoCommand extends Command
                 if (!is_array($variant)) {
                     continue 2;
                 }
-                if ($this->soleTypeBesidesNull($variant['type'] ?? null) === 'array') {
+                // A `$ref` to a list component is that list member: beside it the object branch was
+                // spelled out, and lost its enum and reference checks.
+                $arrayAliasRef = $variant['$ref'] ?? null;
+                if (
+                    $this->soleTypeBesidesNull($variant['type'] ?? null) === 'array'
+                    || (is_string($arrayAliasRef) && $this->arrayAliasDefinition($arrayAliasRef) !== null)
+                ) {
                     $besideAnArrayMember = true;
                 }
                 if ($this->unionBranchTypeOfItsOwn($variant, $ownerClassName) === 'class') {
@@ -6308,6 +6389,12 @@ final class GenerateDtoCommand extends Command
                 [$branchRef, $besideRef] = $this->splitBranchReference(
                     is_array($variant['enum'] ?? null) && $variant['enum'] !== [] ? [...$variant, 'x-php-inline-enum' => true] : $variant,
                 );
+                // Yii3 too: a union it cannot type is held raw (`string|int|float|bool|array`), and the
+                // branch class whose enum types took the members is never built — `{"newt": -10}`
+                // passed `enum: [-9]`.
+                if (in_array($this->attributeMode, [self::ATTRIBUTE_MODE_RUNTIME, self::ATTRIBUTE_MODE_YII3], true) && $branchRef === null) {
+                    $besideRef = $this->withPropertyEnumsSpelledOut($besideRef);
+                }
                 $extracted = $this->extractValidationConstraints(propertySchema: $besideRef);
                 if ($branchRef !== null) {
                     $extracted = $this->unionRefBranch(ref: $branchRef, beside: $extracted);
@@ -6604,9 +6691,28 @@ final class GenerateDtoCommand extends Command
      * branch is "is that class" — except where no class is hydrated: a free-form object is typed
      * `array`, and is spelled out in every mode. `[]` when nothing can judge it.
      *
+     * A target that admits null itself — `nullable: true`, or 3.1's `type: [object, "null"]` — carries
+     * that `nullable` onto the branch, as an inline branch does: the class check and the spelled-out
+     * object both refused the null the reference allows.
+     *
      * @return array<string, mixed>
      */
     private function unionRefTarget(string $ref): array
+    {
+        $target = $this->unionRefTargetChecks($ref);
+        if ($target === [] || !$this->componentAdmitsNull($this->localComponentDefinition($ref) ?? [])) {
+            return $target;
+        }
+
+        return [...$target, 'nullable' => true];
+    }
+
+    /**
+     * The checks of `unionRefTarget()`, before the target's own null is carried.
+     *
+     * @return array<string, mixed>
+     */
+    private function unionRefTargetChecks(string $ref): array
     {
         if (array_key_exists($ref, $this->spelledOutUnionRefs)) {
             return [];
@@ -9551,7 +9657,7 @@ final class GenerateDtoCommand extends Command
                 // A nullable array alias admits null as a value, as it does as a property or an item.
                 $valueNullable = $valueNullable || $this->arrayAliasAllowsNull($additionalProperties['$ref']);
 
-                return $this->composePhpTypeHint($this->itemsLessListAsList($aliasValueType), $valueNullable);
+                return $this->composeMapValueTypeHint($this->itemsLessListAsList($aliasValueType), $valueNullable);
             }
         }
 
@@ -9562,7 +9668,7 @@ final class GenerateDtoCommand extends Command
             || $this->isPatternPropertiesOnlyObjectSchema($additionalProperties)
             || $this->isMapLikeObjectSchema($additionalProperties)
         ) {
-            return $this->composePhpTypeHint(
+            return $this->composeMapValueTypeHint(
                 type: $this->resolveNestedContainerDocType(
                     schema: $additionalProperties,
                     currentSourceFile: $this->getSchemaSourceFile($ownerClassName),
@@ -9582,7 +9688,7 @@ final class GenerateDtoCommand extends Command
         // And null where the resolver found it, as the property itself is: `anyOf: [{enum: [violet]},
         // {type: null}]` is the enum class or null, and declared without the `?` the null value the
         // document allows was refused in four modes.
-        return $this->composePhpTypeHint($valueType, $valueNullable || $resolvedNullable);
+        return $this->composeMapValueTypeHint($valueType, $valueNullable || $resolvedNullable);
     }
 
     /**
@@ -9593,6 +9699,45 @@ final class GenerateDtoCommand extends Command
     private function itemsLessListAsList(string $valueType): string
     {
         return $valueType === 'array' ? 'array<mixed>' : $valueType;
+    }
+
+    /**
+     * The declared type of a map VALUE. Symfony mode leaves the `?` off a nullable LIST whose items
+     * the serializer builds — a class, an enum, a date: symfony/serializer's `ArrayDenormalizer` does
+     * not reset the context's key type for a nullable value, so `?array<string, ?array<Fox>>` had the
+     * keys of the inner list checked as strings and refused every non-empty list. Without the `?` the
+     * list is read; a null value is then refused at deserialization (README.support-matrix, "a null
+     * VALUE of a nullable map"). A list of builtin scalars is never denormalized item by item and
+     * keeps it.
+     */
+    private function composeMapValueTypeHint(string $type, bool $nullable): string
+    {
+        if ($nullable && $this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY && $this->isListOfBuiltObjects($type)) {
+            return $type;
+        }
+
+        return $this->composePhpTypeHint($type, $nullable);
+    }
+
+    /**
+     * Whether a docblock type is a list (possibly nested) whose innermost items are not builtin.
+     */
+    private function isListOfBuiltObjects(string $type): bool
+    {
+        if (!str_starts_with($type, 'array<') || str_starts_with($type, 'array<string, ')) {
+            return false;
+        }
+        $item = $type;
+        while (preg_match('/^\??array<(?:string, |int, )?(.+)>$/', $item, $matches) === 1) {
+            $item = $matches[1];
+        }
+        foreach (explode('|', ltrim($item, '?')) as $member) {
+            if (!in_array(strtolower($member), ['int', 'float', 'string', 'bool', 'true', 'false', 'null', 'mixed', 'array', 'object'], true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function mapStringFormatType(mixed $format): ?string
@@ -11705,14 +11850,17 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
-     * A component admits null as a whole: `nullable: true` on it, or a `oneOf`/`anyOf` with a branch
-     * that is the null schema and nothing else.
+     * A component admits null as a whole: `nullable: true` on it, `null` in its 3.1 `type` list, or a
+     * `oneOf`/`anyOf` with a branch that is the null schema and nothing else.
      *
      * @param array<mixed> $definition
      */
     private function componentAdmitsNull(array $definition): bool
     {
         if (($definition['nullable'] ?? null) === true) {
+            return true;
+        }
+        if (is_array($definition['type'] ?? null) && in_array('null', $definition['type'], true)) {
             return true;
         }
         foreach (['oneOf', 'anyOf'] as $unionKey) {
@@ -11764,6 +11912,11 @@ final class GenerateDtoCommand extends Command
             }
             $type = $branch['type'] ?? null;
             if ($type === 'null' || (is_array($type) && in_array('null', $type, true))) {
+                return true;
+            }
+            // A branch carrying `nullable` — an inline one, or a `$ref` to a component that admits
+            // null — lets the null through itself; a `{type: null}` beside it matched it twice.
+            if (($branch['nullable'] ?? null) === true) {
                 return true;
             }
         }

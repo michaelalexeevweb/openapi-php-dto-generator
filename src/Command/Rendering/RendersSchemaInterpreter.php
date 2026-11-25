@@ -1640,19 +1640,40 @@ PHP;
      */
     private function openApiListBelongsToArrayBranch(mixed $value, array $branches, array $branch): bool
     {
-        $typesOf = static fn(mixed $type): array => is_string($type) ? [$type] : (is_array($type) ? $type : []);
-        $branchTypes = $typesOf($branch['type'] ?? null);
+        $branchTypes = self::openApiAssertedTypes($branch);
         if (!is_array($value) || !array_is_list($value) || !in_array('object', $branchTypes, true) || in_array('array', $branchTypes, true)) {
             return false;
         }
 
         foreach ($branches as $sibling) {
-            if (is_array($sibling) && in_array('array', $typesOf($sibling['type'] ?? null), true)) {
+            if (in_array('array', self::openApiAssertedTypes($sibling), true)) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * The types a schema admits through its own `type` and every `allOf` member's: an object branch
+     * spelled `allOf: [{type: object}]` is one as much as `type: object` is. Empty when nothing says.
+     *
+     * @return array<array-key, mixed>
+     */
+    private static function openApiAssertedTypes(mixed $schema): array
+    {
+        if (!is_array($schema)) {
+            return [];
+        }
+        $types = is_string($schema['type'] ?? null) ? [$schema['type']] : (is_array($schema['type'] ?? null) ? $schema['type'] : null);
+        foreach (is_array($schema['allOf'] ?? null) ? $schema['allOf'] : [] as $member) {
+            $memberTypes = self::openApiAssertedTypes($member);
+            if ($memberTypes !== []) {
+                $types = $types === null ? $memberTypes : array_values(array_intersect($types, $memberTypes));
+            }
+        }
+
+        return $types ?? [];
     }
 PHP;
         }

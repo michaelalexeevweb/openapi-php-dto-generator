@@ -138,6 +138,11 @@ final class InstanceGenerator
      * requires a key: Symfony builds the object member's class first (support matrix, "a scalar for a
      * property typed as a generated class").
      *
+     * Beside an `array` member, an object member that asks for no key is also sent as `{}` now and
+     * then — a VALID value the `array`-typed PHP field holds as `[]`, and the one a list member's
+     * `minItems` must not judge (support matrix, "an EMPTY JSON container"). Before, `{}` there came
+     * only as a mutation, so a mode that refused the valid one went unnoticed.
+     *
      * @param array<string, mixed> $node
      */
     private function validUnionMember(array $node): mixed
@@ -151,7 +156,31 @@ final class InstanceGenerator
             }
         }
 
-        return $this->valid($branch);
+        $besideArray = in_array('array', self::admittedTypes($node), true);
+        $value = $besideArray && self::admitsEmptyObject($branch) && $this->random->chance(0.3)
+            ? new stdClass()
+            : $this->valid($branch);
+        if ($besideArray && $value instanceof stdClass && get_object_vars($value) === []) {
+            $this->validTags[] = 'emptyBesideArray';
+        }
+
+        return $value;
+    }
+
+    /**
+     * Whether `{}` is a valid instance of the node: an object that requires no key, or a map that asks
+     * for no minimum. The grammar keeps union branches disjoint by type group, so no sibling of such a
+     * member takes `{}` too and a `oneOf` stays satisfied by exactly one.
+     *
+     * @param array<string, mixed> $node
+     */
+    private static function admitsEmptyObject(array $node): bool
+    {
+        return match ($node['t']) {
+            'object' => $node['required'] === [],
+            'map' => ($node['minProperties'] ?? 0) === 0,
+            default => false,
+        };
     }
 
     /**

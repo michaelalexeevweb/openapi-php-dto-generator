@@ -476,6 +476,12 @@ final class DtoNormalizer implements DtoNormalizerInterface
                     ) {
                         $value = (object)$value;
                     }
+                    // `{}` the deserializer put into an `array`-typed union field is judged as the
+                    // object it arrived as and is written back as (see withEmptyJsonObjectsRestored()),
+                    // not as the empty list an `array` member with `minItems` would refuse.
+                    if ($value === [] && array_key_exists($propertyName, EmptyJsonObjectFields::of($dto))) {
+                        $value = new stdClass();
+                    }
                     array_push(
                         $errors,
                         ...$this->fieldValidator()->validate(

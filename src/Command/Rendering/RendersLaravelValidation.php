@@ -2688,17 +2688,22 @@ trait RendersLaravelValidation
         }
 
         // Each member of a discriminated union, at the union's own path: `{"kind": "cat", "bag": [2]}`
-        // reached a cat's `type: object` property unasked. A path the variant sent does not have is
-        // skipped by the raw check, so the members' paths sit side by side.
-        if ($recurse) {
-            foreach ($this->laravelDiscriminatedMemberClasses($property, $nestedClass) as $memberClass) {
-                if (in_array($memberClass, $visitedClasses, true)) {
-                    continue;
-                }
-                foreach ($this->getSchemaProperties($memberClass) as $childProperty) {
-                    foreach ($this->laravelObjectShapePaths($childProperty, $path, [...$visitedClasses, $memberClass]) as $childPath) {
-                        $paths[] = $childPath;
-                    }
+        // reached a cat's `type: object` property unasked. A member's paths sit behind a segment that
+        // names its tag (`pet.{kind=cat}.bag`), which the raw check walks past only when the body's
+        // tag selects that member: two members may spell one name as an object and as a list, and a
+        // dog's list `bag` was refused as the cat's object.
+        $discriminated = $recurse ? $this->laravelDiscriminatedMembers($property, $nestedClass) : null;
+        foreach ($discriminated['members'] ?? [] as $tagValue => $memberClass) {
+            if (in_array($memberClass, $visitedClasses, true)) {
+                continue;
+            }
+            $memberPath = $path . '.' . $this->laravelMemberGuardSegment(
+                propertyName: $discriminated['propertyName'] ?? '',
+                tagValue: (string)$tagValue,
+            );
+            foreach ($this->getSchemaProperties($memberClass) as $childProperty) {
+                foreach ($this->laravelObjectShapePaths($childProperty, $memberPath, [...$visitedClasses, $memberClass]) as $childPath) {
+                    $paths[] = $childPath;
                 }
             }
         }
@@ -2720,30 +2725,58 @@ trait RendersLaravelValidation
     }
 
     /**
-     * The member classes of a discriminated union a property holds as one value: written inline on the
-     * property, or a union component it references.
+     * The members of a discriminated union a property holds as one value — written inline on the
+     * property, or a union component it references — keyed by the tag value that selects each, with
+     * the name of the tag property.
      *
      * @param SchemaProperty $property
-     * @return array<int, string>
+     * @return array{propertyName: string, members: array<array-key, string>}|null
      */
-    private function laravelDiscriminatedMemberClasses(array $property, ?string $nestedClass): array
+    private function laravelDiscriminatedMembers(array $property, ?string $nestedClass): ?array
     {
         // The map beside a union laravel mode did not dispatch — laravel-data keeps the `oneOf` too.
-        $mapping = $this->laravelConstraintsFor($property)['x-discriminator-map'] ?? null;
+        $constraints = $this->laravelConstraintsFor($property);
+        $mapping = $constraints['x-discriminator-map'] ?? null;
+        $propertyName = $constraints['x-discriminator-property'] ?? null;
         if ($mapping === null && $nestedClass !== null) {
             $definition = $this->dtoSchemas[$nestedClass] ?? [];
             $isUnion = array_key_exists('oneOf', $definition) || array_key_exists('anyOf', $definition);
             $mapping = $isUnion ? ($this->discriminatorSchemas[$nestedClass]['mapping'] ?? null) : null;
+            $propertyName = $isUnion ? ($this->discriminatorSchemas[$nestedClass]['propertyName'] ?? null) : null;
         }
-        $classes = [];
-        foreach (is_array($mapping) ? $mapping : [] as $class) {
+        if (!is_string($propertyName) || !is_array($mapping)) {
+            return null;
+        }
+        $members = [];
+        foreach ($mapping as $tagValue => $class) {
             $short = $this->shortClassName((string)$class);
             if (array_key_exists($short, $this->dtoSchemas)) {
-                $classes[] = $short;
+                // A numeric tag ("1") turns into an int key here, which the guard casts back.
+                $members[$tagValue] = $short;
             }
         }
 
-        return array_values(array_unique($classes));
+        return $members === [] ? null : ['propertyName' => $propertyName, 'members' => $members];
+    }
+
+    /**
+     * The path segment that stands for "the member this tag value selects": `{kind=cat}`. It names
+     * no property, so the raw check reads it as a condition on the node it reached, and adds nothing
+     * to the path an error is reported under. A dot in the name or the value is escaped as one in a
+     * property name is.
+     */
+    private function laravelMemberGuardSegment(string $propertyName, string $tagValue): string
+    {
+        return '{' . $this->laravelPathSegment($propertyName) . '=' . $this->laravelPathSegment($tagValue) . '}';
+    }
+
+    /**
+     * Whether a raw-check path walks through a member guard (`laravelMemberGuardSegment()`), so the
+     * walker that reads it has to know the segment.
+     */
+    private function laravelPathHasMemberGuard(string $path): bool
+    {
+        return preg_match('/(?:^|(?<!\\\)\.)\{[^=]*=.*\}(?:(?<!\\\)\.|$)/', $path) === 1;
     }
 
     /**
@@ -3183,7 +3216,8 @@ trait RendersLaravelValidation
 
     /**
      * Whether anything below a class contributes a path of the given kind (`objectPaths` or
-     * `scalarPaths`), so a parent emits the check only where there is something to check.
+     * `scalarPaths`; `escapedDots` and `memberGuards` for a path the walker must split or read with
+     * care), so a parent emits the check only where there is something to check.
      *
      * @param array<int, string> $visited
      */
@@ -3214,9 +3248,11 @@ trait RendersLaravelValidation
         }
 
         $plan = $this->laravelNestedValidationPlan($className);
-        $has = $kind === 'escapedDots'
-            ? array_filter([...$plan['objectPaths'], ...array_keys($plan['scalarPaths'])], static fn(string $path): bool => str_contains($path, '\.')) !== []
-            : $plan[$kind] !== [];
+        $has = match ($kind) {
+            'escapedDots' => array_filter([...$plan['objectPaths'], ...array_keys($plan['scalarPaths'])], static fn(string $path): bool => str_contains($path, '\.')) !== [],
+            'memberGuards' => array_filter($plan['objectPaths'], $this->laravelPathHasMemberGuard(...)) !== [],
+            default => $plan[$kind] !== [],
+        };
         $childCutShort = false;
         foreach ($plan['children'] as $child) {
             if ($has) {
@@ -3266,6 +3302,7 @@ trait RendersLaravelValidation
      *   objectPathsExpression: string,
      *   scalarPathsExpression: string,
      *   nestedPathsEscapeDots: bool,
+     *   rawPathsSelectMembers: bool,
      *   selfReachable: bool,
      *   reachesRecursion: bool,
      * }
@@ -3280,10 +3317,12 @@ trait RendersLaravelValidation
         $childObjectPaths = false;
         $childScalarPaths = false;
         $childEscapedDots = false;
+        $childMemberGuards = false;
         foreach ($nestedChildren as $child) {
             $childObjectPaths = $childObjectPaths || $this->laravelNestedHasPaths($child['class'], 'objectPaths', [$className]);
             $childScalarPaths = $childScalarPaths || ($checksScalarPaths && $this->laravelNestedHasPaths($child['class'], 'scalarPaths', [$className]));
             $childEscapedDots = $childEscapedDots || $this->laravelNestedHasPaths($child['class'], 'escapedDots', [$className]);
+            $childMemberGuards = $childMemberGuards || $this->laravelNestedHasPaths($child['class'], 'memberGuards', [$className]);
         }
 
         $nestedValidation = null;
@@ -3317,6 +3356,8 @@ trait RendersLaravelValidation
             'objectPathsExpression' => $paths('self::OPENAPI_OBJECT_PATHS', $objectPaths !== [], $childObjectPaths, 'objectPaths'),
             'scalarPathsExpression' => $paths('self::OPENAPI_SCALAR_PATHS', $scalarPaths !== [], $childScalarPaths, 'scalarPaths'),
             'nestedPathsEscapeDots' => $childEscapedDots,
+            // A member guard below, or in this class's own paths: the walker has to read `{kind=cat}`.
+            'rawPathsSelectMembers' => $childMemberGuards || array_filter($objectPaths, $this->laravelPathHasMemberGuard(...)) !== [],
             'selfReachable' => $this->laravelReachesItself(
                 className: $className,
                 children: array_column($nestedChildren, 'class'),

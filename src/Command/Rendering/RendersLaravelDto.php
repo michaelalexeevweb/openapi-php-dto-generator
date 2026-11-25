@@ -363,6 +363,7 @@ trait RendersLaravelDto
             'nestedValidation' => null,
             'selfReachable' => false,
             'reachesRecursion' => false,
+            'rawPathsSelectMembers' => false,
             'checksObjectPaths' => false,
             'checksScalarPaths' => false,
             'laravelFormRequest' => $this->laravelFormRequest,

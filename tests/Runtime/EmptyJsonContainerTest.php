@@ -86,6 +86,50 @@ final class EmptyJsonContainerTest extends TestCase
         $this->assertSame(expected: '{"map":{}}', actual: $writes(new Probe(map: [])));
     }
 
+    /**
+     * `{}` in a union of a list and an object is held as the empty PHP array its `array` type allows,
+     * and the deserializer notes that it arrived as an object. Re-validating the DTO judged that
+     * empty array as the list member (`minItems: 1` refused it), and the generated `toArray()`,
+     * `jsonSerialize()` and `__toString()` wrote it back as `[]` — on the top level and nested.
+     */
+    #[DataProvider('listOrObjectBodies')]
+    public function testAnEmptyObjectBesideAListMemberIsJudgedAndWrittenAsAnObject(string $json, ?string $written): void
+    {
+        self::generate();
+        $request = Request::create(
+            uri: '/',
+            method: 'POST',
+            server: ['CONTENT_TYPE' => 'application/json'],
+            content: $json,
+        );
+        try {
+            $dto = (new DtoDeserializer())->deserialize($request, 'EmptyJsonContainer\Probe');
+            $normalized = json_encode((new DtoNormalizer())->validateAndNormalizeToArray($dto), JSON_THROW_ON_ERROR);
+        } catch (RuntimeException) {
+            $this->assertNull(actual: $written, message: $json . ' was refused');
+
+            return;
+        }
+        $this->assertInstanceOf(expected: Probe::class, actual: $dto);
+        $this->assertSame(expected: $written, actual: $normalized, message: 'DtoNormalizer');
+        $this->assertSame(expected: $written, actual: json_encode($dto->toArray(), JSON_THROW_ON_ERROR), message: 'toArray()');
+        $this->assertIsArray($dto->toArray());
+        $this->assertSame(expected: $written, actual: json_encode($dto, JSON_THROW_ON_ERROR), message: 'jsonSerialize()');
+        $this->assertSame(expected: $written, actual: (string)$dto, message: '__toString()');
+        $this->assertSame(expected: $written, actual: $dto->toJson(), message: 'toJson()');
+    }
+
+    public static function listOrObjectBodies(): iterable
+    {
+        yield 'empty object' => ['{"fox":{}}', '{"fox":{}}'];
+        yield 'object' => ['{"fox":{"a":1}}', '{"fox":{"a":1}}'];
+        yield 'list' => ['{"fox":[1]}', '{"fox":[1]}'];
+        yield 'empty list, short of minItems' => ['{"fox":[]}', null];
+        yield 'nested empty object' => ['{"inner":{"fox":{}}}', '{"inner":{"fox":{}}}'];
+        yield 'nested empty list' => ['{"inner":{"fox":[]}}', '{"inner":{"fox":[]}}'];
+        yield 'empty objects in a list of dtos' => ['{"inners":[{"fox":{}},{"fox":[]}]}', '{"inners":[{"fox":{}},{"fox":[]}]}'];
+    }
+
     public function testAValueHandedOverDecodedKeepsReadingAnEmptyArrayAsAnObject(): void
     {
         self::generate();
@@ -136,9 +180,16 @@ final class EmptyJsonContainerTest extends TestCase
                             'list' => ['type' => 'array'],
                             'needsX' => ['required' => ['x']],
                             'atLeastOne' => ['minProperties' => 1],
+                            'fox' => ['anyOf' => [
+                                ['type' => 'array', 'items' => ['type' => 'integer'], 'minItems' => 1],
+                                ['type' => 'object'],
+                            ]],
                         ],
                     ],
-                    'Inner' => ['type' => 'object', 'properties' => ['x' => ['type' => 'integer']]],
+                    'Inner' => ['type' => 'object', 'properties' => [
+                        'x' => ['type' => 'integer'],
+                        'fox' => ['anyOf' => [['type' => 'array', 'items' => ['type' => 'integer']], ['type' => 'object']]],
+                    ]],
                 ]],
             ],
             outputDirectory: self::$root,

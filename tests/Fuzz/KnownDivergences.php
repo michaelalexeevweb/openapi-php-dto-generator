@@ -62,13 +62,13 @@ final class KnownDivergences
     {
         return [
             [
-                'modes' => [GenerationMode::Yii3],
+                'modes' => [GenerationMode::Symfony, GenerationMode::Yii3],
                 'category' => 'wrong-accept',
                 // `{}` for an object that requires a key, or for a list: the body arrives decoded, where
                 // it is the `[]` the `array` member (or the list itself) accepts.
                 'kinds' => ['missingRequired', 'tooFewProperties', 'wrongType:object'],
                 'tagsAll' => ['emptyBesideArray'],
-                'row' => 'support matrix: "an EMPTY JSON container: `[]` for an object, `{}` for a list or for the object member of a union beside an `array` member" (yii3 reads `[]` and `{}` as one)',
+                'row' => 'support matrix: "an EMPTY JSON container: `[]` for an object, `{}` for a list or for the object member of a union beside an `array` member" (symfony and yii3 read `[]` and `{}` as one)',
             ],
             [
                 'modes' => [GenerationMode::Symfony, GenerationMode::Yii3],
@@ -158,6 +158,15 @@ final class KnownDivergences
                 'kinds' => [''],
                 'tagsAll' => ['unionTemporalBesideNull', 'integerBesideTemporal'],
                 'row' => 'support matrix: "an integer for a `oneOf` of `format: date`, `integer` and `null`" (yii3 reads it as a timestamp)',
+            ],
+            [
+                'modes' => [GenerationMode::Symfony, GenerationMode::Yii3],
+                'category' => 'wrong-refuse',
+                // A VALID `{}` for the object member of a union beside an `array` member: decoded by the
+                // framework, it is the `[]` the list member judges — and `minItems` refuses.
+                'kinds' => ['valid'],
+                'tagsAll' => ['emptyBesideArray'],
+                'row' => 'support matrix: "an EMPTY JSON container: `[]` for an object, `{}` for a list or for the object member of a union beside an `array` member" (symfony and yii3 read `[]` and `{}` as one)',
             ],
             [
                 'modes' => [GenerationMode::Symfony],
