@@ -303,6 +303,20 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
     ];
 
 {% endif %}
+{% if freeFormPaths|default([]) is not empty %}
+    /**
+     * Paths of free-form values: no schema says what is inside, so the raw body says which of their
+     * arrays were JSON objects. A `*` segment matches every index of an array.
+     *
+     * @var array<int, string>
+     */
+    private const array OPENAPI_FREE_FORM_PATHS = [
+{% for freeFormPath in freeFormPaths %}
+        '{{ freeFormPath|php_string }}',
+{% endfor %}
+    ];
+
+{% endif %}
 {% if scalarTypePaths is not empty %}
     /**
      * Paths whose schema is `integer`, `number` or `boolean`, with that type. Laravel's rules for them
@@ -365,7 +379,8 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
         // sent; `fromValidated()` reads only the properties it declares.
         $validator->excludeUnvalidatedArrayKeys = false;
 {% set readsEmptyContainers = readsEmptyContainers|default(false) %}
-{% if interpreterMethodsBlock is not empty or checksObjectPaths or checksScalarPaths or rootIsObject|default(false) or readsEmptyContainers %}
+{% set restoresFreeForm = freeFormPaths|default([]) is not empty or recursiveFreeForm|default(false) %}
+{% if interpreterMethodsBlock is not empty or checksObjectPaths or checksScalarPaths or rootIsObject|default(false) or readsEmptyContainers or restoresFreeForm %}
 
         $validator->after(static function (\Illuminate\Validation\Validator $validator) use ($rawJson): void {
 {% if interpreterMethodsBlock is not empty %}
@@ -430,9 +445,91 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
                 }
             }
 {% endif %}
+{% if restoresFreeForm %}
+{% if interpreterMethodsBlock is not empty or checksObjectPaths or checksScalarPaths or readsEmptyContainers or rootIsObject|default(false) %}
+
+{% endif %}
+            // Last, once nothing failed: what `validated()` hands `fromValidated()` keeps the JSON objects
+            // of a free-form value as objects, which the decoded payload wrote as PHP arrays.
+            if ($rawJson !== null && $rawJson !== '' && $validator->errors()->isEmpty()) {
+                self::withRawFreeFormObjects($validator, json_decode($rawJson, false));
+            }
+{% endif %}
         });
 {% endif %}
     }
+
+{% if restoresFreeForm %}
+    /**
+     * Every JSON object the raw body sent inside a free-form value — `{type: object}`, `additionalProperties:
+     * true`, an untyped property — a `\stdClass` again in the data `validated()` reads. Decoded, `{}` and
+     * `{"0": "x"}` became the PHP arrays `[]` and `["x"]` and went back out as JSON lists; no schema below
+     * that path says otherwise.
+     */
+    private static function withRawFreeFormObjects(\Illuminate\Validation\Validator $validator, mixed $raw): void
+    {
+        // `getData()` holds every `.` and `*` of a payload KEY as a placeholder; the raw body does not.
+        $wireKey = (fn(): callable => fn(string $key): string => $this->replacePlaceholderInString($key))->call($validator);
+        $data = $validator->getData();
+{% if recursiveFreeForm|default(false) %}
+        $paths = $raw instanceof \stdClass ? self::openApiRecursivePaths($raw)['freeFormPaths'] : [];
+{% if freeFormPaths is not empty %}
+        $paths = [...self::OPENAPI_FREE_FORM_PATHS, ...$paths];
+{% endif %}
+{% endif %}
+        foreach ({% if recursiveFreeForm|default(false) %}$paths{% else %}self::OPENAPI_FREE_FORM_PATHS{% endif %} as $path) {
+            // `\.` is a dot INSIDE a property name, as in `rules()`: it splits nothing.
+            $segments = str_replace('\\.', '.', (array)preg_split('/(?<!\\\\)\\./', $path));
+            $data = self::withRawObjectsAt($data, $raw, $segments, $wireKey);
+        }
+        (function (array $data): void {
+            $this->data = $data;
+        })->call($validator, $data);
+    }
+
+    /**
+     * @param array<int, string> $segments
+     */
+    private static function withRawObjectsAt(mixed $data, mixed $raw, array $segments, callable $wireKey): mixed
+    {
+        if ($segments === []) {
+            return self::withRawObjects($data, $raw, $wireKey);
+        }
+        if (!is_array($data)) {
+            return $data;
+        }
+
+        $members = $raw instanceof \stdClass ? get_object_vars($raw) : (is_array($raw) ? $raw : []);
+        foreach ($data as $key => $value) {
+            $wire = $wireKey((string)$key);
+            if (($segments[0] === '*' || $segments[0] === $wire) && array_key_exists($wire, $members)) {
+                $data[$key] = self::withRawObjectsAt($value, $members[$wire], array_slice($segments, 1), $wireKey);
+            }
+        }
+
+        return $data;
+    }
+
+    /**
+     * `$data` with every array the raw body sent as a JSON object a `\stdClass`, at any depth.
+     */
+    private static function withRawObjects(mixed $data, mixed $raw, callable $wireKey): mixed
+    {
+        if (!is_array($data) || (!$raw instanceof \stdClass && !is_array($raw))) {
+            return $data;
+        }
+
+        $members = $raw instanceof \stdClass ? get_object_vars($raw) : $raw;
+        $rebuilt = [];
+        foreach ($data as $key => $value) {
+            $wire = $raw instanceof \stdClass ? $wireKey((string)$key) : $key;
+            $rebuilt[$wire] = self::withRawObjects($value, $members[$wire] ?? null, $wireKey);
+        }
+
+        return $raw instanceof \stdClass ? (object)$rebuilt : $rebuilt;
+    }
+
+{% endif %}
 
 {% if readsEmptyContainers %}
     /**
@@ -464,15 +561,15 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
     }
 
     /**
-     * Adds an error for every `{}` the raw body sent where a `list` rule asks for a list. Decoded, the
-     * empty object is the empty list, and the rule took it.
+     * Adds an error for every JSON object the raw body sent where a `list` rule asks for a list.
+     * Decoded, `{}` is the empty list and `{"0": 1, "1": 2}` the list `[1, 2]`, and the rule took both.
      */
     private static function assertRawEmptyLists(\Illuminate\Validation\Validator $validator, mixed $raw, string $path): void
     {
         if ($raw instanceof \stdClass) {
             $members = get_object_vars($raw);
             $pathRules = $validator->getRules()[$path] ?? [];
-            if ($members === [] && $path !== '' && is_array($pathRules) && in_array('list', $pathRules, true) && !$validator->errors()->has($path)) {
+            if ($path !== '' && is_array($pathRules) && in_array('list', $pathRules, true) && !$validator->errors()->has($path)) {
                 $validator->addFailure($path, 'list');
             }
         } elseif (is_array($raw)) {

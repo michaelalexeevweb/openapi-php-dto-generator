@@ -524,7 +524,10 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
 
             // if/then/else: conditional schema application.
             if (array_key_exists('if', $constraints) && is_array($constraints['if'])) {
-                $ifErrors = $this->validateConstraints($subject, $value, $constraints['if'], $depth + 1);
+                // The condition is asked of the DTO's values as well: with its property rules left to
+                // the DTO, `if: {properties: {kind: {const: cat}}}` held for every member, and a
+                // discriminated union's `then` of each member applied to all of them.
+                $ifErrors = $this->validateConstraints($subject, $value, $constraints['if'], $depth + 1, propertyRulesOwnedByDto: false);
                 $incompleteIf = $this->incompleteVerdict($ifErrors);
                 if ($incompleteIf !== []) {
                     $errors = [...$errors, ...$incompleteIf];

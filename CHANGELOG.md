@@ -3,6 +3,36 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.157 — 2026-11-26
+
+- fuzz round twelve: 19 fixes
+- ref-with-siblings branch keeps target
+- union component own keywords checked
+- deep object guard at any depth
+- nested union type loads
+
+The twelfth fuzz round took the round-eleven leftovers and 5 findings from fresh seeds: 12 root causes, 19 fixes,
+each with a test that failed before, and 3 framework limits documented. A fresh run on new seeds found 5:
+1 in the shapes covered before round seven, 4 in unions of several objects.
+
+**Regenerate after upgrading, in every mode.**
+
+- every mode: a nested union whose type shares a member with a sibling (`anyOf: [$ref X, {anyOf: [string,
+  {type: object}]}, {type: array}]`) declared `array` twice — `Duplicate type array is redundant`, a fatal
+  when the class loads;
+- runtime: a `$ref` branch with sibling keywords beside a member that admits an object is checked as the
+  target plus its siblings (only the siblings were); a branch `allOf: [{type: string}]` no longer counts as
+  object-admitting; a property `allOf: [{type: object}]` accepts objects (every value was refused); a `$ref`
+  to a union component with keywords of its own is built (it was "Unsupported type"), and those keywords are
+  checked on the raw value;
+- symfony: a `type: object` beside a discriminated union is hoisted like the bare union; decoded
+  discriminated list items are dispatched;
+- laravel, laravel-data: a JSON list where an object sits two or more containers down is refused; a JSON
+  object keyed 0..n-1 sent for a list is refused; a nested empty object is written back `{}`;
+- yii3: a nullable union component counts null once.
+
+Fuzz harness: symfony's two-member match on an inline union of classes is filed under its documented row.
+
 ## 2.15.156 — 2026-11-25
 
 - fuzz round eleven: 12 fixes

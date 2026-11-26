@@ -61,12 +61,19 @@
      * check stopped at the first self-referring level: `{"next": {"meta": [1]}}` was accepted where
      * `{"meta": [1]}` was refused.
      *
+{% if collectsFreeFormPaths|default(false) %}
+     * @return array{objectPaths: array<int, string>, scalarPaths: array<string, string>, freeFormPaths: array<int, string>}
+{% else %}
      * @return array{objectPaths: array<int, string>, scalarPaths: array<string, string>}
+{% endif %}
      */
     private static function openApiRecursivePaths(\stdClass $decoded): array
     {
         $objectPaths = [];
         $scalarPaths = [];
+{% if collectsFreeFormPaths|default(false) %}
+        $freeFormPaths = [];
+{% endif %}
         $pending = self::openApiNestedParts()['recursions'];
         while ($pending !== []) {
             $prefix = (string)array_key_first($pending);
@@ -79,10 +86,17 @@
             $level = $class::openApiNestedValidation($prefix, []);
             $objectPaths = [...$objectPaths, ...$level['objectPaths']];
             $scalarPaths = [...$scalarPaths, ...$level['scalarPaths']];
+{% if collectsFreeFormPaths|default(false) %}
+            $freeFormPaths = [...$freeFormPaths, ...($level['freeFormPaths'] ?? [])];
+{% endif %}
             $pending = [...$pending, ...($level['recursions'] ?? [])];
         }
 
+{% if collectsFreeFormPaths|default(false) %}
+        return ['objectPaths' => $objectPaths, 'scalarPaths' => $scalarPaths, 'freeFormPaths' => $freeFormPaths];
+{% else %}
         return ['objectPaths' => $objectPaths, 'scalarPaths' => $scalarPaths];
+{% endif %}
     }
 
 {% endif %}
@@ -151,7 +165,10 @@
      *
      * @internal called by the generated classes that hold this one
      * @param array<int, string> $visited the classes above this one; one already among them adds nothing
-{% if reachesRecursion %}
+{% if reachesRecursion and collectsFreeFormPaths|default(false) %}
+     *   but the path where the payload re-enters it, in `recursions`
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>, recursions: array<string, class-string>, freeFormPaths: array<int, string>}
+{% elseif reachesRecursion %}
      *   but the path where the payload re-enters it, in `recursions`
      * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>, recursions: array<string, class-string>}
 {% else %}
@@ -173,6 +190,9 @@
                 'objectPaths' => [],
                 'scalarPaths' => [],
                 'recursions' => [$prefix => self::class],
+{% if collectsFreeFormPaths|default(false) %}
+                'freeFormPaths' => [],
+{% endif %}
             ];
 {% else %}
             return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
@@ -197,6 +217,14 @@
                     $prefix . '.{{ scalarPath|php_string }}' => '{{ scalarType|php_string }}',
 {% endfor %}
                 ],
+{% if reachesRecursion and collectsFreeFormPaths|default(false) %}
+                // This class's own paths reach through the classes below it already; theirs would repeat them.
+                'freeFormPaths' => [
+{% for freeFormPath in nestedValidation.freeFormPaths %}
+                    $prefix . '.{{ freeFormPath|php_string }}',
+{% endfor %}
+                ],
+{% endif %}
             ],
 {% for child in nestedValidation.children %}
             {{ child.ref }}::openApiNestedValidation($prefix . '.{{ child.suffix|php_string }}', $visited),
@@ -213,6 +241,9 @@
             'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
 {% if reachesRecursion %}
             'recursions' => array_merge(...array_column($parts, 'recursions')),
+{% endif %}
+{% if reachesRecursion and collectsFreeFormPaths|default(false) %}
+            'freeFormPaths' => $parts[0]['freeFormPaths'],
 {% endif %}
         ];
     }

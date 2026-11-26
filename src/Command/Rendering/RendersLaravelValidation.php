@@ -57,6 +57,13 @@ trait RendersLaravelValidation
      */
     private const int LARAVEL_NESTED_RULE_LIMIT = 20_000;
 
+    /**
+     * How many containers below a property the raw-body walkers (`type: object` paths, free-form
+     * paths) follow the inlined schema. A self-reference is inlined as `[]` and stops the walk by
+     * itself; the limit is the guard for a document that nests that deep on purpose.
+     */
+    private const int LARAVEL_SHAPE_PATH_DEPTH = 16;
+
     private int $laravelNestedRuleBudget = 0;
 
     private int $laravelNestedRuleDepth = 0;
@@ -1635,7 +1642,13 @@ trait RendersLaravelValidation
         // A `mixed` property is the other such place: an untyped schema with `properties` is not
         // materialized — JSON Schema lets it hold any value — so no nested class and no dotted rule
         // reaches the keys it describes, and its `required` and `properties` are the interpreter's.
-        $keysUnmaterialized = $property['type'] === 'mixed';
+        //
+        // So is a union of classes (`Cat|Dog`) with `properties` / `required` of its own beside the
+        // `oneOf` / `anyOf`: JSON Schema applies them to the same value, but no member class declares
+        // them and no dotted rule was ever written for them — `{"kind": "dog"}` passed `required:
+        // [value]`, and `maxLength` on a sibling was never checked.
+        $keysUnmaterialized = $property['type'] === 'mixed'
+            || ($this->laravelDtoClass($property) === null && str_contains($property['type'], '|') && !str_contains($property['type'], '<'));
         if (is_array($schema['required'] ?? null) && (!is_array($schema['properties'] ?? null) || $keysUnmaterialized)) {
             $consumed = array_values(array_filter(
                 array: $consumed,
@@ -2789,6 +2802,26 @@ trait RendersLaravelValidation
         ) {
             $paths[] = $path . '.*';
         }
+        // Further down — `items.items`, `additionalProperties.items`, an inline item's own properties —
+        // from the inlined schema: no class names those levels. `[[[1]]]` was taken as the object two
+        // lists down and written back as `[[{"0":1}]]`.
+        if ($property['type'] !== 'mixed') {
+            foreach ([$items, $values] as $childSchema) {
+                if ($childSchema === null) {
+                    continue;
+                }
+                $nestedPaths = $this->laravelNestedObjectShapePaths(
+                    schema: $childSchema,
+                    path: $path . '.*',
+                    // A class one level down is walked below, with its unions and member guards.
+                    walkProperties: $itemDtoClass === null,
+                    depth: 1,
+                );
+                foreach ($nestedPaths as $nestedPath) {
+                    $paths[] = $nestedPath;
+                }
+            }
+        }
 
         // Each member of a discriminated union, at the union's own path: `{"kind": "cat", "bag": [2]}`
         // reached a cat's `type: object` property unasked. A member's paths sit behind a segment that
@@ -2825,6 +2858,167 @@ trait RendersLaravelValidation
         }
 
         return array_values(array_unique($paths));
+    }
+
+    /**
+     * The `type: object` paths BELOW one container value whose schema is `$schema`, at `$path`: its
+     * items, its map values and — where `$walkProperties` — its own properties, at any depth.
+     *
+     * @param array<array-key, mixed> $schema
+     * @return list<string>
+     */
+    private function laravelNestedObjectShapePaths(array $schema, string $path, bool $walkProperties, int $depth): array
+    {
+        if ($depth > self::LARAVEL_SHAPE_PATH_DEPTH) {
+            return [];
+        }
+
+        $children = [];
+        foreach (['items', 'additionalProperties'] as $keyword) {
+            $childSchema = $schema[$keyword] ?? null;
+            if (is_array($childSchema) && $childSchema !== []) {
+                $children[] = ['path' => $path . '.*', 'schema' => $childSchema];
+            }
+        }
+        $properties = $schema['properties'] ?? null;
+        $composed = array_intersect(['allOf', 'anyOf', 'oneOf'], array_keys($schema)) !== [];
+        if ($walkProperties && !$composed && is_array($properties)) {
+            foreach ($properties as $name => $childSchema) {
+                if (is_array($childSchema) && $childSchema !== []) {
+                    $children[] = ['path' => $path . '.' . $this->laravelPathSegment((string)$name), 'schema' => $childSchema];
+                }
+            }
+        }
+
+        $paths = [];
+        foreach ($children as $child) {
+            if ($this->laravelSchemaIsObject($child['schema']) || $this->laravelUnionAdmitsObjectButNoArray($child['schema'])) {
+                $paths[] = $child['path'];
+            }
+            $nestedPaths = $this->laravelNestedObjectShapePaths(
+                schema: $child['schema'],
+                path: $child['path'],
+                walkProperties: true,
+                depth: $depth + 1,
+            );
+            foreach ($nestedPaths as $nestedPath) {
+                $paths[] = $nestedPath;
+            }
+        }
+
+        return $paths;
+    }
+
+    /**
+     * The paths of free-form values below a property: an untyped property, the members of a `type:
+     * object` that names none (`{type: object}`, `additionalProperties: true`), the items of a `type:
+     * array` that names none — in nested classes and further containers too. No rule reaches inside
+     * them, and the decoded body has lost which of their arrays were JSON objects: `withValidator()`
+     * puts those back from the raw body.
+     *
+     * @param SchemaProperty $property
+     * @param list<string> $visitedClasses guards a self-referential schema
+     * @return list<string>
+     */
+    private function laravelFreeFormPaths(array $property, string $prefix, array $visitedClasses, int $depth): array
+    {
+        $segment = $this->laravelPathSegment($property['openApiName']);
+        $path = $prefix === '' ? $segment : $prefix . '.' . $segment;
+        $constraints = $this->laravelConstraintsFor($property);
+        if (ltrim($property['type'], '?') === 'mixed') {
+            return $this->laravelSchemaIsUntyped($constraints) ? [$path] : [];
+        }
+
+        $nestedClass = $this->laravelDtoClass($property);
+        $itemClass = $this->laravelDtoItemClass($property);
+        $recurseClass = $nestedClass ?? ($itemClass !== null && !$this->laravelIsEnumClass($itemClass) ? $itemClass : null);
+        if ($recurseClass === null) {
+            return ($property['isShapeUnion'] ?? false) === true ? [] : $this->laravelFreeFormSchemaPaths($constraints, $path, 0);
+        }
+        if (in_array($recurseClass, $visitedClasses, true) || $depth > self::LARAVEL_SHAPE_PATH_DEPTH) {
+            return [];
+        }
+
+        $paths = [];
+        foreach ($this->getSchemaProperties($recurseClass) as $childProperty) {
+            $childPaths = $this->laravelFreeFormPaths(
+                property: $childProperty,
+                prefix: $nestedClass !== null ? $path : $path . '.*',
+                visitedClasses: [...$visitedClasses, $recurseClass],
+                depth: $depth + 1,
+            );
+            foreach ($childPaths as $childPath) {
+                $paths[] = $childPath;
+            }
+        }
+
+        return $paths;
+    }
+
+    /**
+     * `laravelFreeFormPaths()` below a schema no class stands for. A `[]` subschema is where a
+     * self-reference was cut off, not a free-form value, and stops the walk.
+     *
+     * @return list<string>
+     */
+    private function laravelFreeFormSchemaPaths(mixed $schema, string $path, int $depth): array
+    {
+        if ($schema === true) {
+            return [$path];
+        }
+        if (!is_array($schema) || $schema === [] || $depth > self::LARAVEL_SHAPE_PATH_DEPTH) {
+            return [];
+        }
+        if ($this->laravelSchemaIsUntyped($schema)) {
+            return $depth > 0 ? [$path] : [];
+        }
+        $type = $schema['type'] ?? null;
+        $types = array_values(array_diff(is_array($type) ? $type : [$type], ['null']));
+        $structural = array_intersect(['allOf', 'anyOf', 'oneOf', 'not', 'enum', 'const', '$ref', 'x-openapi-recurse'], array_keys($schema));
+        if ($structural !== [] || count($types) !== 1) {
+            return [];
+        }
+
+        $paths = [];
+        if ($types[0] === 'object') {
+            $properties = is_array($schema['properties'] ?? null) ? $schema['properties'] : [];
+            foreach ($properties as $name => $propertySchema) {
+                foreach ($this->laravelFreeFormSchemaPaths($propertySchema, $path . '.' . $this->laravelPathSegment((string)$name), $depth + 1) as $childPath) {
+                    $paths[] = $childPath;
+                }
+            }
+            $values = $schema['additionalProperties'] ?? null;
+            $describesValues = array_intersect(['patternProperties', 'unevaluatedProperties'], array_keys($schema)) !== [];
+            if ($properties === [] && !$describesValues && ($values === null || $values === true)) {
+                $paths[] = $path . '.*';
+            } elseif (is_array($values)) {
+                foreach ($this->laravelFreeFormSchemaPaths($values, $path . '.*', $depth + 1) as $childPath) {
+                    $paths[] = $childPath;
+                }
+            }
+        } elseif ($types[0] === 'array') {
+            $items = $schema['items'] ?? null;
+            $describesItems = array_intersect(['prefixItems', 'unevaluatedItems'], array_keys($schema)) !== [];
+            $paths = match (true) {
+                $describesItems => [],
+                $items === null || $items === true => [$path . '.*'],
+                default => $this->laravelFreeFormSchemaPaths($items, $path . '.*', $depth + 1),
+            };
+        }
+
+        return $paths;
+    }
+
+    /**
+     * Whether a schema says nothing about the value's type or shape: `{}`, or annotations alone.
+     *
+     * @param array<array-key, mixed> $schema
+     */
+    private function laravelSchemaIsUntyped(array $schema): bool
+    {
+        $shaping = ['type', 'allOf', 'anyOf', 'oneOf', 'not', 'enum', 'const', '$ref', 'x-openapi-recurse', 'properties', 'items', 'additionalProperties', 'patternProperties', 'prefixItems', 'if'];
+
+        return array_intersect($shaping, array_keys($schema)) === [];
     }
 
     /**
@@ -3390,13 +3584,14 @@ trait RendersLaravelValidation
      * rules, its object and scalar paths, and the nested classes asked for the rest. A nested class that
      * cannot be asked is written out here, as before.
      *
-     * @return array{rules: list<array{suffix: string, rules: string}>, objectPaths: list<string>, scalarPaths: array<string, string>, children: list<array{class: string, suffix: string}>}
+     * @return array{rules: list<array{suffix: string, rules: string}>, objectPaths: list<string>, scalarPaths: array<string, string>, freeFormPaths: list<string>, children: list<array{class: string, suffix: string}>}
      */
     private function laravelNestedValidationPlan(string $className): array
     {
         $rules = [];
         $objectPaths = [];
         $scalarPaths = [];
+        $freeFormPaths = [];
         $children = [];
         foreach ($this->getSchemaProperties($className) as $property) {
             $segment = $this->laravelPathSegment($property['openApiName']);
@@ -3426,12 +3621,16 @@ trait RendersLaravelValidation
             foreach ($this->laravelScalarTypePaths($property, '', [$className], recurse: $child === null) as $scalarPath => $scalarType) {
                 $scalarPaths[$scalarPath] = $scalarType;
             }
+            foreach ($this->laravelFreeFormPaths(property: $property, prefix: '', visitedClasses: [$className], depth: 0) as $freeFormPath) {
+                $freeFormPaths[] = $freeFormPath;
+            }
         }
 
         return [
             'rules' => $rules,
             'objectPaths' => array_values(array_unique($objectPaths)),
             'scalarPaths' => $scalarPaths,
+            'freeFormPaths' => array_values(array_unique($freeFormPaths)),
             'children' => $children,
         ];
     }
@@ -3554,6 +3753,7 @@ trait RendersLaravelValidation
                 'rules' => $plan['rules'],
                 'objectPaths' => $plan['objectPaths'],
                 'scalarPaths' => $plan['scalarPaths'],
+                'freeFormPaths' => $plan['freeFormPaths'],
                 'children' => array_map(
                     callback: fn(array $child): array => ['ref' => $this->laravelDtoClassRef($child['class']), 'suffix' => $child['suffix']],
                     array: $plan['children'],

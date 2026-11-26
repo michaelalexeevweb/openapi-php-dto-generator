@@ -292,7 +292,7 @@ trait RendersRuntimeDto
             ? $this->resolveDiscriminatorRenderData($discriminator, $namespace)
             : null;
 
-        $constraintAssignments = $this->resolveConstraintAssignments($ownProperties);
+        $constraintAssignments = $this->resolveConstraintAssignments(properties: $ownProperties, parentByName: $parentByName);
         // Schema-LEVEL keywords, as opposed to the per-property map above. Only the ones the
         // runtime deserializer can act on are carried, and only when the document sets them.
         $objectConstraints = $this->resolveObjectConstraints($className);
@@ -1331,15 +1331,40 @@ trait RendersRuntimeDto
     }
 
     /**
+     * A property the class declares again over its parent's keeps the parent's rules as well: a member
+     * of a union component with `properties` of its own extends that component, and JSON Schema applies
+     * both schemas to the value — `Parcel.value: {minimum: 0}` beside `Mail.value: {type: integer}`
+     * refused nothing below zero once the member's constraints replaced the parent's. An `allOf` child
+     * already arrives with the two merged, and then nothing is added. A keyword both give differently
+     * goes along as one more `allOf` branch. Generator markers (`x-…`) and `nullable` stay the class's.
+     *
      * @param array<int, SchemaProperty> $properties
+     * @param array<string, SchemaProperty> $parentByName
      * @return array<int, array{name: string, value: string}>
      */
-    private function resolveConstraintAssignments(array $properties): array
+    private function resolveConstraintAssignments(array $properties, array $parentByName = []): array
     {
         $result = [];
 
         foreach ($properties as $property) {
             $constraints = $property['constraints'] ?? [];
+            $inherited = $parentByName[$property['name']]['constraints'] ?? [];
+            $differing = [];
+            foreach ($inherited as $keyword => $value) {
+                // Generator markers and the 3.0 `nullable` describe the PHP side of one class, not a
+                // rule both apply.
+                if (str_starts_with($keyword, 'x-') || $keyword === 'nullable') {
+                    continue;
+                }
+                if (!array_key_exists($keyword, $constraints)) {
+                    $constraints[$keyword] = $value;
+                } elseif ($constraints[$keyword] !== $value) {
+                    $differing[$keyword] = $value;
+                }
+            }
+            if ($differing !== []) {
+                $constraints['allOf'] = [...(is_array($constraints['allOf'] ?? null) ? $constraints['allOf'] : []), $differing];
+            }
             if ($constraints === []) {
                 continue;
             }

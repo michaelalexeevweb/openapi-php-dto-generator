@@ -460,6 +460,12 @@ final class FuzzHarnessTest extends TestCase
 
         $this->assertNotNull(KnownDivergences::explain(mode: GenerationMode::Symfony, category: 'wrong-refuse', kind: 'valid', tags: ['unionObjectPair', 'objectOfPair']));
         $this->assertNull(KnownDivergences::explain(mode: GenerationMode::Symfony, category: 'wrong-refuse', kind: 'valid', tags: ['unionObjectPair']));
+        // An object both members of the pair accept: symfony builds one and drops the other's keys, so
+        // the second match is never seen (row 165; seeds 16012, 16032). Runtime and yii3 see it.
+        $this->assertNotNull(KnownDivergences::explain(mode: GenerationMode::Symfony, category: 'wrong-accept', kind: 'matchesTwoMembers', tags: ['unionObjectPair']));
+        $this->assertNull(KnownDivergences::explain(mode: GenerationMode::Symfony, category: 'wrong-accept', kind: 'matchesTwoMembers', tags: []));
+        $this->assertNull(KnownDivergences::explain(mode: GenerationMode::Runtime, category: 'wrong-accept', kind: 'matchesTwoMembers', tags: ['unionObjectPair']));
+        $this->assertNull(KnownDivergences::explain(mode: GenerationMode::Yii3, category: 'wrong-accept', kind: 'matchesTwoMembers', tags: ['unionObjectPair']));
     }
 
     /**

@@ -196,6 +196,16 @@ final class KnownDivergences
             ],
             [
                 'modes' => [GenerationMode::Symfony],
+                'category' => 'wrong-accept',
+                // An object BOTH object members of a `oneOf` accept: the serializer builds only the class
+                // it tries first and drops the other member's keys, so the validator never sees the
+                // second match ({@see FuzzSpec::confirmedByReference()} tags these `unionObjectPair`).
+                'kinds' => ['matchesTwoMembers'],
+                'tagsAll' => ['unionObjectPair'],
+                'row' => 'support matrix: "an object only a member whose class name does not sort first of an inline undiscriminated union of classes accepts" (symfony builds one member, and an object both members accept reaches the validator as that member alone)',
+            ],
+            [
+                'modes' => [GenerationMode::Symfony],
                 'category' => 'wrong-refuse',
                 'kinds' => ['valid'],
                 'tagsAny' => ['nullItem:nullable-temporal', 'nullItem:nullable-enum', 'nullMapValue:nullable-temporal', 'nullMapValue:nullable-enum'],

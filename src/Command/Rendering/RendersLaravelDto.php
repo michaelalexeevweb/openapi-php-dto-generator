@@ -73,6 +73,7 @@ trait RendersLaravelDto
 
         $objectShapePaths = [];
         $scalarTypePaths = [];
+        $freeFormPaths = [];
         $nestedChildren = [];
         // A parameters DTO is handed the request BODY as `$rawJson` by its FormRequest; a body field that
         // happens to share a parameter's name says nothing about that parameter.
@@ -102,6 +103,11 @@ trait RendersLaravelDto
             if ($readsRawBody) {
                 foreach ($this->laravelScalarTypePaths($property, '', [$className], recurse: $child === null) as $scalarPath => $scalarType) {
                     $scalarTypePaths[$scalarPath] = $scalarType;
+                }
+            }
+            if ($readsRawBody) {
+                foreach ($this->laravelFreeFormPaths(property: $property, prefix: '', visitedClasses: [$className], depth: 0) as $freeFormPath) {
+                    $freeFormPaths[] = $freeFormPath;
                 }
             }
             $hydrators[] = $this->laravelHydratorFor($property, $param);
@@ -148,7 +154,17 @@ trait RendersLaravelDto
         $this->importLibraryClass(fqcn: 'Illuminate\Validation\Validator', namespace: $namespace, useStatements: $useStatements);
         // The template spells `\stdClass` out; the import shortens it unless the document owns a
         // `StdClass` here, where the import would be a fatal and the full name is the only safe one.
-        if (($checksPaths || $readsEmptyContainers) && !$this->namespaceDeclaresClass('stdClass', $namespace)) {
+        $freeFormPaths = array_values(array_unique($freeFormPaths));
+        // Below a level where the schema holds itself the paths come from the body, as the shape
+        // checks' do — through `rawNodesAt()`, which those checks bring.
+        $recursiveFreeForm = $readsRawBody
+            && $nestedVars['reachesRecursion']
+            && $checksPaths
+            && array_filter(
+                array: array_keys($this->laravelReachableClasses($className)),
+                callback: fn(string $reached): bool => $this->laravelNestedValidationPlan($reached)['freeFormPaths'] !== [],
+            ) !== [];
+        if (($checksPaths || $readsEmptyContainers || $freeFormPaths !== [] || $recursiveFreeForm) && !$this->namespaceDeclaresClass('stdClass', $namespace)) {
             $useStatements[] = 'stdClass';
         }
 
@@ -203,6 +219,9 @@ trait RendersLaravelDto
             'objectShapePaths' => $objectShapePaths,
             'scalarTypePaths' => $scalarTypePaths,
             'readsEmptyContainers' => $readsEmptyContainers,
+            'freeFormPaths' => $freeFormPaths,
+            'recursiveFreeForm' => $recursiveFreeForm,
+            'collectsFreeFormPaths' => $readsRawBody,
             'laravelFormRequest' => $this->laravelFormRequest,
             'rawPathsEscapeDots' => $nestedVars['nestedPathsEscapeDots'] || array_filter(
                 array: [...$objectShapePaths, ...array_keys($scalarTypePaths)],
@@ -912,7 +931,11 @@ trait RendersLaravelDto
         }
 
         if ($this->laravelDescribesListOfMaps($property['type'])) {
-            $mapper = 'static fn(?array $item): ?object => $item === null ? null : self::toJsonObjects($item)';
+            $itemSchema = $this->laravelConstraintsFor($property)['items'] ?? null;
+            $mapper = sprintf(
+                'static fn(?array $item): ?object => $item === null ? null : %s',
+                is_array($itemSchema) ? $this->laravelObjectFromSchema($itemSchema, '$item', 0) : 'self::toJsonObjects($item)',
+            );
 
             return $nullable
                 ? sprintf('%s === null ? null : array_map(%s, array_values(%s))', $propertyAccess, $mapper, $propertyAccess)
@@ -1016,6 +1039,61 @@ trait RendersLaravelDto
     }
 
     /**
+     * The expression that writes the array `$access`, which the document types as an object with
+     * schema `$schema`, as a JSON object. Where the schema says what its VALUES are — a map of objects,
+     * a map of lists of objects — each value is written by that schema too: `toJsonObjects()` alone
+     * guessed every level below with `array_is_list()`, and an empty object two containers down went
+     * out as `[]`.
+     *
+     * @param array<array-key, mixed> $schema
+     */
+    private function laravelObjectFromSchema(array $schema, string $access, int $depth): string
+    {
+        $values = $schema['additionalProperties'] ?? null;
+        $properties = $schema['properties'] ?? null;
+        $valueWriter = is_array($values) && $values !== [] && (!is_array($properties) || $properties === [])
+            ? $this->laravelValueFromSchema($values, $depth + 1)
+            : null;
+
+        return $valueWriter === null
+            ? sprintf('self::toJsonObjects(%s)', $access)
+            : sprintf('(object)array_map(%s, %s)', $valueWriter, $access);
+    }
+
+    /**
+     * The closure that writes one value by its schema when the schema says something `toJsonObjects()`
+     * cannot see — an object, or a list that holds one at some depth — or null when the value can be
+     * left to it.
+     *
+     * @param array<array-key, mixed> $schema
+     */
+    private function laravelValueFromSchema(array $schema, int $depth): ?string
+    {
+        $types = $depth > self::LARAVEL_SHAPE_PATH_DEPTH ? null : $this->laravelAdmittedJsonTypes($schema);
+        if ($types === null) {
+            return null;
+        }
+        if (in_array('object', $types, true) && !in_array('array', $types, true)) {
+            $composed = array_intersect(['anyOf', 'oneOf', 'allOf'], array_keys($schema)) !== [];
+
+            return sprintf(
+                'static fn(mixed $item): mixed => is_array($item) ? %s : %s',
+                $this->laravelObjectFromSchema($schema, '$item', $depth),
+                $composed ? 'self::toJsonValue($item)' : '$item',
+            );
+        }
+        $items = $schema['items'] ?? null;
+        if (array_values(array_diff($types, ['null'])) !== ['array'] || !is_array($items)) {
+            return null;
+        }
+        $itemWriter = $this->laravelValueFromSchema($items, $depth + 1);
+
+        return $itemWriter === null
+            ? null
+            : sprintf('static fn(mixed $item): mixed => is_array($item) ? array_map(%s, array_values($item)) : $item', $itemWriter);
+    }
+
+    /**
      * The closure that writes one item (of a list) or value (of a map) whose schema admits an object
      * and no array — `{type: object}`, `anyOf: [{type: object}, {type: integer}]`, `allOf: [{type:
      * object}]` — possibly under further lists (`items: {type: array, items: {type: object}}`). An
@@ -1051,7 +1129,8 @@ trait RendersLaravelDto
                 // `toJsonValue()` writes; a plain `type: object` leaves nothing but null beside an array.
                 $composed = array_intersect(['anyOf', 'oneOf', 'allOf'], array_keys($schema)) !== [];
                 $writer = sprintf(
-                    'static fn(mixed $item): mixed => is_array($item) ? self::toJsonObjects($item) : %s',
+                    'static fn(mixed $item): mixed => is_array($item) ? %s : %s',
+                    $this->laravelObjectFromSchema($schema, '$item', 0),
                     $composed ? 'self::toJsonValue($item)' : '$item',
                 );
                 for ($level = 0; $level < $depth; $level++) {
@@ -1086,7 +1165,7 @@ trait RendersLaravelDto
     private function laravelNeedsJsonValueHelper(array $properties): bool
     {
         foreach ($properties as $property) {
-            if (($property['writeOnly'] ?? null) !== true && ($this->laravelIsUntypedContainer($property) || str_contains((string)$this->laravelObjectItemWriter($property), 'toJsonValue'))) {
+            if (($property['writeOnly'] ?? null) !== true && ($this->laravelIsUntypedContainer($property) || str_contains($this->laravelToArrayExpression($property), 'self::toJsonValue('))) {
                 return true;
             }
         }

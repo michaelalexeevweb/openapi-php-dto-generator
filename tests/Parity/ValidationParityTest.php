@@ -15577,6 +15577,701 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * A union branch that is a `$ref` with sibling keywords is a class of its own (it extends the
+     * target). Beside a member that admits an object — a map, a free-form object, an untyped branch —
+     * the branch cannot be marked "is that class": a payload the class refuses stays the raw array the
+     * map took, and only the spelling can still refuse it. The spelling was the siblings alone: the
+     * target's `required`, types and lengths were gone, and an enum sibling had moved into an enum
+     * class, so `{"bison":{"tern":5}}` and `{"bison":{"raven":3}}` were accepted as the array member.
+     *
+     * The member beside it was counted as admitting an object by its top-level `type` only: a scalar
+     * spelled `allOf: [{type: string}]` or `oneOf: [string, integer]` counted as one, the union was
+     * never marked, and the lossy spelling decided — `{"bison":{"tern":"c0"}}` passed `maxLength: 1`.
+     *
+     * @param array<string, mixed> $bison
+     * @param array<string, mixed> $sienna
+     * @param array<string, bool> $payloads
+     * @param array<string, array<string, bool|null>> $diverging mode => payloads it answers otherwise
+     */
+    #[DataProvider('refWithSiblingsBesideAnObjectMemberProvider')]
+    public function testARefWithSiblingsBranchBesideAnObjectMemberKeepsItsTarget(array $bison, array $sienna, array $payloads, array $diverging = []): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = self::probeSpec(['type' => 'object']);
+        $spec['components']['schemas'] = [
+            'Probe' => ['type' => 'object', 'properties' => ['bison' => $bison]],
+            'Sienna' => $sienna,
+        ];
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: $spec,
+                key: 'ref with siblings beside an object member ' . md5((string)json_encode([$bison, $sienna])),
+                payloads: $payloads,
+                diverging: $diverging,
+            ),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>, 1: array<string, mixed>, 2: array<string, bool>, 3?: array<string, array<string, bool|null>>}>
+     */
+    public static function refWithSiblingsBesideAnObjectMemberProvider(): iterable
+    {
+        $sienna = ['type' => 'object', 'properties' => ['tern' => ['type' => 'string']], 'required' => ['tern']];
+        $ravenBranch = ['$ref' => '#/components/schemas/Sienna', 'properties' => ['raven' => ['type' => 'integer', 'enum' => [0]]]];
+        $booleanMap = ['type' => 'object', 'additionalProperties' => ['type' => 'boolean']];
+        // Symfony types a union of a class and a map `array`, builds no class, and leaves the class
+        // branch to the class that is never built (`x-php-checked-by-class`), its property enums moved
+        // into enum types the array does not hold. An inline object member beside a map loses its enums
+        // the same way. Not this question; left unasserted there.
+        $unbuiltInSymfony = static fn(array $payloads): array => ['symfony' => array_fill_keys(keys: $payloads, value: null)];
+
+        // Cause: beside a map, the branch was spelled by its siblings alone.
+        yield 'beside a map' => [
+            ['anyOf' => [$ravenBranch, $booleanMap]],
+            $sienna,
+            [
+                '{"bison":{"tern":5}}' => false,
+                '{"bison":{"raven":3}}' => false,
+                '{"bison":{"tern":"a","raven":3}}' => false,
+                '{"bison":{"tern":"a","raven":0}}' => true,
+                '{"bison":{"tern":"a"}}' => true,
+                '{"bison":{"lynx":true}}' => true,
+                '{"bison":{"lynx":1}}' => false,
+            ],
+            $unbuiltInSymfony(['{"bison":{"tern":5}}', '{"bison":{"raven":3}}', '{"bison":{"tern":"a","raven":3}}', '{"bison":{"lynx":1}}']),
+        ];
+        yield 'beside a map, target requires nothing' => [
+            ['anyOf' => [$ravenBranch, $booleanMap]],
+            ['type' => 'object', 'properties' => ['tern' => ['type' => 'string']]],
+            [
+                '{"bison":{"raven":3}}' => false,
+                '{"bison":{"raven":0}}' => true,
+                '{"bison":{"tern":"a"}}' => true,
+                '{"bison":{"tern":5}}' => false,
+            ],
+            $unbuiltInSymfony(['{"bison":{"raven":3}}', '{"bison":{"tern":5}}']),
+        ];
+        yield 'beside a map and a list' => [
+            ['anyOf' => [
+                ['$ref' => '#/components/schemas/Sienna', 'properties' => ['stoat' => ['type' => 'string'], 'raven' => ['type' => 'integer', 'enum' => [0]]]],
+                ['allOf' => [['type' => 'string'], []]],
+                ['type' => 'array', 'maxItems' => 3],
+                $booleanMap,
+            ]],
+            $sienna,
+            [
+                '{"bison":{"raven":-65}}' => false,
+                '{"bison":{"tern":"a","raven":-65}}' => false,
+                '{"bison":{"tern":"a","raven":0}}' => true,
+                '{"bison":"a"}' => true,
+                '{"bison":[1]}' => true,
+            ],
+            $unbuiltInSymfony(['{"bison":{"raven":-65}}', '{"bison":{"tern":"a","raven":-65}}']),
+        ];
+
+        // Cause: a scalar member spelled by a composition counted as admitting an object.
+        $shortTern = ['type' => 'object', 'properties' => ['tern' => ['type' => 'string', 'maxLength' => 1]]];
+        $stoatBranch = ['$ref' => '#/components/schemas/Sienna', 'properties' => ['stoat' => ['type' => 'string']]];
+        $scalarPayloads = [
+            '{"bison":{"tern":"c0"}}' => false,
+            '{"bison":{"tern":"c"}}' => true,
+            '{"bison":{"stoat":5}}' => false,
+            '{"bison":"a"}' => true,
+            '{"bison":[1]}' => true,
+            '{"bison":5}' => false,
+        ];
+        yield 'beside an allOf string' => [
+            ['anyOf' => [$stoatBranch, ['allOf' => [['type' => 'string']]], ['type' => 'array']]],
+            $shortTern,
+            $scalarPayloads,
+        ];
+        yield 'beside an allOf string and an empty member' => [
+            ['anyOf' => [$stoatBranch, ['allOf' => [['type' => 'string'], []]], ['type' => 'array']]],
+            $shortTern,
+            $scalarPayloads,
+        ];
+        yield 'beside a oneOf of scalars' => [
+            ['anyOf' => [$stoatBranch, ['oneOf' => [['type' => 'string'], ['type' => 'integer']]], ['type' => 'array']]],
+            $shortTern,
+            [...$scalarPayloads, '{"bison":5}' => true, '{"bison":true}' => false],
+        ];
+        // Neighbours: a plain scalar member, and a member that does admit an object through a composition.
+        yield 'beside a plain string' => [
+            ['anyOf' => [$stoatBranch, ['type' => 'string'], ['type' => 'array']]],
+            $shortTern,
+            $scalarPayloads,
+        ];
+        yield 'beside an anyOf with a map' => [
+            ['anyOf' => [$stoatBranch, ['anyOf' => [['type' => 'string'], $booleanMap]]]],
+            $shortTern,
+            [
+                '{"bison":{"tern":"c0"}}' => false,
+                '{"bison":{"tern":"c"}}' => true,
+                '{"bison":"a"}' => true,
+                '{"bison":{"lynx":true}}' => true,
+            ],
+            $unbuiltInSymfony(['{"bison":{"tern":"c0"}}']),
+        ];
+    }
+
+    /**
+     * A property spelled only `allOf: [{type: object}]` is typed `array` and holds any JSON object. The
+     * runtime read the top-level `type` and the `anyOf` / `oneOf` branches to know a value may be an
+     * object, never a top-level `allOf`, and refused every object: 'param "bark" expects array, got
+     * object'. A list and a scalar stay refused, and so does an object under an `allOf` that also
+     * names a non-object type.
+     *
+     * @param array<string, mixed> $bark
+     * @param array<string, bool> $payloads
+     * @param array<string, array<string, bool|null>> $diverging mode => payloads it answers otherwise
+     */
+    #[DataProvider('objectByAllOfAloneProvider')]
+    public function testAnObjectSpelledByAnAllOfAloneHoldsAnyObject(array $bark, array $payloads, array $diverging = []): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = self::probeSpec(['type' => 'object']);
+        $spec['components']['schemas'] = ['Probe' => ['type' => 'object', 'properties' => ['bark' => $bark]]];
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: $spec,
+                key: 'object by allOf alone ' . md5((string)json_encode($bark)),
+                payloads: $payloads,
+                diverging: $diverging,
+            ),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>, 1: array<string, bool>, 2?: array<string, array<string, bool|null>>}>
+     */
+    public static function objectByAllOfAloneProvider(): iterable
+    {
+        $payloads = ['{"bark":{}}' => true, '{"bark":{"a":1}}' => true, '{"bark":[]}' => false, '{"bark":5}' => false];
+        // Symfony and yii3 take a JSON list for an object: README.support-matrix, "a JSON array for a
+        // `type: object` property".
+        $listTakenForAnObject = ['symfony' => ['{"bark":[]}' => null], 'yii3' => ['{"bark":[]}' => null]];
+
+        // Cause: the object is an `allOf`.
+        yield 'allOf object' => [['allOf' => [['type' => 'object']]], $payloads, $listTakenForAnObject];
+        yield 'allOf object and an empty member' => [['allOf' => [['type' => 'object'], []]], $payloads, $listTakenForAnObject];
+        // Neighbours: the plain object, and an `allOf` that also names a non-object type.
+        yield 'object' => [['type' => 'object'], $payloads, $listTakenForAnObject];
+        yield 'allOf object and string' => [
+            ['allOf' => [['type' => 'object'], ['type' => 'string']]],
+            ['{"bark":{}}' => false, '{"bark":{"a":1}}' => false, '{"bark":"a"}' => false, '{"bark":5}' => false],
+            // yii3 types the property by its `string` member, and its hydrator casts the object to one
+            // before the schema is asked. Not this question; left unasserted there.
+            ['yii3' => ['{"bark":{}}' => null, '{"bark":{"a":1}}' => null]],
+        ];
+    }
+
+    /**
+     * A union of `$ref` classes is one value; JSON Schema applies every keyword beside the `oneOf` /
+     * `anyOf` to that same value. Three shapes of that were lost:
+     *
+     * - `type: object` beside an inline discriminated union stopped the union from being hoisted into
+     *   an interface with a discriminator map. Symfony then built a member by guessing and refused the
+     *   valid payload ("discriminator kind must match concrete class"); yii3 counted both members as a
+     *   match ("more than one allowed oneOf branch") — its interpreter read the discriminator only when
+     *   exactly one branch matched.
+     * - own `properties` / `required` beside the union were not checked: symfony and yii3 dropped them
+     *   from the constraint of a `$ref` to a discriminated component, laravel and laravel-data from an
+     *   inline union, and the runtime refused every payload of an undiscriminated union component.
+     * - a union component with a `{type: 'null'}` member got a second null branch in yii3, so `null`
+     *   matched two `oneOf` branches and was refused.
+     *
+     * @param array<string, mixed> $schemas the components; `Probe` is the class under test
+     * @param array<string, bool> $payloads
+     * @param array<string, array<string, bool|null>> $diverging mode => payloads it answers otherwise
+     */
+    #[DataProvider('unionSiblingsProvider')]
+    public function testKeywordsBesideAUnionOfClassesApplyToTheValue(array $schemas, array $payloads, array $diverging = []): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = self::probeSpec(['type' => 'object']);
+        $spec['components']['schemas'] = $schemas;
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: $spec,
+                key: 'union siblings ' . md5((string)json_encode($schemas)),
+                payloads: $payloads,
+                diverging: $diverging,
+            ),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>, 1: array<string, bool>, 2?: array<string, array<string, bool|null>>}>
+     */
+    public static function unionSiblingsProvider(): iterable
+    {
+        $tagged = static fn(string $own, string $ownType, array $extra = []): array => [
+            'type' => 'object',
+            'required' => ['kind'],
+            'properties' => ['kind' => ['type' => 'string', ...$extra], $own => ['type' => $ownType]],
+        ];
+        $members = [
+            'Mail' => $tagged('stamp', 'string'),
+            'Crate' => $tagged('slats', 'integer'),
+        ];
+        $enumMembers = [
+            'Mail' => $tagged('stamp', 'string', ['enum' => ['mail']]),
+            'Crate' => $tagged('slats', 'integer', ['enum' => ['crate']]),
+        ];
+        $union = [['$ref' => '#/components/schemas/Mail'], ['$ref' => '#/components/schemas/Crate']];
+        $discriminator = [
+            'propertyName' => 'kind',
+            'mapping' => ['mail' => '#/components/schemas/Mail', 'crate' => '#/components/schemas/Crate'],
+        ];
+        $probe = static fn(array $plain): array => ['type' => 'object', 'properties' => ['plain' => $plain]];
+        $tagPayloads = [
+            '{"plain":{"kind":"mail","stamp":"s"}}' => true,
+            '{"plain":{"kind":"crate","slats":2}}' => true,
+            '{"plain":{"kind":"crate","slats":"x"}}' => false,
+            '{"plain":{"kind":"mail","stamp":5}}' => false,
+        ];
+        $ownValue = ['type' => 'object', 'properties' => ['value' => ['type' => 'integer']]];
+        // Symfony's serializer keeps no key the member it builds does not declare, so a key only the
+        // union's own `properties` name is gone before anything validates: README.support-matrix, "a
+        // property beside a union of classes".
+        $droppedInSymfony = static fn(array $payloads): array => ['symfony' => array_fill_keys(keys: $payloads, value: null)];
+        // Without a discriminator symfony builds the member whose class name sorts first (`Crate`):
+        // README.support-matrix, "an object only a member whose class name does not sort first …".
+        $sortedFirstInSymfony = static fn(array $payloads): array => ['symfony' => array_fill_keys(keys: $payloads, value: null)];
+        $valuePayloads = [
+            '{"plain":{"kind":"mail","value":"x"}}' => false,
+            '{"plain":{"kind":"mail","value":1}}' => true,
+            '{"plain":{"kind":"crate","slats":2,"value":3}}' => true,
+            '{"plain":{"kind":"crate","slats":"x","value":3}}' => false,
+        ];
+
+        // Cause: `type: object` beside an inline discriminated union.
+        yield 'inline discriminated, type object' => [
+            ['Probe' => $probe(['type' => 'object', 'oneOf' => $union, 'discriminator' => $discriminator]), ...$members],
+            $tagPayloads,
+        ];
+        // Neighbour: the same union without `type`.
+        yield 'inline discriminated' => [
+            ['Probe' => $probe(['oneOf' => $union, 'discriminator' => $discriminator]), ...$members],
+            $tagPayloads,
+        ];
+
+        // Cause: own properties beside a discriminated union component.
+        yield 'discriminated component with own properties' => [
+            ['Probe' => $probe(['$ref' => '#/components/schemas/Parcel']), 'Parcel' => [...$ownValue, 'oneOf' => $union, 'discriminator' => $discriminator], ...$members],
+            $valuePayloads,
+            $droppedInSymfony(['{"plain":{"kind":"mail","value":"x"}}']),
+        ];
+        // The members declare `value` too, so every mode holds it — symfony included.
+        $declaringValue = ['type' => 'object', 'required' => ['kind', 'value'], 'properties' => ['kind' => ['type' => 'string'], 'value' => ['type' => 'integer']]];
+        yield 'discriminated component with own properties the members declare' => [
+            [
+                'Probe' => $probe(['$ref' => '#/components/schemas/Parcel']),
+                'Parcel' => [
+                    'type' => 'object',
+                    'required' => ['value'],
+                    'properties' => ['value' => ['type' => 'integer', 'minimum' => 0]],
+                    'oneOf' => $union,
+                    'discriminator' => $discriminator,
+                ],
+                'Mail' => $declaringValue,
+                'Crate' => $declaringValue,
+            ],
+            [
+                '{"plain":{"kind":"mail","value":-1}}' => false,
+                '{"plain":{"kind":"crate","value":-1}}' => false,
+                '{"plain":{"kind":"mail","value":1}}' => true,
+                '{"plain":{"kind":"crate","value":2}}' => true,
+                '{"plain":{"kind":"mail"}}' => false,
+            ],
+        ];
+        // Cause: own properties beside an inline discriminated union.
+        yield 'inline discriminated with own properties' => [
+            ['Probe' => $probe([...$ownValue, 'oneOf' => $union, 'discriminator' => $discriminator]), ...$members],
+            $valuePayloads,
+            $droppedInSymfony(['{"plain":{"kind":"mail","value":"x"}}']),
+        ];
+        yield 'inline discriminated with own required and maxLength' => [
+            ['Probe' => $probe([
+                'type' => 'object',
+                'required' => ['value'],
+                'properties' => ['value' => ['type' => 'integer'], 'note' => ['type' => 'string', 'maxLength' => 2]],
+                'oneOf' => $union,
+                'discriminator' => $discriminator,
+            ]), ...$members],
+            [
+                '{"plain":{"kind":"mail"}}' => false,
+                '{"plain":{"kind":"mail","value":5,"note":"long"}}' => false,
+                '{"plain":{"kind":"mail","value":5,"note":"ok"}}' => true,
+                '{"plain":{"kind":"crate","slats":1,"value":1}}' => true,
+            ],
+            $droppedInSymfony(['{"plain":{"kind":"mail"}}', '{"plain":{"kind":"mail","value":5,"note":"long"}}']),
+        ];
+        yield 'inline anyOf with own required and maxLength' => [
+            ['Probe' => $probe([
+                'type' => 'object',
+                'required' => ['value'],
+                'properties' => ['value' => ['type' => 'integer'], 'note' => ['type' => 'string', 'maxLength' => 2]],
+                'anyOf' => $union,
+            ]), ...$enumMembers],
+            [
+                '{"plain":{"kind":"mail"}}' => false,
+                '{"plain":{"kind":"mail","value":5,"note":"long"}}' => false,
+                '{"plain":{"kind":"mail","value":5,"note":"ok"}}' => true,
+                '{"plain":{"kind":"crate","slats":1,"value":1}}' => true,
+            ],
+            $sortedFirstInSymfony(['{"plain":{"kind":"mail"}}', '{"plain":{"kind":"mail","value":5,"note":"long"}}', '{"plain":{"kind":"mail","value":5,"note":"ok"}}']),
+        ];
+        // Cause: an undiscriminated union component with own properties.
+        yield 'undiscriminated component with own properties' => [
+            ['Probe' => $probe(['$ref' => '#/components/schemas/Parcel']), 'Parcel' => [...$ownValue, 'oneOf' => $union], ...$enumMembers],
+            [...$valuePayloads, '{"plain":{"kind":"mail","stamp":"s"}}' => true],
+        ];
+        yield 'inline undiscriminated with own properties' => [
+            ['Probe' => $probe([...$ownValue, 'oneOf' => $union]), ...$enumMembers],
+            [...$valuePayloads, '{"plain":{"kind":"mail","stamp":"s"}}' => true],
+            $sortedFirstInSymfony(['{"plain":{"kind":"mail","value":"x"}}', '{"plain":{"kind":"mail","value":1}}', '{"plain":{"kind":"mail","stamp":"s"}}']),
+        ];
+
+        // Cause: held as the decoded value — a list item, a map value — a discriminated union was a
+        // `oneOf` of its members' schemas, and the tag was read only once exactly one had matched.
+        yield 'list and map of an inline discriminated union' => [
+            ['Probe' => ['type' => 'object', 'properties' => [
+                'list' => ['type' => 'array', 'items' => ['oneOf' => $union, 'discriminator' => $discriminator]],
+                'map' => ['type' => 'object', 'additionalProperties' => ['oneOf' => $union, 'discriminator' => $discriminator]],
+                'orNull' => ['type' => 'array', 'items' => ['oneOf' => [...$union, ['type' => 'null']], 'discriminator' => $discriminator]],
+            ]], ...$members],
+            [
+                '{"list":[{"kind":"mail","stamp":"s"}]}' => true,
+                '{"list":[{"kind":"crate","slats":2}]}' => true,
+                '{"list":[{"kind":"crate","slats":"x"}]}' => false,
+                '{"list":[{"kind":"zebra"}]}' => false,
+                '{"map":{"a":{"kind":"mail","stamp":"s"}}}' => true,
+                '{"map":{"a":{"kind":"crate","slats":"x"}}}' => false,
+                '{"orNull":[null,{"kind":"mail","stamp":"s"}]}' => true,
+                '{"orNull":[{"kind":"crate","slats":"x"}]}' => false,
+            ],
+        ];
+        // The same check on the items of a list of an undiscriminated union component.
+        yield 'list of an undiscriminated component with own properties' => [
+            [
+                'Probe' => $probe(['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Parcel']]),
+                'Parcel' => [...$ownValue, 'oneOf' => $union],
+                ...$enumMembers,
+            ],
+            [
+                '{"plain":[{"kind":"crate","value":"x"}]}' => false,
+                '{"plain":[{"kind":"crate","value":1}]}' => true,
+                '{"plain":[{"kind":"crate","slats":"x"}]}' => false,
+            ],
+        ];
+
+        // Cause: a second null branch in a nullable union component.
+        $olive = ['type' => 'object', 'required' => ['leaf'], 'properties' => ['leaf' => ['type' => 'string']]];
+        $teal = ['type' => 'object', 'required' => ['fin'], 'properties' => ['fin' => ['type' => 'integer']]];
+        $shade = ['$ref' => '#/components/schemas/Shade'];
+        yield 'nullable union component' => [
+            [
+                'Probe' => ['type' => 'object', 'properties' => [
+                    'one' => $shade,
+                    'many' => ['type' => 'array', 'items' => $shade],
+                    'map' => ['type' => 'object', 'additionalProperties' => $shade],
+                ]],
+                'Shade' => ['oneOf' => [['$ref' => '#/components/schemas/Olive'], ['$ref' => '#/components/schemas/Teal'], ['type' => 'null']]],
+                'Olive' => $olive,
+                'Teal' => $teal,
+            ],
+            [
+                '{"one":null}' => true,
+                '{"many":[null]}' => true,
+                '{"map":{"a":null}}' => true,
+                '{"one":{"leaf":"a"}}' => true,
+                '{"many":[{"fin":1},null]}' => true,
+                '{"one":{"leaf":5}}' => false,
+                '{"many":[{"fin":"x"}]}' => false,
+            ],
+        ];
+    }
+
+    /**
+     * What becomes of a key only the union's own `properties` name, once the payload passed. The value
+     * is typed as the member the tag names, which has no slot for it: a slot would take a wrapper
+     * class around the member, which the generator does not write. So the key is checked and then
+     * dropped by laravel and laravel-data — README.support-matrix, "a property beside a union of
+     * classes". The runtime keeps it: a component's members are generated as subclasses of it and
+     * inherit the property, and an inline union's member keeps the keys it was sent beside its own.
+     */
+    public function testAKeyOnlyBesideAUnionOfClassesIsCheckedThenDropped(): void
+    {
+        $member = static fn(string $own): array => [
+            'type' => 'object',
+            'required' => ['kind'],
+            'properties' => ['kind' => ['type' => 'string'], $own => ['type' => 'boolean']],
+        ];
+        $union = [['$ref' => '#/components/schemas/Cat'], ['$ref' => '#/components/schemas/Dog']];
+        $discriminator = ['propertyName' => 'kind', 'mapping' => ['cat' => '#/components/schemas/Cat', 'dog' => '#/components/schemas/Dog']];
+        $own = ['type' => 'object', 'properties' => ['value' => ['type' => 'integer']]];
+        $spec = self::probeSpec(['type' => 'object']);
+        $spec['components']['schemas'] = [
+            'Probe' => ['type' => 'object', 'properties' => [
+                'plain' => ['$ref' => '#/components/schemas/Pet'],
+                'inline' => [...$own, 'oneOf' => $union, 'discriminator' => $discriminator],
+            ]],
+            'Pet' => [...$own, 'oneOf' => $union, 'discriminator' => $discriminator],
+            'Cat' => $member('purr'),
+            'Dog' => $member('bark'),
+        ];
+
+        $kept = ['inline' => ['kind' => 'dog', 'bark' => true, 'value' => 5]];
+        $dropped = ['inline' => ['kind' => 'dog', 'bark' => true]];
+        $this->assertEquals(
+            expected: [$kept, $dropped, $dropped],
+            actual: $this->writtenBackByTheWritingModes($spec, 'key beside a union', '{"inline":{"kind":"dog","bark":true,"value":5}}'),
+        );
+        $this->assertEquals(
+            expected: [['plain' => ['kind' => 'cat', 'value' => 5]], ['plain' => ['kind' => 'cat']], ['plain' => ['kind' => 'cat']]],
+            actual: $this->writtenBackByTheWritingModes($spec, 'key beside a union', '{"plain":{"kind":"cat","value":5}}'),
+        );
+    }
+
+    /**
+     * Laravel asks the raw body whether a `type: object` arrived as a JSON list, at every path in
+     * `OPENAPI_OBJECT_PATHS`. The paths stopped one container below the property: an object two or more
+     * containers down (`items.items`, `additionalProperties.items`, `additionalProperties.additionalProperties`,
+     * `items.additionalProperties`, an item with properties) got none, so `[[[1]]]` was taken as the
+     * object and written back keyed by index.
+     *
+     * @param array<string, bool> $payloads
+     */
+    #[DataProvider('deepObjectShapeProvider')]
+    public function testAnObjectSeveralContainersDownRefusesAJsonList(array $payloads): void
+    {
+        $spec = self::probeSpec(['type' => 'object']);
+        $spec['components']['schemas']['Probe'] = ['type' => 'object', 'properties' => [
+            'ivies' => ['type' => 'array', 'items' => ['type' => 'array', 'items' => ['type' => 'object']]],
+            'reed' => ['type' => 'object', 'additionalProperties' => ['type' => 'array', 'items' => ['type' => 'object']]],
+            'pond' => ['type' => 'object', 'additionalProperties' => ['type' => 'object', 'additionalProperties' => ['type' => 'object']]],
+            'lily' => ['type' => 'array', 'items' => ['type' => 'object', 'additionalProperties' => ['type' => 'object']]],
+            'vine' => ['type' => 'array', 'items' => ['type' => 'array', 'items' => [
+                'type' => 'object',
+                'required' => ['hue'],
+                'properties' => ['hue' => ['type' => 'string'], 'tint' => ['type' => 'object']],
+            ]]],
+            'moss' => ['type' => 'array', 'items' => ['type' => 'object']],
+            'oak' => ['type' => 'object', 'additionalProperties' => ['type' => 'object']],
+        ]];
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: $spec,
+                key: 'object several containers down',
+                payloads: $payloads,
+                // Symfony and yii3 decode the body to PHP arrays before they validate it; their wire
+                // shape is not this question.
+                diverging: ['symfony' => array_fill_keys(keys: array_keys($payloads), value: null), 'yii3' => array_fill_keys(keys: array_keys($payloads), value: null)],
+            ),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, bool>}>
+     */
+    public static function deepObjectShapeProvider(): iterable
+    {
+        // Cause: no raw path two containers down.
+        yield 'a list where the object is' => [[
+            '{"ivies":[[[]]]}' => false,
+            '{"ivies":[[[1]]]}' => false,
+            '{"reed":{"k":[[1]]}}' => false,
+            '{"pond":{"a":{"b":[1]}}}' => false,
+            '{"lily":[{"a":[1]}]}' => false,
+            '{"vine":[[["x"]]]}' => false,
+            '{"vine":[[{"hue":"x","tint":[1]}]]}' => false,
+        ]];
+        // Neighbours: one container down was refused already, and the objects themselves pass.
+        yield 'one level down and the objects' => [[
+            '{"moss":[[1]]}' => false,
+            '{"oak":{"leaf":[1]}}' => false,
+            '{"ivies":[[{}]]}' => true,
+            '{"ivies":[[{"a":1}]]}' => true,
+            '{"reed":{"k":[{}]}}' => true,
+            '{"pond":{"a":{"b":{}}}}' => true,
+            '{"lily":[{"a":{}}]}' => true,
+            '{"vine":[[{"hue":"x","tint":{}}]]}' => true,
+            '{"moss":[{}]}' => true,
+        ]];
+    }
+
+    /**
+     * A JSON object keyed 0..n-1 decodes to the PHP list a JSON array does, and passes Laravel's `list`
+     * rule. The raw body was asked only about the EMPTY object, so `{"0":1,"1":2}` was taken as the list
+     * and written back as `[1,2]` — at the property and at a nested wildcard path.
+     *
+     * @param array<string, bool> $payloads
+     */
+    #[DataProvider('denseKeyedObjectForAListProvider')]
+    public function testADenseKeyedObjectIsNotAList(array $payloads): void
+    {
+        $spec = self::probeSpec(['type' => 'object']);
+        $spec['components']['schemas']['Probe'] = ['type' => 'object', 'properties' => [
+            'leaf' => ['type' => 'array', 'items' => ['type' => 'integer']],
+            'cell' => ['type' => 'array', 'items' => ['type' => 'array', 'items' => ['type' => 'integer']]],
+            'mix' => ['anyOf' => [['type' => 'array', 'items' => ['type' => 'integer']], ['type' => 'object']]],
+        ]];
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: $spec,
+                key: 'dense keyed object for a list',
+                payloads: $payloads,
+                // Symfony and yii3 decode the body to PHP arrays before they validate it; their wire
+                // shape is not this question.
+                diverging: ['symfony' => array_fill_keys(keys: array_keys($payloads), value: null), 'yii3' => array_fill_keys(keys: array_keys($payloads), value: null)],
+            ),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, bool>}>
+     */
+    public static function denseKeyedObjectForAListProvider(): iterable
+    {
+        // Cause: only an empty `{}` was refused where a `list` rule stands.
+        yield 'an object keyed 0..n-1' => [[
+            '{"leaf":{"0":1,"1":2}}' => false,
+            '{"leaf":{"0":1}}' => false,
+            '{"cell":{"0":[1]}}' => false,
+            '{"cell":[{"0":1}]}' => false,
+        ]];
+        // Neighbours: the lists, a sparse object, the empty object, and a union that admits the object.
+        yield 'lists and the object member' => [[
+            '{"leaf":[1,2]}' => true,
+            '{"leaf":{"1":1}}' => false,
+            '{"leaf":{}}' => false,
+            '{"cell":[[1],[]]}' => true,
+            '{"mix":{"0":1}}' => true,
+            '{"mix":[1]}' => true,
+        ]];
+    }
+
+    /**
+     * laravel's `toArray()` wrote an empty `type: object` two containers below the property as `[]`:
+     * the mapper knew the schema of the first container only and guessed the rest with
+     * `array_is_list()`, which an empty array satisfies. laravel-data is a documented divergence.
+     */
+    public function testAnEmptyObjectTwoContainersDownIsWrittenBackAsAnObject(): void
+    {
+        $spec = self::probeSpec(['type' => 'object']);
+        $spec['components']['schemas']['Probe'] = ['type' => 'object', 'properties' => [
+            'pond' => ['type' => 'object', 'additionalProperties' => ['type' => 'object', 'additionalProperties' => ['type' => 'object']]],
+            'lily' => ['type' => 'array', 'items' => ['type' => 'object', 'additionalProperties' => ['type' => 'object']]],
+            'reed' => ['type' => 'object', 'additionalProperties' => ['type' => 'array', 'items' => ['type' => 'object', 'additionalProperties' => ['type' => 'object']]]],
+        ]];
+
+        foreach ([
+            // Cause: the inner level was guessed.
+            '{"pond":{"a":{"b":{}}}}',
+            '{"lily":[{"a":{}}]}',
+            '{"reed":{"k":[{"a":{}}]}}',
+            // Neighbours, written right already.
+            '{"pond":{"a":{}}}',
+            '{"pond":{}}',
+            '{"lily":[{}]}',
+            '{"lily":[{"a":{"b":1}}]}',
+        ] as $json) {
+            $this->assertSame(expected: $json, actual: $this->writtenBack(GenerationMode::Laravel, $spec, 'empty object two containers down', $json));
+        }
+    }
+
+    /**
+     * Inside a free-form value laravel rebuilt every nested JSON object from the decoded PHP array, so a
+     * nested `{}` came back as `[]` and `{"0":"x"}` as `["x"]`; an untyped property was written as the
+     * PHP value it held. The raw body is what says which arrays were objects. laravel-data is a
+     * documented divergence.
+     */
+    public function testAFreeFormValueIsWrittenBackAsSent(): void
+    {
+        $spec = self::probeSpec(['type' => 'object']);
+        $spec['components']['schemas']['Probe'] = ['type' => 'object', 'properties' => [
+            'reeds' => ['type' => 'array', 'items' => ['type' => 'object']],
+            'fern' => ['type' => 'object'],
+            'bush' => ['type' => 'object', 'additionalProperties' => true],
+            'tree' => [],
+            'bag' => ['type' => 'array'],
+            'twig' => ['type' => 'object', 'properties' => ['knot' => ['type' => 'object']]],
+            'leaf' => ['type' => 'array', 'items' => ['type' => 'integer']],
+        ]];
+
+        foreach ([
+            // Cause: nested objects of a free-form value rebuilt from the decoded array.
+            '{"reeds":[{"a":{}}]}',
+            '{"fern":{"a":{}}}',
+            '{"bush":{"a":{"b":{}}}}',
+            '{"fern":{"a":[{}]}}',
+            '{"fern":{"a":{"0":"x"}}}',
+            '{"tree":{}}',
+            '{"tree":{"0":"x"}}',
+            '{"tree":[{},{"a":{}}]}',
+            '{"bag":[{}]}',
+            '{"twig":{"knot":{"a":{}}}}',
+            // Neighbours, written right already.
+            '{"fern":{}}',
+            '{"reeds":[{}]}',
+            '{"fern":{"a":[1,{"b":2}]}}',
+            '{"tree":[1,"x"]}',
+            '{"tree":"x"}',
+            '{"leaf":[1,2]}',
+        ] as $json) {
+            $written = $this->writtenBack(GenerationMode::Laravel, $spec, 'free form written back', $json);
+            $this->assertSame(expected: $json, actual: $written);
+            // The round trip keeps it.
+            $this->assertSame(expected: $json, actual: $this->writtenBack(GenerationMode::Laravel, $spec, 'free form written back', $written));
+        }
+    }
+
+    /**
+     * The free-form values of a class that holds itself, at every level the body reaches: written out,
+     * the paths stop where the schema refers back to itself.
+     */
+    public function testAFreeFormValueOfASelfReferringClassIsWrittenBackAsSent(): void
+    {
+        $spec = self::probeSpec(['type' => 'object']);
+        $spec['components']['schemas']['Probe'] = ['type' => 'object', 'properties' => [
+            'meta' => ['type' => 'object'],
+            'next' => ['$ref' => '#/components/schemas/Probe'],
+            'kids' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Probe']],
+        ]];
+
+        foreach ([
+            '{"meta":{"a":{}}}',
+            '{"next":{"meta":{"a":{}}}}',
+            '{"next":{"next":{"meta":{"a":{"0":"x"}}}}}',
+            '{"kids":[{"kids":[{"meta":{"a":{}}}]}]}',
+            '{"next":{"meta":{}}}',
+        ] as $json) {
+            $this->assertSame(expected: $json, actual: $this->writtenBack(GenerationMode::Laravel, $spec, 'free form in a self-referring class', $json));
+        }
+    }
+
+    /**
      * What runtime, laravel and laravel-data write a payload back as — the modes that write one, so the
      * member that was BUILT shows, not just the verdict. Decoded, so the order of the keys is not
      * asserted: laravel-data writes a member's keys in its own order.

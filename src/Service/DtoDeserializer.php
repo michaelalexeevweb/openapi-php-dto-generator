@@ -1132,6 +1132,9 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 ) {
                     $errors[] = $constraintError;
                 }
+                foreach ($this->unionSiblingErrors(subject: sprintf('param "%s"', $requestFieldName), raw: $rawValue, constraints: $paramMeta['fieldConstraints']) as $siblingError) {
+                    $errors[] = $siblingError;
+                }
             }
 
             if ($rawWasProvided) {
@@ -4608,10 +4611,91 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 ) {
                     $errors[] = $constraintError;
                 }
+                foreach ($this->unionSiblingErrors(subject: sprintf('param "%s"', $name), raw: $value, constraints: $paramMeta['fieldConstraints']) as $siblingError) {
+                    $errors[] = $siblingError;
+                }
             }
 
             return $cast;
         };
+    }
+
+    /**
+     * The keywords a union of classes carries BESIDE its `oneOf` / `anyOf` — `properties: {value:
+     * {type: integer}}` next to `oneOf: [$ref Mail, $ref Crate]` — checked on the raw value, at the
+     * property and in the items or values of a container of such unions.
+     *
+     * JSON Schema applies them to the same value as the union, but the member that is built declares
+     * none of those keys: the validator then saw an object with no `value` at all, and `{"kind":
+     * "mail", "value": "x"}` passed. The raw value still holds the key. `required` is left to the built
+     * member, which already meets it by the keys that were sent; a sibling that names a class itself
+     * cannot be judged on the raw value and stays unchecked here.
+     *
+     * @param array<array-key, mixed> $constraints
+     * @return list<string>
+     */
+    private function unionSiblingErrors(string $subject, mixed $raw, array $constraints, int $depth = 0): array
+    {
+        if ($depth > 64) {
+            return [];
+        }
+        $fields = $raw instanceof stdClass ? get_object_vars($raw) : $raw;
+        if (!is_array($fields)) {
+            return [];
+        }
+        if (array_is_list($fields) && !$raw instanceof stdClass) {
+            $items = $constraints['items'] ?? null;
+            $errors = [];
+            foreach (is_array($items) ? $fields : [] as $index => $item) {
+                $errors = [...$errors, ...$this->unionSiblingErrors(sprintf('%s.%d', $subject, $index), $item, $items, $depth + 1)];
+            }
+
+            return $errors;
+        }
+        $errors = [];
+        $values = $constraints['additionalProperties'] ?? null;
+        if (is_array($values) && !$this->isUnionOfClasses($constraints)) {
+            foreach ($fields as $key => $value) {
+                $errors = [...$errors, ...$this->unionSiblingErrors(sprintf('%s.%s', $subject, (string)$key), $value, $values, $depth + 1)];
+            }
+        }
+        if (!$this->isUnionOfClasses($constraints)) {
+            return $errors;
+        }
+        $siblings = [];
+        foreach (['properties', 'minProperties', 'maxProperties', 'dependentRequired', 'propertyNames', 'patternProperties'] as $keyword) {
+            if (!array_key_exists($keyword, $constraints)) {
+                continue;
+            }
+            $value = $constraints[$keyword];
+            if (in_array($keyword, ['properties', 'patternProperties'], true) && is_array($value)) {
+                $value = array_filter(
+                    array: $value,
+                    callback: static fn(mixed $schema): bool => !str_contains((string)json_encode($schema), 'x-php-instanceof'),
+                );
+            }
+            $siblings[$keyword] = $value;
+        }
+
+        return $siblings === [] ? $errors : [...$errors, ...array_values($this->validateValue(subject: $subject, value: $raw, constraints: $siblings))];
+    }
+
+    /**
+     * Whether constraints are a `oneOf` / `anyOf` with a branch "is that class".
+     *
+     * @param array<array-key, mixed> $constraints
+     */
+    private function isUnionOfClasses(array $constraints): bool
+    {
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            foreach (is_array($constraints[$keyword] ?? null) ? $constraints[$keyword] : [] as $branch) {
+                if (is_array($branch) && is_string($branch['x-php-instanceof'] ?? null)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -4802,6 +4886,26 @@ final class DtoDeserializer implements DtoDeserializerInterface
             if (in_array('object', $branchTypes, true)) {
                 return true;
             }
+        }
+
+        // An untyped property spelled `allOf: [{type: object}]` is declared `array` as well, and every
+        // JSON object was refused as "expects array, got object". Every member constrains, so it takes
+        // an object only when some member names `object` and none names a type without it: beside a
+        // `string` member the value is still refused, by the type check.
+        if ($type === null && is_array($constraints['allOf'] ?? null)) {
+            $namesObject = false;
+            foreach ($constraints['allOf'] as $member) {
+                $memberTypes = is_array($member) ? $this->declaredBranchTypes($member) : [];
+                if ($memberTypes === []) {
+                    continue;
+                }
+                if (!in_array('object', $memberTypes, true)) {
+                    return false;
+                }
+                $namesObject = true;
+            }
+
+            return $namesObject;
         }
 
         return false;

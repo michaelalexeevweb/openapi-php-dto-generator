@@ -759,15 +759,15 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
     }
 
     /**
-     * Adds an error for every `{}` the raw body sent where a `list` rule asks for a list. Decoded, the
-     * empty object is the empty list, and the rule took it.
+     * Adds an error for every JSON object the raw body sent where a `list` rule asks for a list.
+     * Decoded, `{}` is the empty list and `{"0": 1, "1": 2}` the list `[1, 2]`, and the rule took both.
      */
     private static function assertRawEmptyLists({{ validatorRef }} $validator, mixed $raw, string $path): void
     {
         if ($raw instanceof {{ stdClassRef }}) {
             $members = get_object_vars($raw);
             $pathRules = $validator->getRules()[$path] ?? [];
-            if ($members === [] && $path !== '' && is_array($pathRules) && in_array('list', $pathRules, true) && !$validator->errors()->has($path)) {
+            if ($path !== '' && is_array($pathRules) && in_array('list', $pathRules, true) && !$validator->errors()->has($path)) {
                 $validator->addFailure($path, 'list');
             }
         } elseif (is_array($raw)) {

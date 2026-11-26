@@ -1660,7 +1660,10 @@ final class GenerateDtoCommand extends Command
 
     /**
      * `oneOf` or `anyOf` of `$ref`s alone, a discriminator naming its property, and nothing else beside
-     * them but annotations.
+     * them but annotations and what a component union may carry as well: `type: object` (every member
+     * is one), and `properties` / `required` of its own. With `type: object` beside it the union stayed
+     * inline: symfony built a member by guessing and refused a valid `mail` as the wrong class, and
+     * yii3 counted both members as a match. The component spelling checks the rest.
      *
      * @param array<mixed> $property
      */
@@ -1679,7 +1682,11 @@ final class GenerateDtoCommand extends Command
             }
         }
 
-        return array_diff(array_keys($property), [$keywords[0], 'discriminator', ...self::HOISTED_UNION_ANNOTATIONS]) === [];
+        if (array_key_exists('type', $property) && $property['type'] !== 'object') {
+            return false;
+        }
+
+        return array_diff(array_keys($property), [$keywords[0], 'discriminator', 'type', 'properties', 'required', ...self::HOISTED_UNION_ANNOTATIONS]) === [];
     }
 
     /**
@@ -6239,16 +6246,63 @@ final class GenerateDtoCommand extends Command
      * Whether a union branch that is no class of its own may still take a JSON object: `type: object`
      * (a map, a free-form object), or no type at all beside no `enum` / `const`.
      *
+     * An untyped branch composed of others is typed by them, as `DtoDeserializer::declaredBranchTypes()`
+     * and `unionBranchTypes()` read it: every `allOf` member constrains, so one that admits no object
+     * excludes it, and a nested `oneOf` / `anyOf` admits one only through a branch that does. Read by
+     * the top-level `type` alone, `allOf: [{type: string}]` and `oneOf: [string, integer]` counted as
+     * admitting an object, the union beside them was never marked, and a class branch spelled out by
+     * its siblings let `{"tern": "c0"}` past the `maxLength: 1` of the class it extends.
+     *
      * @param array<string, mixed> $branch
      */
-    private function unionBranchAdmitsAnObject(array $branch): bool
+    private function unionBranchAdmitsAnObject(array $branch, int $depth = 0): bool
     {
         $type = $branch['type'] ?? null;
-        if ($type === null) {
-            return !array_key_exists('enum', $branch) && !array_key_exists('const', $branch) && !$this->isNullOnlyBranch($branch);
+        if ($type !== null) {
+            return $type === 'object' || (is_array($type) && in_array('object', $type, true));
+        }
+        if (array_key_exists('enum', $branch) || array_key_exists('const', $branch) || $this->isNullOnlyBranch($branch)) {
+            return false;
+        }
+        // Past the probe depth nothing more is known, and an untyped branch admits.
+        if ($depth >= self::SHAPE_PROBE_DEPTH) {
+            return true;
+        }
+        foreach (is_array($branch['allOf'] ?? null) ? $branch['allOf'] : [] as $member) {
+            if ($member === false) {
+                return false;
+            }
+            if (!is_array($member)) {
+                continue;
+            }
+            /** @var array<string, mixed> $member */
+            if (!$this->unionBranchAdmitsAnObject($member, $depth + 1)) {
+                return false;
+            }
+        }
+        foreach (['oneOf', 'anyOf'] as $unionKey) {
+            $subBranches = $branch[$unionKey] ?? null;
+            if (!is_array($subBranches) || $subBranches === []) {
+                continue;
+            }
+            $someAdmits = false;
+            foreach ($subBranches as $subBranch) {
+                if (!is_bool($subBranch) && !is_array($subBranch)) {
+                    continue;
+                }
+                /** @var array<string, mixed>|bool $subBranch */
+                if ($subBranch === true || (is_array($subBranch) && $this->unionBranchAdmitsAnObject($subBranch, $depth + 1))) {
+                    $someAdmits = true;
+
+                    break;
+                }
+            }
+            if (!$someAdmits) {
+                return false;
+            }
         }
 
-        return $type === 'object' || (is_array($type) && in_array('object', $type, true));
+        return true;
     }
 
     /**
@@ -6487,10 +6541,14 @@ final class GenerateDtoCommand extends Command
         }
         $interface = $this->schemaClassName($this->componentNameInPointer($ref));
         $target = $this->dtoSchemas[$interface] ?? null;
-        if (!is_array($target) || array_key_exists('discriminator', $target) || $this->bareUnionBranches($target) === null) {
+        if (!is_array($target) || array_key_exists('discriminator', $target) || !$this->rendersAsUnion($target)) {
             return $propertySchema;
         }
-        $unionKeyword = is_array($target['oneOf'] ?? null) ? 'oneOf' : 'anyOf';
+        $unionKeywords = array_values(array_intersect(['oneOf', 'anyOf'], array_keys($target)));
+        if (count($unionKeywords) !== 1 || !is_array($target[$unionKeywords[0]]) || $target[$unionKeywords[0]] === []) {
+            return $propertySchema;
+        }
+        $unionKeyword = $unionKeywords[0];
         // A `required` name an inline branch does not declare has no slot in the class written for it
         // (`collectUnionTypes()` names it `<Union>OneOf<n>`), so it stays beside the member's marker.
         $undeclaredByMember = [];
@@ -6517,6 +6575,23 @@ final class GenerateDtoCommand extends Command
             if ($keyword !== '$ref') {
                 $spelled[$keyword] = $value;
             }
+        }
+        // What the component says beside its union — `type: object`, `properties`, `required` — applies
+        // to the same value (JSON Schema), so it goes along: `DtoDeserializer` checks it on the raw
+        // value, which still holds the keys no member class declares. Left behind, the component was
+        // not spelled out at all, and the interface named no member to build: every payload was
+        // refused as "Unsupported type".
+        foreach ($target as $keyword => $value) {
+            if (
+                $keyword === $unionKeyword
+                || array_key_exists($keyword, $spelled)
+                || in_array($keyword, self::ALIAS_ANNOTATION_KEYWORDS, true)
+                || in_array($keyword, self::NON_ASSERTING_KEYWORDS, true)
+                || str_starts_with((string)$keyword, 'x-')
+            ) {
+                continue;
+            }
+            $spelled[$keyword] = $value;
         }
 
         return [...$spelled, $unionKeyword => $branches];
@@ -6821,7 +6896,8 @@ final class GenerateDtoCommand extends Command
                 }
             }
             if ($branches !== []) {
-                $constraints['allOf'] = $branches;
+                // Beside a discriminated union's dispatch, which is an `allOf` of its own.
+                $constraints['allOf'] = [...(is_array($constraints['allOf'] ?? null) ? $constraints['allOf'] : []), ...$branches];
             }
         }
 
@@ -6999,13 +7075,58 @@ final class GenerateDtoCommand extends Command
             // that write no such class (`{type: object, allOf: [{$ref: X}]}`, a `maximum` beside the
             // reference) leave the branch typed `X`: kept alone, they matched every object, and a
             // `oneOf` refused each valid value of its other branch as matching twice.
-            return $this->unionRefBranchIsAClassOfItsOwn($ref, $branch) ? $beside : [...$beside, ...$target];
+            if (!$this->unionRefBranchIsAClassOfItsOwn($ref, $branch)) {
+                return [...$beside, ...$target];
+            }
+
+            return $this->attributeMode === self::ATTRIBUTE_MODE_RUNTIME
+                ? $this->runtimeSpelledOutClassBranch(ref: $ref, branch: $branch, beside: $beside)
+                : $beside;
         }
         if ($asserting === []) {
             return [...$target, ...$beside];
         }
 
         return ['allOf' => [$target, $asserting], ...array_diff_key($beside, $asserting)];
+    }
+
+    /**
+     * Runtime: a `$ref` branch with keywords beside it that is a class of its own, spelled out in full —
+     * the target's checks and the siblings', every enum as its members.
+     *
+     * `withOwnUnionBranchClassMarked()` replaces the spelling with "is that class" where it can. It
+     * cannot beside a member that admits an object — a map, a free-form object, an untyped branch: a
+     * payload the class refuses stays the raw array that member holds, and only the spelling still
+     * judges it. Spelled by its siblings alone, the branch lost the target's `required`, types and
+     * lengths, and a sibling enum had moved into an enum class: `{$ref: Sienna, properties: {raven:
+     * {enum: [0]}}}` beside a map of booleans let `{"tern": 5}` and `{"raven": 3}` through as that map.
+     *
+     * @param array<string, mixed> $branch the branch as written
+     * @param array<string, mixed> $beside the siblings as extracted, kept where the target cannot be spelled
+     * @return array<string, mixed>
+     */
+    private function runtimeSpelledOutClassBranch(string $ref, array $branch, array $beside): array
+    {
+        $inlinedTarget = $this->inlineNestedContainerValidation(schema: ['$ref' => $ref], belowMaterialization: true);
+        $target = array_key_exists('$ref', $inlinedTarget) ? [] : $this->extractValidationConstraints(propertySchema: $inlinedTarget);
+        if ($target === []) {
+            return $beside;
+        }
+        [, $siblings] = $this->splitBranchReference($branch);
+        $asserting = [];
+        foreach ($siblings as $keyword => $value) {
+            if (!in_array($keyword, ['nullable', 'readOnly'], true)) {
+                $asserting[$keyword] = $value;
+            }
+        }
+        $spelledSiblings = $this->extractValidationConstraints(
+            propertySchema: $this->inlineNestedContainerValidation(schema: $asserting, belowMaterialization: true),
+        );
+        $permissions = array_intersect_key($beside, ['nullable' => true]);
+
+        return $spelledSiblings === []
+            ? [...$target, ...$permissions]
+            : ['allOf' => [$target, $spelledSiblings], ...$permissions];
     }
 
     /**
@@ -7198,6 +7319,81 @@ final class GenerateDtoCommand extends Command
     ];
 
     /**
+     * A discriminated `oneOf` / `anyOf` of `$ref`s held as the decoded value — a list item, a map
+     * value, anything below where a class is built — as the dispatch its tag makes: the tag one of
+     * the mapped values, and the member it names checked by an `if` / `then` on it.
+     *
+     * Left a `oneOf` of the members' schemas, a value both members accept apart from the tag
+     * (`{"kind": "mail", "stamp": "s"}` beside a `Crate` that requires only `kind`) matched twice and
+     * was refused in every mode, and one of the other member (`{"kind": "crate", "slats": "x"}`)
+     * passed as a `Mail`: the tag was read only once exactly one branch had matched. A value without
+     * the tag is judged by the union as written. Anything else —
+     * a member written inline, a mapping naming a schema the union does not list — comes back as it
+     * was.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<string, mixed>
+     */
+    private function discriminatedUnionAsTagDispatch(array $schema): array
+    {
+        $tag = $schema['discriminator']['propertyName'] ?? null;
+        $keywords = array_values(array_intersect(['oneOf', 'anyOf'], array_keys($schema)));
+        if (!is_string($tag) || count($keywords) !== 1 || !is_array($schema[$keywords[0]]) || array_key_exists('$ref', $schema)) {
+            return $schema;
+        }
+        $refs = [];
+        $nullable = ($schema['nullable'] ?? null) === true;
+        foreach ($schema[$keywords[0]] as $member) {
+            if (is_array($member) && array_keys($member) === ['type'] && $member['type'] === 'null') {
+                $nullable = true;
+
+                continue;
+            }
+            if (!is_array($member) || array_keys($member) !== ['$ref'] || !is_string($member['$ref'])) {
+                return $schema;
+            }
+            $refs[] = $member['$ref'];
+        }
+        $mapping = $schema['discriminator']['mapping'] ?? null;
+        $mapping = is_array($mapping) && $mapping !== [] ? $mapping : $this->implicitDiscriminatorMapping(['oneOf' => array_map(static fn(string $ref): array => ['$ref' => $ref], $refs)]);
+        if ($mapping === []) {
+            return $schema;
+        }
+        // A value without the tag is judged by the union as written, as before: a member that does
+        // not require the tag may still take it.
+        $allOf = [
+            ...(is_array($schema['allOf'] ?? null) ? $schema['allOf'] : []),
+            [
+                'if' => ['type' => 'object', 'required' => [$tag]],
+                'then' => ['properties' => [$tag => ['enum' => array_map('strval', array_keys($mapping)), 'x-php-inline-enum' => true]]],
+                // Asked of an object only: what else the value may be is the `type` below — a `nullable`
+                // written beside the whole (a container's null item) must not meet the members.
+                'else' => ['if' => ['type' => 'object'], 'then' => [$keywords[0] => array_map(static fn(string $ref): array => ['$ref' => $ref], $refs)]],
+            ],
+        ];
+        foreach ($mapping as $value => $ref) {
+            if (!is_string($ref) || !in_array($ref, $refs, true)) {
+                return $schema;
+            }
+            $allOf[] = [
+                'if' => ['type' => 'object', 'required' => [$tag], 'properties' => [$tag => ['const' => (string)$value]]],
+                'then' => ['$ref' => $ref],
+            ];
+        }
+        $dispatched = [];
+        foreach ($schema as $keyword => $value) {
+            if (!in_array($keyword, [$keywords[0], 'discriminator', 'nullable', 'allOf'], true)) {
+                $dispatched[$keyword] = $value;
+            }
+        }
+        if (!array_key_exists('type', $dispatched)) {
+            $dispatched['type'] = $nullable ? ['object', 'null'] : 'object';
+        }
+
+        return [...$dispatched, 'allOf' => $allOf];
+    }
+
+    /**
      * Everything at depth two or deeper inside a container, made validatable.
      *
      * At depth ONE the generator materializes: `items: {$ref: StrEnum}` becomes a PHP enum and
@@ -7381,6 +7577,9 @@ final class GenerateDtoCommand extends Command
         // An `unevaluated*` in the tree is the other reason: it reads what every branch EVALUATED, and
         // a `$ref` branch left for the class it names is a branch it cannot read — `allOf: [{$ref: A}],
         // unevaluatedProperties: false` refused the keys A declares.
+        if ($depth >= 1 || $belowMaterialization) {
+            $schema = $this->discriminatedUnionAsTagDispatch($schema);
+        }
         $evaluatesInPlace = $this->inPlaceTreeUses(schema: $schema, keyword: 'unevaluatedProperties')
             || $this->inPlaceTreeUses(schema: $schema, keyword: 'unevaluatedItems');
         foreach (['oneOf', 'anyOf', 'allOf'] as $unionKey) {
@@ -8746,7 +8945,11 @@ final class GenerateDtoCommand extends Command
                 $variantType = 'array';
             }
 
-            $types[] = $variantType;
+            // A nested union comes back as one `string|array` string: split, so a member it shares with
+            // a sibling (`array` beside it) is named once — PHP refuses `string|array|array` at load time.
+            foreach (explode('|', $variantType) as $member) {
+                $types[] = $member;
+            }
         }
 
         $types = array_values(array_unique($types));

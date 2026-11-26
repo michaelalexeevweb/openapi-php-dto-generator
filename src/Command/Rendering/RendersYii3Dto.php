@@ -3316,12 +3316,27 @@ PHP;
                 $chain = $link;
             }
 
-            return [
+            $dispatched = [
                 'type' => 'object',
                 'required' => [$property],
                 // Marked inline: an `enum` is otherwise taken for one a generated enum class enforces.
                 'properties' => [$property => ['enum' => array_map('strval', array_keys($memberSchemas)), 'x-php-inline-enum' => true]],
             ] + $chain;
+            // The component's own `properties` / `required` judge the value as much as the member the
+            // tag names does: left out of the chain, `{"kind": "mail", "value": "x"}` passed the
+            // component's `value: {type: integer}`. Merged beside the tag's own entry; a schema the
+            // component gives the tag itself joins the tag's `enum` under an `allOf`.
+            $own = $this->yii3UnionOwnKeywords($union, $className);
+            $ownRequired = is_array($own['required'] ?? null) ? $own['required'] : [];
+            $properties = is_array($own['properties'] ?? null) ? $own['properties'] : [];
+            $tagSchema = $dispatched['properties'][$property];
+            $properties[$property] = is_array($properties[$property] ?? null) && $properties[$property] !== []
+                ? ['allOf' => [$tagSchema, $properties[$property]]]
+                : $tagSchema;
+            $dispatched['properties'] = $properties;
+            $dispatched['required'] = array_values(array_unique([$property, ...$ownRequired]));
+
+            return $dispatched;
         }
 
         foreach (['oneOf', 'anyOf'] as $keyword) {
@@ -3349,8 +3364,9 @@ PHP;
                     $members[] = $nullable && !array_key_exists('type', $member) ? ['type' => 'object'] + $member : $member;
                 }
                 // `nullable` beside the reference is lost on a list of member schemas, every one of which
-                // refuses null — so null is a member of its own.
-                if ($nullable) {
+                // refuses null — so null is a member of its own. Unless a member already is one: the
+                // component's own `{type: 'null'}` made null match two `oneOf` branches, and refused it.
+                if ($nullable && !$this->yii3SomeMemberAdmitsNull($members)) {
                     $members[] = ['type' => 'null'];
                 }
 
@@ -3359,6 +3375,24 @@ PHP;
         }
 
         return null;
+    }
+
+    /**
+     * Whether a member schema of a union admits null by itself: `{type: 'null'}`, a type list with
+     * `null` in it, or `nullable: true`.
+     *
+     * @param list<array<mixed>> $members
+     */
+    private function yii3SomeMemberAdmitsNull(array $members): bool
+    {
+        foreach ($members as $member) {
+            $type = $member['type'] ?? null;
+            if ($type === 'null' || (is_array($type) && in_array('null', $type, true)) || ($member['nullable'] ?? null) === true) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

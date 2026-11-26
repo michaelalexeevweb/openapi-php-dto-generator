@@ -1105,8 +1105,8 @@ trait RendersSymfonyDto
     }
 
     /**
-     * The class schema with each of its properties that names a discriminated union spelled out, see
-     * `symfonyDiscriminatedUnionSpelledOut()`.
+     * The class schema with each of its properties that names a discriminated union spelled out, and
+     * the keywords beside an inline union of classes moved, see `symfonyDiscriminatedUnionSpelledOut()`.
      *
      * @param array<string, mixed> $classSchema
      * @return array<string, mixed>
@@ -1141,9 +1141,10 @@ trait RendersSymfonyDto
     {
         $ref = $propertySchema['$ref'] ?? null;
         if (!is_string($ref) || !str_starts_with($ref, '#/components/schemas/')) {
-            return $propertySchema;
+            return $this->symfonyInlineClassUnionOwnKeywords($propertySchema);
         }
-        $target = $this->dtoSchemas[$this->schemaClassName($this->componentNameInPointer($ref))] ?? null;
+        $targetClass = $this->schemaClassName($this->componentNameInPointer($ref));
+        $target = $this->dtoSchemas[$targetClass] ?? null;
         if (!is_array($target) || !is_array($target['discriminator'] ?? null) || !is_array($target['discriminator']['mapping'] ?? null)) {
             return $propertySchema;
         }
@@ -1157,8 +1158,107 @@ trait RendersSymfonyDto
                 $spelled[$keyword] = $value;
             }
         }
+        $spelled = $this->symfonyWithKeywordsBesideClassUnion(
+            schema: $spelled,
+            own: array_intersect_key($target, ['properties' => true, 'required' => true]),
+            members: $this->symfonyUnionRefMembers($targetClass),
+        );
 
         return [...$spelled, $unionKey => $target[$unionKey], 'discriminator' => $target['discriminator']];
+    }
+
+    /**
+     * An inline `oneOf` / `anyOf` of classes with `properties` / `required` of its own beside it, those
+     * moved where `symfonyWithKeywordsBesideClassUnion()` says. Left on the property, a `required` name
+     * no member declares refused every payload — the built member cannot show the key — and a scalar
+     * keyword under `properties` was taken for one a class attribute checks. Anything else as it is.
+     *
+     * @param array<string, mixed> $propertySchema
+     * @return array<string, mixed>
+     */
+    private function symfonyInlineClassUnionOwnKeywords(array $propertySchema): array
+    {
+        if (!array_key_exists('properties', $propertySchema) && !array_key_exists('required', $propertySchema)) {
+            return $propertySchema;
+        }
+        $keywords = array_values(array_intersect(['oneOf', 'anyOf'], array_keys($propertySchema)));
+        if (count($keywords) !== 1 || !is_array($propertySchema[$keywords[0]])) {
+            return $propertySchema;
+        }
+        $members = [];
+        foreach ($propertySchema[$keywords[0]] as $branch) {
+            if (is_array($branch) && array_keys($branch) === ['type'] && $branch['type'] === 'null') {
+                continue;
+            }
+            $member = is_array($branch) && array_keys($branch) === ['$ref'] && is_string($branch['$ref'])
+                ? $this->schemaRefToClassName($branch['$ref'])
+                : null;
+            if ($member === null || !array_key_exists($member, $this->dtoSchemas)) {
+                return $propertySchema;
+            }
+            $members[] = $member;
+        }
+        $rest = [];
+        foreach ($propertySchema as $keyword => $value) {
+            if (!in_array($keyword, ['properties', 'required'], true)) {
+                $rest[$keyword] = $value;
+            }
+        }
+
+        return $this->symfonyWithKeywordsBesideClassUnion(
+            schema: $rest,
+            own: array_intersect_key($propertySchema, ['properties' => true, 'required' => true]),
+            members: $members,
+        );
+    }
+
+    /**
+     * The `properties` and `required` a union of classes carries beside its `oneOf` / `anyOf`, added to
+     * the schema as one more `allOf` branch. JSON Schema applies them to the same value, so a
+     * component's `value: {type: integer}` refuses `{"kind": "mail", "value": "x"}` where `Mail`
+     * declares `value`.
+     *
+     * Only what the built member can show: the serializer keeps no key the member does not declare,
+     * so such a key is dropped unchecked (README.support-matrix, "a property beside a union of
+     * classes"), and a `required` name some member lacks is left out — it would refuse every payload
+     * of that member. Spelled `{if: {type: object}, then: {…}}`, the same assertion — `properties` and
+     * `required` say nothing about a value that is not an object — because the interpreter judges
+     * such a branch with its scalar keywords: on the property itself a scalar keyword is taken for one
+     * a class attribute checks, and an `allOf` branch with `properties` for one the nested class
+     * cascades into.
+     *
+     * @param array<string, mixed> $schema
+     * @param array<mixed> $own
+     * @param array<int, string> $members
+     * @return array<string, mixed>
+     */
+    private function symfonyWithKeywordsBesideClassUnion(array $schema, array $own, array $members): array
+    {
+        $kept = [];
+        if (is_array($own['properties'] ?? null) && $own['properties'] !== []) {
+            $kept['properties'] = $own['properties'];
+        }
+        $required = [];
+        foreach (is_array($own['required'] ?? null) ? $own['required'] : [] as $name) {
+            $everyMemberDeclares = $members !== [];
+            foreach ($members as $member) {
+                $everyMemberDeclares = $everyMemberDeclares && is_array($this->dtoSchemas[$member]['properties'][$name] ?? null);
+            }
+            if (is_string($name) && $everyMemberDeclares) {
+                $required[] = $name;
+            }
+        }
+        if ($required !== []) {
+            $kept['required'] = $required;
+        }
+        if ($kept === []) {
+            return $schema;
+        }
+
+        return [
+            ...$schema,
+            'allOf' => [...(is_array($schema['allOf'] ?? null) ? $schema['allOf'] : []), ['if' => ['type' => 'object'], 'then' => $kept]],
+        ];
     }
 
     /**

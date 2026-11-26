@@ -113,6 +113,17 @@ final class CompositionClassesLoadTest extends TestCase
             ]];
         }
 
+        // A nested union whose type shares a member with a sibling: `string|array` beside `array` was
+        // joined as `string|array|array`, a fatal when the class loads.
+        yield 'nested union sharing a member with its sibling' => ['nested union sharing a member with its sibling', [
+            'Sienna' => ['type' => 'object', 'properties' => ['tern' => ['type' => 'string']]],
+            'Probe' => ['type' => 'object', 'properties' => ['bison' => ['anyOf' => [
+                ['$ref' => '#/components/schemas/Sienna', 'properties' => ['stoat' => ['type' => 'string']]],
+                ['anyOf' => [['type' => 'string'], ['type' => 'object', 'additionalProperties' => ['type' => 'boolean']]]],
+                ['type' => 'array'],
+            ]]]],
+        ]];
+
         // A union member that extends a component: the component is a parent, so it cannot be emitted
         // `final` — `Class PetAnyOf2 cannot extend final class Base`. The parents were listed before the
         // union members were registered, so a member's `allOf` was never counted.
