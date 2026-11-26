@@ -536,6 +536,12 @@ trait RendersLaravelValidation
                 if ($typeRule === null) {
                     $consumed[] = 'type';
                 }
+                // `date_format` with `P` / `p` formats `+25:00` back unchanged — PHP reads it as an offset
+                // of a day and an hour — so the rule passed it, and laravel's `new DateTimeImmutable()`
+                // died on it after validation: a 500. RFC 3339's offset is a time of day.
+                if (in_array($schema['format'], ['date-time', 'datetime'], true)) {
+                    $rules[] = '\'not_regex:/[+-](2[4-9]|[3-9]\d):\d\d$|[+-]\d\d:[6-9]\d$/\'';
+                }
             }
         }
 

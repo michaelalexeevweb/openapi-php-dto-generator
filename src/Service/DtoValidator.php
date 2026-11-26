@@ -137,7 +137,7 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
     private ?array $listOfTheArrayMember = null;
 
     /**
-     * @var array<string, array{required: list<string>, properties: array<string, array<string, mixed>>}|null>
+     * @var array<string, array{required: list<string>, properties: array<string, array<string, mixed>>, object: array<string, mixed>}|null>
      */
     private array $rawObjectRulesCache = [];
 
@@ -1046,9 +1046,10 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
 
     /**
      * What a generated class's own rules say against a raw object it was not built from: a `required`
-     * name the object lacks, or a property whose value its rule refuses. Empty when nothing refutes it,
-     * which leaves the branch undecided — and always for a class that cannot be judged this way: an
-     * abstract one (a variant decides), one with no metadata, or a check that could not be finished.
+     * name the object lacks, a key its schema-level keywords refuse (`additionalProperties: false`), or a
+     * property whose value its rule refuses. Empty when nothing refutes it, which leaves the branch
+     * undecided — and always for a class that cannot be judged this way: an abstract one (a variant
+     * decides), one with no metadata, or a check that could not be finished.
      *
      * Only what the class states for certain is asked. A `required` property is missing only when its
      * constructor has no default to fill it and it is neither `readOnly` nor `writeOnly`; a `null`
@@ -1071,7 +1072,7 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
         $refusals = $this->validateConstraints(
             subject: $subject,
             value: $value,
-            constraints: ['required' => $rules['required'], 'properties' => $properties],
+            constraints: [...$rules['object'], 'required' => $rules['required'], 'properties' => $properties],
             depth: $depth + 1,
         );
 
@@ -1082,7 +1083,7 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
      * The `required` wire names and per-property rules of a generated class, read off its static
      * metadata, or null when the class cannot be judged from them. See {@see rawObjectRefusalsOfClass()}.
      *
-     * @return array{required: list<string>, properties: array<string, array<string, mixed>>}|null
+     * @return array{required: list<string>, properties: array<string, array<string, mixed>>, object: array<string, mixed>}|null
      */
     private function rawObjectRulesOf(string $className): ?array
     {
@@ -1132,8 +1133,17 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
                 $required[] = $name;
             }
         }
+        // And the rest of its schema-level keywords — `additionalProperties: false` above all: a raw
+        // object carrying a key the closed class refuses is not that class. Left out, `oneOf: [$ref
+        // Closed, {required: [llama]}]` took `{"stray": "x"}` as the undecided class branch and let it in.
+        $object = [];
+        foreach (is_array($objectConstraints) ? $objectConstraints : [] as $keyword => $rule) {
+            if (is_string($keyword) && !in_array($keyword, ['required', 'properties'], true)) {
+                $object[$keyword] = $rule;
+            }
+        }
 
-        return $this->rawObjectRulesCache[$className] = ['required' => $required, 'properties' => $properties];
+        return $this->rawObjectRulesCache[$className] = ['required' => $required, 'properties' => $properties, 'object' => $object];
     }
 
     private function isRawObjectFor(mixed $value, string $className): bool

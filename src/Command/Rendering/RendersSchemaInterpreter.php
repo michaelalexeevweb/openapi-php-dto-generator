@@ -154,6 +154,11 @@ trait RendersSchemaInterpreter
             payloadIsHydratedObject: $payloadIsHydratedObject,
             resolvesRecursiveRefs: $recursiveSchemas !== [],
             judgesUnionsAroundNestedDtos: $judgesUnionsAroundNestedDtos,
+            // Symfony is the one mode that runs over its hydrated object with its own payload view. Its
+            // serializer reads every `DateTimeImmutable` property with PHP's free-form parser, so a
+            // date-time the interpreter meets as a string — a list of lists, a union held as decoded —
+            // is judged as leniently as that parser judges the property next to it.
+            readsDateTimeLeniently: $payloadIsHydratedObject && !$ownsPayloadView,
         );
 
         // The emitted helpers name every class they use in full — `\BackedEnum`, `\stdClass` — and the
@@ -210,6 +215,7 @@ PHP,
         bool $payloadIsHydratedObject = true,
         bool $resolvesRecursiveRefs = false,
         bool $judgesUnionsAroundNestedDtos = true,
+        bool $readsDateTimeLeniently = false,
     ): string {
         $hasConst = $this->schemaUsesKeyword($constraints, 'const');
         $hasType = $this->schemaUsesKeyword($constraints, 'type');
@@ -2258,7 +2264,7 @@ PHP;
 PHP;
             }
 
-            foreach ($this->openApiFormatHelperSnippets() as $helper => $snippet) {
+            foreach ($this->openApiFormatHelperSnippets(readsDateTimeLeniently: $readsDateTimeLeniently) as $helper => $snippet) {
                 if (array_key_exists($helper, $neededHelpers)) {
                     $sections[] = $snippet;
                 }
@@ -2713,9 +2719,12 @@ PHP;
      * Emittable format-check helpers, keyed by the token the format arms request. Only the ones a
      * DTO's own formats need end up in its generated code.
      *
+     * @param bool $readsDateTimeLeniently whether the mode's own parser reads a `DateTimeImmutable`
+     *                                     property loosely (Symfony), so a string date-time is judged by the
+     *                                     shared patterns alone, with `t` and `z` in either case
      * @return array<string, string>
      */
-    private function openApiFormatHelperSnippets(): array
+    private function openApiFormatHelperSnippets(bool $readsDateTimeLeniently = false): array
     {
         return [
             'date' => <<<'PHP'
@@ -2729,14 +2738,43 @@ PHP;
         return $date !== false && $date->format('Y-m-d') === $value;
     }
 PHP,
-            'date-time' => <<<'PHP'
+            'date-time' => $readsDateTimeLeniently ? <<<'PHP'
 
     private function isValidOpenApiDateTimeFormat(string $value): bool
     {
+        // This mode's serializer reads a date-time property with PHP's free-form parser, and RFC 3339
+        // allows `t` and `z` in lower case: a value the interpreter meets as a string is held to the
+        // shared patterns only, in either case, as loosely as the property beside it.
+        $value = strtoupper($value);
+        foreach (['Y-m-d\TH:i:sp', 'Y-m-d\TH:i:s.up', 'Y-m-d H:i:s', 'Y-m-d\TH:i:s'] as $format) {
+            if (\DateTimeImmutable::createFromFormat($format, $value) === false) {
+                continue;
+            }
+            $errors = \DateTimeImmutable::getLastErrors();
+            if ($errors === false) {
+                return true;
+            }
+            if ((int)($errors['warning_count'] ?? 0) === 0 && (int)($errors['error_count'] ?? 0) === 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+PHP : <<<'PHP'
+
+    private function isValidOpenApiDateTimeFormat(string $value): bool
+    {
+        // The shape first: PHP's `p` reads `+0200`, `+02`, `+25:00` and a zone name (`EST`) as offsets,
+        // and the patterns below alone let all four through. An RFC 3339 offset (`Z`, `z`, `+HH:MM` of a
+        // time of day) after an optional fraction, or one of the two offset-less spellings every mode
+        // agrees on (`T` without a fraction, a space).
+        if (preg_match('/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}((\.\d+)?(Z|z|[+-]([01]\d|2[0-3]):[0-5]\d))?| \d{2}:\d{2}:\d{2})$/D', $value) !== 1) {
+            return false;
+        }
         // The four shapes every mode agrees on, and a WARNING check per shape. `createFromFormat()`
         // alone is not a validator: it overflows silently, so `2026-13-45T99:99:99+00:00` parsed
-        // clean and a payload the schema forbids was accepted. Only ATOM was tried before, which
-        // also meant a sub-second value passed on leftover input rather than on being valid.
+        // clean and a payload the schema forbids was accepted.
         foreach (['Y-m-d\TH:i:sp', 'Y-m-d\TH:i:s.up', 'Y-m-d H:i:s', 'Y-m-d\TH:i:s'] as $format) {
             if (\DateTimeImmutable::createFromFormat($format, $value) === false) {
                 continue;

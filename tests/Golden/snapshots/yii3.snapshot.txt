@@ -1,4 +1,4 @@
-# yii3 mode — 80 files, 37034 lines
+# yii3 mode — 80 files, 37044 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -12541,7 +12541,9 @@ use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
 use Yiisoft\Validator\Rule\Callback;
+use Yiisoft\Validator\Rule\Composite;
 use Yiisoft\Validator\Rule\Date\Date;
+use Yiisoft\Validator\Rule\Regex;
 use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
@@ -12603,7 +12605,7 @@ final class ApiTestSerializationGetQueryParamsFilter extends AbstractInput imple
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Date(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()), new Date(format: 'php:Y-m-d', skipOnEmpty: new WhenNull(), skipOnError: true))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()), new Composite([new Regex('/^\d{4}-\d{2}-\d{2}$/', message: 'Since must be a date.'), new Date(format: 'php:Y-m-d')], skipOnEmpty: new WhenNull(), skipOnError: true))]
     #[ToDateTime(format: 'php:Y-m-d')]
     public readonly ?DateTimeImmutable $since;
 
@@ -22214,10 +22216,16 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
 
     private function isValidOpenApiDateTimeFormat(string $value): bool
     {
+        // The shape first: PHP's `p` reads `+0200`, `+02`, `+25:00` and a zone name (`EST`) as offsets,
+        // and the patterns below alone let all four through. An RFC 3339 offset (`Z`, `z`, `+HH:MM` of a
+        // time of day) after an optional fraction, or one of the two offset-less spellings every mode
+        // agrees on (`T` without a fraction, a space).
+        if (preg_match('/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}((\.\d+)?(Z|z|[+-]([01]\d|2[0-3]):[0-5]\d))?| \d{2}:\d{2}:\d{2})$/D', $value) !== 1) {
+            return false;
+        }
         // The four shapes every mode agrees on, and a WARNING check per shape. `createFromFormat()`
         // alone is not a validator: it overflows silently, so `2026-13-45T99:99:99+00:00` parsed
-        // clean and a payload the schema forbids was accepted. Only ATOM was tried before, which
-        // also meant a sub-second value passed on leftover input rather than on being valid.
+        // clean and a payload the schema forbids was accepted.
         foreach (['Y-m-d\TH:i:sp', 'Y-m-d\TH:i:s.up', 'Y-m-d H:i:s', 'Y-m-d\TH:i:s'] as $format) {
             if (DateTimeImmutable::createFromFormat($format, $value) === false) {
                 continue;
@@ -35932,10 +35940,12 @@ use Yiisoft\Validator\EmptyCondition\WhenNull;
 use Yiisoft\Validator\Helper\ObjectParser;
 use Yiisoft\Validator\Result;
 use Yiisoft\Validator\Rule\Callback;
+use Yiisoft\Validator\Rule\Composite;
 use Yiisoft\Validator\Rule\Date\Date;
 use Yiisoft\Validator\Rule\Each;
 use Yiisoft\Validator\Rule\Integer;
 use Yiisoft\Validator\Rule\Nested;
+use Yiisoft\Validator\Rule\Regex;
 use Yiisoft\Validator\Rule\StringValue;
 use Yiisoft\Validator\RulesProviderInterface;
 use Yiisoft\Validator\ValidationContext;
@@ -36020,7 +36030,7 @@ final class User2 extends AbstractInput implements DataSetInterface, RulesProvid
     public readonly ?User2Pet $pet;
 
     #[Date(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()), new Date(format: 'php:Y-m-d', skipOnEmpty: new WhenMissing(), skipOnError: true))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()), new Composite([new Regex('/^\d{4}-\d{2}-\d{2}$/', message: 'CreatedAt must be a date.'), new Date(format: 'php:Y-m-d')], skipOnEmpty: new WhenMissing(), skipOnError: true))]
     #[ToDateTime(format: 'php:Y-m-d')]
     public readonly DateTimeImmutable $createdAt;
 

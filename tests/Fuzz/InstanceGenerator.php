@@ -603,7 +603,9 @@ final class InstanceGenerator
         $site = 'site:' . self::descriptor($node);
         $parseable = ['x', 'now', 'tomorrow', '@0', '2020-1-2', '+1 day'];
         $choices = match ($node['format']) {
-            'date' => array_map(static fn(string $value): array => [$value, []], $parseable),
+            // A one-digit month or day is tagged for the row that documents it in symfony, where
+            // `createFromFormat('!Y-m-d')` reads it before any generated code sees the string.
+            'date' => array_map(static fn(string $value): array => [$value, $value === '2020-1-2' ? ['dateOneDigit'] : []], $parseable),
             'date-time' => [
                 ...array_map(static fn(string $value): array => [$value, []], $parseable),
                 ['2024-01-02T10:00:00', ['dateTimeNoOffset']],

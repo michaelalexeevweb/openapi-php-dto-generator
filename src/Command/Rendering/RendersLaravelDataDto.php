@@ -1498,6 +1498,11 @@ trait RendersLaravelDataDto
             // as a date too, as the other modes write it.
             $castFormats = $dateCastFormats;
             $temporalFormat = 'Y-m-d';
+        } elseif (($property['unionTemporalFormats'] ?? []) === ['date-time']) {
+            // `anyOf: [{format: date-time}]` and its 3.1 nullable spelling: the global ATOM cast took it, and
+            // a fraction, a space separator or no offset — all accepted by the rule — crashed the cast with
+            // `CannotCastDate`. Cast as the plain date-time property is; written back as ATOM like it.
+            $castFormats = $dateTimeCastFormats;
         } elseif ($this->isDateOrDateTimeUnion($property['constraints'] ?? [])) {
             // A `oneOf` of a `format: date` and a `format: date-time` string: both shapes are this one
             // property, and the global ATOM cast refused `2026-12-01` after its own rule had accepted it.

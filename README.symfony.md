@@ -647,6 +647,15 @@ The callback checks that object against the members, `anyOf` at least one, `oneO
 built by hand may still put a member there. A union with a member that is not an object is held as
 `mixed`.
 
+An inline union the serializer cannot read member by member holds the decoded value too, its classes
+dropped from the type and its members checked by the callback: an `array` member beside two or more classes
+(`anyOf: [{…object…}, {type: array}, {…object…}]` is `array`, where a list became an empty first class), an
+`array` member beside one class that requires a key (`oneOf: [{required: [kind], …}, {type: array}]` is
+`array`, where every list was refused for the missing `kind`), and a member that is itself a discriminated
+union (`oneOf: [{oneOf: [$ref Circle, $ref Square], discriminator: …}, {type: string}]` is `string|array`,
+where an object of the second class was refused). Beside one class that requires nothing the type keeps
+the class (`Lime|array`), read with extra attributes refused.
+
 An `anyOf` branch that is purely `{type: null}` causes the whole `#[Assert\AtLeastOneOf]` to be
 dropped (the field stays nullable).
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OpenapiPhpDtoGenerator\Tests\Fuzz;
 
 use OpenapiPhpDtoGenerator\Tests\GenerationMode;
+use stdClass;
 
 /**
  * The DOCUMENTED divergences, so the fuzzer does not report them as findings.
@@ -70,6 +71,120 @@ final class KnownDivergences
         }
 
         return null;
+    }
+
+    /**
+     * A laravel-data refusal of a VALID object of a union of classes whose FIRST member holds a
+     * discriminated union under a name a sibling member gives a non-object (`Cat.toy: $ref Toy`, Toy
+     * discriminated, `Dog.toy` an integer), the value carrying that name as a non-object: the support
+     * matrix, "a discriminated union inside the FIRST member of an inline union of classes" — laravel-data
+     * walks the first data class of the property type whatever the tag says, and the generated guard
+     * refuses with a 422 what would otherwise be a `TypeError`. Walked with the value, at any depth.
+     *
+     * @param array<string, mixed> $document
+     */
+    public static function explainFirstMemberDiscriminatedGuard(GenerationMode $mode, string $category, array $document, string $property, mixed $value): ?string
+    {
+        if ($mode !== GenerationMode::LaravelData || $category !== 'wrong-refuse') {
+            return null;
+        }
+        $schemas = $document['components']['schemas'] ?? null;
+        if (!is_array($schemas)) {
+            return null;
+        }
+
+        return self::meetsFirstMemberGuard(schema: $schemas['Probe']['properties'][$property] ?? null, value: $value, schemas: $schemas, depth: 0)
+            ? 'support matrix: "a discriminated union inside the FIRST member of an inline union of classes" (laravel-data refuses with a 422)'
+            : null;
+    }
+
+    /**
+     * @param array<string, mixed> $schemas
+     */
+    private static function meetsFirstMemberGuard(mixed $schema, mixed $value, array $schemas, int $depth): bool
+    {
+        $schema = self::resolved(schema: $schema, schemas: $schemas);
+        if ($schema === null || $depth > 16) {
+            return false;
+        }
+        $members = [];
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            foreach (is_array($schema[$keyword] ?? null) ? $schema[$keyword] : [] as $member) {
+                $member = self::resolved(schema: $member, schemas: $schemas);
+                if ($member !== null) {
+                    $members[] = $member;
+                }
+            }
+        }
+
+        if (is_array($value)) {
+            foreach ([$schema, ...$members] as $candidate) {
+                foreach ($value as $item) {
+                    if (self::meetsFirstMemberGuard(schema: $candidate['items'] ?? null, value: $item, schemas: $schemas, depth: $depth + 1)) {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+        if (!$value instanceof stdClass) {
+            return false;
+        }
+
+        $objectMembers = array_values(array_filter($members, static fn(array $member): bool => is_array($member['properties'] ?? null)));
+        if (count($objectMembers) >= 2) {
+            foreach ($objectMembers[0]['properties'] as $name => $firstSchema) {
+                $first = self::resolved(schema: $firstSchema, schemas: $schemas);
+                if ($first === null || !array_key_exists('discriminator', $first) || !property_exists($value, (string)$name) || $value->{$name} instanceof stdClass) {
+                    continue;
+                }
+                foreach (array_slice($objectMembers, 1) as $sibling) {
+                    $siblingSchema = self::resolved(schema: $sibling['properties'][$name] ?? null, schemas: $schemas);
+                    if ($siblingSchema !== null && !self::describesObject($siblingSchema)) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        foreach ([$schema, ...$members] as $candidate) {
+            foreach (is_array($candidate['properties'] ?? null) ? $candidate['properties'] : [] as $name => $propertySchema) {
+                if (property_exists($value, (string)$name) && self::meetsFirstMemberGuard(schema: $propertySchema, value: $value->{$name}, schemas: $schemas, depth: $depth + 1)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The schema a `$ref` to a component names, or the schema itself; null for anything but an array.
+     *
+     * @param array<string, mixed> $schemas
+     * @return array<string, mixed>|null
+     */
+    private static function resolved(mixed $schema, array $schemas): ?array
+    {
+        for ($hops = 0; is_array($schema) && is_string($schema['$ref'] ?? null) && $hops < 16; $hops++) {
+            $schema = $schemas[substr($schema['$ref'], strlen('#/components/schemas/'))] ?? null;
+        }
+
+        return is_array($schema) ? $schema : null;
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     */
+    private static function describesObject(array $schema): bool
+    {
+        $type = $schema['type'] ?? null;
+
+        return $type === 'object'
+            || (is_array($type) && in_array('object', $type, true))
+            || array_key_exists('properties', $schema)
+            || array_key_exists('discriminator', $schema);
     }
 
     /**
@@ -194,6 +309,16 @@ final class KnownDivergences
                 'kinds' => ['parseableNonDate:date-time'],
                 'tagsAny' => ['site:temporal', 'site:nullable-temporal', 'itemsOf:temporal', 'itemsOf:nullable-temporal', 'valuesOf:temporal', 'valuesOf:nullable-temporal'],
                 'row' => 'support matrix: "a loose `format: date-time` string" (the serializer parses first)',
+            ],
+            [
+                'modes' => [GenerationMode::Symfony],
+                'category' => 'wrong-accept',
+                // `2020-1-2` for a `format: date`: `createFromFormat('!Y-m-d')` takes a one-digit month
+                // or day, and the generated code never sees the string.
+                'kinds' => ['parseableNonDate:date'],
+                'tagsAll' => ['dateOneDigit'],
+                'tagsAny' => ['site:temporal', 'site:nullable-temporal', 'itemsOf:temporal', 'itemsOf:nullable-temporal', 'valuesOf:temporal', 'valuesOf:nullable-temporal'],
+                'row' => 'support matrix: "an impossible calendar date … or a one-digit month or day" (the serializer parses first)',
             ],
             [
                 'modes' => GenerationMode::cases(),

@@ -1,4 +1,4 @@
-# symfony mode — 77 files, 13998 lines
+# symfony mode — 77 files, 13999 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -5926,6 +5926,7 @@ use function sprintf;
 use function str_ends_with;
 use function str_starts_with;
 use function strpos;
+use function strtoupper;
 use function substr;
 
 /**
@@ -6525,10 +6526,10 @@ final class Containers
 
     private function isValidOpenApiDateTimeFormat(string $value): bool
     {
-        // The four shapes every mode agrees on, and a WARNING check per shape. `createFromFormat()`
-        // alone is not a validator: it overflows silently, so `2026-13-45T99:99:99+00:00` parsed
-        // clean and a payload the schema forbids was accepted. Only ATOM was tried before, which
-        // also meant a sub-second value passed on leftover input rather than on being valid.
+        // This mode's serializer reads a date-time property with PHP's free-form parser, and RFC 3339
+        // allows `t` and `z` in lower case: a value the interpreter meets as a string is held to the
+        // shared patterns only, in either case, as loosely as the property beside it.
+        $value = strtoupper($value);
         foreach (['Y-m-d\TH:i:sp', 'Y-m-d\TH:i:s.up', 'Y-m-d H:i:s', 'Y-m-d\TH:i:s'] as $format) {
             if (DateTimeImmutable::createFromFormat($format, $value) === false) {
                 continue;

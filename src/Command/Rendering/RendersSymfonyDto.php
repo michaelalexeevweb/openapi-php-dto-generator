@@ -97,6 +97,10 @@ trait RendersSymfonyDto
      * object the class admits the free-form member admits too, so the class is never needed to hold
      * the value; the callback still judges the whole `anyOf` / `oneOf` against the decoded array.
      *
+     * A list member beside classes the serializer cannot pass over is held so too
+     * (`symfonyListBesideUnskippableClasses()`), and so is a union with a discriminated union as a
+     * member (`symfonyUnionNestsDiscriminatedUnion()`).
+     *
      * @param array<int, SchemaProperty> $properties
      * @return array<int, SchemaProperty>
      */
@@ -108,7 +112,14 @@ trait RendersSymfonyDto
         }
         foreach ($properties as $index => $property) {
             $schema = $schemaProperties[$property['openApiName']] ?? null;
-            if (!is_array($schema) || !$this->symfonyUnionHasFreeFormObjectMember($schema)) {
+            if (
+                !is_array($schema)
+                || (
+                    !$this->symfonyUnionHasFreeFormObjectMember(schema: $schema, sourceFile: $this->getSchemaSourceFile($className))
+                    && !$this->symfonyListBesideUnskippableClasses($property['type'])
+                    && !$this->symfonyUnionNestsDiscriminatedUnion($schema)
+                )
+            ) {
                 continue;
             }
             $members = $this->topLevelTypeMembers(ltrim($property['type'], '?'));
@@ -133,6 +144,62 @@ trait RendersSymfonyDto
         }
 
         return $properties;
+    }
+
+    /**
+     * Whether a union has an `array` member beside generated classes the serializer, trying a class
+     * first, does not fall through to the list from (`symfonyWithFreeFormObjectUnionsHeldAsArray()`
+     * holds it as the decoded array then, as the yii3 mode and a union component already are):
+     *
+     * - two or more classes (`ProbeVoleAnyOf1|array|ProbeVoleAnyOf3`): extra attributes are refused
+     *   beside ONE class only (`symfonyContextAttribute()`), so a list became an empty first class —
+     *   `["g", "g"]` passed a list of at most one integer, and a valid `[1]` lost its items;
+     * - one class that requires a key (`ProbeWren|array`): under `#[MapRequestPayload]` the key the list
+     *   lacks is a COLLECTED error rather than a thrown one, so the serializer never tried `array`, and
+     *   every list was refused for the missing key.
+     */
+    private function symfonyListBesideUnskippableClasses(string $phpType): bool
+    {
+        if (!$this->unionHasArrayMember($phpType)) {
+            return false;
+        }
+        $classes = [];
+        foreach ($this->unionMembersBesideNull($phpType) as $member) {
+            $short = $this->shortClassName($member);
+            if (array_key_exists($short, $this->dtoSchemas) && !array_key_exists($short, $this->enumSchemas) && !$this->rendersAsUnion($this->dtoSchemas[$short])) {
+                $classes[] = $short;
+            }
+        }
+
+        return count($classes) >= 2
+            || (count($classes) === 1 && $this->allOfRequiredNames($this->dtoSchemas[$classes[0]]) !== []);
+    }
+
+    /**
+     * Whether a `oneOf` / `anyOf` has a member that is itself a discriminated union — `oneOf: [{oneOf:
+     * [$ref Circle, $ref Square], discriminator: …}, {type: string}]`. The property is typed
+     * `Circle|Square|string`, the `discriminator` having no interface to sit on, and the serializer tried
+     * `Circle` first: `{"kind": "square"}` failed its `kind` enum, a COLLECTED error under
+     * `#[MapRequestPayload]`, so `Square` was never tried and a valid object was refused. Held as the
+     * decoded array, the callback judges it against the member its tag names.
+     *
+     * @param array<mixed> $schema
+     */
+    private function symfonyUnionNestsDiscriminatedUnion(array $schema): bool
+    {
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            foreach (is_array($schema[$keyword] ?? null) ? $schema[$keyword] : [] as $branch) {
+                if (
+                    is_array($branch)
+                    && is_array($branch['discriminator'] ?? null)
+                    && (is_array($branch['oneOf'] ?? null) || is_array($branch['anyOf'] ?? null))
+                ) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -166,9 +233,19 @@ trait RendersSymfonyDto
      * object into it: `{"gecko": 1}` refused for the `crane` the class requires.
      *
      * @param array<mixed> $schema
+     * @param string|null $sourceFile the document the schema is written in: a `$ref` into another file is
+     *        relative to it, not to the root document
      */
-    private function symfonyUnionHasFreeFormObjectMember(array $schema, int $depth = 0): bool
+    private function symfonyUnionHasFreeFormObjectMember(array $schema, int $depth = 0, ?string $sourceFile = null): bool
     {
+        // A `$ref` to a union component that is written out where it is used — one with an object
+        // held as the decoded array among its members (`isMixedValueUnionSchema()`) — is that union.
+        $ref = $schema['$ref'] ?? null;
+        if (is_string($ref) && $depth < 8) {
+            $aliased = $this->scalarAliasDefinition($ref, $sourceFile);
+
+            return $aliased !== null && $this->symfonyUnionHasFreeFormObjectMember(schema: $aliased, depth: $depth + 1, sourceFile: $sourceFile);
+        }
         foreach (['oneOf', 'anyOf'] as $keyword) {
             foreach (is_array($schema[$keyword] ?? null) ? $schema[$keyword] : [] as $branch) {
                 if (is_array($branch) && $this->isFreeFormObjectSchema($branch)) {
@@ -180,7 +257,7 @@ trait RendersSymfonyDto
                     && !array_key_exists('$ref', $branch)
                     && !array_key_exists('type', $branch)
                     && !array_key_exists('properties', $branch)
-                    && $this->symfonyUnionHasFreeFormObjectMember($branch, $depth + 1)
+                    && $this->symfonyUnionHasFreeFormObjectMember(schema: $branch, depth: $depth + 1, sourceFile: $sourceFile)
                 ) {
                     return true;
                 }
@@ -1019,6 +1096,7 @@ trait RendersSymfonyDto
                     schema: $this->symfonyContainerUnionReferenceInlined($propertySchema),
                     className: $className,
                     holdsNoClass: $this->symfonyTypeHoldsNoGeneratedClass($rawHeld[(string)$name]),
+                    heldMembers: $rawHeld[(string)$name],
                 );
             }
             $properties[$name] = $propertySchema;
@@ -1041,10 +1119,16 @@ trait RendersSymfonyDto
      * properties as their members (`withPropertyEnumsSpelledOut()`): each had moved into a PHP enum the
      * array never holds, and `{"bison": {"raven": 3}}` passed `enum: [0]` beside a map of booleans.
      *
+     * A `$ref` branch whose class the held type does not name is written out wherever the type names
+     * another: `oneOf: [{enum: [green]}, $ref Umber, {type: object, required: [bison]}]` is held as
+     * `ProbeRaven|array`, the enum kept, and "is an Umber" was never true of the array — `{"plover":
+     * 65}` was refused.
+     *
      * @param array<string, mixed> $schema
+     * @param list<string> $heldMembers the members of the held PHP type
      * @return array<string, mixed>
      */
-    private function symfonyHeldUnionBranchesInlined(array $schema, string $className, bool $holdsNoClass, int $depth = 0): array
+    private function symfonyHeldUnionBranchesInlined(array $schema, string $className, bool $holdsNoClass, array $heldMembers, int $depth = 0): array
     {
         if ($depth >= 8) {
             return $schema;
@@ -1054,7 +1138,7 @@ trait RendersSymfonyDto
                 if (!is_array($branch)) {
                     continue;
                 }
-                if ($this->isContainerBranch($branch) || ($holdsNoClass && $this->splitBranchReference($branch)[0] !== null)) {
+                if ($this->isContainerBranch($branch) || $this->symfonyBranchClassNotHeld(branch: $branch, className: $className, heldMembers: $heldMembers)) {
                     $schema[$keyword][$index] = $this->symfonyRawContainerInlined($branch);
 
                     continue;
@@ -1069,6 +1153,7 @@ trait RendersSymfonyDto
                     schema: $branch,
                     className: $className,
                     holdsNoClass: $holdsNoClass,
+                    heldMembers: $heldMembers,
                     depth: $depth + 1,
                 );
                 if (is_array($branch['allOf'] ?? null) && $this->interpreterShadowType($branch) === 'object') {
@@ -1079,6 +1164,24 @@ trait RendersSymfonyDto
         }
 
         return $schema;
+    }
+
+    /**
+     * Whether a union branch is a `$ref` to a class or enum the held PHP type does not name, so the
+     * decoded value is never one and the branch has to be judged written out.
+     *
+     * @param array<mixed> $branch
+     * @param list<string> $heldMembers
+     */
+    private function symfonyBranchClassNotHeld(array $branch, string $className, array $heldMembers): bool
+    {
+        $ref = $this->splitBranchReference($branch)[0];
+        if ($ref === null) {
+            return false;
+        }
+        $referenced = $this->schemaRefToClassName(ref: $ref, currentSourceFile: $this->getSchemaSourceFile($className));
+
+        return !in_array($referenced, array_map($this->shortClassName(...), $heldMembers), true);
     }
 
     /**
@@ -1101,7 +1204,8 @@ trait RendersSymfonyDto
     /**
      * A property `$ref` to a union component with a container branch (`Amber: {oneOf: [{type: object,
      * additionalProperties: …}, {type: null}]}`), followed through bare aliases, written out in place,
-     * so its container branches are judged as the inline union's are. Anything else comes back as is.
+     * so its container branches are judged as the inline union's are — and one with an object held as
+     * the decoded array. Anything else comes back as is.
      *
      * @param array<string, mixed> $propertySchema
      * @return array<string, mixed>
@@ -1122,7 +1226,10 @@ trait RendersSymfonyDto
         $hasContainerBranch = false;
         foreach (['oneOf', 'anyOf'] as $keyword) {
             foreach (is_array($definition[$keyword] ?? null) ? $definition[$keyword] : [] as $branch) {
-                $hasContainerBranch = $hasContainerBranch || (is_array($branch) && $this->isContainerBranch($branch));
+                // An object held as the decoded array (`{type: object, required: [yak]}`) too: the union is
+                // then written out where it is used, and its `$ref` branches judge that array, not a class.
+                $hasContainerBranch = $hasContainerBranch
+                    || (is_array($branch) && ($this->isContainerBranch($branch) || $this->isDecodedObjectBranch($branch)));
             }
         }
         if (!$hasContainerBranch) {
@@ -2194,7 +2301,9 @@ PHP;
     /**
      * Whether a `format: date` property is read with its one pattern (see `symfonyContextAttribute()`).
      * Beside a generated class (`DateTimeImmutable|Shade`) it is not: the context reaches the class's
-     * own properties too, and would read a date-time there as a date.
+     * own properties too, and would read a date-time there as a date. Beside a plain `array` or a backed
+     * enum it is: neither holds a date the context could reach, and without it `+1 day` and `@0` passed
+     * `DateTimeImmutable|array` and `Level|DateTimeImmutable`.
      *
      * @param SchemaProperty $property
      */
@@ -2209,7 +2318,8 @@ PHP;
         foreach ($this->unionMembersBesideNull($property['type']) as $member) {
             if (
                 $this->shortClassName($member) !== 'DateTimeImmutable'
-                && !in_array($member, ['int', 'float', 'string', 'bool', 'true', 'false'], true)
+                && !in_array($member, ['int', 'float', 'string', 'bool', 'true', 'false', 'array'], true)
+                && !array_key_exists($this->shortClassName($member), $this->enumSchemas)
             ) {
                 return false;
             }
@@ -2594,7 +2704,6 @@ PHP;
         // which branch matched — so there the format keeps its constraint, worded as Symfony words it.
         if ($inAnyOfBranch) {
             $branchSpec = match ($format) {
-                'email', 'idn-email' => ['name' => 'Email', 'args' => ''],
                 // The shape only, as the callback checks a uuid everywhere else: `Assert\Uuid` pins the
                 // version and variant, and refused here what a `oneOf` branch accepted.
                 'uuid' => [
@@ -2656,10 +2765,13 @@ PHP;
      * Builds `new Assert\*(...)` expressions enforcing an anyOf branch, a value with no PHP type hint
      * of its own: a Type constraint plus the scalar constraint specs.
      *
+     * An ITEM of a list branch is held as decoded, nothing casts it: a `number` item is then an `int`
+     * as often as a `float`, and `Type('float')` refused `[5]`.
+     *
      * @param array<string, mixed> $schema
      * @return array<int, string>
      */
-    private function valueConstraintExpressions(array $schema): array
+    private function valueConstraintExpressions(array $schema, bool $isItem = false): array
     {
         $expressions = [];
 
@@ -2674,7 +2786,13 @@ PHP;
         }
 
         $symfonyType = $this->openApiTypeToSymfonyType($schema['type'] ?? null);
-        if ($symfonyType !== null) {
+        if ($isItem && $symfonyType === 'float') {
+            $expressions[] = "new Assert\\Type(['int', 'float'])";
+        } elseif (($schema['type'] ?? null) === 'array') {
+            // A list, not any PHP array: a JSON object decodes to one too, and `{"zz": 1}` passed a list
+            // branch of numbers.
+            $expressions[] = "new Assert\\Type('list')";
+        } elseif ($symfonyType !== null) {
             $expressions[] = "new Assert\\Type('" . $symfonyType . "')";
         }
 
@@ -2684,7 +2802,7 @@ PHP;
 
         // A list branch of scalar items — `anyOf: [{type: array, items: {type: integer}}, {type: boolean}]`.
         // The items are part of the branch: left out, `["x"]` matched it as "an array". Only after
-        // `Type('array')` has held, which the `Sequentially` the branch becomes guarantees; an item of
+        // `Type('list')` has held, which the `Sequentially` the branch becomes guarantees; an item of
         // any other shape keeps the branch at "an array", as before.
         $items = $schema['items'] ?? null;
         if (
@@ -2693,7 +2811,7 @@ PHP;
             && is_array($items)
             && in_array($items['type'] ?? null, ['integer', 'number', 'string', 'boolean'], true)
         ) {
-            $itemExpressions = $this->valueConstraintExpressions($items);
+            $itemExpressions = $this->valueConstraintExpressions(schema: $items, isItem: true);
             // `Type` takes null for valid, so inside `All` it let `[null]` through as a list of
             // booleans. An item the schema does not let be null is refused it first.
             if (($items['nullable'] ?? null) !== true) {
@@ -3125,6 +3243,8 @@ PHP;
             !is_array($anyOf)
             || count($anyOf) < 2
             || $this->anyOfBranchCarriesPattern($anyOf)
+            || $this->anyOfBranchCarriesEmail($anyOf)
+            || $this->symfonyAnyOfObjectBranchHeldDecoded(property: $property, branches: $anyOf)
             || $this->anyOfBranchOutgrowsItsAttribute($anyOf)
             || $this->anyOfBranchCarriesUnspelledEnum(property: $property, branches: $anyOf)
             || $this->anyOfBranchRequiresAnUndeclaredName($anyOf)
@@ -3317,6 +3437,66 @@ PHP;
             }
             if (!in_array('enum', $this->scalarConstraintSpecList($branch, inAnyOfBranch: true)['covered'], true)) {
                 return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether an object branch of a property-level `anyOf` is held as the decoded array: a `$ref` branch
+     * whose class the PHP type does not name, or an inline object branch beside no generated class at
+     * all (`symfonyWithFreeFormObjectUnionsHeldAsArray()` dropped it). `Assert\Type('array')` stood for
+     * such a branch and read none of its keywords — `{"fox": {"ear": "x"}}` passed a required integer
+     * `ear` — and `Type(Lime::class)` refused every object the array held. The callback judges them.
+     *
+     * @param SchemaProperty $property
+     * @param array<mixed> $branches
+     */
+    private function symfonyAnyOfObjectBranchHeldDecoded(array $property, array $branches): bool
+    {
+        $held = array_map($this->shortClassName(...), $this->unionMembersBesideNull($property['type']));
+        $holdsAClass = array_filter(
+            array: $held,
+            callback: fn(string $member): bool => array_key_exists($member, $this->dtoSchemas) && !array_key_exists($member, $this->enumSchemas),
+        ) !== [];
+        foreach ($branches as $branch) {
+            if (!is_array($branch)) {
+                continue;
+            }
+            $branchClass = $branch['x-php-instanceof'] ?? null;
+            if (is_string($branchClass)) {
+                if (array_key_exists($branchClass, $this->dtoSchemas) && !array_key_exists($branchClass, $this->enumSchemas) && !in_array($branchClass, $held, true)) {
+                    return true;
+                }
+
+                continue;
+            }
+            if (($branch['type'] ?? null) === 'object' && !$this->isFreeFormObjectSchema($branch) && !$holdsAClass) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether a property-level `anyOf` has a branch, or the items of a list branch, of `format: email`
+     * or `idn-email`. Such an `anyOf` is the callback's: `Assert\Email` checks the HTML5 pattern, which
+     * takes `a.@example.com` and `a..b@example.com` — refused on a plain property, where the callback
+     * asks `filter_var()` as every other mode does — and refuses the international domain of an
+     * `idn-email`.
+     *
+     * @param array<mixed> $branches
+     */
+    private function anyOfBranchCarriesEmail(array $branches): bool
+    {
+        foreach ($branches as $branch) {
+            $items = is_array($branch) ? $branch['items'] ?? null : null;
+            foreach ([$branch, $items] as $schema) {
+                if (is_array($schema) && in_array($schema['format'] ?? null, ['email', 'idn-email'], true)) {
+                    return true;
+                }
             }
         }
 

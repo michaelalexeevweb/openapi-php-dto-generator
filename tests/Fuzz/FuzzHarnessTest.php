@@ -18,6 +18,50 @@ use stdClass;
  */
 final class FuzzHarnessTest extends TestCase
 {
+    /**
+     * The laravel-data 422 guard of README.support-matrix's "a discriminated union inside the FIRST member
+     * of an inline union of classes": a valid object of the second member whose same-named property is no
+     * object. Nothing filed it, so every such seed was a finding. Narrow: the other modes, a member order
+     * that puts the union second, a sibling whose property is an object too, and a value whose property is
+     * an object are not that row.
+     */
+    public function testTheFirstMemberDiscriminatedGuardIsFiledUnderItsRow(): void
+    {
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $document = ['components' => ['schemas' => [
+            'Probe' => ['type' => 'object', 'properties' => [
+                'macaw' => ['anyOf' => [$ref('Scarlet'), $ref('Sienna')], 'discriminator' => ['propertyName' => 'kind']],
+                'flock' => ['type' => 'array', 'items' => ['oneOf' => [$ref('Scarlet'), $ref('Sienna')]]],
+                'swapped' => ['anyOf' => [$ref('Sienna'), $ref('Scarlet')]],
+            ]],
+            'Olive' => ['type' => 'object', 'properties' => ['kind' => ['type' => 'string', 'enum' => ['Olive']]], 'required' => ['kind']],
+            'Coral' => ['type' => 'object', 'properties' => ['kind' => ['type' => 'string', 'enum' => ['Coral']]], 'required' => ['kind']],
+            'Azure' => ['oneOf' => [$ref('Olive'), $ref('Coral')], 'discriminator' => ['propertyName' => 'kind']],
+            'Scarlet' => ['type' => 'object', 'properties' => ['kind' => ['type' => 'string', 'enum' => ['Scarlet']], 'robin' => $ref('Azure')], 'required' => ['kind', 'robin']],
+            'Sienna' => ['type' => 'object', 'properties' => ['kind' => ['type' => 'string', 'enum' => ['Sienna']], 'robin' => ['type' => 'integer']], 'required' => ['kind']],
+        ]]];
+        $sienna = json_decode('{"kind":"Sienna","robin":30}');
+        $explain = static fn(GenerationMode $mode, string $property, mixed $value, array $document, string $category = 'wrong-refuse'): ?string => KnownDivergences::explainFirstMemberDiscriminatedGuard(
+            mode: $mode,
+            category: $category,
+            document: $document,
+            property: $property,
+            value: $value,
+        );
+
+        $this->assertNotNull($explain(GenerationMode::LaravelData, 'macaw', $sienna, $document));
+        $this->assertNotNull($explain(GenerationMode::LaravelData, 'flock', [$sienna], $document));
+
+        $this->assertNull($explain(GenerationMode::Laravel, 'macaw', $sienna, $document));
+        $this->assertNull($explain(GenerationMode::LaravelData, 'macaw', $sienna, $document, 'wrong-accept'));
+        $this->assertNull($explain(GenerationMode::LaravelData, 'swapped', $sienna, $document));
+        $this->assertNull($explain(GenerationMode::LaravelData, 'macaw', json_decode('{"kind":"Sienna"}'), $document));
+        $this->assertNull($explain(GenerationMode::LaravelData, 'macaw', json_decode('{"kind":"Scarlet","robin":{"kind":"Olive"}}'), $document));
+        $objectSibling = $document;
+        $objectSibling['components']['schemas']['Sienna']['properties']['robin'] = ['type' => 'object'];
+        $this->assertNull($explain(GenerationMode::LaravelData, 'macaw', $sienna, $objectSibling));
+    }
+
     public function testAUnionWithAClassMemberIsCoveredByTheClassRows(): void
     {
         $union = ['t' => 'union', 'op' => 'anyOf', 'branches' => [['t' => 'object', 'properties' => []], ['t' => 'string']]];
@@ -328,6 +372,7 @@ final class FuzzHarnessTest extends TestCase
             'email' => ['nearMissFormat:email' => ['@example.com', 'a.@example.com', 'a..b@example.com', 'a@example..com']],
         ];
         $offsets = [];
+        $dates = [];
         foreach ($expected as $format => $kinds) {
             $node = ['t' => 'string', 'format' => $format];
             $seen = [];
@@ -347,8 +392,14 @@ final class FuzzHarnessTest extends TestCase
             if ($format === 'date-time') {
                 $offsets = $seen['parseableNonDate:date-time'];
             }
+            if ($format === 'date') {
+                $dates = $seen['parseableNonDate:date'];
+            }
         }
 
+        $this->assertContains('dateOneDigit', $dates['2020-1-2'] ?? []);
+        $this->assertNotContains('dateOneDigit', $dates['now'] ?? []);
+        $this->assertNotContains('dateOneDigit', $offsets['2020-1-2'] ?? []);
         $this->assertContains('dateTimeNoOffset', $offsets['2024-01-02T10:00:00'] ?? []);
         $this->assertContains('dateTimeOffsetWithoutColon', $offsets['2024-01-02T10:00:00+0200'] ?? []);
         $this->assertNotContains('dateTimeNoOffset', $offsets['now'] ?? []);
@@ -393,6 +444,12 @@ final class FuzzHarnessTest extends TestCase
         $this->assertNull($explain(GenerationMode::Symfony, 'wrong-accept', 'parseableNonDate:date-time', ['site:string']));
         $this->assertNull($explain(GenerationMode::Symfony, 'wrong-accept', 'parseableNonDate:date', ['site:temporal']));
         $this->assertNull($explain(GenerationMode::Yii3, 'wrong-accept', 'parseableNonDate:date', ['site:temporal']));
+        // A one-digit month or day is read by `!Y-m-d` in symfony alone; yii3 checks the digits.
+        foreach (['site:temporal', 'site:nullable-temporal', 'itemsOf:temporal', 'valuesOf:temporal'] as $site) {
+            $this->assertNotNull($explain(GenerationMode::Symfony, 'wrong-accept', 'parseableNonDate:date', [$site, 'dateOneDigit']), $site);
+        }
+        $this->assertNull($explain(GenerationMode::Symfony, 'wrong-accept', 'parseableNonDate:date', ['site:string', 'dateOneDigit']));
+        $this->assertNull($explain(GenerationMode::Yii3, 'wrong-accept', 'parseableNonDate:date', ['site:temporal', 'dateOneDigit']));
 
         foreach (GenerationMode::cases() as $mode) {
             $this->assertNotNull($explain($mode, 'wrong-accept', 'parseableNonDate:date-time', ['site:temporal', 'dateTimeNoOffset']), $mode->value);
@@ -721,6 +778,37 @@ final class FuzzHarnessTest extends TestCase
         $this->assertNull(KnownDivergences::explain(mode: GenerationMode::Symfony, category: 'wrong-accept', kind: 'matchesTwoMembers', tags: []));
         $this->assertNull(KnownDivergences::explain(mode: GenerationMode::Runtime, category: 'wrong-accept', kind: 'matchesTwoMembers', tags: ['unionObjectPair']));
         $this->assertNull(KnownDivergences::explain(mode: GenerationMode::Yii3, category: 'wrong-accept', kind: 'matchesTwoMembers', tags: ['unionObjectPair']));
+    }
+
+    /**
+     * An enum member beside the pair is no class an object could be built into: sorted in with the
+     * classes, an enum whose name sorts first (`Amber` beside `Indigo` and `ProbeMacawOneOf3`) matched no
+     * object member, and the object of the pair went untagged — filed as a defect although it is the
+     * row-166 boundary (seeds 22009, 22039).
+     */
+    public function testAnEnumMemberDoesNotTakePartInTheSortOfThePair(): void
+    {
+        $runner = new FuzzRunner(outputDirectory: sys_get_temp_dir() . '/fuzz-harness-pair-enum', modes: [GenerationMode::Symfony], propertiesPerSpec: 1);
+        $generate = new ReflectionMethod(FuzzRunner::class, 'generateChecked');
+        $tag = new ReflectionMethod(FuzzRunner::class, 'tagObjectsOfAPair');
+        $document = ['openapi' => '3.0.3', 'info' => ['title' => 'Fuzz', 'version' => '1.0.0'], 'components' => ['schemas' => [
+            'Probe' => ['type' => 'object', 'properties' => ['macaw' => ['oneOf' => [
+                ['$ref' => '#/components/schemas/Amber'],
+                ['$ref' => '#/components/schemas/Indigo'],
+                ['type' => 'object', 'properties' => ['puffin' => ['type' => 'string']]],
+            ]]]],
+            'Amber' => ['type' => 'string', 'enum' => ['blue']],
+            'Indigo' => ['type' => 'object', 'properties' => ['plover' => ['type' => 'integer']], 'required' => ['plover']],
+        ]]];
+        $generation = $generate->invoke($runner, $document, GenerationMode::Symfony);
+        $tagged = static function (string $json) use ($tag, $document, $generation): bool {
+            $payload = ['property' => 'macaw', 'kind' => 'valid', 'json' => $json, 'expected' => PayloadVerdict::Accepted, 'tags' => ['unionObjectPair']];
+
+            return in_array('objectOfPair', $tag->invoke(null, [$payload], $document, $generation['fqcn'])[0]['tags'], true);
+        };
+
+        $this->assertTrue($tagged('{"macaw":{"puffin":"x"}}'), 'a value of the member that sorts after Indigo');
+        $this->assertFalse($tagged('{"macaw":{"plover":1}}'), 'a value of Indigo, which sorts first');
     }
 
     /**

@@ -106,6 +106,9 @@ trait RendersYii3Dto
         'date-time' => ['Y-m-d\TH:i:sP', 'Y-m-d\TH:i:s.up', 'Y-m-d H:i:s', 'Y-m-d\TH:i:s'],
     ];
 
+    /** The digits a `format: date` is written in: `createFromFormat('Y-m-d')` also takes `2020-1-2`. */
+    private const string YII3_STRICT_DATE_PATTERN = '/^\d{4}-\d{2}-\d{2}$/';
+
     /** Rules that live under `Rule\Date\`, not directly under `Rule\`. */
     private const array YII3_DATE_NAMESPACE_RULES = ['Date', 'DateTime', 'Time'];
 
@@ -311,8 +314,9 @@ trait RendersYii3Dto
 
         // ALWAYS emitted when the interpreter does not already carry one: `getData()` and
         // `getPropertyValue()` read through it, and an enclosing DTO's callback reads a nested one
-        // through it too.
-        $standalonePayload = $interpreter['entered'] || $parameters === []
+        // through it too. A class of no properties as well: `getData()` called it all the same, and an
+        // object composed of nothing the class could hold died on the undefined method — a 500.
+        $standalonePayload = $interpreter['entered']
             ? ''
             : $this->renderYii3StandalonePayloadMethod($parameters);
 
@@ -1472,6 +1476,9 @@ trait RendersYii3Dto
      * parameters, so a `{Property}` placeholder reached the client unreplaced — the property is
      * named here instead, as the framework capitalizes it.
      *
+     * A `date` is also matched against its digits (`YII3_STRICT_DATE_PATTERN`): the `Date` rule parses
+     * with `createFromFormat()`, which takes a one-digit month or day, and `2020-1-2` passed.
+     *
      * @param array<int, string> $temporalFormats
      * @param array<int, string> $ruleImports
      * @return array{rule: string, arguments: array<int, string>}
@@ -1482,18 +1489,39 @@ trait RendersYii3Dto
         foreach ($temporalFormats as $temporalFormat) {
             $dateRule = self::YII3_FORMAT_RULES[$temporalFormat];
             foreach (self::YII3_TEMPORAL_WIRE_FORMATS[$temporalFormat] as $wireFormat) {
-                $parsers[] = ['rule' => $dateRule, 'format' => "format: 'php:" . $wireFormat . "'"];
+                $parsers[] = ['rule' => $dateRule, 'format' => "format: 'php:" . $wireFormat . "'", 'digits' => $temporalFormat === 'date'];
             }
         }
-        if (count($parsers) === 1) {
+        if (count($parsers) === 1 && !$parsers[0]['digits']) {
             return ['rule' => $parsers[0]['rule'], 'arguments' => [$parsers[0]['format']]];
         }
 
         $rendered = [];
-        foreach ($parsers as ['rule' => $dateRule, 'format' => $formatArgument]) {
+        foreach ($parsers as ['rule' => $dateRule, 'format' => $formatArgument, 'digits' => $digits]) {
             $fqcn = $this->yii3RuleClass($dateRule);
             $ruleImports[] = $fqcn;
-            $rendered[] = sprintf('new %s(%s)', $this->yii3Lib($dateRule, $fqcn), $formatArgument);
+            $parser = sprintf('new %s(%s)', $this->yii3Lib($dateRule, $fqcn), $formatArgument);
+            if (!$digits) {
+                $rendered[] = $parser;
+
+                continue;
+            }
+            $regexFqcn = $this->yii3RuleClass('Regex');
+            $ruleImports[] = $regexFqcn;
+            // Its digits AND its calendar: the pattern first, then the parser.
+            $bothRules = sprintf(
+                '[new %s(%s, message: %s), %s]',
+                $this->yii3Lib('Regex', $regexFqcn),
+                $this->phpStringLiteral(self::YII3_STRICT_DATE_PATTERN),
+                $this->phpStringLiteral(sprintf('%s must be a date.', ucfirst($propertyName))),
+                $parser,
+            );
+            if (count($parsers) === 1) {
+                return ['rule' => 'Composite', 'arguments' => [$bothRules]];
+            }
+            $compositeFqcn = $this->yii3RuleClass('Composite');
+            $ruleImports[] = $compositeFqcn;
+            $rendered[] = sprintf('new %s(%s)', $this->yii3Lib('Composite', $compositeFqcn), $bothRules);
         }
 
         $kind = $temporalFormats === ['time'] ? 'time' : 'date';
@@ -3047,7 +3075,10 @@ PHP;
      * the held array; behind a name the same union reached the interpreter as the component's, with the
      * object branch left to a class that is never built — reduced to `x-php-checked-by-class`, or with
      * its property `enum` moved into an enum type the array does not hold. `{"toucan": {"kiwi": 3}}`
-     * passed a `multipleOf: 2`. Only a bare `$ref` (siblings beside it are left as they are).
+     * passed a `multipleOf: 2`. Only a bare `$ref`, or one beside annotations that assert nothing
+     * (`description`, `title`, …): beside `description: d` the union was left to the component, its
+     * object member reduced to `{type: object}`, and `{"quokka": {"crane": "x"}}` passed an integer
+     * `crane`. Other siblings leave the property as it is.
      *
      * A member written `{$ref: Hen, properties: {…}}` is spelled out as `allOf: [{$ref: Hen}, {…}]`, the
      * way the same member inline on a property is read: left as the reference it was, the branch went
@@ -3061,8 +3092,13 @@ PHP;
     {
         $ref = $propertySchema['$ref'] ?? null;
         $nullable = ($propertySchema['nullable'] ?? null) === true;
-        if (!is_string($ref) || array_keys($propertySchema) !== ($nullable ? ['$ref', 'nullable'] : ['$ref'])) {
+        if (!is_string($ref)) {
             return $propertySchema;
+        }
+        foreach (array_keys($propertySchema) as $keyword) {
+            if ($keyword !== '$ref' && !in_array($keyword, self::YII3_ANNOTATION_KEYWORDS, true) && !str_starts_with($keyword, 'x-')) {
+                return $propertySchema;
+            }
         }
         $componentClass = $this->schemaRefToClassName(ref: $ref, currentSourceFile: $this->getSchemaSourceFile($className));
         $definition = $this->dtoSchemas[$componentClass] ?? null;

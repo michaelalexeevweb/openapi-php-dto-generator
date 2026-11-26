@@ -1009,8 +1009,12 @@ trait RendersLaravelDto
             );
 
         // A date beside other members — `DateTimeImmutable|Shade`, `int|DateTimeImmutable` — went out as
-        // the PHP object, which `json_encode()` writes as `{"date": …, "timezone_type": 3}`.
-        if (str_contains($property['type'], '|') && in_array('DateTimeImmutable', array_map($this->shortClassName(...), $this->unionMembersBesideNull($property['type'])), true)) {
+        // the PHP object, which `json_encode()` writes as `{"date": …, "timezone_type": 3}`. So did a union
+        // of ONE temporal member (`anyOf: [{format: date}]`, `oneOf: [{format: date-time}, {type: null}]`),
+        // collapsed to `?DateTimeImmutable` with no `temporalFormat` for the getter above to read.
+        $collapsedTemporalUnion = $this->shortClassName(ltrim($property['type'], '?')) === 'DateTimeImmutable'
+            && ($property['unionTemporalFormats'] ?? []) !== [];
+        if ($collapsedTemporalUnion || (str_contains($property['type'], '|') && in_array('DateTimeImmutable', array_map($this->shortClassName(...), $this->unionMembersBesideNull($property['type'])), true))) {
             $formatted = ($property['unionTemporalFormats'] ?? []) === ['date']
                 ? sprintf("%s->format('Y-m-d')", $propertyAccess)
                 : sprintf("(%1\$s->format('u') === '000000' ? %1\$s->format('c') : %1\$s->format('Y-m-d\\TH:i:s.uP'))", $propertyAccess);

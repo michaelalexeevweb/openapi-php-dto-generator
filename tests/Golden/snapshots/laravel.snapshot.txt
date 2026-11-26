@@ -16568,7 +16568,7 @@ final class Containers implements JsonSerializable
             'datesByDay' => self::withBlankStringValidation(['sometimes', 'array']),
             'datesByDay.*' => self::withBlankStringValidation(['string', 'date_format:Y-m-d']),
             'timestamps' => self::withBlankStringValidation(['sometimes', 'list']),
-            'timestamps.*' => self::withBlankStringValidation(['string', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.vp,Y-m-d H:i:s,Y-m-d\TH:i:s']),
+            'timestamps.*' => self::withBlankStringValidation(['string', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.vp,Y-m-d H:i:s,Y-m-d\TH:i:s', 'not_regex:/[+-](2[4-9]|[3-9]\d):\d\d$|[+-]\d\d:[6-9]\d$/']),
             'tagsByKey' => self::withBlankStringValidation(['sometimes', 'array']),
             'tagsByKey.*' => self::withBlankStringValidation(['array']),
             ...self::openApiNestedParts()['rules'],
@@ -22504,7 +22504,7 @@ final class ReadOnlyFields implements JsonSerializable
         return [
             'serverId' => self::withBlankStringValidation(['sometimes', 'integer']),
             'title' => self::withBlankStringValidation(['present', 'string']),
-            'writtenAt' => self::withBlankStringValidation(['sometimes', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.vp,Y-m-d H:i:s,Y-m-d\TH:i:s']),
+            'writtenAt' => self::withBlankStringValidation(['sometimes', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.vp,Y-m-d H:i:s,Y-m-d\TH:i:s', 'not_regex:/[+-](2[4-9]|[3-9]\d):\d\d$|[+-]\d\d:[6-9]\d$/']),
             'secret' => self::withBlankStringValidation(['sometimes', 'string']),
         ];
     }
@@ -30107,7 +30107,7 @@ final class User implements JsonSerializable
             'id' => self::withBlankStringValidation(['present', 'integer']),
             'name' => self::withBlankStringValidation(['present', 'string']),
             'pet' => self::withBlankStringValidation(['present', 'nullable']),
-            'createdAt' => self::withBlankStringValidation(['present', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.vp,Y-m-d H:i:s,Y-m-d\TH:i:s']),
+            'createdAt' => self::withBlankStringValidation(['present', 'date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.vp,Y-m-d H:i:s,Y-m-d\TH:i:s', 'not_regex:/[+-](2[4-9]|[3-9]\d):\d\d$|[+-]\d\d:[6-9]\d$/']),
         ];
     }
 
@@ -30203,7 +30203,7 @@ final class User implements JsonSerializable
                     $prefix . '.id' => self::withBlankStringValidation(['integer']),
                     $prefix . '.name' => self::withBlankStringValidation(['string']),
                     $prefix . '.pet' => self::withBlankStringValidation(['nullable']),
-                    $prefix . '.createdAt' => self::withBlankStringValidation(['date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.vp,Y-m-d H:i:s,Y-m-d\TH:i:s']),
+                    $prefix . '.createdAt' => self::withBlankStringValidation(['date_format:Y-m-d\TH:i:sP,Y-m-d\TH:i:s.uP,Y-m-d\TH:i:s.vP,Y-m-d\TH:i:sp,Y-m-d\TH:i:s.up,Y-m-d\TH:i:s.vp,Y-m-d H:i:s,Y-m-d\TH:i:s', 'not_regex:/[+-](2[4-9]|[3-9]\d):\d\d$|[+-]\d\d:[6-9]\d$/']),
                 ],
                 'objectPaths' => [
                     $prefix . '.pet',

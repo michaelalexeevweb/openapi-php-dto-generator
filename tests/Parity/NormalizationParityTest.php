@@ -386,6 +386,28 @@ final class NormalizationParityTest extends TestCase
                 'runtime' => ['on' => ['2026-03-10', '2026-03-11']],
                 'symfony' => ['on' => ['2026-03-10', '2026-03-11']],
             ],
+            // Behind a `$ref` to a list component Symfony wrote the dates out as date-times.
+            'a referenced list of dates stays dates' => [
+                'schema' => self::object(properties: ['on' => ['$ref' => '#/components/schemas/Saffron']], required: ['on']),
+                'extra' => ['Saffron' => ['type' => 'array', 'items' => ['type' => 'string', 'format' => 'date']]],
+                'json' => '{"on":["2026-03-10"]}',
+                'runtime' => ['on' => ['2026-03-10']],
+                'symfony' => ['on' => ['2026-03-10']],
+            ],
+            // Symfony built the list into an empty first class, its items lost.
+            'a list beside two classes keeps its items' => [
+                'schema' => self::object(
+                    properties: ['vole' => ['anyOf' => [
+                        self::object(['quokka' => ['type' => 'string']], []),
+                        ['type' => 'array', 'maxItems' => 1, 'items' => ['type' => 'integer']],
+                        self::object(['plover' => ['type' => 'string']], []),
+                    ]]],
+                    required: ['vole'],
+                ),
+                'json' => '{"vole":[1]}',
+                'runtime' => ['vole' => [1]],
+                'symfony' => ['vole' => [1]],
+            ],
             'array of date-times keeps the item format' => [
                 'schema' => self::object(
                     properties: ['at' => ['type' => 'array', 'items' => ['type' => 'string', 'format' => 'date-time']]],

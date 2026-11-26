@@ -3,6 +3,34 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.162 — 2026-11-26
+
+- fuzz round sixteen: 27 fixes
+- allOf-wrapped union members read
+- map behind allOf checked
+- nested union branches named apart
+- date and date-time unions strict
+- nullable ref map values take null
+
+The first fix round on the improved fuzz harness took its 55 findings and the 19 defects the harness work
+surfaced: 28 root causes, 27 fixes, each with a test that failed before, and 5 framework limits documented. A
+fresh run on new seeds found 18, from 55.
+
+**Regenerate after upgrading, in every mode.**
+
+- every mode: a union property whose branch is itself an inline `oneOf` / `anyOf` holding an enum, beside an
+  inline object, stopped generation on a name collision; its branches are now named apart;
+- runtime: a union component whose members are spelled `{allOf: [X]}` is a union of X — with every member
+  wrapped it was an empty class that took any object and wrote it back as `{}`, with some wrapped a valid value
+  was "Unsupported type"; a closed class branch beside a free-form object refuses keys neither accepts;
+- runtime, symfony, laravel, laravel-data: a property `{allOf: [$ref Map]}` is the map the bare `$ref` names —
+  its values were not checked at all; a map value that is a `$ref` to a component admitting null takes `null`;
+- symfony, yii3: `format: date` beside a list or enum member, and a list of dates through a `$ref`, is read
+  strictly (`+1 day`, `@0`, `2020-1-2` were accepted); a nested discriminated union is held decoded and
+  dispatched; a union email branch is checked;
+- laravel: a date-time inside a union refuses `+0200`, `+25:00` and zone names as on the plain property, and
+  `+25:00` on a plain property is a 422, not a 500.
+
 ## 2.15.161 — 2026-11-26
 
 - fuzz harness blind spots closed

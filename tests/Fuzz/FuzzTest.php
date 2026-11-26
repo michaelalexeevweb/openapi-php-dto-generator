@@ -33,14 +33,12 @@ final class FuzzTest extends TestCase
      * the grammar learned to draw; then pick other clean seeds with a `FUZZ_SHRINK=0` scan).
      */
     private const array CLEAN_SEEDS = [
-        // Out until fixed: 161 — symfony accepts `2020-1-2` for a map of `format: date`; 163 — symfony
-        // accepts `+1 day` for a `oneOf` of `type: array` and `format: date` (`parseableNonDate:date`).
-        // Out since the grammar draws more `format` strings, annotation siblings and union components of
-        // objects: 42 — symfony accepts `@0` for a list of `format: date`; 91 — symfony and yii3 accept
-        // `2020-1-2` for a `format: date` property; 95 — runtime refuses an integer for a union component
-        // `anyOf: [$ref integer, $ref A, $ref B]` of two objects and a scalar, and yii3 accepts `null` and
-        // broken objects there.
+        // Out until fixed: 95 — runtime refuses an integer for a union component `anyOf: [$ref integer,
+        // $ref A, $ref B]` of two objects and a scalar, and yii3 accepts `null` and broken objects there.
         70 => 6, 71 => 6, 84 => 6, 89 => 6, 144 => 6, 152 => 6,
+        // Back since 2.15.162: a one-digit month or day for `format: date` is refused in yii3 and the
+        // documented `!Y-m-d` row in symfony, and a date beside an `array` member is read strictly there.
+        161 => 6, 163 => 6, 42 => 4, 91 => 4,
         4 => 4, 29 => 4, 40 => 4, 46 => 4, 50 => 4, 60 => 4, 64 => 4, 65 => 4, 76 => 4, 80 => 4,
         81 => 4, 85 => 4, 92 => 4, 93 => 4, 102 => 4, 120 => 4, 136 => 4, 140 => 4, 146 => 4,
         147 => 4, 173 => 4, 186 => 4, 192 => 4, 194 => 4, 199 => 4, 204 => 4, 207 => 4,

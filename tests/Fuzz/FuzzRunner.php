@@ -239,6 +239,13 @@ final class FuzzRunner
                         components: $document['components']['schemas'],
                     ),
                 );
+                $row ??= $payload['property'] === null ? null : KnownDivergences::explainFirstMemberDiscriminatedGuard(
+                    mode: $mode,
+                    category: $category,
+                    document: $document,
+                    property: $payload['property'],
+                    value: json_decode($payload['json'])->{$payload['property']} ?? null,
+                );
                 // The tags say what the mutation meant to break; the schema says what the value meets.
                 if ($row === null && $category === 'wrong-accept' && $payload['property'] !== null) {
                     $row = self::documentedShapeRow(
@@ -1202,6 +1209,9 @@ final class FuzzRunner
         if (!is_array($schema) || $depth > 16) {
             return false;
         }
+        // An enum member is no class an object is built into: sorted in with the classes, one whose name
+        // sorts first matched no object member and the pair went untagged.
+        $classes = array_values(array_filter($classes, static fn(string $class): bool => !enum_exists($class)));
         if ($value instanceof stdClass && $classes !== []) {
             $members = self::objectMembers(schema: $schema, schemas: $schemas, depth: 0);
             $class = $classes[0];
