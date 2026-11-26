@@ -279,7 +279,7 @@ $dto->isNicknameProvided();   // true — sent, explicitly as null
 No sentinel value and no setter is involved, which makes this the simplest of the emitted presence
 implementations. `toArray()` omits a property that was never provided, so a PATCH response mirrors the
 request — except one the schema lets be null, which is always written, `null` included, as in Symfony
-mode.
+mode. Only a DTO built by `create()` leaves such a key out (see "The response direction").
 
 An optional property with a schema `default` is that default when the key is absent —
 `getKind()` returns `Kind::All`, not `null` — and its type admits `null` only if the schema does.

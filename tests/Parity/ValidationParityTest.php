@@ -1367,7 +1367,9 @@ final class ValidationParityTest extends TestCase
         }
         // `type: string` pins the value: there the format stays a native rule, refusing as before.
         yield 'email beside type string' => ['email-typed', ['type' => 'string', 'format' => 'email'], '{"f":"cat@example.com"}', '{"f":"nope"}'];
-        yield 'date beside type string' => ['date-typed', ['type' => 'string', 'format' => 'date'], '{"f":"2026-01-02"}', '{"f":"2026-13-45"}'];
+        // A phrase, not month 13: Symfony reads a date as `!Y-m-d`, which rolls month 13 over
+        // (`testAnImpossibleCalendarDateIsRefusedWhereverTheGeneratorOwnsTheCheck`).
+        yield 'date beside type string' => ['date-typed', ['type' => 'string', 'format' => 'date'], '{"f":"2026-01-02"}', '{"f":"tomorrow"}'];
     }
 
     /**
@@ -4639,10 +4641,10 @@ final class ValidationParityTest extends TestCase
                 '{"f":[null,"2026-01-02"]}',
                 '{"f":["x"]}',
                 // OPEN DEFECT, not a design choice: the serializer's DateTimeNormalizer is handed the
-                // null item and throws, and it parses "x" leniently as every Symfony date does.
+                // null item and throws. "x" is refused since 2.15.160 (the date is read as `!Y-m-d`).
                 self::diverges(
                     mode: GenerationMode::Symfony,
-                    expected: ['valid' => false, 'invalid' => true],
+                    expected: ['valid' => false, 'invalid' => false],
                     reason: 'open defect: Symfony serializer cannot denormalize a null date item',
                 ),
             ],
@@ -5061,19 +5063,469 @@ final class ValidationParityTest extends TestCase
                     '{"nul":5}' => false,
                 ],
                 diverging: [
-                    // Outside the Laravel modes this test is about, and unasserted here: runtime refuses a
-                    // union component beside null as "Unsupported type", and Symfony judges the list item
-                    // by its PHP type. Symfony's serializer builds ONE member of the class union, which
-                    // depends on the serializer release (README.support-matrix.md).
-                    'runtime' => ['{"nul":{"radius":1}}' => null],
+                    // Outside the Laravel modes this test is about, and unasserted here: Symfony's
+                    // serializer builds ONE member of the class union, which depends on the serializer
+                    // release (README.support-matrix.md).
                     'symfony' => [
                         '{"pair":{"side":2}}' => null,
                         '{"pair":{"radius":"x"}}' => null,
-                        '{"list":[{"radius":1},"s"]}' => null,
                     ],
                 ],
             ),
         );
+    }
+
+    /**
+     * A `$ref` to a union COMPONENT beside a scalar, inside `items` or `additionalProperties`. Symfony
+     * spelled that branch as "is a Shape", but the container stays an untyped `array`: the serializer
+     * never builds the item, so every object item was refused under `oneOf` and waved through under
+     * `anyOf`, a wrong member body of a discriminated union (`tagged`) included. The neighbours are
+     * pinned by `testUnionComponentNeighboursInsideAContainerAreChecked()`.
+     */
+    public function testAUnionComponentBesideAScalarInsideAContainerIsChecked(): void
+    {
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: self::containedUnionComponentSpec(),
+                key: 'union component beside a scalar in a container',
+                payloads: [
+                    '{"list":[{"radius":1},"s"]}' => true,
+                    '{"list":[{"radius":1}]}' => true,
+                    '{"list":[{"side":2}]}' => true,
+                    '{"list":[5]}' => false,
+                    '{"list":[{"radius":"x"}]}' => false,
+                    '{"list":[{}]}' => false,
+                    '{"tagged":[{"kind":"c","radius":1},"s"]}' => true,
+                    '{"tagged":[{"kind":"s","side":2}]}' => true,
+                    '{"tagged":[{"kind":"c","radius":"a"}]}' => false,
+                    '{"tagged":[{"kind":"zzz"}]}' => false,
+                    '{"tagged":[5]}' => false,
+                    '{"bag":{"a":{"radius":1},"b":3}}' => true,
+                    '{"bag":{"a":{"kind":"x"}}}' => false,
+                    '{"bag":{"a":"s"}}' => false,
+                    '{"mix":[{"kind":"s","side":2}]}' => true,
+                    '{"mix":[{"kind":"s","side":"x"}]}' => false,
+                    '{"mix":["s"]}' => false,
+                    '{"deep":[[{"kind":"c","radius":1},"s"]]}' => true,
+                    '{"deep":[[{"kind":"c","radius":"a"}]]}' => false,
+                    '{"either":[{"kind":"s","side":2},"s"]}' => true,
+                    '{"either":7}' => true,
+                    '{"either":[{"kind":"s","side":"x"}]}' => false,
+                ],
+            ),
+        );
+    }
+
+    /**
+     * The neighbours of `testAUnionComponentBesideAScalarInsideAContainerIsChecked()` that already
+     * worked: the union component beside only null in `items`, a plain class beside a string in `items`,
+     * and a typed list of the union.
+     */
+    public function testUnionComponentNeighboursInsideAContainerAreChecked(): void
+    {
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: self::containedUnionComponentSpec(),
+                key: 'union component neighbours in a container',
+                payloads: [
+                    '{"plain":[{"radius":1},null]}' => true,
+                    '{"plain":[{"radius":"x"}]}' => false,
+                    '{"plain":["s"]}' => false,
+                    '{"roster":[{"radius":1},"s"]}' => true,
+                    '{"roster":[{"radius":"x"}]}' => false,
+                    '{"roster":[5]}' => false,
+                    '{"shapes":[{"side":2}]}' => true,
+                    '{"shapes":[{"side":"x"}]}' => false,
+                    '{"shapes":["s"]}' => false,
+                ],
+            ),
+        );
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function containedUnionComponentSpec(): array
+    {
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $integerField = static fn(string $name): array => [
+            'type' => 'object',
+            'required' => [$name],
+            'properties' => [$name => ['type' => 'integer']],
+        ];
+        $tagged = static fn(string $name): array => [
+            'type' => 'object',
+            'required' => ['kind', $name],
+            'properties' => ['kind' => ['type' => 'string'], $name => ['type' => 'integer']],
+        ];
+
+        return [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Circle' => $integerField('radius'),
+                'Square' => $integerField('side'),
+                'Shape' => ['oneOf' => [$ref('Circle'), $ref('Square')]],
+                'Disc' => $tagged('radius'),
+                'Tile' => $tagged('side'),
+                'Tagged' => [
+                    'oneOf' => [$ref('Disc'), $ref('Tile')],
+                    'discriminator' => [
+                        'propertyName' => 'kind',
+                        'mapping' => ['c' => '#/components/schemas/Disc', 's' => '#/components/schemas/Tile'],
+                    ],
+                ],
+                'Probe' => ['type' => 'object', 'properties' => [
+                    'list' => ['type' => 'array', 'items' => ['oneOf' => [$ref('Shape'), ['type' => 'string']]]],
+                    'tagged' => ['type' => 'array', 'items' => ['anyOf' => [$ref('Tagged'), ['type' => 'string']]]],
+                    'bag' => ['type' => 'object', 'additionalProperties' => ['anyOf' => [$ref('Shape'), ['type' => 'integer']]]],
+                    'plain' => ['type' => 'array', 'items' => ['anyOf' => [$ref('Shape'), ['type' => 'null']]]],
+                    'roster' => ['type' => 'array', 'items' => ['oneOf' => [$ref('Circle'), ['type' => 'string']]]],
+                    'shapes' => ['type' => 'array', 'items' => $ref('Shape')],
+                    'mix' => ['type' => 'array', 'items' => ['oneOf' => [$ref('Tagged'), $ref('Circle')]]],
+                    'deep' => ['type' => 'array', 'items' => ['type' => 'array', 'items' => ['anyOf' => [$ref('Tagged'), ['type' => 'string']]]]],
+                    'either' => ['oneOf' => [
+                        ['type' => 'array', 'items' => ['anyOf' => [$ref('Tagged'), ['type' => 'string']]]],
+                        ['type' => 'integer'],
+                    ]],
+                ]],
+            ]],
+        ];
+    }
+
+    /**
+     * A tuple whose `items` is a `$ref` to a union COMPONENT, under `anyOf` beside null. Symfony typed
+     * the property `?array<Coral>` off `items` alone, so the serializer built the tuple's leading
+     * integer as a Coral too and refused `[5]` as "Type property kind not found". The neighbours (the
+     * same tuple as a plain `type: array` or `type: [array, null]`, and items of a union without a
+     * discriminator) are pinned in the same table.
+     */
+    public function testATupleOfAUnionComponentBesideNullKeepsItsLeadingPositions(): void
+    {
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $tuple = static fn(string $item): array => [
+            'type' => 'array',
+            'prefixItems' => [['type' => 'integer']],
+            'items' => $ref($item),
+        ];
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'tuple of a union', 'version' => '1.0.0'],
+            'paths' => [],
+            'components' => ['schemas' => [
+                'Probe' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'lemur' => ['anyOf' => [$tuple('Coral'), ['type' => 'null']]],
+                        'otter' => ['type' => ['array', 'null']] + $tuple('Coral'),
+                        'heron' => $tuple('Coral'),
+                        'swan' => ['anyOf' => [$tuple('Mauve'), ['type' => 'null']]],
+                    ],
+                ],
+                'Ochre' => ['type' => 'object', 'properties' => ['kind' => ['type' => 'string']]],
+                'Teal' => ['type' => 'object', 'properties' => ['kind' => ['type' => 'string'], 'gecko' => ['type' => 'string']]],
+                'Coral' => ['anyOf' => [$ref('Ochre'), $ref('Teal')], 'discriminator' => ['propertyName' => 'kind']],
+                'Mauve' => ['anyOf' => [$ref('Ochre'), $ref('Teal')]],
+            ]],
+        ];
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: $spec,
+                key: 'tuple of a union component beside null',
+                payloads: [
+                    '{"lemur":[5]}' => true,
+                    '{"lemur":[-28]}' => true,
+                    '{"lemur":[1,{"kind":"Teal"}]}' => true,
+                    '{"lemur":null}' => true,
+                    '{"lemur":["x"]}' => false,
+                    '{"otter":[5]}' => true,
+                    '{"otter":[1,{"kind":"Teal"}]}' => true,
+                    '{"otter":["x"]}' => false,
+                    '{"heron":[5]}' => true,
+                    '{"heron":[1,{"kind":"Teal"}]}' => true,
+                    '{"heron":["x"]}' => false,
+                    '{"swan":[5]}' => true,
+                    '{"swan":null}' => true,
+                    '{"swan":["x"]}' => false,
+                ],
+            ),
+        );
+    }
+
+    /**
+     * `format: date` on a property, a list item, a map value, a nested object, a nullable property and
+     * a union member. Symfony typed it `DateTimeImmutable` and let the serializer parse it with
+     * `new DateTimeImmutable($data)`, which takes any phrase PHP understands: `"x"` became today,
+     * `"tomorrow"` and a full date-time passed. The neighbours (a valid date written back unchanged,
+     * `format: time`) are pinned beside them.
+     */
+    public function testAFormatDateIsParsedStrictly(): void
+    {
+        $date = ['type' => 'string', 'format' => 'date'];
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'strict date', 'version' => '1.0.0'],
+            'paths' => [],
+            'components' => ['schemas' => [
+                'Probe' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'day' => $date,
+                        'maybe' => ['type' => ['string', 'null'], 'format' => 'date'],
+                        'days' => ['type' => 'array', 'items' => $date],
+                        'dayMap' => ['type' => 'object', 'additionalProperties' => $date],
+                        'nested' => ['type' => 'object', 'properties' => ['day' => $date]],
+                        'either' => ['oneOf' => [$date, ['type' => 'integer']]],
+                        'hour' => ['type' => 'string', 'format' => 'time'],
+                    ],
+                ],
+            ]],
+        ];
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: $spec,
+                key: 'strict format date',
+                payloads: [
+                    '{"day":"2020-01-02"}' => true,
+                    '{"day":"x"}' => false,
+                    '{"day":"tomorrow"}' => false,
+                    '{"day":"2020-01-02T10:00:00Z"}' => false,
+                    '{"maybe":"2020-01-02"}' => true,
+                    '{"maybe":null}' => true,
+                    '{"maybe":"x"}' => false,
+                    '{"days":["2020-01-02"]}' => true,
+                    '{"days":["x"]}' => false,
+                    '{"dayMap":{"a":"2020-01-02"}}' => true,
+                    '{"dayMap":{"a":"x"}}' => false,
+                    '{"nested":{"day":"2020-01-02"}}' => true,
+                    '{"nested":{"day":"x"}}' => false,
+                    '{"either":"2020-01-02"}' => true,
+                    '{"either":5}' => true,
+                    '{"either":"x"}' => false,
+                    '{"hour":"10:00:00Z"}' => true,
+                    '{"hour":"x"}' => false,
+                ],
+            ),
+        );
+    }
+
+    /**
+     * A property, or a map value, typed with a union INTERFACE whose "is that class" branches the
+     * generator writes one level down: under `allOf`, or as the inner `anyOf` of a `oneOf`/`anyOf`
+     * branch beside null. Runtime read the members only off the direct branches of a top-level union,
+     * found none, and refused every object as "Unsupported type" (a map value as "unknown type"). The
+     * neighbours that already worked are pinned by `testUnionInterfaceNeighboursOfANestedSpellingAreBuilt()`.
+     */
+    public function testAUnionInterfaceSpelledOneLevelDownIsBuilt(): void
+    {
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: self::nestedUnionInterfaceSpec(),
+                key: 'union interface spelled one level down',
+                payloads: [
+                    '{"nul":{"radius":1}}' => true,
+                    '{"nul":{"side":2}}' => true,
+                    '{"nul":{"radius":"x","side":"y"}}' => false,
+                    '{"any":{"side":2}}' => true,
+                    '{"any":{"radius":"x","side":"y"}}' => false,
+                    '{"dove":{"radius":1}}' => true,
+                    '{"dove":{"side":2}}' => true,
+                    '{"dove":{"radius":"x","side":"y"}}' => false,
+                    '{"wrap":{"radius":1}}' => true,
+                    '{"wrap":{"radius":"x","side":"y"}}' => false,
+                    '{"herd":{"a":{"side":1}}}' => true,
+                    '{"herd":{"a":{"side":1},"b":{"radius":2}}}' => true,
+                    '{"herd":{"a":{"radius":"x","side":"y"}}}' => false,
+                    '{"herd":{"a":5}}' => false,
+                ],
+            ),
+        );
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: self::nestedUnionInterfaceSpec(required: true),
+                key: 'required union interface beside null',
+                payloads: [
+                    '{"req":{"radius":1}}' => true,
+                    '{"req":null}' => true,
+                    '{"req":{"radius":"x","side":"y"}}' => false,
+                    '{"req":5}' => false,
+                    '{}' => false,
+                ],
+            ),
+        );
+    }
+
+    /**
+     * OpenAPI 3.0: `{oneOf: [$ref Shape], nullable: true}` and `{allOf: [$ref Shape], nullable: true}`
+     * are typed `?Shape`. Runtime could build neither from an object (the members sit one level down),
+     * and it refused null for the `allOf` spelling: the `nullable` beside it short-circuited only the
+     * checks of its own level, and the `allOf` branch, handed the null, said "must be Circle".
+     */
+    public function testANullableUnionInterfaceOfOpenApi30IsBuiltAndAcceptsNull(): void
+    {
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: self::nestedUnionInterfaceSpec30(),
+                key: 'nullable union interface of 3.0',
+                payloads: [
+                    '{"wren":{"radius":1}}' => true,
+                    '{"wren":{"side":2}}' => true,
+                    '{"wren":{"radius":"x","side":"y"}}' => false,
+                    '{"lark":{"radius":1}}' => true,
+                    '{"lark":{"side":2}}' => true,
+                    '{"lark":null}' => true,
+                    '{"lark":{"radius":"x","side":"y"}}' => false,
+                    '{"lark":5}' => false,
+                    '{"dove":{"radius":1}}' => true,
+                    '{"dove":5}' => false,
+                ],
+            ),
+        );
+    }
+
+    /**
+     * The neighbours of the nested spellings, which already worked: a bare `$ref` to the union, one with
+     * a `description` beside it, a list of `allOf: [$ref Shape]` items, a list and a map of `oneOf:
+     * [Shape, null]`, a union of the component with a string and null, and the 3.0 nullable spellings
+     * that accepted null.
+     */
+    public function testUnionInterfaceNeighboursOfANestedSpellingAreBuilt(): void
+    {
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: self::nestedUnionInterfaceSpec(),
+                key: 'neighbours of a nested union interface',
+                payloads: [
+                    '{"nul":null}' => true,
+                    '{"any":null}' => true,
+                    '{"wrap":null}' => true,
+                    '{"plain":{"radius":1}}' => true,
+                    '{"plain":5}' => false,
+                    '{"owl":{"side":2}}' => true,
+                    '{"owl":5}' => false,
+                    '{"flock":[{"radius":1}]}' => true,
+                    '{"flock":[5]}' => false,
+                    '{"arr":[{"radius":1},null]}' => true,
+                    '{"arr":[5]}' => false,
+                    '{"tri":{"radius":1}}' => true,
+                    '{"tri":"s"}' => true,
+                    '{"tri":null}' => true,
+                    '{"tri":5}' => false,
+                    '{"map":{"a":{"side":1},"b":null}}' => true,
+                    '{"map":{"a":5}}' => false,
+                ],
+                diverging: [
+                    // Outside the runtime mode this test is about, and unasserted here: Symfony leaves the
+                    // items of the untyped `flock` list unchecked.
+                    'symfony' => ['{"flock":[5]}' => null],
+                ],
+            ),
+        );
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: self::nestedUnionInterfaceSpec30(),
+                key: 'neighbours of a nullable union interface of 3.0',
+                payloads: [
+                    '{"wren":null}' => true,
+                    '{"kite":null}' => true,
+                    '{"kite":{"side":1}}' => true,
+                    '{"kite":5}' => false,
+                    '{"hawk":null}' => true,
+                    '{"hawk":{"radius":1}}' => true,
+                    '{"hawk":{"radius":"x"}}' => false,
+                ],
+            ),
+        );
+    }
+
+    /**
+     * Runtime refuses a value no member accepts as a member mismatch, not as a type it cannot build.
+     */
+    public function testRuntimeRefusesAScalarForANestedUnionInterfaceAsAMemberMismatch(): void
+    {
+        $fqcn = $this->generate(
+            spec: self::nestedUnionInterfaceSpec(),
+            namespace: $this->namespaceFor(GenerationMode::Runtime, 'nested union interface message'),
+            mode: GenerationMode::Runtime->value,
+        );
+        foreach (['{"nul":5}', '{"dove":5}', '{"any":5}', '{"wrap":5}'] as $json) {
+            $outcome = $this->payloadOutcome(GenerationMode::Runtime, $fqcn, $json);
+            $this->assertSame(PayloadVerdict::Refused, $outcome->verdict, $json . ': ' . $outcome->detail);
+            $this->assertStringNotContainsString('Unsupported type', $outcome->detail, $json);
+            $this->assertStringContainsString('Circle', $outcome->detail, $json);
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function nestedUnionInterfaceSpec(bool $required = false): array
+    {
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $null = ['type' => 'null'];
+        $properties = $required
+            ? ['req' => ['oneOf' => [$ref('Shape'), $null]]]
+            : [
+                'nul' => ['oneOf' => [$ref('Shape'), $null]],
+                'any' => ['anyOf' => [$ref('Shape'), $null]],
+                'dove' => ['allOf' => [$ref('Shape')]],
+                'wrap' => ['anyOf' => [['allOf' => [$ref('Shape')]], $null]],
+                'herd' => ['type' => 'object', 'additionalProperties' => ['allOf' => [$ref('Shape')]]],
+                'plain' => $ref('Shape'),
+                'owl' => [...$ref('Shape'), 'description' => 'A shape.'],
+                'flock' => ['type' => 'array', 'items' => ['allOf' => [$ref('Shape')]]],
+                'arr' => ['type' => 'array', 'items' => ['oneOf' => [$ref('Shape'), $null]]],
+                'tri' => ['oneOf' => [$ref('Shape'), ['type' => 'string'], $null]],
+                'map' => ['type' => 'object', 'additionalProperties' => ['oneOf' => [$ref('Shape'), $null]]],
+            ];
+
+        return [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Circle' => ['type' => 'object', 'properties' => ['radius' => ['type' => 'integer']]],
+                'Square' => ['type' => 'object', 'properties' => ['side' => ['type' => 'integer']]],
+                'Shape' => ['anyOf' => [$ref('Circle'), $ref('Square')]],
+                'Probe' => ['type' => 'object', 'properties' => $properties] + ($required ? ['required' => ['req']] : []),
+            ]],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function nestedUnionInterfaceSpec30(): array
+    {
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+
+        return [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Circle' => ['type' => 'object', 'properties' => ['radius' => ['type' => 'integer']]],
+                'Square' => ['type' => 'object', 'properties' => ['side' => ['type' => 'integer']]],
+                'Shape' => ['anyOf' => [$ref('Circle'), $ref('Square')]],
+                'Nshape' => ['anyOf' => [$ref('Circle'), $ref('Square')], 'nullable' => true],
+                'Probe' => ['type' => 'object', 'properties' => [
+                    'wren' => ['oneOf' => [$ref('Shape')], 'nullable' => true],
+                    'lark' => ['allOf' => [$ref('Shape')], 'nullable' => true],
+                    'dove' => ['allOf' => [$ref('Shape')]],
+                    'kite' => $ref('Nshape'),
+                    'hawk' => ['allOf' => [$ref('Circle')], 'nullable' => true],
+                ]],
+            ]],
+        ];
     }
 
     /**
@@ -5862,7 +6314,7 @@ final class ValidationParityTest extends TestCase
      * An impossible calendar date under a plain `format: date`. Symfony mode's serializer parses the string
      * before any generated constraint runs, and PHP's date parsing rolls an overflowing day forward instead
      * of failing — the same serializer-decides-first gap as the loose date-time above, found while pinning
-     * the date-or-date-time union.
+     * the date-or-date-time union. Read as `!Y-m-d` (2.15.160), an overflowing MONTH rolls over as well.
      */
     public function testAnImpossibleCalendarDateIsRefusedWhereverTheGeneratorOwnsTheCheck(): void
     {
@@ -5895,6 +6347,17 @@ final class ValidationParityTest extends TestCase
                     . '2026-02-30 over to 2 March',
             ),
             context: $key,
+        );
+        $this->assertEveryModeYields(
+            expected: ['valid' => true, 'invalid' => false],
+            observe: fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key . ' month', '{"f":"2026-12-01"}', '{"f":"2026-13-45"}'),
+            diverges: self::diverges(
+                mode: GenerationMode::Symfony,
+                expected: ['valid' => true, 'invalid' => true],
+                reason: 'the serializer reads the date as `!Y-m-d` before any generated constraint runs, and PHP '
+                    . 'rolls 2026-13-45 over to 14 February 2027',
+            ),
+            context: $key . ' month',
         );
     }
 
@@ -8719,8 +9182,8 @@ final class ValidationParityTest extends TestCase
                 ]),
                 ['{"b":"2012-03-26"}' => true, '{"box":{"b":"2012-03-26"}}' => true, '{"b":"x"}' => false, '{"box":{"b":"2012-13-26"}}' => false],
                 [
-                    // Symfony's callback does not check a `format` under `oneOf` → `allOf`.
-                    'symfony' => ['{"b":"x"}' => null],
+                    // Symfony's callback does not check a `format` under `oneOf` → `allOf`; the date is read as `!Y-m-d`, and PHP rolls month 13 over (README.support-matrix, the impossible calendar date row).
+                    'symfony' => ['{"b":"x"}' => null, '{"box":{"b":"2012-13-26"}}' => true],
                 ],
             ],
         ];
@@ -9422,6 +9885,8 @@ final class ValidationParityTest extends TestCase
                     '{"b":"2012-13-26"}' => false,
                     '{"b":5}' => false,
                 ],
+                // Symfony: the date is read as `!Y-m-d`, and PHP rolls month 13 over (README.support-matrix, the impossible calendar date row).
+                ['symfony' => ['{"b":"2012-13-26"}' => true]],
             ],
             // A JSON object beside an `array` branch and a class branch belongs to the class: the
             // array branch took it as a map, and the class's own rules were never read.
@@ -10922,7 +11387,9 @@ final class ValidationParityTest extends TestCase
             'date under oneOf allOf' => [
                 '3.1.0',
                 $probe(['ant' => ['oneOf' => [['allOf' => [['type' => 'string', 'format' => 'date']]], ['type' => 'integer']]]]),
-                ['{"ant":"2012-03-26"}' => true, '{"ant":4}' => true, '{"ant":"2012-13-26"}' => false],
+                ['{"ant":"2012-03-26"}' => true, '{"ant":4}' => true, '{"ant":"2012-13-26"}' => false, '{"ant":"x"}' => false],
+                // Symfony: the date is read as `!Y-m-d`, and PHP rolls month 13 over (README.support-matrix, the impossible calendar date row).
+                ['symfony' => ['{"ant":"2012-13-26"}' => true]],
             ],
             // LV-E, LV-F2: a discriminated member's own properties are checked.
             'discriminated member properties' => [
@@ -14044,9 +14511,6 @@ final class ValidationParityTest extends TestCase
                     '{"crane":{"radius":1}}' => true,
                     '{"crane":{"radius":1,"side":2}}' => false,
                 ],
-                // Both Laravel modes type the property `Shape|string` and hand the decoded object to a
-                // constructor that cannot take it — an open defect of those modes, outside this table.
-                skippedModes: [GenerationMode::Laravel, GenerationMode::LaravelData],
             ),
         );
 
@@ -14056,6 +14520,61 @@ final class ValidationParityTest extends TestCase
         $this->assertSame(expected: ['radius' => 1], actual: $container->hydrate($fqcn, ['swan' => ['radius' => 1]])->swan ?? null);
         $this->assertSame(expected: ['side' => 1], actual: $container->hydrate($fqcn, ['heron' => ['side' => 1]])->heron ?? null);
         $this->assertSame(expected: 'x', actual: $container->hydrate($fqcn, ['heron' => 'x'])->heron ?? null);
+    }
+
+    /**
+     * A union of components beside a scalar is checked against its members wherever it sits: as a list
+     * item, as a map value, beside `null` and inline with three classes and a boolean. Both Laravel modes
+     * once typed such a property `Shape|string` and crashed on the decoded object; pinned in every mode.
+     */
+    public function testAUnionComponentBesideAScalarIsCheckedAgainstItsMembersInEveryPosition(): void
+    {
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Circle' => ['type' => 'object', 'properties' => ['radius' => ['type' => 'number']], 'required' => ['radius']],
+                'Square' => ['type' => 'object', 'properties' => ['side' => ['type' => 'number']], 'required' => ['side']],
+                'Star' => ['type' => 'object', 'properties' => ['points' => ['type' => 'integer']], 'required' => ['points']],
+                'Figure' => ['oneOf' => [$ref('Circle'), $ref('Square'), $ref('Star')]],
+                'Probe' => ['type' => 'object', 'properties' => [
+                    'wrens' => ['type' => 'array', 'items' => ['oneOf' => [$ref('Figure'), ['type' => 'string']]]],
+                    'kites' => ['type' => 'object', 'additionalProperties' => ['anyOf' => [$ref('Figure'), ['type' => 'integer']]]],
+                    'robin' => ['oneOf' => [$ref('Figure'), ['type' => 'null']]],
+                    'finch' => ['anyOf' => [$ref('Circle'), $ref('Square'), $ref('Star'), ['type' => 'boolean']]],
+                ]],
+            ]],
+        ];
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: $spec,
+                key: 'union component beside a scalar in every position',
+                payloads: [
+                    '{"wrens":[{"radius":1},"x",{"points":3}]}' => true,
+                    '{"wrens":[5]}' => false,
+                    '{"wrens":[{"radius":"a"}]}' => false,
+                    '{"wrens":[{"radius":1,"side":2}]}' => false,
+                    '{"kites":{"a":{"side":2},"b":4}}' => true,
+                    '{"kites":{"a":"x"}}' => false,
+                    '{"kites":{"a":{"points":"a"}}}' => false,
+                    '{"robin":{"radius":1}}' => true,
+                    '{"robin":null}' => true,
+                    '{"robin":"x"}' => false,
+                    '{"robin":{"radius":1,"side":2}}' => false,
+                    '{"finch":{"points":3}}' => true,
+                    '{"finch":true}' => true,
+                    '{"finch":"x"}' => false,
+                    '{"finch":{"points":"a"}}' => false,
+                ],
+                // The serializer builds the inline union's member whose class name sorts first (`Circle`)
+                // and reports its missing `radius` — README.support-matrix, "an object only a member whose
+                // class name does not sort first of an inline undiscriminated union of classes accepts".
+                diverging: ['symfony' => ['{"finch":{"points":3}}' => null]],
+            ),
+        );
     }
 
     /**
@@ -17026,6 +17545,16 @@ final class ValidationParityTest extends TestCase
             . 'date-time — see "a loose format: date-time string"',
         );
 
+        // Symfony reads a `format: date` with `!Y-m-d`, which refuses a phrase or a date-time but rolls
+        // `2026-13-45` over into 2027 instead of failing — README.support-matrix, the impossible
+        // calendar date row. The keyword itself is pinned with a phrase by `testAFormatDateIsParsedStrictly`.
+        $overflowingDate = self::diverges(
+            mode: GenerationMode::Symfony,
+            expected: ['valid' => true, 'invalid' => true],
+            reason: 'the serializer reads the date as `!Y-m-d` before any constraint runs, and PHP rolls '
+            . 'month 13 over instead of failing',
+        );
+
         return [
             // A `false` branch can never match, so this `anyOf` collapses to the single `type: string`
             // branch and the property is typed `?string` — but no raw `#[Validate]` is emitted for a
@@ -17034,6 +17563,9 @@ final class ValidationParityTest extends TestCase
             'anyOf with a false branch' => $coerced,
             'oneOf with a false branch' => $coerced,
             'format date-time in a list' => $lenientDateTime,
+            'format date' => $overflowingDate,
+            'format date in a list' => $overflowingDate,
+            'format date in a map' => $overflowingDate,
         ];
     }
 

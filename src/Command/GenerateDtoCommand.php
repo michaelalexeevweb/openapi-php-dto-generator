@@ -6593,6 +6593,40 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * Runtime: a map whose values are `{allOf: [$ref Shape]}`, Shape a union component of classes, is
+     * typed `array<string, Shape>` like `additionalProperties: {$ref: Shape}`, and is read as that
+     * spelling, whose constraints name the members "is Circle", "is Square". The wrapper was inlined as Shape's schemas
+     * instead, which name no class, so `DtoDeserializer` had nothing to build a value from and refused
+     * every map as "unknown type". A list keeps the wrapper: its items stay untyped arrays there.
+     *
+     * @param array<string, mixed> $propertySchema
+     * @return array<string, mixed>
+     */
+    private function runtimeUnionMapValueUnwrapped(array $propertySchema): array
+    {
+        $valueSchema = $propertySchema['additionalProperties'] ?? null;
+        if ($this->attributeMode !== self::ATTRIBUTE_MODE_RUNTIME || !is_array($valueSchema) || !$this->isSingleRefAllOf($valueSchema)) {
+            return $propertySchema;
+        }
+        $beside = [];
+        foreach ($valueSchema as $keyword => $value) {
+            if ($keyword === 'allOf') {
+                continue;
+            }
+            if (!in_array($keyword, [...self::ALIAS_ANNOTATION_KEYWORDS, ...self::NON_ASSERTING_KEYWORDS], true)) {
+                return $propertySchema;
+            }
+            $beside[$keyword] = $value;
+        }
+        $ref = $this->referenceOrSingleRefAllOf($valueSchema);
+        if ($ref === null || array_key_exists('$ref', $this->runtimeClassUnionSpelledOut(['$ref' => $ref]))) {
+            return $propertySchema;
+        }
+
+        return ['additionalProperties' => [...$beside, '$ref' => $ref]] + $propertySchema;
+    }
+
+    /**
      * Runtime: a `$ref` to a component that is a union of classes and no `discriminator`
      * (`Shade: {oneOf: [$ref Olive, $ref Teal]}`) is checked like the same union written inline — each
      * branch "is that class". The property is typed with the union's interface, which names no members;
@@ -6684,6 +6718,9 @@ final class GenerateDtoCommand extends Command
 
         $propertySchema = $this->normalizeNullableBranchInAllOf($propertySchema);
         $propertySchema = $this->runtimeClassUnionSpelledOut($propertySchema);
+        if ($mayInline && !$this->constraintRootUnmaterialized) {
+            $propertySchema = $this->runtimeUnionMapValueUnwrapped($propertySchema);
+        }
         // Applied HERE rather than where the property schemas are prepared, because that is not the
         // only entrance: Symfony, Laravel and Yii3 modes extract the constraints of a whole CLASS
         // straight from its registered schema, so anything done to the prepared property schema was

@@ -3,6 +3,32 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.160 — 2026-11-26
+
+- fuzz round fifteen: 8 fixes
+- symfony format date parsed strictly
+- union interface under allOf built
+- nullable allOf union accepts null
+- symfony tuple of union typed array
+
+The fifteenth fuzz round took the round-fourteen leftovers — several of them found by the fixers outside the
+fuzz grammar — and the 1 finding from fresh seeds: 7 root causes, 8 fixes, each with a test that failed
+before, and 5 framework limits documented. A fresh run on new seeds found 1, in unions of several objects.
+
+**Regenerate after upgrading, in every mode.**
+
+- symfony: `format: date` is parsed with the date format — a property, list item, map value, nested property,
+  nullable date or a union of a date with scalars accepted any string PHP's date parser takes (`"x"`,
+  `"now"`); an overflowing month or day and unpadded parts remain the parser's (README.support-matrix);
+- symfony: a `oneOf` / `anyOf` holding a `$ref` to a union component beside another branch inside `items` or
+  `additionalProperties` is spelled out (object items were refused); a tuple of a union beside null or a
+  scalar is typed `array` (every list was refused);
+- runtime: a property, list item or map value typed with a union component reached through
+  `allOf: [$ref Shape]`, beside `{type: null}`, or the 3.0 `nullable` spellings is built from its members
+  (it was "Unsupported type"); the 3.0 `{allOf: [$ref Shape], nullable: true}` accepts `null`;
+- laravel, laravel-data: a union of components beside a scalar is tested as a list item, map value and beside
+  null too; README corrected on an unprovided optional property in `toArray()`.
+
 ## 2.15.159 — 2026-11-26
 
 - fuzz round fourteen: 9 fixes

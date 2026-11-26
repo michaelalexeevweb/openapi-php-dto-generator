@@ -310,6 +310,34 @@ final class NormalizationParityTest extends TestCase
                 'runtime' => ['s' => 'a'],
                 'symfony' => ['s' => 'a'],
             ],
+            // An absent optional property the schema lets be null, beside one it does not. Laravel mode's
+            // `fromValidated()` writes such a property as `null`, as Symfony mode does; only `create()`
+            // leaves it out (README.support-matrix, "an unprovided optional property in `toArray()`").
+            'nullable optional property, absent' => [
+                'schema' => self::object(
+                    properties: [
+                        'colour' => ['type' => 'string'],
+                        'hue' => ['type' => ['string', 'null']],
+                        'ring' => ['oneOf' => [['$ref' => '#/components/schemas/Circle'], ['type' => 'null']]],
+                        'disc' => ['anyOf' => [['$ref' => '#/components/schemas/Circle'], ['type' => 'null']]],
+                        'rim' => ['$ref' => '#/components/schemas/Circle'],
+                    ],
+                    required: [],
+                ),
+                'extra' => ['Circle' => self::object(['radius' => ['type' => 'number']], ['radius'])],
+                'json' => '{"colour":"red"}',
+                'runtime' => ['colour' => 'red'],
+                'symfony' => ['colour' => 'red', 'hue' => null, 'ring' => null, 'disc' => null],
+                'reason' => 'the stock serializer has no way to say ABSENT on the way out: a null the schema '
+                    . 'allows is written, one it does not is dropped through `#[Context]`',
+                'diverges' => [
+                    'laravel' => [
+                        'like' => 'symfony',
+                        'reason' => 'a DTO built by `fromValidated()` writes a property the schema lets be null '
+                            . 'whether or not it was sent; only one built by `create()` leaves the key out',
+                    ],
+                ],
+            ],
             'explicit null is kept by both' => [
                 'schema' => self::object(['s' => ['type' => 'string'], 'opt' => ['type' => ['string', 'null']]], ['s', 'opt']),
                 'json' => '{"s":"a","opt":null}',

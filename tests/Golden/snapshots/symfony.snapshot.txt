@@ -1,4 +1,4 @@
-# symfony mode — 77 files, 13975 lines
+# symfony mode — 77 files, 13998 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -2201,6 +2201,7 @@ use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
 use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
+use Symfony\Component\Serializer\Normalizer\DateTimeNormalizer;
 
 use function array_map;
 use function is_array;
@@ -2221,10 +2222,15 @@ use function is_array;
 final class ApiTestSerializationGetQueryParamsFilter
 {
     #[Groups(['read', 'write'])]
-    #[Context(normalizationContext: [
-        AbstractObjectNormalizer::SKIP_NULL_VALUES => true,
-        AbstractObjectNormalizer::CALLBACKS => ['since' => [self::class, 'formatOpenApiDate']],
-    ])]
+    #[Context(
+        normalizationContext: [
+            AbstractObjectNormalizer::SKIP_NULL_VALUES => true,
+            AbstractObjectNormalizer::CALLBACKS => ['since' => [self::class, 'formatOpenApiDate']],
+        ],
+        denormalizationContext: [
+            DateTimeNormalizer::FORMAT_KEY => '!Y-m-d',
+        ],
+    )]
     private ?DateTimeImmutable $since = null;
 
     #[Ignore]
@@ -5901,6 +5907,7 @@ use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
 use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
+use Symfony\Component\Serializer\Normalizer\DateTimeNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
@@ -5981,9 +5988,14 @@ final class Containers
     #[Assert\Type('list')]
     #[Assert\All([new Assert\Type(DateTimeImmutable::class)])]
     #[Groups(['read', 'write'])]
-    #[Context(normalizationContext: [
-        AbstractObjectNormalizer::CALLBACKS => ['dates' => [self::class, 'formatOpenApiDate']],
-    ])]
+    #[Context(
+        normalizationContext: [
+            AbstractObjectNormalizer::CALLBACKS => ['dates' => [self::class, 'formatOpenApiDate']],
+        ],
+        denormalizationContext: [
+            DateTimeNormalizer::FORMAT_KEY => '!Y-m-d',
+        ],
+    )]
     private readonly array $dates;
 
     /**
@@ -5991,10 +6003,15 @@ final class Containers
      */
     #[Assert\All([new Assert\Type(DateTimeImmutable::class)])]
     #[Groups(['read', 'write'])]
-    #[Context(normalizationContext: [
-        AbstractObjectNormalizer::SKIP_NULL_VALUES => true,
-        AbstractObjectNormalizer::CALLBACKS => ['datesByDay' => [self::class, 'formatOpenApiDate']],
-    ])]
+    #[Context(
+        normalizationContext: [
+            AbstractObjectNormalizer::SKIP_NULL_VALUES => true,
+            AbstractObjectNormalizer::CALLBACKS => ['datesByDay' => [self::class, 'formatOpenApiDate']],
+        ],
+        denormalizationContext: [
+            DateTimeNormalizer::FORMAT_KEY => '!Y-m-d',
+        ],
+    )]
     private ?array $datesByDay = null;
 
     #[Ignore]
@@ -13997,6 +14014,7 @@ use DateTimeInterface;
 use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
+use Symfony\Component\Serializer\Normalizer\DateTimeNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 
 use function array_map;
@@ -14026,9 +14044,14 @@ final class User2
     private readonly ?User2Pet $pet;
 
     #[Groups(['read', 'write'])]
-    #[Context(normalizationContext: [
-        AbstractObjectNormalizer::CALLBACKS => ['createdAt' => [self::class, 'formatOpenApiDate']],
-    ])]
+    #[Context(
+        normalizationContext: [
+            AbstractObjectNormalizer::CALLBACKS => ['createdAt' => [self::class, 'formatOpenApiDate']],
+        ],
+        denormalizationContext: [
+            DateTimeNormalizer::FORMAT_KEY => '!Y-m-d',
+        ],
+    )]
     private readonly DateTimeImmutable $createdAt;
 
     /**

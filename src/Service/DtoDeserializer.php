@@ -2396,32 +2396,49 @@ final class DtoDeserializer implements DtoDeserializerInterface
     }
 
     /**
-     * The member classes a property or item typed with a generated union INTERFACE is built from, and
-     * whether exactly one may accept the payload — read from the owner's `getConstraints()`, where the
-     * generator spells such a union as `oneOf` / `anyOf` branches "is that class". Null for any other
-     * type, or when the constraints name no member of it.
+     * The member classes a property or item typed with a generated union INTERFACE is built from, whether
+     * exactly one may accept the payload, and the union level that names them — read from the owner's
+     * `getConstraints()`, where the generator spells such a union as `oneOf` / `anyOf` branches "is that
+     * class". Null for any other type, or when the constraints name no member of it.
+     *
+     * The branches may sit one level down: `{allOf: [$ref Shape]}` is spelled `allOf: [{anyOf: [is
+     * Circle, is Square]}]`, and `{oneOf: [$ref Shape, {type: null}]}` keeps the members in the inner
+     * `anyOf` of its first branch. Read only at the top, those named no member, and every object was
+     * "Unsupported type". `exactlyOne` and the returned constraints belong to the level that holds the
+     * members — the null beside them is no member to count.
      *
      * @param array<array-key, mixed> $constraints
-     * @return array{members: list<string>, exactlyOne: bool}|null
+     * @return array{members: list<string>, exactlyOne: bool, constraints: array<array-key, mixed>}|null
      */
-    private function unionMembersFromConstraints(string $typeName, array $constraints): ?array
+    private function unionMembersFromConstraints(string $typeName, array $constraints, int $depth = 0): ?array
     {
         if (!interface_exists($typeName)) {
             return null;
         }
         $branches = is_array($constraints['oneOf'] ?? null) ? $constraints['oneOf'] : ($constraints['anyOf'] ?? null);
-        if (!is_array($branches)) {
-            return null;
-        }
         $members = [];
-        foreach ($branches as $branch) {
+        foreach (is_array($branches) ? $branches : [] as $branch) {
             $member = is_array($branch) ? ($branch['x-php-instanceof'] ?? null) : null;
             if (is_string($member) && is_subclass_of($member, $typeName)) {
                 $members[] = $member;
             }
         }
+        if ($members !== []) {
+            return ['members' => $members, 'exactlyOne' => $this->unionMustMatchExactlyOne($constraints), 'constraints' => $constraints];
+        }
+        if ($depth >= self::MAX_UNION_BRANCH_DEPTH) {
+            return null;
+        }
+        foreach (['allOf', 'oneOf', 'anyOf'] as $keyword) {
+            foreach (is_array($constraints[$keyword] ?? null) ? $constraints[$keyword] : [] as $branch) {
+                $nested = is_array($branch) ? $this->unionMembersFromConstraints(typeName: $typeName, constraints: $branch, depth: $depth + 1) : null;
+                if ($nested !== null) {
+                    return $nested;
+                }
+            }
+        }
 
-        return $members === [] ? null : ['members' => $members, 'exactlyOne' => $this->unionMustMatchExactlyOne($constraints)];
+        return null;
     }
 
     /**
@@ -3477,7 +3494,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 openApiFormat: null,
                 allowsAssociativeArray: false,
                 exactlyOne: $union['exactlyOne'],
-                unionConstraints: $constraints,
+                unionConstraints: $union['constraints'],
             );
         }
 
@@ -3696,7 +3713,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                 openApiFormat: null,
                 allowsAssociativeArray: false,
                 exactlyOne: $union['exactlyOne'],
-                unionConstraints: $itemConstraints,
+                unionConstraints: $union['constraints'],
             );
         }
 

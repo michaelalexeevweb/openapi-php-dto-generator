@@ -332,6 +332,53 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
     }
 
     /**
+     * Whether a subschema asserts nothing but "is that class": `x-php-instanceof` branches, the
+     * `oneOf` / `anyOf` / `allOf` the generator spells a union component with, and null branches
+     * beside them. A null admitted by `nullable` skips such a subschema, which only judges objects.
+     *
+     * @param array<array-key, mixed> $constraints
+     */
+    private function checksOnlyClasses(array $constraints, int $depth = 0): bool
+    {
+        if ($depth >= self::MAX_VALIDATION_DEPTH) {
+            return false;
+        }
+        $judgesAClass = false;
+        foreach ($constraints as $keyword => $value) {
+            if ($keyword === 'x-php-instanceof') {
+                $judgesAClass = true;
+            } elseif (in_array($keyword, ['allOf', 'oneOf', 'anyOf'], true) && is_array($value)) {
+                foreach ($value as $branch) {
+                    if (!is_array($branch)) {
+                        return false;
+                    }
+                    if ($this->isNullOnlyBranch($branch)) {
+                        continue;
+                    }
+                    if (!$this->checksOnlyClasses($branch, $depth + 1)) {
+                        return false;
+                    }
+                    $judgesAClass = true;
+                }
+            } elseif (!in_array($keyword, ['nullable', 'x-php-union-members', 'required'], true)) {
+                return false;
+            }
+        }
+
+        return $judgesAClass;
+    }
+
+    /**
+     * Whether a union branch admits null and nothing else: `{type: "null"}`, `{type: ["null"]}`.
+     *
+     * @param array<array-key, mixed> $branch
+     */
+    private function isNullOnlyBranch(array $branch): bool
+    {
+        return array_keys($branch) === ['type'] && in_array($branch['type'], ['null', ['null']], true);
+    }
+
+    /**
      * Whether a `type` admits an object and no array — the one case where a PHP list must be a map.
      */
     private function typePinsObject(mixed $type): bool
@@ -420,18 +467,28 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
             || array_key_exists('not', $constraints)
             || array_key_exists('if', $constraints);
 
+        // A null where `nullable: true` admits it is no object a class branch could judge. The 3.0
+        // `{allOf: [$ref Shape], nullable: true}` is typed `?Shape`, but its `allOf` branch — Shape's
+        // "is Circle" / "is Square" — was handed the null and refused it: the `nullable` beside it lets
+        // null past the class and type checks of its own level only.
+        $nullAdmitted = $value === null && ($constraints['nullable'] ?? false) === true;
+
         if ($hasComposition) {
             // allOf: every branch must pass; errors from all failing branches are collected.
             if (array_key_exists('allOf', $constraints) && is_array($constraints['allOf'])) {
                 foreach ($constraints['allOf'] as $branch) {
-                    if (!is_array($branch)) {
+                    if (!is_array($branch) || ($nullAdmitted && $this->checksOnlyClasses($branch))) {
                         continue;
                     }
                     array_push($errors, ...$this->validateConstraints($subject, $value, $branch, $depth + 1));
                 }
             }
 
-            if (array_key_exists('oneOf', $constraints) && is_array($constraints['oneOf'])) {
+            if (
+                array_key_exists('oneOf', $constraints)
+                && is_array($constraints['oneOf'])
+                && !($nullAdmitted && $this->checksOnlyClasses(['oneOf' => $constraints['oneOf']]))
+            ) {
                 $errors = [...$errors, ...$this->validateUnionBranches(
                     subject: $subject,
                     value: $value,
@@ -441,7 +498,11 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
                 )];
             }
 
-            if (array_key_exists('anyOf', $constraints) && is_array($constraints['anyOf'])) {
+            if (
+                array_key_exists('anyOf', $constraints)
+                && is_array($constraints['anyOf'])
+                && !($nullAdmitted && $this->checksOnlyClasses(['anyOf' => $constraints['anyOf']]))
+            ) {
                 $errors = [...$errors, ...$this->validateUnionBranches(
                     subject: $subject,
                     value: $value,

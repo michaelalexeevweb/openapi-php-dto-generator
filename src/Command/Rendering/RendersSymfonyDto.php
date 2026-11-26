@@ -267,12 +267,50 @@ trait RendersSymfonyDto
             ) {
                 return true;
             }
-            if ($this->symfonyContainerHoldsUndiscriminatedUnion(schema: $inner, className: $className, depth: $depth + 1)) {
+            if (
+                $this->symfonyUnionComponentBranchUnbuilt(union: $inner, className: $className)
+                || $this->symfonyContainerHoldsUndiscriminatedUnion(schema: $inner, className: $className, depth: $depth + 1)
+            ) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * Whether a list item or map value is a `oneOf`/`anyOf` with a `$ref` to a union COMPONENT
+     * (discriminated or not) beside a branch that is not only null: `items: {oneOf: [$ref Shape, {type:
+     * string}]}`. The container is typed a bare `array` then, so the serializer builds no member and the
+     * item stays the decoded array: "is a Shape" refused every object under `oneOf` and passed it
+     * unchecked under `anyOf`. Beside null alone the list is typed `array<?Shape>` and the members are
+     * built (or held decoded) as before.
+     *
+     * @param array<mixed> $union
+     */
+    private function symfonyUnionComponentBranchUnbuilt(array $union, string $className): bool
+    {
+        $hasUnionComponent = false;
+        $hasOtherValue = false;
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            foreach (is_array($union[$keyword] ?? null) ? $union[$keyword] : [] as $branch) {
+                if (!is_array($branch) || $this->isNullBranch($branch)) {
+                    continue;
+                }
+                $ref = $this->splitBranchReference($branch)[0];
+                $definition = is_string($ref)
+                    ? $this->dtoSchemas[$this->schemaRefToClassName(ref: $ref, currentSourceFile: $this->getSchemaSourceFile($className))] ?? null
+                    : null;
+                if (is_array($definition) && $this->rendersAsUnion($definition)) {
+                    $hasUnionComponent = true;
+
+                    continue;
+                }
+                $hasOtherValue = true;
+            }
+        }
+
+        return $hasUnionComponent && $hasOtherValue;
     }
 
     /**
@@ -447,6 +485,12 @@ trait RendersSymfonyDto
                 $type = $branch['type'] ?? null;
                 if ($type !== 'array' && !(is_array($type) && in_array('array', $type, true))) {
                     continue;
+                }
+                // A tuple's leading positions are not the item class: typed `array<Shape>`, the
+                // serializer built `[5, {...}]`'s integer as a Shape and refused it. Plain `array`
+                // leaves the positions to the emitted tuple checks.
+                if ($this->hasPrefixItems($branch)) {
+                    return null;
                 }
                 $items = is_array($branch['items'] ?? null) ? $branch['items'] : [];
                 $ref = $items['$ref'] ?? null;
@@ -1909,6 +1953,7 @@ PHP;
                 name: $property['name'],
                 skipNullValues: $schemaNullable || ($phpType === 'mixed' && !$this->symfonyUntypedValueRefusesNull($property)) ? false : ($declaredNullable ? true : null),
                 temporalFormatter: $this->symfonyTemporalFormatter($property),
+                strictDate: $this->symfonyDateParsedStrictly($property),
                 refuseExtraAttributes: $this->unionClassBesideScalars($property['type']) !== null
                     && $this->unionHasArrayMember($property['type']),
             ),
@@ -2054,6 +2099,12 @@ PHP;
      * The one #[Context] a property carries, or null when it needs none: its own null policy and,
      * for a date, the DTO's formatter as the serializer callback.
      *
+     * A `format: date` is also READ with the one pattern it allows (`!Y-m-d`). Without it the
+     * DateTimeNormalizer hands the string to `new DateTimeImmutable()`, which takes any phrase PHP
+     * understands: `"x"` became today, `"tomorrow"` and a full date-time passed. The context reaches the
+     * items of a list and the values of a map through the ArrayDenormalizer. A calendar date that rolls
+     * over (`2026-02-30`) still parses (README.support-matrix).
+     *
      * A union of `array` and one generated class (`array|Lime`) also refuses extra attributes while it
      * is read: the serializer tries the class first, and the object normalizer takes ANY PHP array, so
      * every JSON list became an empty class — an invalid list accepted, a valid one losing its items.
@@ -2066,6 +2117,7 @@ PHP;
         string $name,
         ?bool $skipNullValues,
         ?string $temporalFormatter,
+        bool $strictDate,
         bool $refuseExtraAttributes,
     ): ?string {
         $entries = [];
@@ -2079,9 +2131,14 @@ PHP;
                 var_export($temporalFormatter, true),
             );
         }
-        $denormalization = $refuseExtraAttributes
-            ? '\Symfony\Component\Serializer\Normalizer\AbstractNormalizer::ALLOW_EXTRA_ATTRIBUTES => false'
-            : null;
+        $denormalizationEntries = [];
+        if ($strictDate) {
+            $denormalizationEntries[] = "\\Symfony\\Component\\Serializer\\Normalizer\\DateTimeNormalizer::FORMAT_KEY => '!Y-m-d'";
+        }
+        if ($refuseExtraAttributes) {
+            $denormalizationEntries[] = '\Symfony\Component\Serializer\Normalizer\AbstractNormalizer::ALLOW_EXTRA_ATTRIBUTES => false';
+        }
+        $denormalization = $denormalizationEntries === [] ? null : implode(",\n            ", $denormalizationEntries);
 
         if ($entries === [] && $denormalization === null) {
             return null;
@@ -2132,6 +2189,33 @@ PHP;
         }
 
         return $format === 'Y-m-d' ? 'formatOpenApiDate' : 'formatOpenApiDateTime';
+    }
+
+    /**
+     * Whether a `format: date` property is read with its one pattern (see `symfonyContextAttribute()`).
+     * Beside a generated class (`DateTimeImmutable|Shade`) it is not: the context reaches the class's
+     * own properties too, and would read a date-time there as a date.
+     *
+     * @param SchemaProperty $property
+     */
+    private function symfonyDateParsedStrictly(array $property): bool
+    {
+        if ($this->symfonyTemporalFormatter($property) !== 'formatOpenApiDate') {
+            return false;
+        }
+        if ($this->symfonyPropertyIsTemporalScalar($property) || $this->propertyHasTemporalItems($property)) {
+            return true;
+        }
+        foreach ($this->unionMembersBesideNull($property['type']) as $member) {
+            if (
+                $this->shortClassName($member) !== 'DateTimeImmutable'
+                && !in_array($member, ['int', 'float', 'string', 'bool', 'true', 'false'], true)
+            ) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
