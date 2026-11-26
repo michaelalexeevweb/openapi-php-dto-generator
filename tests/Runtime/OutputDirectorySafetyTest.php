@@ -173,9 +173,10 @@ final class OutputDirectorySafetyTest extends TestCase
     {
         mkdir($this->project . '/specs');
         rename($this->project . '/spec.json', $this->project . '/specs/spec.json');
-        if (!is_dir($this->project . '/SPECS')) {
-            $this->markTestSkipped('The filesystem tells case apart: SPECS is another directory there.');
-        }
+        // Where the filesystem tells case apart (Linux CI), SPECS is another directory: generating into it
+        // is allowed and leaves the document alone. Where it folds case (macOS), it is the documents'
+        // directory and refused. Both are asserted, so neither runner skips the case.
+        $foldsCase = is_dir($this->project . '/SPECS');
 
         $tester = new CommandTester(new GenerateDtoCommand());
         $exitCode = $tester->execute([
@@ -184,9 +185,15 @@ final class OutputDirectorySafetyTest extends TestCase
             '--namespace' => 'Zoo\Gen',
         ]);
 
+        $this->assertFileExists($this->project . '/specs/spec.json');
+        if (!$foldsCase) {
+            $this->assertSame(0, $exitCode, $tester->getDisplay());
+            $this->assertFileExists($this->project . '/SPECS/Widget.php');
+
+            return;
+        }
         $this->assertSame(1, $exitCode, $tester->getDisplay());
         $this->assertStringContainsString('contains the input document', $this->display($tester));
-        $this->assertFileExists($this->project . '/specs/spec.json');
     }
 
     public function testOwnOutputDirectoryIsStillRegeneratedWhole(): void

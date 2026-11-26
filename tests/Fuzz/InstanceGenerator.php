@@ -150,18 +150,21 @@ final class InstanceGenerator
     private function validUnionMember(array $node): mixed
     {
         $branch = $this->random->pick($node['branches']);
-        if ($branch['t'] !== 'object') {
-            foreach ($node['branches'] as $sibling) {
-                if ($sibling['t'] === 'object' && $sibling['required'] !== []) {
-                    $this->validTags[] = 'besideRequiringObject';
-                }
-            }
+        $requiringObject = false;
+        foreach (self::memberBranches($node) as $sibling) {
+            $requiringObject = $requiringObject || ($sibling['t'] === 'object' && $sibling['required'] !== []);
+        }
+        if ($branch['t'] !== 'object' && $branch['t'] !== 'union' && $requiringObject) {
+            $this->validTags[] = 'besideRequiringObject';
         }
 
         if (($node['objectPair'] ?? false) === true) {
             // Which member's object it is, as the Symfony serializer sees it, depends on the generated
             // class names: `FuzzRunner::tagObjectsOfAPair()` adds `objectOfPair` once they exist.
             $this->validTags[] = 'unionObjectPair';
+            if ($node['asComponent'] ?? false) {
+                $this->validTags[] = 'undiscriminatedComponent';
+            }
         }
 
         $besideArray = in_array('array', self::admittedTypes($node), true);
@@ -171,8 +174,29 @@ final class InstanceGenerator
         if ($besideArray && $value instanceof stdClass && get_object_vars($value) === []) {
             $this->validTags[] = 'emptyBesideArray';
         }
+        // A nested union's value: beside a requiring object only when it is no object itself.
+        if ($branch['t'] === 'union' && $requiringObject && !$value instanceof stdClass) {
+            $this->validTags[] = 'besideRequiringObject';
+        }
 
         return $value;
+    }
+
+    /**
+     * A union's members with the branches of a union nested as a branch spelled out in its place — what
+     * the generator flattens them into, so the tags about siblings see them as one list.
+     *
+     * @param array<string, mixed> $node
+     * @return array<int, array<string, mixed>>
+     */
+    public static function memberBranches(array $node): array
+    {
+        $members = [];
+        foreach ($node['branches'] as $branch) {
+            $members = [...$members, ...($branch['t'] === 'union' ? self::memberBranches($branch) : [$branch])];
+        }
+
+        return $members;
     }
 
     /**
@@ -212,18 +236,7 @@ final class InstanceGenerator
         if (array_key_exists('format', $node)) {
             return match ($node['format']) {
                 'date' => sprintf('20%02d-%02d-%02d', $this->random->int(10, 30), $this->random->int(1, 12), $this->random->int(1, 28)),
-                'date-time' => vsprintf(
-                    format: '20%02d-%02d-%02dT%02d:%02d:%02d%s',
-                    values: [
-                        $this->random->int(10, 30),
-                        $this->random->int(1, 12),
-                        $this->random->int(1, 28),
-                        $this->random->int(0, 23),
-                        $this->random->int(0, 59),
-                        $this->random->int(0, 59),
-                        $this->random->pick(['Z', '+02:00', '-05:30']),
-                    ],
-                ),
+                'date-time' => $this->validDateTime(),
                 'email' => $this->random->letters($this->random->int(1, 6)) . '@example.com',
                 'uuid' => $this->uuid(),
             };
@@ -235,6 +248,35 @@ final class InstanceGenerator
         $alphabet = array_key_exists('pattern', $node) ? SchemaGrammar::PATTERNS[$node['pattern']]['alphabet'] : 'abcdefghij';
 
         return $this->random->letters($length, $alphabet);
+    }
+
+    /**
+     * An RFC 3339 `date-time`, sometimes with fractional seconds — three or six digits, the lengths
+     * every mode reads (support matrix, "`format: date-time` with one, two, four or five fraction
+     * digits") — and sometimes with `t` and `z` in lower case, which RFC 3339 §5.6 allows and four modes
+     * refuse (support matrix, "RFC 3339 spellings of a `format: date-time` property"): tagged so.
+     */
+    private function validDateTime(): string
+    {
+        $value = vsprintf(
+            format: '20%02d-%02d-%02dT%02d:%02d:%02d%s%s',
+            values: [
+                $this->random->int(10, 30),
+                $this->random->int(1, 12),
+                $this->random->int(1, 28),
+                $this->random->int(0, 23),
+                $this->random->int(0, 59),
+                $this->random->int(0, 59),
+                $this->random->chance(0.3) ? '.' . $this->random->letters($this->random->pick([3, 6]), '0123456789') : '',
+                $this->random->pick(['Z', '+02:00', '-05:30']),
+            ],
+        );
+        if (!$this->random->chance(0.2)) {
+            return $value;
+        }
+        $this->validTags[] = 'lowercaseDateTime';
+
+        return strtolower($value);
     }
 
     private function uuid(): string
@@ -398,7 +440,7 @@ final class InstanceGenerator
         return $nullable . match (true) {
             $node['t'] === 'object' => 'dto',
             $node['t'] === 'discriminated' => 'discriminated',
-            $node['t'] === 'union' && in_array('string', array_column($node['branches'], 't'), true) => 'unionWithString',
+            $node['t'] === 'union' && in_array('string', array_column(self::memberBranches($node), 't'), true) => 'unionWithString',
             $node['t'] === 'string' && in_array($node['format'] ?? null, ['date', 'date-time'], true) => 'temporal',
             array_key_exists('enum', $node) => 'enum',
             default => $node['t'],
@@ -459,7 +501,7 @@ final class InstanceGenerator
         if ($node['t'] !== 'union') {
             return [];
         }
-        foreach ($node['branches'] as $branch) {
+        foreach (self::memberBranches($node) as $branch) {
             if (in_array($branch['t'], ['object', 'discriminated'], true)) {
                 return ['unionClassMember'];
             }
@@ -518,6 +560,10 @@ final class InstanceGenerator
             if ($node['format'] === 'date-time') {
                 $mutations[] = ['kind' => 'looseDateTime', 'value' => '2026-01-02', 'tags' => []];
             }
+            $nearMiss = $this->nearMissFormat($node);
+            if ($nearMiss !== null) {
+                $mutations[] = $nearMiss;
+            }
 
             return $mutations;
         }
@@ -540,6 +586,41 @@ final class InstanceGenerator
         }
 
         return $mutations;
+    }
+
+    /**
+     * A string the format refuses that a lenient reader takes: for a date or date-time, one PHP's
+     * free-form parser reads (`now`, `@0`, `2020-1-2`, `+1 day`) — and for a date-time one without an
+     * offset or with an offset RFC 3339 does not spell, tagged for the rows that document them; for a
+     * uuid the hex without hyphens or in braces, for an email an empty local part or a misplaced dot. Tags carry the site
+     * themselves, since `mutations()` only adds it to an untagged mutation.
+     *
+     * @param array<string, mixed> $node
+     * @return array{kind: string, value: string, tags: array<int, string>}|null
+     */
+    private function nearMissFormat(array $node): ?array
+    {
+        $site = 'site:' . self::descriptor($node);
+        $parseable = ['x', 'now', 'tomorrow', '@0', '2020-1-2', '+1 day'];
+        $choices = match ($node['format']) {
+            'date' => array_map(static fn(string $value): array => [$value, []], $parseable),
+            'date-time' => [
+                ...array_map(static fn(string $value): array => [$value, []], $parseable),
+                ['2024-01-02T10:00:00', ['dateTimeNoOffset']],
+                ['2024-01-02T10:00:00+0200', ['dateTimeOffsetWithoutColon']],
+            ],
+            'uuid' => [['123e4567e89b42d3a456426614174000', []], ['{123e4567-e89b-42d3-a456-426614174000}', []]],
+            // Not `a@b`: RFC 5321 admits a dotless domain, so refusing it is no requirement.
+            'email' => [['@example.com', []], ['a.@example.com', []], ['a..b@example.com', []], ['a@example..com', []]],
+            default => [],
+        };
+        if ($choices === []) {
+            return null;
+        }
+        [$value, $tags] = $this->random->pick($choices);
+        $kind = in_array($node['format'], ['date', 'date-time'], true) ? 'parseableNonDate:' : 'nearMissFormat:';
+
+        return ['kind' => $kind . $node['format'], 'value' => $value, 'tags' => [$site, ...$tags]];
     }
 
     /**
@@ -710,17 +791,18 @@ final class InstanceGenerator
      */
     private function unionMutations(array $node): array
     {
-        $withString = in_array('string', array_map(static fn(array $branch): string => $branch['t'], $node['branches']), true);
+        $members = self::memberBranches($node);
+        $withString = in_array('string', array_map(static fn(array $branch): string => $branch['t'], $members), true);
         // A date beside an array-typed branch — a list, an object, a map: yii3 cannot keep an integer
         // sibling from reading as a timestamp.
-        $descriptors = array_map(self::descriptor(...), $node['branches']);
+        $descriptors = array_map(self::descriptor(...), $members);
         $withTemporal = in_array('temporal', $descriptors, true);
         $temporalBesideArray = $withTemporal && array_intersect(['array', 'dto', 'map'], $descriptors) !== [];
         // … nor beside `null`, whether a `type: null` member, a nullable member or the union itself.
         $temporalBesideNull = $withTemporal && (
             ($node['nullable'] ?? false)
-            || in_array('null', array_column($node['branches'], 't'), true)
-            || in_array(true, array_map(static fn(array $branch): bool => $branch['nullable'] ?? false, $node['branches']), true)
+            || in_array('null', array_column($members, 't'), true)
+            || in_array(true, array_map(static fn(array $branch): bool => $branch['nullable'] ?? false, $members), true)
         );
         $classMember = self::classMemberTags($node);
         // Two object members share the JSON type, so a broken object of one could be a valid one of the
@@ -755,6 +837,7 @@ final class InstanceGenerator
                     ...($withTemporal && $type === 'integer' ? ['integerBesideTemporal'] : []),
                     ...($scalar ? $classMember : []),
                     ...($objectPair ? ['unionObjectPair'] : []),
+                    ...($objectPair && ($node['asComponent'] ?? false) ? ['undiscriminatedComponent'] : []),
                     ...$inner['tags'],
                 ];
                 $mutations[] = ['kind' => $inner['kind'], 'value' => $inner['value'], 'tags' => $tags];

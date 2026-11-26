@@ -80,6 +80,17 @@ final class FuzzRunner
         'unknownDiscriminator' => ['discriminator'],
     ];
 
+    private const string ROW_ARRAY_FOR_OBJECT = 'support matrix: "a JSON array for a `type: object` property"';
+
+    private const string ROW_EMPTY_CONTAINER = 'support matrix: "an EMPTY JSON container: `[]` for an object, `{}` for a list or for the object member of a union beside an `array` member"';
+
+    private const string ROW_SCALAR_FOR_CLASS = 'support matrix: "a scalar for a property typed as a generated class"';
+
+    private const string ROW_NON_OBJECT_ITEM = 'support matrix: "a non-object ITEM of a list or map of DTOs"';
+
+    /** The keywords that narrow what a schema admits; a schema with none of them admits any JSON value. */
+    private const array TYPING_KEYWORDS = ['type', '$ref', 'anyOf', 'oneOf', 'allOf', 'enum', 'const', 'not'];
+
     /** @var array<string, array<string, mixed>> keyed by signature */
     private array $findings = [];
 
@@ -183,6 +194,8 @@ final class FuzzRunner
             }
         }
 
+        $payloads = self::tagClassesRequiringNothing(payloads: $payloads, document: $document);
+
         /** @var array<string, array<int, PayloadOutcome>> $outcomes */
         $outcomes = [];
         foreach ($this->modes as $mode) {
@@ -216,6 +229,16 @@ final class FuzzRunner
                 }
                 $this->stats['failures']++;
                 $row = $category === 'crash' ? null : KnownDivergences::explain(mode: $mode, category: $category, kind: $payload['kind'], tags: $payload['tags']);
+                $row ??= $payload['property'] === null ? null : KnownDivergences::explainUnhydratableUnion(
+                    mode: $mode,
+                    category: $category,
+                    tags: $payload['tags'],
+                    warnings: $this->generated[$this->namespaceOf($document, $mode)]['warnings'] ?? [],
+                    reachable: FuzzSpec::reachableComponents(
+                        start: [$document['components']['schemas']['Probe']['properties'][$payload['property']] ?? []],
+                        components: $document['components']['schemas'],
+                    ),
+                );
                 // The tags say what the mutation meant to break; the schema says what the value meets.
                 if ($row === null && $category === 'wrong-accept' && $payload['property'] !== null) {
                     $row = self::documentedShapeRow(
@@ -395,7 +418,10 @@ final class FuzzRunner
         foreach ($culprits as $name) {
             $stage = $generation['stage'];
             $stillFails = fn(array $document): bool => $this->generateChecked(document: $document, mode: $mode)['stage'] === $stage;
-            $preliminary = implode('|', [$mode->value, $category, self::errorShape((string)$generation['error']), InstanceGenerator::descriptor($spec->cases[$name]['node'])]);
+            $preliminary = self::preliminaryKey(
+                parts: [$mode->value, $category, self::errorShape((string)$generation['error']), InstanceGenerator::descriptor($spec->cases[$name]['node'])],
+                document: $spec->document([$name]),
+            );
             if (array_key_exists($preliminary, $this->preliminary)) {
                 $this->bump(signature: $this->preliminary[$preliminary], seed: $spec->seed);
 
@@ -417,6 +443,23 @@ final class FuzzRunner
                 'seed' => $spec->seed,
             ]);
         }
+    }
+
+    /**
+     * The key a failure is deduplicated by before it is shrunk: what failed, and the skeleton of the
+     * document it failed in — property and component names, bounds and enum values blurred, so one
+     * defect met in two specs dedupes, while the same kind met in two shapes (a list of integers and a
+     * list of lists) is shrunk and reported apart instead of being counted under the first.
+     *
+     * @param array<int, string> $parts
+     * @param array<string, mixed> $document
+     */
+    private static function preliminaryKey(array $parts, array $document): string
+    {
+        $schemas = $document['components']['schemas'] ?? [];
+        $shape = [$document['openapi'] ?? null, self::skeleton(is_array($schemas) ? array_values($schemas) : [])];
+
+        return implode('|', [...$parts, md5((string)json_encode($shape))]);
     }
 
     /**
@@ -445,9 +488,12 @@ final class FuzzRunner
         $kindBase = (string)strtok($payload['kind'], ':');
         $throwableClass = $outcome->throwable === null ? '' : $outcome->throwable::class;
         $descriptor = $property === null ? 'probe' : InstanceGenerator::descriptor($spec->cases[$property]['node']);
-        $preliminary = $category === 'crash'
-            ? implode('|', [$mode->value, $category, $throwableClass, self::errorShape($outcome->detail)])
-            : implode('|', [$mode->value, $category, $kindBase, $descriptor, implode(',', $payload['tags'])]);
+        $preliminary = self::preliminaryKey(
+            parts: $category === 'crash'
+                ? [$mode->value, $category, $throwableClass, self::errorShape($outcome->detail)]
+                : [$mode->value, $category, $kindBase, $descriptor, implode(',', $payload['tags'])],
+            document: $property === null ? $spec->document() : $spec->document([$property]),
+        );
         if (array_key_exists($preliminary, $this->preliminary)) {
             $this->bump(signature: $this->preliminary[$preliminary], seed: $spec->seed);
 
@@ -731,12 +777,15 @@ final class FuzzRunner
      * The support-matrix row a value meets where it sits in the document, read off the SCHEMA rather than
      * the mutation's tags — so a shrunk document that changed what the payload hits is still matched:
      *
-     * - a JSON array where the schema, or a union member of it, is an object ("a JSON array for a
-     *   `type: object` property": symfony, yii3 — a union of an object and a scalar included);
-     * - a scalar where the schema, or a union member of it, is a generated class ("a scalar for a
-     *   property typed as a generated class": symfony);
+     * - a JSON array where the schema, or a union member of it, is an object and no member admits a
+     *   list ("a JSON array for a `type: object` property": symfony, yii3 — a union of an object and a
+     *   scalar included; beside an `array` or untyped member the list member judges the value);
+     * - a scalar where the schema, or a union member of it, is a generated class that requires nothing
+     *   ("a scalar for a property typed as a generated class": symfony 7.4.10 builds an empty object,
+     *   which a required key refuses);
      * - `null` or a scalar ITEM of a list, or VALUE of a map, of such classes ("a non-object ITEM of a
-     *   list or map of DTOs": symfony builds an empty object);
+     *   list or map of DTOs": symfony builds an empty object, again only when the class requires
+     *   nothing);
      * - `{}` where the schema, or a union member of it, is a list ("an EMPTY JSON container": yii3 reads
      *   `{}` and `[]` as one).
      *
@@ -765,8 +814,15 @@ final class FuzzRunner
     /**
      * @param array<string, mixed> $schemas
      */
-    private static function documentedRowAt(mixed $schema, mixed $value, array $schemas, GenerationMode $mode, bool $inContainer, int $depth): ?string
-    {
+    private static function documentedRowAt(
+        mixed $schema,
+        mixed $value,
+        array $schemas,
+        GenerationMode $mode,
+        bool $inContainer,
+        int $depth,
+        bool $listAdmittedBeside = false,
+    ): ?string {
         if (!is_array($schema) || $depth > 8) {
             return null;
         }
@@ -776,8 +832,11 @@ final class FuzzRunner
                 return null;
             }
         }
-        if (is_array($value) && self::hasMember(schema: $schema, schemas: $schemas, test: self::isObjectShaped(...))) {
-            return 'support matrix: "a JSON array for a `type: object` property"';
+        // A union member that admits a list owns a JSON array: the object member's row does not speak
+        // for it, here nor in the members the walk opens below.
+        $listAdmitted = $listAdmittedBeside || self::hasMember(schema: $schema, schemas: $schemas, test: self::admitsList(...));
+        if (is_array($value) && !$listAdmitted && self::hasMember(schema: $schema, schemas: $schemas, test: self::isObjectShaped(...))) {
+            return self::ROW_ARRAY_FOR_OBJECT;
         }
         if (
             $mode === GenerationMode::Yii3
@@ -785,20 +844,20 @@ final class FuzzRunner
             && get_object_vars($value) === []
             && self::hasMember(schema: $schema, schemas: $schemas, test: self::isListShaped(...))
         ) {
-            return 'support matrix: "an EMPTY JSON container: `[]` for an object, `{}` for a list or for the object member of a union beside an `array` member"';
+            return self::ROW_EMPTY_CONTAINER;
         }
         $scalar = $value !== null && !is_array($value) && !$value instanceof stdClass;
-        if ($mode === GenerationMode::Symfony && $scalar && self::hasMember(schema: $schema, schemas: $schemas, test: self::isClassShaped(...))) {
-            return 'support matrix: "a scalar for a property typed as a generated class"';
+        if ($mode === GenerationMode::Symfony && $scalar && self::hasMember(schema: $schema, schemas: $schemas, test: self::isClassRequiringNothing(...))) {
+            return self::ROW_SCALAR_FOR_CLASS;
         }
         if (
             $mode === GenerationMode::Symfony
             && $value === null
             && $inContainer
-            && self::isClassShaped(schema: $schema, schemas: $schemas, depth: 0)
+            && self::isClassRequiringNothing(schema: $schema, schemas: $schemas, depth: 0)
             && !($schema['nullable'] ?? false)
         ) {
-            return 'support matrix: "a non-object ITEM of a list or map of DTOs"';
+            return self::ROW_NON_OBJECT_ITEM;
         }
 
         $children = [];
@@ -806,22 +865,22 @@ final class FuzzRunner
             $properties = is_array($schema['properties'] ?? null) ? $schema['properties'] : [];
             foreach (get_object_vars($value) as $key => $inner) {
                 if (array_key_exists($key, $properties)) {
-                    $children[] = [$properties[$key], $inner, false];
+                    $children[] = [$properties[$key], $inner, false, false];
                 } elseif (is_array($schema['additionalProperties'] ?? null)) {
-                    $children[] = [$schema['additionalProperties'], $inner, true];
+                    $children[] = [$schema['additionalProperties'], $inner, true, false];
                 }
             }
         } elseif (is_array($value) && is_array($schema['items'] ?? null)) {
             foreach ($value as $inner) {
-                $children[] = [$schema['items'], $inner, true];
+                $children[] = [$schema['items'], $inner, true, false];
             }
         }
         foreach (['anyOf', 'oneOf', 'allOf'] as $keyword) {
             foreach (is_array($schema[$keyword] ?? null) ? $schema[$keyword] : [] as $member) {
-                $children[] = [$member, $value, $inContainer];
+                $children[] = [$member, $value, $inContainer, $listAdmitted];
             }
         }
-        foreach ($children as [$childSchema, $childValue, $childInContainer]) {
+        foreach ($children as [$childSchema, $childValue, $childInContainer, $childListAdmittedBeside]) {
             $row = self::documentedRowAt(
                 schema: $childSchema,
                 value: $childValue,
@@ -829,6 +888,7 @@ final class FuzzRunner
                 mode: $mode,
                 inContainer: $childInContainer,
                 depth: $depth + 1,
+                listAdmittedBeside: $childListAdmittedBeside,
             );
             if ($row !== null) {
                 return $row;
@@ -862,8 +922,109 @@ final class FuzzRunner
     }
 
     /**
-     * Whether a schema is one the generator makes a class of: a component object, or an inline object
-     * that declares properties or closes itself. A bare `{type: object}` is a PHP array.
+     * Tags `classRequiresNothing` on every payload whose value meets, where it sits in the document, a
+     * generated class with an empty `required` as a scalar or as a `null` item or map value — the only
+     * place symfony/serializer 7.4.10 builds the empty object the class rows of {@see KnownDivergences}
+     * stand for. A class that requires a key refuses that empty object.
+     *
+     * @param array<int, array{property: string|null, kind: string, json: string, expected: PayloadVerdict, tags: array<int, string>}> $payloads
+     * @param array<string, mixed> $document
+     * @return array<int, array{property: string|null, kind: string, json: string, expected: PayloadVerdict, tags: array<int, string>}>
+     */
+    private static function tagClassesRequiringNothing(array $payloads, array $document): array
+    {
+        foreach ($payloads as $index => $payload) {
+            if ($payload['property'] === null) {
+                continue;
+            }
+            $row = self::documentedShapeRow(
+                document: $document,
+                property: $payload['property'],
+                value: json_decode($payload['json'])->{$payload['property']},
+                mode: GenerationMode::Symfony,
+            );
+            if ($row === self::ROW_SCALAR_FOR_CLASS || $row === self::ROW_NON_OBJECT_ITEM) {
+                $payloads[$index]['tags'] = [...$payload['tags'], 'classRequiresNothing'];
+            }
+        }
+
+        return $payloads;
+    }
+
+    /**
+     * @param array<string, mixed> $schemas
+     */
+    private static function isClassRequiringNothing(mixed $schema, array $schemas, int $depth): bool
+    {
+        return self::isClassShaped(schema: $schema, schemas: $schemas, depth: $depth) && self::requiresNothing(schema: $schema, schemas: $schemas, depth: $depth);
+    }
+
+    /**
+     * Whether a schema, followed through `$ref` hops and into its `allOf` parts, requires no key.
+     *
+     * @param array<string, mixed> $schemas
+     */
+    private static function requiresNothing(mixed $schema, array $schemas, int $depth): bool
+    {
+        if (!is_array($schema) || $depth > 8) {
+            return true;
+        }
+        if (is_string($schema['$ref'] ?? null)) {
+            return self::requiresNothing(
+                schema: $schemas[substr($schema['$ref'], strlen('#/components/schemas/'))] ?? [],
+                schemas: $schemas,
+                depth: $depth + 1,
+            );
+        }
+        if (is_array($schema['required'] ?? null) && $schema['required'] !== []) {
+            return false;
+        }
+        foreach (is_array($schema['allOf'] ?? null) ? $schema['allOf'] : [] as $part) {
+            if (!self::requiresNothing(schema: $part, schemas: $schemas, depth: $depth + 1)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Whether a schema admits a JSON list: by its `type`, through a `$ref`, through a member of its own
+     * `anyOf`/`oneOf`, or by naming no type at all.
+     *
+     * @param array<string, mixed> $schemas
+     */
+    private static function admitsList(mixed $schema, array $schemas, int $depth): bool
+    {
+        if (!is_array($schema) || $depth > 8) {
+            return false;
+        }
+        if (is_string($schema['$ref'] ?? null)) {
+            return self::admitsList(
+                schema: $schemas[substr($schema['$ref'], strlen('#/components/schemas/'))] ?? [],
+                schemas: $schemas,
+                depth: $depth + 1,
+            );
+        }
+        if (self::isListShaped(schema: $schema, schemas: $schemas, depth: $depth)) {
+            return true;
+        }
+        foreach (['anyOf', 'oneOf'] as $keyword) {
+            foreach (is_array($schema[$keyword] ?? null) ? $schema[$keyword] : [] as $member) {
+                if (self::admitsList(schema: $member, schemas: $schemas, depth: $depth + 1)) {
+                    return true;
+                }
+            }
+        }
+
+        return array_intersect(self::TYPING_KEYWORDS, array_keys($schema)) === [];
+    }
+
+    /**
+     * Whether a schema is one the generator makes a class of: a component object that is no map, or an
+     * inline object that declares properties or closes itself. A bare `{type: object}` is a PHP array, a
+     * map (`additionalProperties` alone) is a PHP array of its values, and a component union is its
+     * members, not a class of its own.
      *
      * @param array<string, mixed> $schemas
      */
@@ -873,7 +1034,15 @@ final class FuzzRunner
             return false;
         }
         if (is_string($schema['$ref'] ?? null)) {
-            return self::isObjectShaped(schema: $schema, schemas: $schemas, depth: $depth);
+            $target = $schemas[substr($schema['$ref'], strlen('#/components/schemas/'))] ?? null;
+            if (!is_array($target) || self::isMap($target) || array_key_exists('anyOf', $target) || array_key_exists('oneOf', $target)) {
+                return false;
+            }
+            if (is_string($target['$ref'] ?? null)) {
+                return self::isClassShaped(schema: $target, schemas: $schemas, depth: $depth + 1);
+            }
+
+            return self::isObjectShaped(schema: $target, schemas: $schemas, depth: $depth + 1);
         }
         $type = $schema['type'] ?? null;
         if ($type !== 'object' && !(is_array($type) && in_array('object', $type, true))) {
@@ -881,6 +1050,23 @@ final class FuzzRunner
         }
 
         return (is_array($schema['properties'] ?? null) && $schema['properties'] !== []) || ($schema['additionalProperties'] ?? null) === false;
+    }
+
+    /**
+     * Whether a schema is an object whose only keys are those `additionalProperties` (a schema, or
+     * `true`) admits.
+     *
+     * @param array<string, mixed> $schema
+     */
+    private static function isMap(array $schema): bool
+    {
+        $type = $schema['type'] ?? null;
+        $object = $type === 'object' || (is_array($type) && in_array('object', $type, true));
+        $additional = $schema['additionalProperties'] ?? null;
+
+        return $object
+            && (!is_array($schema['properties'] ?? null) || $schema['properties'] === [])
+            && (is_array($additional) || $additional === true);
     }
 
     /**

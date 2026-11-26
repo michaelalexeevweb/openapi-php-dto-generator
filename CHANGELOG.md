@@ -3,6 +3,38 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.161 — 2026-11-26
+
+- fuzz harness blind spots closed
+- documented-row masking narrowed
+- parseable non-dates and RFC 3339 variants
+- union components of objects generated
+- case-sensitive filesystems tested, not skipped
+
+An audit of the fuzz harness found that it under-counted: some real defects were filed under documented
+framework limits, distinct defects in one mode were folded into the first one found, invalid dates were always
+strings PHP's parser refuses anyway, and several common spellings were never generated. This release closes
+those gaps. The fuzz now finds 55 issues on 96 fresh seeds instead of 1; the fix rounds that follow work them
+off.
+
+Fuzz harness:
+
+- a JSON array, a scalar or a null item is filed under a documented row only when that row's mechanism really
+  applies — a list member beside the object, a map component, a class with a required key no longer count;
+- the early dedupe key carries the shape, so distinct defects are reported one by one;
+- new mutations send strings PHP parses as dates (`x`, `now`, `2020-1-2`), date-times without an offset or with
+  `+0200`, and near-miss uuids; valid date-times sometimes use lowercase `t` / `z` and fractional seconds;
+- the reference oracle compares objects independent of key order, range-checks the time and offset of a
+  date-time, and gives no verdict on keywords it does not evaluate;
+- the grammar now builds union components of two objects, unions and discriminated unions as union branches,
+  `allOf: [$ref]` around objects and unions, annotation siblings beside `$ref`, and more `format` strings.
+
+Runtime: `DtoValidator` accepts a lowercase RFC 3339 `t` / `z` and refuses a date-time without an offset, with
+a space separator or with an offset out of range (README.support-matrix, RFC 3339 row).
+
+Tests: the two tests of a case-variant output directory and `$ref` file now assert the behaviour of a
+case-sensitive filesystem too, instead of being skipped on Linux CI.
+
 ## 2.15.160 — 2026-11-26
 
 - fuzz round fifteen: 8 fixes

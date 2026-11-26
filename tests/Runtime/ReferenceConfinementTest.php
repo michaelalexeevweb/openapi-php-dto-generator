@@ -221,15 +221,25 @@ final class ReferenceConfinementTest extends TestCase
     {
         $this->writeDocument(path: 'shared/tints.yaml', schemas: ['Tint' => ['type' => 'object', 'properties' => ['hue' => ['type' => 'string']]]]);
         $this->writeDocument(path: 'spec/zzz.yaml', schemas: ['Holder' => $this->holderOf('../shared/TINTS.yaml#/components/schemas/Tint')]);
-        if (!file_exists($this->root . '/shared/TINTS.yaml')) {
-            $this->markTestSkipped('The filesystem does not fold case.');
-        }
+        // Where the filesystem tells case apart (Linux CI), TINTS.yaml is a file that does not exist, and
+        // the reference is reported as missing; where it folds case (macOS), it is the mapped file.
+        $foldsCase = file_exists($this->root . '/shared/TINTS.yaml');
 
         $generator = new GenerateDtoCommand();
         $generator->setExternalRefMappings(
             refDirectoryPairs: [$this->root . '/shared/tints.yaml=' . $this->root . '/gen/Tints=Widgets\Tints'],
             refNamespacePairs: [],
         );
+        if (!$foldsCase) {
+            try {
+                $generator->generateFromFile($this->root . '/spec/zzz.yaml', $this->root . '/out', 'Widgets');
+                $this->fail('A reference to a file that does not exist must be refused.');
+            } catch (RuntimeException $exception) {
+                $this->assertStringContainsString(needle: 'Referenced OpenAPI file not found', haystack: $exception->getMessage());
+            }
+
+            return;
+        }
         $generator->generateFromFile($this->root . '/spec/zzz.yaml', $this->root . '/out', 'Widgets');
 
         $this->assertSame(expected: ['.', '..', 'Tint.php'], actual: scandir($this->root . '/gen/Tints'));

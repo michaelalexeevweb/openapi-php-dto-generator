@@ -19,13 +19,25 @@ namespace OpenapiPhpDtoGenerator\Tests\Fuzz;
  */
 final class SchemaRenderer
 {
+    /** Chance an object, a container, or a union / discriminated component is spelled `allOf: [$ref]`. */
+    private const float ALL_OF_SINGLE_REF_CHANCE = 2 / 13;
+
+    /** Chance a `$ref` or `allOf` wrapper carries annotation-only siblings. */
+    private const float ANNOTATION_CHANCE = 0.2;
+
     /** @var array<string, mixed> */
     private array $components = [];
 
+    /**
+     * `$variety` makes the spellings added after the rest (`allOf: [$ref]` beyond scalars, the 3.0
+     * `{allOf: [$ref Union], nullable: true}`, annotation siblings) on a stream of its own, checked
+     * before the main stream's roll: a seed it never fires on keeps the document it drew before.
+     */
     public function __construct(
         private readonly FuzzRandom $random,
         private readonly bool $openApi31,
         private readonly NameAllocator $names,
+        private readonly ?FuzzRandom $variety = null,
     ) {
     }
 
@@ -39,13 +51,15 @@ final class SchemaRenderer
 
     /**
      * @param array<string, mixed> $node
+     * @param bool $withDefault whether an annotation may be a `default` — never on a `required` property,
+     *     where the modes are documented to let the default win over `required` (and the generator warns)
      * @return array<string, mixed>
      */
-    public function render(array $node): array
+    public function render(array $node, bool $withDefault = true): array
     {
         $nullable = (bool)($node['nullable'] ?? false);
 
-        return match ($node['t']) {
+        $schema = match ($node['t']) {
             'string', 'integer', 'number', 'boolean', 'null' => $this->spellScalar(core: $this->scalarCore($node), nullable: $nullable),
             'array' => $this->spellContainer(core: $this->arrayCore($node), nullable: $nullable),
             'map' => $this->spellContainer(core: $this->mapCore($node), nullable: $nullable),
@@ -53,6 +67,73 @@ final class SchemaRenderer
             'union' => $this->union(node: $node, nullable: $nullable),
             'discriminated' => $this->discriminated(node: $node, nullable: $nullable),
         };
+
+        return $this->annotated(schema: $schema, node: $node, withDefault: $withDefault);
+    }
+
+    /**
+     * Annotation-only siblings — `description`, `title`, `deprecated`, and for a scalar an example and a
+     * `default` (a valid value of it; not on a `required` property, the documented "`required` with a
+     * `default`" contradiction where every mode but symfony lets the default win) — on a `$ref` or an `allOf` wrapper, or on the referencing member of
+     * a 3.1 nullable wrapper. None of them changes what is valid; a mode that reads them as constraints,
+     * or trips over them, is the finding.
+     *
+     * @param array<string, mixed> $schema
+     * @param array<string, mixed> $node
+     * @return array<string, mixed>
+     */
+    private function annotated(array $schema, array $node, bool $withDefault): array
+    {
+        if ($this->variety === null) {
+            return $schema;
+        }
+        foreach (['anyOf', 'oneOf'] as $keyword) {
+            $members = $schema[$keyword] ?? null;
+            if (is_array($members) && count($schema) === 1 && count($members) === 2 && $members[1] === ['type' => 'null'] && self::isWrapper($members[0])) {
+                $schema[$keyword][0] = $this->annotated(schema: $members[0], node: $node, withDefault: $withDefault);
+
+                return $schema;
+            }
+        }
+        if (!self::isWrapper($schema) || !$this->variety->chance(self::ANNOTATION_CHANCE)) {
+            return $schema;
+        }
+        $annotations = [
+            'description' => 'A fuzzed ' . $node['t'] . '.',
+            'title' => ucfirst($node['t']),
+            'deprecated' => $this->variety->chance(0.5),
+        ];
+        if (in_array($node['t'], ['string', 'integer', 'number', 'boolean'], true)) {
+            $instances = new InstanceGenerator($this->variety);
+            $default = $instances->validInstance($node)['value'];
+            if ($withDefault) {
+                $annotations['default'] = $default;
+            }
+            $example = $instances->validInstance($node)['value'];
+            $annotations += $this->openApi31 ? ['examples' => [$example]] : ['example' => $example];
+        }
+        $chosen = $this->variety->sample(array_keys($annotations), $this->variety->int(1, 2));
+        foreach ($chosen as $keyword) {
+            $schema[$keyword] = $annotations[$keyword];
+        }
+
+        return $schema;
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     */
+    private static function isWrapper(array $schema): bool
+    {
+        return array_key_exists('$ref', $schema) || array_key_exists('allOf', $schema);
+    }
+
+    /**
+     * Whether the variety stream spells this one `allOf: [$ref]` — checked before the main roll.
+     */
+    private function allOfSingleRefChosen(): bool
+    {
+        return $this->variety?->chance(self::ALL_OF_SINGLE_REF_CHANCE) ?? false;
     }
 
     /**
@@ -138,7 +219,7 @@ final class SchemaRenderer
             if ($only !== null && !in_array($name, $only, true)) {
                 continue;
             }
-            $properties[$name] = $this->render($child);
+            $properties[$name] = $this->render(node: $child, withDefault: !in_array($name, $node['required'], true));
         }
         $schema = ['type' => 'object', 'properties' => $properties];
         $required = array_values(array_filter(
@@ -186,6 +267,9 @@ final class SchemaRenderer
      */
     private function spellContainer(array $core, bool $nullable): array
     {
+        if ($this->allOfSingleRefChosen()) {
+            return $this->allOfSingleRef(core: $core, nullable: $nullable);
+        }
         $options = ['inline' => 7, 'alias' => 3, 'aliasOfAlias' => 1];
         $siblingKeywords = array_intersect(array_keys($core), ['minItems', 'maxItems', 'uniqueItems', 'minProperties', 'maxProperties']);
         if ($this->openApi31 && $siblingKeywords !== []) {
@@ -209,6 +293,9 @@ final class SchemaRenderer
      */
     private function spellObject(array $node, bool $nullable): array
     {
+        if ($this->allOfSingleRefChosen()) {
+            return $this->allOfSingleRef(core: $this->objectCore($node), nullable: $nullable);
+        }
         $options = ['inline' => 5, 'component' => 5, 'aliasOfAlias' => 1];
         $splittable = $node['additional'] === null && count($node['props']) >= 2;
         if ($splittable && ($this->openApi31 || !$nullable)) {
@@ -266,11 +353,23 @@ final class SchemaRenderer
      */
     private function union(array $node, bool $nullable): array
     {
+        $objectPair = ($node['objectPair'] ?? false) === true;
+        // A 3.0 union component may take its `null` at the use site, `{allOf: [$ref Union], nullable:
+        // true}`, rather than on a branch inside; it is a component then even where the roll says no.
+        $nullOutside = $nullable && !$this->openApi31 && (!$objectPair || ($node['asComponent'] ?? false)) && ($this->variety?->chance(0.5) ?? false);
+        // 3.0 has no null type: the union admits null through `nullable` on ONE branch — exactly one,
+        // so a `oneOf` still matches null once — never a discriminated one, which 3.0 never makes nullable.
+        $nullBranch = 0;
+        foreach ($node['branches'] as $index => $branch) {
+            if ($branch['t'] !== 'discriminated') {
+                $nullBranch = $index;
+
+                break;
+            }
+        }
         $branches = [];
         foreach ($node['branches'] as $index => $branch) {
-            // 3.0 has no null type: the union admits null through `nullable` on ONE branch — exactly one,
-            // so a `oneOf` still matches null once.
-            if ($nullable && !$this->openApi31 && $index === 0) {
+            if ($nullable && !$this->openApi31 && !$nullOutside && $index === $nullBranch) {
                 $branch['nullable'] = true;
             }
             $branches[] = $this->render($branch);
@@ -281,13 +380,20 @@ final class SchemaRenderer
             $branches[] = ['type' => 'null'];
         }
         $schema = [$node['op'] => $branches];
-        // Two object members stay inline: as a component of its own the union is one the generator
-        // WARNS it cannot hydrate in four modes (no discriminator to pick a member by) — documented at
-        // generation time, not a finding. The roll is kept, so the draws after it do not move.
-        if ($this->random->chance(0.3) && ($node['objectPair'] ?? false) !== true) {
+        // Two object members are a component when the grammar says (`asComponent`): a mode documented
+        // not to hydrate such a component warns at generation time. The roll is kept for them, so the
+        // draws after it do not move.
+        $roll = $this->random->chance(0.3);
+        if ($objectPair ? ($node['asComponent'] ?? false) : ($roll || $nullOutside)) {
             $name = $this->names->next();
             $this->components[$name] = $schema;
             $schema = ['$ref' => '#/components/schemas/' . $name];
+            if ($this->allOfSingleRefChosen()) {
+                $schema = ['allOf' => [$schema]];
+            }
+        }
+        if ($nullOutside) {
+            return array_key_exists('allOf', $schema) ? $schema + ['nullable' => true] : $this->wrapNullable(schema: $schema, nullable: true);
         }
 
         return $this->openApi31 && $nullable && !$nullInside ? $this->wrapNullable(schema: $schema, nullable: true) : $schema;
@@ -315,6 +421,9 @@ final class SchemaRenderer
             $name = $this->names->next();
             $this->components[$name] = $schema;
             $schema = ['$ref' => '#/components/schemas/' . $name];
+            if ($this->allOfSingleRefChosen()) {
+                $schema = ['allOf' => [$schema]];
+            }
         }
 
         return $this->wrapNullable(schema: $schema, nullable: $nullable);

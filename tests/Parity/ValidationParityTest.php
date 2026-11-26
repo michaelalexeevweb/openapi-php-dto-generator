@@ -6224,6 +6224,70 @@ final class ValidationParityTest extends TestCase
         );
     }
 
+    /**
+     * The RFC 3339 spellings the four shared patterns (`GeneratedDtoInterface::DATE_TIME_FORMATS`) do
+     * not settle, measured on a `format: date-time` PROPERTY. The common answer is what most modes do;
+     * every other mode states why. Each row is a README.support-matrix.md row ("RFC 3339 spellings of a
+     * `format: date-time` property").
+     *
+     * `DtoValidator` itself follows RFC 3339 since 2.15.161 (`DtoValidatorTest::testFormatDateTimeFollowsRfc3339`),
+     * but a runtime DTO hands it the PARSED value written back as ATOM: what reaches it is decided by
+     * the deserializer's four patterns, so the runtime column here is the deserializer's.
+     *
+     * @param array<string, bool> $diverging accepted or not, by mode value, for the modes that differ
+     */
+    #[DataProvider('rfc3339DateTimeSpellings')]
+    public function testRfc3339DateTimeSpellingsArePinnedPerMode(string $value, bool $accepted, array $diverging): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = self::probeSpec(['type' => 'string', 'format' => 'date-time']);
+        $key = 'rfc3339 ' . $value;
+        $diverges = [];
+        foreach ($diverging as $modeValue => $modeAccepted) {
+            $diverges += self::diverges(
+                mode: GenerationMode::from($modeValue),
+                expected: ['valid' => true, 'invalid' => $modeAccepted],
+                reason: self::RFC3339_DIVERGENCE_REASONS[$modeValue],
+            );
+        }
+
+        $this->assertEveryModeYields(
+            expected: ['valid' => true, 'invalid' => $accepted],
+            observe: fn(GenerationMode $mode): array => $this->verdict($mode, $spec, $key, '{"f":"2026-03-10T12:00:00+00:00"}', '{"f":"' . $value . '"}'),
+            diverges: $diverges,
+            context: $key,
+        );
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: bool, 2: array<string, bool>}>
+     */
+    public static function rfc3339DateTimeSpellings(): array
+    {
+        return [
+            // RFC 3339 allows both lower case; four of five modes parse with patterns that spell `T` and `Z`.
+            'lowercase t and z' => ['2026-03-10t12:00:00z', false, ['symfony' => true]],
+            'lowercase t, numeric offset' => ['2026-03-10t12:00:00+02:00', false, ['symfony' => true]],
+            'lowercase z' => ['2026-03-10T12:00:00z', false, ['symfony' => true, 'yii3' => true]],
+            // Not RFC 3339, accepted by all five: one of the shared patterns (see the support matrix's note).
+            'no offset' => ['2026-03-10T12:00:00', true, []],
+            'space separator, no offset' => ['2026-03-10 12:00:00', true, []],
+            // Not RFC 3339, and not a shared pattern.
+            'space separator, offset' => ['2026-03-10 12:00:00Z', false, ['symfony' => true]],
+            'offset without colon' => ['2026-03-10T12:00:00+0200', false, ['symfony' => true, 'yii3' => true]],
+            'offset hour out of range' => ['2026-03-10T12:00:00+25:00', false, ['symfony' => true, 'laravel-data' => true, 'yii3' => true]],
+        ];
+    }
+
+    private const array RFC3339_DIVERGENCE_REASONS = [
+        'symfony' => "the property is a DateTimeImmutable, so the serializer parses the string with PHP's free-form parser before any generated constraint runs",
+        'yii3' => '`#[ToDateTime]` parses with `p`, which reads `z` and `+0200` as offsets, and takes `+25:00` as an offset of a day and an hour',
+        'laravel-data' => 'the `#[WithCast]` parses with `p`, which takes `+25:00` as an offset of a day and an hour, and no rule checks the offset after it',
+    ];
+
     #[DataProvider('dateOrDateTimeUnionCases')]
     public function testADateOrDateTimeUnionAcceptsBothShapesInEveryMode(
         string $firstFormat,

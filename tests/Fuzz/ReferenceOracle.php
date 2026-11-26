@@ -22,6 +22,26 @@ final class ReferenceOracle
 
     private const int MAX_DEPTH = 64;
 
+    /**
+     * Assertion keywords this evaluator does not implement. Read as absent, each one would pass every
+     * value it refuses; present, it makes the answer `null`.
+     */
+    private const array UNEVALUATED_KEYWORDS = [
+        'not',
+        'contains',
+        'minContains',
+        'maxContains',
+        'propertyNames',
+        'patternProperties',
+        'unevaluatedProperties',
+        'unevaluatedItems',
+        'dependentRequired',
+        'dependentSchemas',
+        'if',
+        'then',
+        'else',
+    ];
+
     /** @var array<string, mixed> */
     private array $schemas;
 
@@ -121,6 +141,9 @@ final class ReferenceOracle
 
             return true;
         }
+        if (array_intersect(self::UNEVALUATED_KEYWORDS, array_keys($schema)) !== []) {
+            $this->unsure = true;
+        }
 
         if (is_string($schema['$ref'] ?? null)) {
             if (!str_starts_with($schema['$ref'], self::REF_PREFIX)) {
@@ -216,13 +239,39 @@ final class ReferenceOracle
         return false;
     }
 
+    /**
+     * JSON instance equality (2020-12 §4.2.2): numbers by value, lists item by item in order, objects
+     * member by member in ANY order. A schema's `enum` / `const` arrives decoded as PHP arrays, the
+     * payload as `stdClass`, so a string-keyed array is an object here too.
+     */
     private function equal(mixed $left, mixed $right): bool
     {
-        if ((is_int($left) || is_float($left)) && (is_int($right) || is_float($right))) {
-            return (float)$left === (float)$right;
-        }
+        return self::canonical($left) === self::canonical($right);
+    }
 
-        return json_encode($left) === json_encode($right);
+    private static function canonical(mixed $value): string
+    {
+        return match (true) {
+            is_int($value) || is_float($value) => 'n:' . json_encode((float)$value),
+            $value instanceof stdClass => self::canonicalObject(get_object_vars($value)),
+            is_array($value) && !array_is_list($value) => self::canonicalObject($value),
+            is_array($value) => '[' . implode(',', array_map(self::canonical(...), $value)) . ']',
+            default => (string)json_encode($value),
+        };
+    }
+
+    /**
+     * @param array<int|string, mixed> $members
+     */
+    private static function canonicalObject(array $members): string
+    {
+        $pairs = [];
+        foreach ($members as $key => $member) {
+            $pairs[(string)$key] = json_encode((string)$key) . ':' . self::canonical($member);
+        }
+        ksort($pairs, SORT_STRING);
+
+        return '{' . implode(',', $pairs) . '}';
     }
 
     /**
@@ -252,12 +301,30 @@ final class ReferenceOracle
 
         return match ($schema['format']) {
             'date' => $this->isDate($value),
-            'date-time' => preg_match('/^(\d{4}-\d{2}-\d{2})T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/i', $value, $parts) === 1
-                && $this->isDate($parts[1]),
+            'date-time' => $this->isDateTime($value),
             'email' => filter_var($value, FILTER_VALIDATE_EMAIL) !== false,
             'uuid' => preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $value) === 1,
             default => $this->unknown(),
         };
+    }
+
+    /**
+     * RFC 3339 §5.6 `date-time`: `T` and `Z` in either case, an offset required, and the hour, minute
+     * and offset those of a time of day. A leap second is valid only at the end of a UTC day — no answer.
+     */
+    private function isDateTime(string $value): bool
+    {
+        $pattern = '/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-](\d{2}):(\d{2}))$/i';
+        if (preg_match($pattern, $value, $parts) !== 1 || !$this->isDate($parts[1])) {
+            return false;
+        }
+        $offsetHour = (int)($parts[5] ?? 0);
+        $offsetMinute = (int)($parts[6] ?? 0);
+        if ((int)$parts[2] > 23 || (int)$parts[3] > 59 || (int)$parts[4] > 60 || $offsetHour > 23 || $offsetMinute > 59) {
+            return false;
+        }
+
+        return (int)$parts[4] === 60 ? $this->unknown() : true;
     }
 
     private function isDate(string $value): bool
@@ -320,7 +387,7 @@ final class ReferenceOracle
         if (($schema['uniqueItems'] ?? false) === true) {
             $seen = [];
             foreach ($value as $item) {
-                $seen[] = json_encode($item);
+                $seen[] = self::canonical($item);
             }
             if (count(array_unique($seen)) !== count($seen)) {
                 return false;

@@ -2695,13 +2695,20 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
             return false;
         }
 
-        // Reject structural mismatches (trailing garbage, wrong separator) before createFromFormat.
-        // createFromFormat silently accepts trailing characters, so a pre-check is required.
-        if (preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/D', $value) !== 1) {
+        // RFC 3339 `date-time`: a `T` separator and an offset are required, and both letters may be
+        // lowercase (RFC 3339 §5.6 NOTE). Reject structural mismatches (trailing garbage, a space
+        // separator, no offset) before createFromFormat, which silently accepts trailing characters.
+        if (preg_match('/^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(\.\d+)?([Zz]|[+-]\d{2}:\d{2})$/D', $value) !== 1) {
+            return false;
+        }
+        // `time-numoffset` is a time of day: PHP's `p` takes `+25:00` as an offset of a day and an hour.
+        if (preg_match('/[+-](\d{2}):(\d{2})$/D', $value, $offset) === 1 && ((int)$offset[1] > 23 || (int)$offset[2] > 59)) {
             return false;
         }
 
         // Shared with the deserializer via GeneratedDtoInterface — including Z suffix (lowercase p).
+        // The patterns spell `T` and `Z` upper case; only they and digits are letters here.
+        $value = strtoupper($value);
         foreach (GeneratedDtoInterface::DATE_TIME_FORMATS as $format) {
             $dt = DateTimeImmutable::createFromFormat($format, $value);
             // Reject calendar-invalid values that createFromFormat rolls over (e.g. Feb 30);

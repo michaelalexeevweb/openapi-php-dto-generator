@@ -1177,6 +1177,38 @@ final class DtoValidatorTest extends TestCase
         $this->assertStringContainsString('must match format date-time', $errors[0]);
     }
 
+    /**
+     * RFC 3339 §5.6: `date-time` is `full-date "T" full-time`, `full-time` carries an offset, and the
+     * NOTE allows `t` and `z` in lower case. A raw string reaches this check when the validator is
+     * called on decoded data; a generated DTO hands it the parsed value written back as ATOM.
+     */
+    #[DataProvider('rfc3339DateTimeProvider')]
+    public function testFormatDateTimeFollowsRfc3339(string $value, bool $accepted): void
+    {
+        $errors = $this->validator->validate(subject: 'ts', value: $value, constraints: ['format' => 'date-time']);
+        $this->assertSame($accepted, $errors === [], $value . ': ' . implode('; ', $errors));
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: bool}>
+     */
+    public static function rfc3339DateTimeProvider(): array
+    {
+        return [
+            'lowercase t and z' => ['2024-06-15t12:00:00z', true],
+            'lowercase z' => ['2024-06-15T12:00:00z', true],
+            'lowercase t, numeric offset' => ['2024-06-15t12:00:00+02:00', true],
+            'fraction, lowercase z' => ['2024-06-15T12:00:00.250z', true],
+            'upper case Z' => ['2024-06-15T12:00:00Z', true],
+            'no offset' => ['2024-06-15T12:00:00', false],
+            'space separator, no offset' => ['2024-06-15 12:00:00', false],
+            'space separator, offset' => ['2024-06-15 12:00:00Z', false],
+            'offset without colon' => ['2024-06-15T12:00:00+0200', false],
+            'offset hour out of range' => ['2024-06-15T12:00:00+25:00', false],
+            'offset minute out of range' => ['2024-06-15T12:00:00+02:60', false],
+        ];
+    }
+
     // =========================================================================
     // Array — minItems / maxItems / uniqueItems
     // =========================================================================
@@ -2743,11 +2775,11 @@ final class DtoValidatorTest extends TestCase
         ));
     }
 
-    public function testFormatDateTimeLeapSecondAndLowercaseSeparatorsRejected(): void
+    public function testFormatDateTimeLeapSecondRejected(): void
     {
-        // Leap second (:60) and lowercase t/z separators are rejected.
+        // Leap second (:60) is rejected. Lowercase `t` / `z` are RFC 3339 and accepted —
+        // `testFormatDateTimeFollowsRfc3339`.
         $this->assertNotEmpty($this->validator->validate('t', '2026-06-30T23:59:60Z', ['format' => 'date-time']));
-        $this->assertNotEmpty($this->validator->validate('t', '2026-03-10t12:00:00z', ['format' => 'date-time']));
     }
 
     public function testFormatDateTimeAcceptsExtremeYears(): void

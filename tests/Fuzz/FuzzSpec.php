@@ -17,6 +17,11 @@ final readonly class FuzzSpec
     /** Where the stream that decides on unions of two objects starts, relative to the seed. */
     private const int PAIR_STREAM_OFFSET = 7_919_000;
 
+    /** Where the streams of the productions added after it start (grammar, renderer), relative to the seed. */
+    private const int GRAMMAR_VARIETY_OFFSET = 6_841_000;
+
+    private const int RENDERER_VARIETY_OFFSET = 5_903_000;
+
     private const int VALID_DRAW_ATTEMPTS = 6;
 
     /** The tag of a refusal a union member owes to a key it does not declare, and to nothing else. */
@@ -44,8 +49,14 @@ final readonly class FuzzSpec
             openApi31: $openApi31,
             names: $names,
             pairs: new FuzzRandom($seed + self::PAIR_STREAM_OFFSET),
+            variety: new FuzzRandom($seed + self::GRAMMAR_VARIETY_OFFSET),
         );
-        $renderer = new SchemaRenderer(random: $random, openApi31: $openApi31, names: $names);
+        $renderer = new SchemaRenderer(
+            random: $random,
+            openApi31: $openApi31,
+            names: $names,
+            variety: new FuzzRandom($seed + self::RENDERER_VARIETY_OFFSET),
+        );
         $instances = new InstanceGenerator($random);
 
         $cases = [];

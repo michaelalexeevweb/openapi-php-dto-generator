@@ -42,6 +42,37 @@ final class KnownDivergences
     }
 
     /**
+     * A crash or a refusal at a union COMPONENT of two objects and no discriminator (tagged
+     * `undiscriminatedComponent`) in a mode the generator WARNED, for a component this property reaches,
+     * that it cannot hydrate a payload into: the support matrix, "Not generated in any mode", "hydration
+     * of a union COMPONENT of OBJECTS with no `discriminator`" — the generator names the property at
+     * generation time instead of letting the request find out. Only laravel and laravel-data, the modes
+     * that row names; a warning in any other mode, or a failure with no warning for that component, is
+     * a finding.
+     *
+     * @param array<int, string> $tags
+     * @param array<int, string> $warnings the generation warnings of this mode for the document
+     * @param array<int, string> $reachable the components the property's schema reaches
+     */
+    public static function explainUnhydratableUnion(GenerationMode $mode, string $category, array $tags, array $warnings, array $reachable): ?string
+    {
+        if (!in_array($mode, [GenerationMode::Laravel, GenerationMode::LaravelData], true)) {
+            return null;
+        }
+        if (!in_array($category, ['crash', 'wrong-refuse'], true) || !in_array('undiscriminatedComponent', $tags, true)) {
+            return null;
+        }
+        foreach ($warnings as $warning) {
+            $matched = preg_match('/refers to (\w+), an undiscriminated (?:anyOf|oneOf) union: this mode cannot hydrate/', $warning, $parts);
+            if ($matched === 1 && in_array($parts[1], $reachable, true)) {
+                return 'support matrix: "hydration of a union COMPONENT of OBJECTS with no `discriminator`" (not generated; the generator warns, naming the property)';
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * @param array<int, string> $prefixes
      */
     private static function kindMatches(string $kind, array $prefixes): bool
@@ -107,14 +138,19 @@ final class KnownDivergences
                     'badFormat:',
                     'impossibleDate:',
                     'looseDateTime',
+                    'parseableNonDate:',
+                    'nearMissFormat:',
                 ],
-                'tagsAll' => ['unionClassMember'],
+                // `classRequiresNothing` (set by `FuzzRunner` off the schema): a class that requires a
+                // key refuses the empty object the serializer builds, so a scalar accepted there is no row.
+                'tagsAll' => ['unionClassMember', 'classRequiresNothing'],
                 'row' => 'support matrix: "a scalar for a property typed as a generated class" (symfony/serializer 7.4.10 builds an empty object)',
             ],
             [
                 'modes' => [GenerationMode::Symfony],
                 'category' => 'wrong-accept',
                 'kinds' => ['nullForbidden', 'wrongType:'],
+                'tagsAll' => ['classRequiresNothing'],
                 'tagsAny' => ['itemsOf:dto', 'valuesOf:dto'],
                 'row' => 'support matrix: "a non-object ITEM of a list or map of DTOs" (symfony/serializer 7.4.10 builds an empty object when the class requires nothing)',
             ],
@@ -146,7 +182,39 @@ final class KnownDivergences
                 'modes' => [GenerationMode::Symfony],
                 'category' => 'wrong-accept',
                 'kinds' => ['impossibleDate:', 'looseDateTime'],
+                // Only where the serializer meets a date: the property, a list item or a map value.
+                'tagsAny' => ['site:temporal', 'site:nullable-temporal', 'itemsOf:temporal', 'itemsOf:nullable-temporal', 'valuesOf:temporal', 'valuesOf:nullable-temporal'],
                 'row' => 'support matrix: "a loose `format: date-time` string" / "an impossible calendar date" (the serializer parses first)',
+            ],
+            [
+                'modes' => [GenerationMode::Symfony],
+                'category' => 'wrong-accept',
+                // A string PHP's free-form parser reads (`now`, `@0`, `+1 day`) for a `format: date-time`
+                // only: a `format: date` is parsed with `!Y-m-d` since 2.15.160 and has no row.
+                'kinds' => ['parseableNonDate:date-time'],
+                'tagsAny' => ['site:temporal', 'site:nullable-temporal', 'itemsOf:temporal', 'itemsOf:nullable-temporal', 'valuesOf:temporal', 'valuesOf:nullable-temporal'],
+                'row' => 'support matrix: "a loose `format: date-time` string" (the serializer parses first)',
+            ],
+            [
+                'modes' => GenerationMode::cases(),
+                'category' => 'wrong-accept',
+                'kinds' => ['parseableNonDate:date-time'],
+                'tagsAll' => ['dateTimeNoOffset'],
+                'row' => 'support matrix: the note under the keyword matrix, "A `format: date-time` with no offset … is accepted … in all five"',
+            ],
+            [
+                'modes' => [GenerationMode::Yii3],
+                'category' => 'wrong-accept',
+                'kinds' => ['parseableNonDate:date-time'],
+                'tagsAll' => ['dateTimeOffsetWithoutColon'],
+                'row' => 'support matrix: "RFC 3339 spellings of a `format: date-time` property" (yii3 reads `+0200` with `p`)',
+            ],
+            [
+                'modes' => [GenerationMode::Runtime, GenerationMode::Laravel, GenerationMode::LaravelData, GenerationMode::Yii3],
+                'category' => 'wrong-refuse',
+                'kinds' => ['valid'],
+                'tagsAll' => ['lowercaseDateTime'],
+                'row' => 'support matrix: "RFC 3339 spellings of a `format: date-time` property" (lowercase `t` / `z` refused)',
             ],
             [
                 'modes' => [GenerationMode::Yii3],

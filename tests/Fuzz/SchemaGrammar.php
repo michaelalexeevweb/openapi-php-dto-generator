@@ -49,15 +49,31 @@ final class SchemaGrammar
 
     private const array DISCRIMINATOR_TAGS = ['circle', 'square', 'hexagon', 'oval'];
 
+    /** Weight, beside the kinds a union branch may take, of a union or discriminated union as that branch. */
+    private const int UNION_BRANCH_WEIGHT = 6;
+
+    /**
+     * Extra chance a plain string (neither `format` nor `enum`, 60% of strings) is turned into a `format`
+     * one: 20% → 30% of strings.
+     */
+    private const float EXTRA_FORMAT_CHANCE = 1 / 6;
+
+    /** Chance the items of a (non-unique, non-tuple) list are a `format` string instead of what was drawn. */
+    private const float FORMAT_ITEM_CHANCE = 0.15;
+
     /**
      * `$pairs` decides, on a stream of its own, whether a union is drawn as one of two OBJECT members: a
      * seed that draws none keeps the very document it drew before unions of objects were fuzzed.
+     * `$variety` does the same for the productions added after (a union or discriminated union as a union
+     * branch, a union of two objects as a component, the extra `format` strings): every decision about
+     * them is a draw of its own stream, so a seed none of them fires on keeps its document.
      */
     public function __construct(
         private readonly FuzzRandom $random,
         private readonly bool $openApi31,
         private readonly NameAllocator $names,
         private readonly ?FuzzRandom $pairs = null,
+        private readonly ?FuzzRandom $variety = null,
     ) {
     }
 
@@ -68,6 +84,8 @@ final class SchemaGrammar
     public function node(int $depth, array $excludedGroups = [], bool $allowNullable = true): array
     {
         $kind = $this->pickKind(depth: $depth, excludedGroups: $excludedGroups);
+        // A union branch may be a union itself — of two objects too, its members one level shallower.
+        $pairDepth = $excludedGroups === [] ? $depth + 1 : $depth;
         $node = match ($kind) {
             'string' => $this->stringNode(),
             'integer' => $this->numericNode(integer: true),
@@ -77,9 +95,9 @@ final class SchemaGrammar
             'array' => $this->arrayNode($depth),
             'object' => $this->objectNode($depth),
             'map' => $this->mapNode($depth),
-            'union' => $depth + 1 < self::MAX_DEPTH && ($this->pairs?->chance(0.3) ?? false)
-                ? $this->objectPairNode($depth)
-                : $this->unionNode($depth),
+            'union' => $pairDepth < self::MAX_DEPTH && !in_array('object', $excludedGroups, true) && ($this->pairs?->chance(0.3) ?? false)
+                ? $this->objectPairNode(depth: $depth, excludedGroups: $excludedGroups)
+                : $this->unionNode(depth: $depth, excludedGroups: $excludedGroups),
             'discriminated' => $this->discriminatedNode($depth),
         };
 
@@ -100,6 +118,36 @@ final class SchemaGrammar
             'object', 'map', 'discriminated' => 'object',
             default => $kind,
         };
+    }
+
+    /**
+     * Every JSON type group a node takes inside a union: one for a plain kind, those of all its
+     * branches for a union nested as a branch.
+     *
+     * @param array<string, mixed> $node
+     * @return array<int, string>
+     */
+    public static function groupsOf(array $node): array
+    {
+        if ($node['t'] !== 'union') {
+            return [self::group($node['t'])];
+        }
+
+        return array_values(array_unique(array_merge(...array_map(self::groupsOf(...), $node['branches']))));
+    }
+
+    /**
+     * The groups a node drawn at `$depth` may still take, `null` left out (a union's nullability is its
+     * own): a list or an object only above {@see MAX_DEPTH}.
+     *
+     * @param array<int, string> $excludedGroups
+     * @return array<int, string>
+     */
+    private static function usableGroups(int $depth, array $excludedGroups): array
+    {
+        $groups = $depth < self::MAX_DEPTH ? ['string', 'number', 'boolean', 'array', 'object'] : ['string', 'number', 'boolean'];
+
+        return array_values(array_diff($groups, $excludedGroups));
     }
 
     /**
@@ -131,6 +179,11 @@ final class SchemaGrammar
             $total += $weight;
         }
 
+        $branchKind = $this->unionAsBranch(depth: $depth, excludedGroups: $excludedGroups, total: $total);
+        if ($branchKind !== null) {
+            return $branchKind;
+        }
+
         $roll = $this->random->int(1, $total);
         foreach ($available as $kind => $weight) {
             $roll -= $weight;
@@ -140,6 +193,34 @@ final class SchemaGrammar
         }
 
         return 'string';
+    }
+
+    /**
+     * A union or a discriminated union as a BRANCH of a union, beside the kinds the siblings left —
+     * weighed against them on the variety stream, so a seed that never draws one keeps its document. A
+     * nested union needs two groups of its own and leaves the parent one more; a discriminated union
+     * takes the object group.
+     *
+     * @param array<int, string> $excludedGroups
+     */
+    private function unionAsBranch(int $depth, array $excludedGroups, int $total): ?string
+    {
+        if ($this->variety === null || $excludedGroups === [] || $depth >= self::MAX_DEPTH) {
+            return null;
+        }
+        $kinds = [];
+        // Two groups for the nested union's branches, one more left for the parent's next branch.
+        if (count(self::usableGroups($depth + 1, $excludedGroups)) >= 2 && count(self::usableGroups($depth, $excludedGroups)) >= 3) {
+            $kinds[] = 'union';
+        }
+        if (in_array('object', self::usableGroups($depth, $excludedGroups), true)) {
+            $kinds[] = 'discriminated';
+        }
+        if ($kinds === [] || $this->variety->int(1, $total + self::UNION_BRANCH_WEIGHT) > self::UNION_BRANCH_WEIGHT) {
+            return null;
+        }
+
+        return $this->variety->pick($kinds);
     }
 
     /**
@@ -169,8 +250,22 @@ final class SchemaGrammar
         if ($this->random->chance(0.35)) {
             $node['pattern'] = $this->random->int(0, count(self::PATTERNS) - 1);
         }
+        if ($this->variety?->chance(self::EXTRA_FORMAT_CHANCE) ?? false) {
+            // After the main stream's draws, so they stay what they were.
+            return $this->formatString();
+        }
 
         return $node;
+    }
+
+    /**
+     * A `format` string on the variety stream — the extra share of format strings, among them list items.
+     *
+     * @return array<string, mixed>
+     */
+    private function formatString(): array
+    {
+        return ['t' => 'string', 'format' => $this->variety?->pick(self::FORMATS) ?? 'date'];
     }
 
     /**
@@ -271,6 +366,9 @@ final class SchemaGrammar
         if ($this->random->chance(0.4)) {
             $node['maxItems'] = max(1, ($node['minItems'] ?? 0) + $this->random->int(0, 3));
         }
+        if (!$node['unique'] && !array_key_exists('prefix', $node) && ($this->variety?->chance(self::FORMAT_ITEM_CHANCE) ?? false)) {
+            $node['items'] = $this->formatString() + ['nullable' => $this->variety?->chance(0.25) ?? false];
+        }
 
         return $node;
     }
@@ -339,19 +437,28 @@ final class SchemaGrammar
 
     /**
      * Two to three branches, pairwise disjoint by JSON type group; at most one object-like branch. Two
-     * object members come from {@see objectPairNode()}.
+     * object members come from {@see objectPairNode()}. As a branch of another union (`$excludedGroups`
+     * not empty) it keeps clear of the groups its siblings took, and leaves the parent at least one.
      *
+     * @param array<int, string> $excludedGroups
      * @return array<string, mixed>
      */
-    private function unionNode(int $depth): array
+    private function unionNode(int $depth, array $excludedGroups = []): array
     {
         $branches = [];
         $groups = [];
         $count = $this->random->int(2, 3);
+        if ($excludedGroups !== []) {
+            $count = min($count, count(self::usableGroups($depth + 1, $excludedGroups)), count(self::usableGroups($depth, $excludedGroups)) - 1);
+        }
         for ($i = 0; $i < $count; $i++) {
+            $excluded = array_values(array_unique([...$excludedGroups, ...$groups, 'null']));
+            if (self::usableGroups($depth + 1, $excluded) === []) {
+                break;
+            }
             // `null` is the union's own nullability, never a branch of its own here.
-            $branch = $this->node(depth: $depth + 1, excludedGroups: [...$groups, 'null'], allowNullable: false);
-            $groups[] = self::group($branch['t']);
+            $branch = $this->node(depth: $depth + 1, excludedGroups: $excluded, allowNullable: false);
+            $groups = [...$groups, ...self::groupsOf($branch)];
             $branches[] = $branch;
         }
 
@@ -365,11 +472,15 @@ final class SchemaGrammar
      * own, so a value of one is seldom a value of the other, but not always: under `oneOf` a value both
      * take is no valid instance, and `FuzzSpec` asks the reference oracle which draws still mean what
      * they say. Now and then a scalar member stands beside the two. How each member is SPELLED — a
-     * `$ref` component, inline, an `allOf` split — is the renderer's choice, as for any object.
+     * `$ref` component, inline, an `allOf` split — is the renderer's choice, as for any object. The
+     * union itself is a component (`Shape: {oneOf: [Circle, Square]}`) about a third of the time, on the
+     * variety stream: `asComponent`, as a discriminated union has, since some modes are documented not
+     * to hydrate such a component where they would an inline one.
      *
+     * @param array<int, string> $excludedGroups groups a sibling took when the pair is a union branch
      * @return array<string, mixed>
      */
-    private function objectPairNode(int $depth): array
+    private function objectPairNode(int $depth, array $excludedGroups = []): array
     {
         $first = $this->objectNode($depth + 1);
         $second = $this->objectNode($depth + 1);
@@ -410,8 +521,12 @@ final class SchemaGrammar
             $member['nullable'] = false;
             $branches[] = $member;
         }
-        if ($this->random->chance(0.35)) {
-            $branches[] = $this->node(depth: $depth + 1, excludedGroups: ['object', 'null'], allowNullable: false);
+        $scalarExcluded = array_values(array_unique([...$excludedGroups, 'object', 'null']));
+        // The roll stays even where no group is free, so the draws after it do not move.
+        $scalarFits = self::usableGroups($depth + 1, $scalarExcluded) !== []
+            && ($excludedGroups === [] || count(self::usableGroups($depth, $scalarExcluded)) >= 2);
+        if ($this->random->chance(0.35) && $scalarFits) {
+            $branches[] = $this->node(depth: $depth + 1, excludedGroups: $scalarExcluded, allowNullable: false);
         }
 
         return [
@@ -420,6 +535,7 @@ final class SchemaGrammar
             'branches' => $this->random->shuffle($branches),
             'objectPair' => true,
             'overlap' => $overlap,
+            'asComponent' => $this->variety?->chance(0.3) ?? false,
         ];
     }
 

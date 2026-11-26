@@ -27,7 +27,7 @@ final class FuzzHarnessTest extends TestCase
         $this->assertSame([], InstanceGenerator::classMemberTags($scalarUnion));
         $this->assertSame([], InstanceGenerator::classMemberTags(['t' => 'object', 'properties' => []]));
 
-        $tags = ['site:unionWithString', 'unionClassMember'];
+        $tags = ['site:unionWithString', 'unionClassMember', 'classRequiresNothing'];
         $this->assertNotNull(KnownDivergences::explain(mode: GenerationMode::Symfony, category: 'wrong-accept', kind: 'wrongType:integer', tags: $tags));
         $this->assertNotNull(KnownDivergences::explain(mode: GenerationMode::Yii3, category: 'wrong-accept', kind: 'wrongType:array', tags: $tags));
         // Narrow still: yii3 has no scalar row, and a union without a class member is no class site.
@@ -94,7 +94,8 @@ final class FuzzHarnessTest extends TestCase
             $this->assertSame($isScalar, in_array('unionClassMember', $mutation['tags'], true), $mutation['kind']);
             if ($isScalar) {
                 $scalarKinds[] = $mutation['kind'];
-                $this->assertNotNull(KnownDivergences::explain(mode: GenerationMode::Symfony, category: 'wrong-accept', kind: $mutation['kind'], tags: $mutation['tags']), $mutation['kind']);
+                // The object member requires nothing: the runner tags it so ({@see FuzzRunner::tagClassesRequiringNothing()}).
+                $this->assertNotNull(KnownDivergences::explain(mode: GenerationMode::Symfony, category: 'wrong-accept', kind: $mutation['kind'], tags: [...$mutation['tags'], 'classRequiresNothing']), $mutation['kind']);
             }
         }
         $this->assertContains('notInEnum', $scalarKinds);
@@ -228,6 +229,220 @@ final class FuzzHarnessTest extends TestCase
         yield 'non-empty object beside a list, yii3' => [$probe(['puffin' => $puffin]), '{"puffin":{"zz":1}}', GenerationMode::Yii3, false];
         yield 'empty object without a list member, yii3' => [$probe(['puffin' => ['type' => 'object', 'required' => ['dingo']]]), '{"puffin":{}}', GenerationMode::Yii3, false];
         yield 'string item of a list of strings' => [$probe(['lemur' => ['type' => 'array', 'items' => ['type' => 'string', 'maxLength' => 1]]]), '{"lemur":["xyz"]}', GenerationMode::Symfony, false];
+
+        // The misfiled shapes of the 2.15.160 audit: each met a row the framework does not take there,
+        // so a real defect was filed as documented.
+        $objectOrShortList = ['anyOf' => [
+            ['type' => 'object', 'properties' => ['newt' => ['type' => 'integer']]],
+            ['type' => 'array', 'items' => ['type' => 'integer'], 'maxItems' => 1],
+        ]];
+        yield 'JSON array a list member beside an object takes, symfony' => [$probe(['heron' => $objectOrShortList]), '{"heron":[1,2]}', GenerationMode::Symfony, false];
+        yield 'JSON array a list member beside an object takes, yii3' => [$probe(['heron' => $objectOrShortList]), '{"heron":[1,2]}', GenerationMode::Yii3, false];
+        yield 'JSON array an untyped member beside an object takes' => [$probe(['heron' => ['anyOf' => [$limeRef, ['description' => 'any']]]], $lime), '{"heron":[1]}', GenerationMode::Symfony, false];
+        yield 'JSON array a nested list member beside an object takes' => [$probe(['heron' => ['anyOf' => [$limeRef, ['oneOf' => [['type' => 'string'], ['type' => 'array', 'maxItems' => 0]]]]]], $lime), '{"heron":[1]}', GenerationMode::Symfony, false];
+        $tally = ['Tally' => ['type' => 'object', 'additionalProperties' => ['type' => 'integer']]];
+        $tallyRef = ['$ref' => '#/components/schemas/Tally'];
+        yield 'scalar beside a component map' => [$probe(['ibis' => ['anyOf' => [$tallyRef, ['type' => 'integer', 'minimum' => 3]]]], $tally), '{"ibis":1}', GenerationMode::Symfony, false];
+        yield 'null item of a list of component maps' => [$probe(['ibis' => ['type' => 'array', 'items' => $tallyRef]], $tally), '{"ibis":[null]}', GenerationMode::Symfony, false];
+        $figure = ['Figure' => ['oneOf' => [
+            ['type' => 'object', 'properties' => ['radius' => ['type' => 'number']], 'required' => ['radius']],
+            ['type' => 'object', 'properties' => ['side' => ['type' => 'number']], 'required' => ['side']],
+        ]]];
+        yield 'scalar beside a component union of objects' => [$probe(['ibis' => ['anyOf' => [['$ref' => '#/components/schemas/Figure'], ['type' => 'boolean']]]], $figure), '{"ibis":"x"}', GenerationMode::Symfony, false];
+        $requiringLime = ['Lime' => ['required' => ['llama']] + $lime['Lime']];
+        yield 'scalar beside a class requiring a key' => [$probe(['otter' => ['anyOf' => [['type' => 'object', 'properties' => ['newt' => ['type' => 'integer']], 'required' => ['newt']], ['type' => 'integer', 'enum' => [4]]]]]), '{"otter":29}', GenerationMode::Symfony, false];
+        yield 'scalar item of a list of classes requiring a key' => [$probe(['lemur' => ['type' => 'array', 'items' => $limeRef]], $requiringLime), '{"lemur":["x"]}', GenerationMode::Symfony, false];
+        yield 'null item of a list of classes requiring a key' => [$probe(['lemur' => ['type' => 'array', 'items' => $limeRef]], $requiringLime), '{"lemur":[null]}', GenerationMode::Symfony, false];
+        yield 'null item of a list of allOf classes requiring a key' => [$probe(['lemur' => ['type' => 'array', 'items' => ['allOf' => [$limeRef]]]], $requiringLime), '{"lemur":[null]}', GenerationMode::Symfony, false];
+    }
+
+    /**
+     * The `classRequiresNothing` tag the class rows of {@see KnownDivergences} need is set by the runner
+     * on a scalar or `null` that meets a class whose `required` is empty — and on nothing else.
+     */
+    public function testAClassRequiringNothingIsTaggedOffTheSchema(): void
+    {
+        $method = new ReflectionMethod(FuzzRunner::class, 'tagClassesRequiringNothing');
+        $schemas = [
+            'Probe' => ['type' => 'object', 'properties' => [
+                'loose' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Loose']],
+                'strict' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Strict']],
+                'either' => ['anyOf' => [['$ref' => '#/components/schemas/Loose'], ['type' => 'string', 'maxLength' => 2]]],
+            ]],
+            'Loose' => ['type' => 'object', 'properties' => ['petal' => ['type' => 'string']]],
+            'Strict' => ['type' => 'object', 'properties' => ['petal' => ['type' => 'string']], 'required' => ['petal']],
+        ];
+        $payload = static fn(string $property, string $json): array => ['property' => $property, 'kind' => 'wrongType:string', 'json' => $json, 'expected' => PayloadVerdict::Refused, 'tags' => ['in:items']];
+        $payloads = [
+            $payload('loose', '{"loose":["x"]}'),
+            $payload('loose', '{"loose":[null]}'),
+            $payload('strict', '{"strict":["x"]}'),
+            $payload('either', '{"either":"long"}'),
+            $payload('loose', '{"loose":[{"petal":5}]}'),
+            ['property' => null, 'kind' => 'empty', 'json' => '{}', 'expected' => PayloadVerdict::Accepted, 'tags' => []],
+        ];
+
+        $tagged = array_map(
+            callback: static fn(array $payload): bool => in_array('classRequiresNothing', $payload['tags'], true),
+            array: $method->invoke(null, $payloads, ['components' => ['schemas' => $schemas]]),
+        );
+
+        $this->assertSame([true, true, false, true, false, false], $tagged);
+    }
+
+    /**
+     * The class rows hold only where the class requires nothing (support matrix: a class that requires a
+     * property refuses the empty object symfony/serializer 7.4.10 builds), and the date rows only on a
+     * temporal site.
+     */
+    public function testTheClassAndDateRowsAreNarrow(): void
+    {
+        $scalarBesideClass = ['in:union', 'unionClassMember', 'site:enum'];
+        $this->assertNull(KnownDivergences::explain(mode: GenerationMode::Symfony, category: 'wrong-accept', kind: 'notInEnum', tags: $scalarBesideClass));
+        $this->assertNotNull(KnownDivergences::explain(mode: GenerationMode::Symfony, category: 'wrong-accept', kind: 'notInEnum', tags: [...$scalarBesideClass, 'classRequiresNothing']));
+
+        foreach (['itemsOf:dto', 'valuesOf:dto'] as $container) {
+            $this->assertNull(KnownDivergences::explain(mode: GenerationMode::Symfony, category: 'wrong-accept', kind: 'nullForbidden', tags: [$container, 'site:dto']), $container);
+            $this->assertNotNull(KnownDivergences::explain(mode: GenerationMode::Symfony, category: 'wrong-accept', kind: 'nullForbidden', tags: [$container, 'site:dto', 'classRequiresNothing']), $container);
+        }
+
+        foreach (['site:temporal', 'site:nullable-temporal', 'itemsOf:temporal'] as $site) {
+            $this->assertNotNull(KnownDivergences::explain(mode: GenerationMode::Symfony, category: 'wrong-accept', kind: 'impossibleDate:date', tags: [$site]), $site);
+        }
+        $this->assertNull(KnownDivergences::explain(mode: GenerationMode::Symfony, category: 'wrong-accept', kind: 'impossibleDate:date', tags: ['in:union', 'unionWithString']));
+        $this->assertNull(KnownDivergences::explain(mode: GenerationMode::Symfony, category: 'wrong-accept', kind: 'looseDateTime', tags: []));
+    }
+
+    /**
+     * A format mutation is more than one unparseable word: a date or date-time is also sent as a
+     * string PHP's free-form parser takes (`now`, `@0`, `2020-1-2`), a date-time without an offset or
+     * with one RFC 3339 does not spell; a uuid or email as a near miss. Each kind keeps the site tag the
+     * rows are keyed on.
+     */
+    public function testFormatMutationsIncludeParseableStringsAndNearMisses(): void
+    {
+        $expected = [
+            'date' => ['parseableNonDate:date' => ['x', 'now', 'tomorrow', '@0', '2020-1-2', '+1 day']],
+            'date-time' => ['parseableNonDate:date-time' => ['x', 'now', 'tomorrow', '@0', '2020-1-2', '+1 day', '2024-01-02T10:00:00', '2024-01-02T10:00:00+0200']],
+            'uuid' => ['nearMissFormat:uuid' => ['123e4567e89b42d3a456426614174000', '{123e4567-e89b-42d3-a456-426614174000}']],
+            'email' => ['nearMissFormat:email' => ['@example.com', 'a.@example.com', 'a..b@example.com', 'a@example..com']],
+        ];
+        $offsets = [];
+        foreach ($expected as $format => $kinds) {
+            $node = ['t' => 'string', 'format' => $format];
+            $seen = [];
+            for ($seed = 1; $seed <= 200; $seed++) {
+                foreach ((new InstanceGenerator(new FuzzRandom($seed)))->mutations($node) as $mutation) {
+                    if (!array_key_exists($mutation['kind'], $kinds)) {
+                        continue;
+                    }
+                    $site = $format === 'date' || $format === 'date-time' ? 'site:temporal' : 'site:string';
+                    $this->assertContains($site, $mutation['tags'], $mutation['kind']);
+                    $seen[$mutation['kind']][$mutation['value']] = $mutation['tags'];
+                }
+            }
+            foreach ($kinds as $kind => $values) {
+                $this->assertEqualsCanonicalizing($values, array_keys($seen[$kind] ?? []), $kind);
+            }
+            if ($format === 'date-time') {
+                $offsets = $seen['parseableNonDate:date-time'];
+            }
+        }
+
+        $this->assertContains('dateTimeNoOffset', $offsets['2024-01-02T10:00:00'] ?? []);
+        $this->assertContains('dateTimeOffsetWithoutColon', $offsets['2024-01-02T10:00:00+0200'] ?? []);
+        $this->assertNotContains('dateTimeNoOffset', $offsets['now'] ?? []);
+    }
+
+    /**
+     * A valid date-time is spelled every way RFC 3339 allows: `t` / `z` in lower case (tagged, for the
+     * modes the support matrix documents as refusing it) and fractional seconds — three or six digits,
+     * the lengths Laravel's `date_format` round-trips.
+     */
+    public function testValidDateTimesUseTheRfc3339Spellings(): void
+    {
+        $oracle = new ReferenceOracle(['components' => ['schemas' => ['Probe' => ['type' => 'object', 'properties' => ['fox' => ['type' => 'string', 'format' => 'date-time']]]]]]);
+        $lowercase = 0;
+        $fraction = 0;
+        for ($seed = 1; $seed <= 200; $seed++) {
+            $instance = (new InstanceGenerator(new FuzzRandom($seed)))->validInstance(['t' => 'string', 'format' => 'date-time']);
+            $value = $instance['value'];
+            $this->assertTrue($oracle->accepts((string)json_encode(['fox' => $value])), $value);
+            $isLower = preg_match('/^\d{4}-\d{2}-\d{2}t.*[z\d]$/', $value) === 1 && !str_contains($value, 'Z');
+            $this->assertSame($isLower, in_array('lowercaseDateTime', $instance['tags'], true), $value);
+            $lowercase += $isLower ? 1 : 0;
+            $fraction += preg_match('/:\d{2}\.(\d{3}|\d{6})(?:z|Z|[+-])/', $value) === 1 ? 1 : 0;
+        }
+        $this->assertGreaterThan(0, $lowercase);
+        $this->assertGreaterThan(0, $fraction);
+    }
+
+    /**
+     * The date-time rows stay keyed on what they document: symfony's free-form parse on a temporal site,
+     * the no-offset pattern every mode shares, yii3's `p` for an offset without a colon, and the four
+     * modes that refuse a lower-case `t` / `z`. `format: date` is strict in symfony since 2.15.160, so
+     * no row covers a parseable string sent for it.
+     */
+    public function testTheParseableDateTimeRowsAreNarrow(): void
+    {
+        $explain = static fn(GenerationMode $mode, string $category, string $kind, array $tags): ?string => KnownDivergences::explain(mode: $mode, category: $category, kind: $kind, tags: $tags);
+
+        foreach (['site:temporal', 'site:nullable-temporal', 'itemsOf:temporal', 'valuesOf:temporal'] as $site) {
+            $this->assertNotNull($explain(GenerationMode::Symfony, 'wrong-accept', 'parseableNonDate:date-time', [$site]), $site);
+        }
+        $this->assertNull($explain(GenerationMode::Symfony, 'wrong-accept', 'parseableNonDate:date-time', ['site:string']));
+        $this->assertNull($explain(GenerationMode::Symfony, 'wrong-accept', 'parseableNonDate:date', ['site:temporal']));
+        $this->assertNull($explain(GenerationMode::Yii3, 'wrong-accept', 'parseableNonDate:date', ['site:temporal']));
+
+        foreach (GenerationMode::cases() as $mode) {
+            $this->assertNotNull($explain($mode, 'wrong-accept', 'parseableNonDate:date-time', ['site:temporal', 'dateTimeNoOffset']), $mode->value);
+            $this->assertNull($explain($mode, 'wrong-accept', 'parseableNonDate:date', ['site:temporal', 'dateTimeNoOffset']), $mode->value);
+        }
+        $this->assertNotNull($explain(GenerationMode::Yii3, 'wrong-accept', 'parseableNonDate:date-time', ['site:temporal', 'dateTimeOffsetWithoutColon']));
+        $this->assertNull($explain(GenerationMode::Yii3, 'wrong-accept', 'parseableNonDate:date-time', ['site:temporal']));
+        $this->assertNull($explain(GenerationMode::Laravel, 'wrong-accept', 'parseableNonDate:date-time', ['site:temporal', 'dateTimeOffsetWithoutColon']));
+
+        foreach ([GenerationMode::Runtime, GenerationMode::Laravel, GenerationMode::LaravelData, GenerationMode::Yii3] as $mode) {
+            $this->assertNotNull($explain($mode, 'wrong-refuse', 'valid', ['lowercaseDateTime']), $mode->value);
+        }
+        $this->assertNull($explain(GenerationMode::Symfony, 'wrong-refuse', 'valid', ['lowercaseDateTime']));
+        $this->assertNull($explain(GenerationMode::Runtime, 'wrong-refuse', 'valid', []));
+        $this->assertNull($explain(GenerationMode::Laravel, 'wrong-accept', 'nearMissFormat:email', ['site:string']));
+
+        // A scalar beside a class member that requires nothing is built into the class, whatever it breaks.
+        foreach (['parseableNonDate:date', 'nearMissFormat:uuid'] as $kind) {
+            $this->assertNotNull($explain(GenerationMode::Symfony, 'wrong-accept', $kind, ['in:union', 'unionClassMember', 'classRequiresNothing']), $kind);
+        }
+    }
+
+    /**
+     * The key a failure is deduplicated by before its shrink carries the shape it was met in: two
+     * defects of one mode, kind and descriptor in different shapes were filed under the first one's
+     * shrunk case. A renamed property or component is the same shape.
+     */
+    public function testThePreliminaryKeyTellsShapesApart(): void
+    {
+        $method = new ReflectionMethod(FuzzRunner::class, 'preliminaryKey');
+        $document = static fn(array $property, array $components = []): array => [
+            'openapi' => '3.1.0',
+            'components' => ['schemas' => ['Probe' => ['type' => 'object', 'properties' => ['crane' => $property]]] + $components],
+        ];
+        $parts = ['symfony', 'wrong-accept', 'tooManyItems', 'array', 'site:array'];
+        $ofIntegers = $document(['type' => 'array', 'items' => ['type' => 'integer'], 'maxItems' => 1]);
+        $ofLists = $document(['type' => 'array', 'items' => ['type' => 'array'], 'maxItems' => 1]);
+        $renamed = [
+            'openapi' => '3.1.0',
+            'components' => ['schemas' => ['Probe' => ['type' => 'object', 'properties' => ['stork' => ['type' => 'array', 'items' => ['type' => 'integer'], 'maxItems' => 4]]]]],
+        ];
+        $viaGold = $document(['$ref' => '#/components/schemas/Gold'], ['Gold' => ['type' => 'array', 'items' => ['type' => 'integer'], 'maxItems' => 1]]);
+        $viaSilver = $document(['$ref' => '#/components/schemas/Silver'], ['Silver' => ['type' => 'array', 'items' => ['type' => 'integer'], 'maxItems' => 1]]);
+        $viaTin = $document(['$ref' => '#/components/schemas/Tin'], ['Tin' => ['type' => 'array', 'items' => ['type' => 'string'], 'maxItems' => 1]]);
+
+        $this->assertNotSame($method->invoke(null, $parts, $ofIntegers), $method->invoke(null, $parts, $ofLists));
+        $this->assertSame($method->invoke(null, $parts, $ofIntegers), $method->invoke(null, $parts, $renamed));
+        $this->assertSame($method->invoke(null, $parts, $viaGold), $method->invoke(null, $parts, $viaSilver));
+        $this->assertNotSame($method->invoke(null, $parts, $viaGold), $method->invoke(null, $parts, $viaTin));
+        $this->assertNotSame($method->invoke(null, $parts, $ofIntegers), $method->invoke(null, ['runtime', ...array_slice($parts, 1)], $ofIntegers));
     }
 
     /**
@@ -238,15 +453,18 @@ final class FuzzHarnessTest extends TestCase
     {
         $date = ['t' => 'string', 'format' => 'date'];
         $method = new ReflectionMethod(InstanceGenerator::class, 'unionMutations');
-        $generator = new InstanceGenerator(new FuzzRandom(3));
         $unions = [
             'nullable integer' => ['t' => 'union', 'op' => 'anyOf', 'branches' => [['t' => 'integer', 'maximum' => -36, 'exclusiveMaximum' => false, 'nullable' => true], $date]],
             'number enum and null' => ['t' => 'union', 'op' => 'oneOf', 'branches' => [['t' => 'number', 'enum' => [-5]], $date, ['t' => 'null']]],
         ];
         foreach ($unions as $label => $union) {
-            /** @var array<int, array{kind: string, value: mixed, tags: array<int, string>}> $mutations */
-            $mutations = $method->invoke($generator, $union);
-            $integers = array_values(array_filter($mutations, static fn(array $mutation): bool => is_int($mutation['value'])));
+            // Several draws: a node keeps a sample of its mutations, and one draw may hold no integer.
+            $integers = [];
+            for ($seed = 1; $seed <= 10; $seed++) {
+                /** @var array<int, array{kind: string, value: mixed, tags: array<int, string>}> $mutations */
+                $mutations = $method->invoke(new InstanceGenerator(new FuzzRandom($seed)), $union);
+                $integers = [...$integers, ...array_filter($mutations, static fn(array $mutation): bool => is_int($mutation['value']))];
+            }
             $this->assertNotSame([], $integers, $label);
             foreach ($integers as $mutation) {
                 $this->assertNotNull(KnownDivergences::explain(mode: GenerationMode::Yii3, category: 'wrong-accept', kind: $mutation['kind'], tags: $mutation['tags']), $label);
@@ -598,12 +816,15 @@ final class FuzzHarnessTest extends TestCase
                         $seen[array_key_exists('$ref', $branch) ? 'refMember' : 'inlineMember'] = true;
                     }
                 }
-                // Never a component union of its own: that one is warned about at generation time.
-                $this->assertArrayNotHasKey('$ref', $schema);
+                // A component union of its own (`Shape: {oneOf: [Circle, Square]}`) when the grammar says so.
+                if ($pair === $case['node']) {
+                    $this->assertSame($pair['asComponent'], self::componentUnionIn(schema: $schema, document: $document) !== null);
+                    $seen[$pair['asComponent'] ? 'componentPair' : 'inlinePair'] = true;
+                }
             }
         }
 
-        foreach (['overlap:true', 'overlap:false', 'oneOf', 'anyOf', 'sharedRequired:true', 'sharedRequired:false', 'refMember', 'inlineMember'] as $expected) {
+        foreach (['overlap:true', 'overlap:false', 'oneOf', 'anyOf', 'sharedRequired:true', 'sharedRequired:false', 'refMember', 'inlineMember', 'componentPair', 'inlinePair'] as $expected) {
             $this->assertArrayHasKey($expected, $seen, $expected);
         }
     }
@@ -662,6 +883,33 @@ final class FuzzHarnessTest extends TestCase
         }
 
         return null;
+    }
+
+    /**
+     * The component a property's schema names as a union of its own — through a 3.1 nullable wrapper,
+     * `allOf: [$ref]` and the 3.0 `nullable` beside it — or null when the union is spelled inline.
+     *
+     * @param array<string, mixed> $schema
+     * @param array<string, mixed> $document
+     */
+    private static function componentUnionIn(array $schema, array $document): ?string
+    {
+        foreach (['anyOf', 'oneOf'] as $keyword) {
+            $members = $schema[$keyword] ?? null;
+            if (is_array($members) && count($members) === 2 && $members[1] === ['type' => 'null']) {
+                $schema = $members[0];
+            }
+        }
+        if (is_array($schema['allOf'] ?? null) && count($schema['allOf']) === 1) {
+            $schema = $schema['allOf'][0];
+        }
+        if (!is_string($schema['$ref'] ?? null)) {
+            return null;
+        }
+        $name = substr($schema['$ref'], strlen('#/components/schemas/'));
+        $component = $document['components']['schemas'][$name] ?? [];
+
+        return (array_key_exists('oneOf', $component) || array_key_exists('anyOf', $component)) && !array_key_exists('discriminator', $component) ? $name : null;
     }
 
     /**
@@ -739,5 +987,313 @@ final class FuzzHarnessTest extends TestCase
         // 3.0 has no `prefixItems`: `items` holds for every element.
         yield '3.0 items holds for every element' => [$tuple, '{"fox":[null,"2026-10-25"]}', false, '3.0.3'];
         yield '3.0 items takes a list of its own' => [$tuple, '{"fox":["2026-10-25"]}', true, '3.0.3'];
+        // Instance equality is JSON equality: object members in any order, `1` and `1.0` one number.
+        $pair = ['type' => 'object', 'properties' => ['a' => ['type' => 'integer'], 'b' => ['type' => 'integer']]];
+        yield 'enum ignores the key order of an object' => [$probe(['enum' => [['a' => 1, 'b' => 2]]]), '{"fox":{"b":2,"a":1}}', true];
+        yield 'const ignores the key order of an object' => [$probe(['const' => ['a' => 1, 'b' => [1, 2]]]), '{"fox":{"b":[1,2],"a":1}}', true];
+        yield 'const keeps the order of a list' => [$probe(['const' => [1, 2]]), '{"fox":[2,1]}', false];
+        yield 'uniqueItems sees one object in two key orders' => [$probe(['type' => 'array', 'uniqueItems' => true, 'items' => $pair]), '{"fox":[{"a":1,"b":2},{"b":2,"a":1}]}', false];
+        yield 'uniqueItems sees one number in 1 and 1.0' => [$probe(['type' => 'array', 'uniqueItems' => true]), '{"fox":[1,1.0]}', false];
+        yield 'uniqueItems takes distinct objects' => [$probe(['type' => 'array', 'uniqueItems' => true, 'items' => $pair]), '{"fox":[{"a":1,"b":2},{"a":2,"b":1}]}', true];
+        // RFC 3339 `full-time`: an hour, minute and offset of a time of day; `T` and `Z` in either case.
+        $dateTime = $probe(['type' => 'string', 'format' => 'date-time']);
+        yield 'date-time lower case t and z' => [$dateTime, '{"fox":"2026-01-02t10:00:00.25z"}', true];
+        yield 'date-time hour out of range' => [$dateTime, '{"fox":"2026-01-02T24:00:00Z"}', false];
+        yield 'date-time minute out of range' => [$dateTime, '{"fox":"2026-01-02T10:60:00Z"}', false];
+        yield 'date-time offset hour out of range' => [$dateTime, '{"fox":"2026-01-02T10:00:00+25:00"}', false];
+        yield 'date-time offset minute out of range' => [$dateTime, '{"fox":"2026-01-02T10:00:00+02:60"}', false];
+        yield 'date-time with no offset' => [$dateTime, '{"fox":"2026-01-02T10:00:00"}', false];
+        // A leap second is valid only at the end of a UTC day — out of the oracle's reach.
+        yield 'date-time leap second is no answer' => [$dateTime, '{"fox":"2026-06-30T23:59:60Z"}', null];
+        // An assertion keyword the oracle does not evaluate is no answer, never a silent pass.
+        $unevaluated = [
+            'not' => ['not' => ['type' => 'string']],
+            'contains' => ['type' => 'array', 'contains' => ['type' => 'string']],
+            'propertyNames' => ['type' => 'object', 'propertyNames' => ['maxLength' => 1]],
+            'patternProperties' => ['type' => 'object', 'patternProperties' => ['^a' => ['type' => 'string']]],
+            'unevaluatedProperties' => ['type' => 'object', 'unevaluatedProperties' => false],
+            'dependentRequired' => ['type' => 'object', 'dependentRequired' => ['a' => ['b']]],
+            'if' => ['if' => ['type' => 'integer'], 'then' => ['minimum' => 5]],
+        ];
+        foreach ($unevaluated as $keyword => $schema) {
+            yield $keyword . ' is no answer' => [$probe($schema), '{"fox":1}', null];
+        }
+    }
+
+    /**
+     * A union or a discriminated union is drawn as a BRANCH of a union, beside a scalar — a union of two
+     * objects among them — and the branches still take pairwise disjoint JSON type groups.
+     */
+    public function testTheGrammarDrawsUnionsAsUnionBranches(): void
+    {
+        $seen = [];
+        foreach (range(1, 120) as $seed) {
+            foreach (FuzzSpec::generate(seed: $seed, propertyCount: 6)->cases as $case) {
+                foreach (self::unionNodesIn($case['node']) as $union) {
+                    // Two object members share their group by design.
+                    $groups = ($union['objectPair'] ?? false) ? ['pairMembers'] : [];
+                    foreach ($union['branches'] as $branch) {
+                        $branchGroups = ($union['objectPair'] ?? false) && $branch['t'] === 'object' ? [] : SchemaGrammar::groupsOf($branch);
+                        $this->assertSame([], array_intersect($groups, $branchGroups), 'seed ' . $seed);
+                        $groups = [...$groups, ...$branchGroups];
+                        if ($branch['t'] === 'discriminated') {
+                            $seen['discriminatedBranch'] = true;
+                        }
+                        if ($branch['t'] === 'union') {
+                            $seen[($branch['objectPair'] ?? false) ? 'pairBranch' : 'unionBranch'] = true;
+                        }
+                    }
+                    $this->assertGreaterThanOrEqual(2, count($union['branches']), 'seed ' . $seed);
+                }
+            }
+        }
+
+        foreach (['discriminatedBranch', 'unionBranch', 'pairBranch'] as $expected) {
+            $this->assertArrayHasKey($expected, $seen, $expected);
+        }
+    }
+
+    /**
+     * The members of a union nested as a branch count as the outer union's for the tags about siblings.
+     */
+    public function testANestedUnionsMembersCountForTheSiblingTags(): void
+    {
+        $object = ['t' => 'object', 'props' => ['otter' => ['t' => 'integer', 'nullable' => false]], 'required' => ['otter'], 'additional' => null, 'nullable' => false];
+        $nested = ['t' => 'union', 'op' => 'oneOf', 'branches' => [$object, ['t' => 'string', 'nullable' => false]], 'nullable' => false];
+        $union = ['t' => 'union', 'op' => 'anyOf', 'branches' => [['t' => 'boolean', 'nullable' => false], $nested], 'nullable' => false];
+
+        $this->assertSame(['unionClassMember'], InstanceGenerator::classMemberTags($union));
+        $this->assertSame('unionWithString', InstanceGenerator::descriptor($union));
+        $this->assertCount(3, InstanceGenerator::memberBranches($union));
+    }
+
+    /**
+     * Every draw of every case means what it says on the finished document — a valid value the reference
+     * oracle does not refuse, a mutation it does not accept — whatever production made the case: a union
+     * branch that is a union, `allOf: [$ref]` around an object or a union, a 3.0 nullable `allOf`,
+     * annotation siblings, a list of `format` strings.
+     */
+    public function testEveryDrawMeansWhatItSaysOnTheDocument(): void
+    {
+        $checked = 0;
+        foreach (range(1, 60) as $seed) {
+            $spec = FuzzSpec::generate(seed: $seed, propertyCount: 6);
+            foreach ($spec->cases as $name => $case) {
+                $oracle = new ReferenceOracle($spec->document([$name]));
+                $this->assertNotFalse($oracle->accepts(FuzzSpec::payload($name, $case['valid']['value'])), 'seed ' . $seed . ' ' . $name);
+                foreach ($case['mutations'] as $mutation) {
+                    $this->assertNotTrue(
+                        condition: $oracle->accepts(FuzzSpec::payload($name, $mutation['value'])),
+                        message: 'seed ' . $seed . ' ' . $name . ' ' . $mutation['kind'],
+                    );
+                }
+                $checked++;
+            }
+        }
+
+        $this->assertGreaterThan(300, $checked);
+    }
+
+    /**
+     * `allOf: [$ref]` spells an object, a list, a map, a union and a discriminated union too, not only a
+     * scalar; 3.0 writes a nullable union component as `{allOf: [$ref Union], nullable: true}`; and
+     * annotation-only siblings sit on `$ref` and `allOf` wrappers.
+     */
+    public function testTheRendererSpellsWrappersBeyondScalars(): void
+    {
+        $seen = [];
+        foreach (range(1, 120) as $seed) {
+            $document = FuzzSpec::generate(seed: $seed, propertyCount: 6)->document();
+            $schemas = $document['components']['schemas'];
+            foreach (self::schemasIn($schemas) as $schema) {
+                if (array_intersect(['description', 'title', 'deprecated', 'default', 'example', 'examples'], array_keys($schema)) !== []
+                    && (array_key_exists('$ref', $schema) || array_key_exists('allOf', $schema))) {
+                    $seen['annotated'] = true;
+                }
+                $allOf = $schema['allOf'] ?? null;
+                if (!is_array($allOf) || count($allOf) !== 1 || !is_string($allOf[0]['$ref'] ?? null)) {
+                    continue;
+                }
+                $target = $schemas[substr($allOf[0]['$ref'], strlen('#/components/schemas/'))] ?? [];
+                $kind = match (true) {
+                    array_key_exists('discriminator', $target) => 'discriminated',
+                    array_key_exists('oneOf', $target) || array_key_exists('anyOf', $target) => 'union',
+                    ($target['type'] ?? null) === 'array' => 'array',
+                    is_array($target['additionalProperties'] ?? null) && !array_key_exists('properties', $target) => 'map',
+                    array_key_exists('properties', $target) => 'object',
+                    default => 'other',
+                };
+                $seen[$kind] = true;
+                if ($kind === 'union' && ($schema['nullable'] ?? false) === true && $document['openapi'] === '3.0.3') {
+                    $seen['nullableUnion30'] = true;
+                }
+            }
+        }
+
+        foreach (['annotated', 'object', 'array', 'map', 'union', 'discriminated', 'nullableUnion30'] as $expected) {
+            $this->assertArrayHasKey($expected, $seen, $expected);
+        }
+    }
+
+    /**
+     * A `default` annotation never sits on a `required` property: the documented "`required` with a
+     * `default`" contradiction (the default wins in four modes, the generator warns) is no finding to draw.
+     */
+    public function testNoDefaultIsAnnotatedOnARequiredProperty(): void
+    {
+        $defaults = 0;
+        foreach (range(1, 120) as $seed) {
+            $document = FuzzSpec::generate(seed: $seed, propertyCount: 6)->document();
+            foreach (self::schemasIn($document['components']['schemas']) as $schema) {
+                $defaults += array_key_exists('default', $schema) ? 1 : 0;
+                if (!is_array($schema['properties'] ?? null)) {
+                    continue;
+                }
+                foreach ($schema['required'] ?? [] as $required) {
+                    $property = $schema['properties'][$required] ?? [];
+                    $this->assertArrayNotHasKey('default', $property, 'seed ' . $seed . ' ' . $required);
+                    foreach ($property['anyOf'] ?? $property['oneOf'] ?? [] as $member) {
+                        $this->assertArrayNotHasKey('default', $member, 'seed ' . $seed . ' ' . $required);
+                    }
+                }
+            }
+        }
+
+        $this->assertGreaterThan(0, $defaults);
+    }
+
+    /**
+     * The variety stream raises the share of `format` strings from about 20% to about 30% — the list items
+     * among them, which get an extra chance of their own.
+     */
+    public function testFormatStringsAreAboutAThirdOfStrings(): void
+    {
+        $plain = self::formatShares(withVariety: false);
+        $varied = self::formatShares(withVariety: true);
+
+        $this->assertLessThan(0.24, $plain['strings']);
+        $this->assertGreaterThan(0.28, $varied['strings']);
+        $this->assertLessThan(0.36, $varied['strings']);
+        $this->assertGreaterThan($plain['items'] + 0.08, $varied['items']);
+    }
+
+    /**
+     * The share of `format` among the strings a grammar draws (a single-member `enum`, a discriminator's
+     * tag, left out), and among the items of its lists.
+     *
+     * @return array{strings: float, items: float}
+     */
+    private static function formatShares(bool $withVariety): array
+    {
+        $strings = 0;
+        $formats = 0;
+        $lists = 0;
+        $formatItems = 0;
+        foreach (range(1, 300) as $seed) {
+            $grammar = new SchemaGrammar(
+                random: new FuzzRandom($seed),
+                openApi31: true,
+                names: new NameAllocator(),
+                pairs: new FuzzRandom($seed + 1),
+                variety: $withVariety ? new FuzzRandom($seed + 2) : null,
+            );
+            foreach (range(1, 6) as $ignored) {
+                foreach (self::nodesIn($grammar->node(depth: 1)) as $node) {
+                    if ($node['t'] === 'string' && count($node['enum'] ?? []) !== 1) {
+                        $strings++;
+                        $formats += array_key_exists('format', $node) ? 1 : 0;
+                    }
+                    if ($node['t'] === 'array') {
+                        $lists++;
+                        $formatItems += array_key_exists('format', $node['items']) ? 1 : 0;
+                    }
+                }
+            }
+        }
+
+        return ['strings' => $formats / $strings, 'items' => $formatItems / $lists];
+    }
+
+    /**
+     * A crash or a refusal at an undiscriminated union COMPONENT of objects is the support-matrix row only
+     * in laravel and laravel-data, only when the generator warned about a component the property reaches.
+     */
+    public function testAnUnhydratableUnionComponentIsDocumentedOnlyWhereWarned(): void
+    {
+        $warnings = ['Property "llama" of Probe refers to Ivory, an undiscriminated anyOf union: this mode cannot hydrate a payload into it (runtime mode can). Add a discriminator to Ivory, or type the property as one member.'];
+        $tags = ['unionObjectPair', 'undiscriminatedComponent'];
+
+        $this->assertNotNull(KnownDivergences::explainUnhydratableUnion(mode: GenerationMode::Laravel, category: 'crash', tags: $tags, warnings: $warnings, reachable: ['Ivory']));
+        $this->assertNotNull(KnownDivergences::explainUnhydratableUnion(mode: GenerationMode::LaravelData, category: 'wrong-refuse', tags: $tags, warnings: $warnings, reachable: ['Mauve', 'Ivory']));
+        // Narrow: another mode, an inline pair, a component the property does not reach, no warning, a wrong accept.
+        $this->assertNull(KnownDivergences::explainUnhydratableUnion(mode: GenerationMode::Yii3, category: 'crash', tags: $tags, warnings: $warnings, reachable: ['Ivory']));
+        $this->assertNull(KnownDivergences::explainUnhydratableUnion(mode: GenerationMode::Laravel, category: 'crash', tags: ['unionObjectPair'], warnings: $warnings, reachable: ['Ivory']));
+        $this->assertNull(KnownDivergences::explainUnhydratableUnion(mode: GenerationMode::Laravel, category: 'crash', tags: $tags, warnings: $warnings, reachable: ['Teal']));
+        $this->assertNull(KnownDivergences::explainUnhydratableUnion(mode: GenerationMode::Laravel, category: 'crash', tags: $tags, warnings: [], reachable: ['Ivory']));
+        $this->assertNull(KnownDivergences::explainUnhydratableUnion(mode: GenerationMode::Laravel, category: 'wrong-accept', tags: $tags, warnings: $warnings, reachable: ['Ivory']));
+    }
+
+    /**
+     * Every draw at a union of two objects spelled as a component is tagged `undiscriminatedComponent`,
+     * and no draw at an inline one is.
+     */
+    public function testAComponentUnionOfObjectsIsTagged(): void
+    {
+        $member = static fn(string $key): array => ['t' => 'object', 'props' => [$key => ['t' => 'integer', 'nullable' => false]], 'required' => [$key], 'additional' => null, 'nullable' => false];
+        $pair = ['t' => 'union', 'op' => 'oneOf', 'branches' => [$member('otter'), $member('heron')], 'objectPair' => true, 'overlap' => false, 'nullable' => false];
+        $instances = new InstanceGenerator(new FuzzRandom(5));
+
+        foreach ([true, false] as $asComponent) {
+            $node = [...$pair, 'asComponent' => $asComponent];
+            $this->assertSame($asComponent, in_array('undiscriminatedComponent', $instances->validInstance($node)['tags'], true));
+            foreach ($instances->mutations($node) as $mutation) {
+                if (in_array('in:union', $mutation['tags'], true)) {
+                    $this->assertSame($asComponent, in_array('undiscriminatedComponent', $mutation['tags'], true));
+                }
+            }
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $node
+     * @return list<array<string, mixed>>
+     */
+    private static function nodesIn(array $node): array
+    {
+        $found = array_key_exists('t', $node) ? [$node] : [];
+        foreach ($node as $child) {
+            if (is_array($child)) {
+                $found = [...$found, ...self::nodesIn($child)];
+            }
+        }
+
+        return $found;
+    }
+
+    /**
+     * @param array<string, mixed> $node
+     * @return list<array<string, mixed>>
+     */
+    private static function unionNodesIn(array $node): array
+    {
+        return array_values(array_filter(self::nodesIn($node), static fn(array $found): bool => $found['t'] === 'union'));
+    }
+
+    /**
+     * Every schema object in a tree of schemas, the root included.
+     *
+     * @param array<int|string, mixed> $tree
+     * @return list<array<string, mixed>>
+     */
+    private static function schemasIn(array $tree): array
+    {
+        $found = [$tree];
+        foreach ($tree as $child) {
+            if (is_array($child)) {
+                $found = [...$found, ...self::schemasIn($child)];
+            }
+        }
+
+        return $found;
     }
 }

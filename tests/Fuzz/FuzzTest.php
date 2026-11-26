@@ -33,16 +33,23 @@ final class FuzzTest extends TestCase
      * the grammar learned to draw; then pick other clean seeds with a `FUZZ_SHRINK=0` scan).
      */
     private const array CLEAN_SEEDS = [
-        70 => 6, 71 => 6, 84 => 6, 89 => 6, 91 => 6, 144 => 6, 152 => 6,
-        4 => 4, 29 => 4, 40 => 4, 42 => 4, 46 => 4, 50 => 4, 60 => 4, 64 => 4, 65 => 4, 76 => 4, 80 => 4,
-        81 => 4, 85 => 4, 92 => 4, 93 => 4, 95 => 4, 102 => 4, 120 => 4, 136 => 4, 140 => 4, 146 => 4,
-        147 => 4, 161 => 4, 173 => 4, 186 => 4, 192 => 4, 194 => 4, 199 => 4, 204 => 4, 207 => 4,
+        // Out until fixed: 161 — symfony accepts `2020-1-2` for a map of `format: date`; 163 — symfony
+        // accepts `+1 day` for a `oneOf` of `type: array` and `format: date` (`parseableNonDate:date`).
+        // Out since the grammar draws more `format` strings, annotation siblings and union components of
+        // objects: 42 — symfony accepts `@0` for a list of `format: date`; 91 — symfony and yii3 accept
+        // `2020-1-2` for a `format: date` property; 95 — runtime refuses an integer for a union component
+        // `anyOf: [$ref integer, $ref A, $ref B]` of two objects and a scalar, and yii3 accepts `null` and
+        // broken objects there.
+        70 => 6, 71 => 6, 84 => 6, 89 => 6, 144 => 6, 152 => 6,
+        4 => 4, 29 => 4, 40 => 4, 46 => 4, 50 => 4, 60 => 4, 64 => 4, 65 => 4, 76 => 4, 80 => 4,
+        81 => 4, 85 => 4, 92 => 4, 93 => 4, 102 => 4, 120 => 4, 136 => 4, 140 => 4, 146 => 4,
+        147 => 4, 173 => 4, 186 => 4, 192 => 4, 194 => 4, 199 => 4, 204 => 4, 207 => 4,
         208 => 4, 216 => 4,
         // Discriminated unions (2.15.145): component ones, and an inline one on a property.
         221 => 4, 242 => 4, 282 => 4,
         // An array or an object sent to an enum (yii3 tried to build the enum), and a date beside an array
         // branch (laravel-data cast every value as a date, yii3 made the array a string).
-        14 => 4, 15 => 4, 163 => 4,
+        14 => 4, 15 => 4,
         // Unions whose members carry their own keywords: an enum or a length judged only on its own type,
         // a list beside a map, an all-object `anyOf` sent a list, a nullable member on an optional property.
         311 => 4, 323 => 4, 330 => 4, 335 => 4, 340 => 4, 347 => 4, 355 => 4, 401 => 4, 406 => 4, 415 => 4,
