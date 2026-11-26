@@ -6257,7 +6257,10 @@ final class GenerateDtoCommand extends Command
 
                     continue;
                 }
-                $ref = $variant['$ref'] ?? null;
+                // `allOf: [{$ref: Teal}]` is Teal wrapped, typed and marked as the bare `$ref`: read as a
+                // branch of no class, its untyped `allOf` admitted an object and the union stayed
+                // spelled out, so the open object beside it matched the built Teal as well.
+                $ref = $this->referenceOrSingleRefAllOf($variant);
                 $referencedClass = is_string($ref)
                     ? $this->schemaRefToClassName($ref, $this->getSchemaSourceFile($ownerClassName) ?? $this->rootSpecFile)
                     : null;
@@ -8557,6 +8560,7 @@ final class GenerateDtoCommand extends Command
                     ref: $items['$ref'],
                     ownerClassName: $ownerClassName,
                     propertyName: $propertyName . 'Item',
+                    inAContainer: true,
                 );
                 if ($aliasItemType !== null) {
                     return ['array<' . $itemPrefix . $aliasItemType . '>', $nullable];
@@ -10368,6 +10372,7 @@ final class GenerateDtoCommand extends Command
                 ref: $additionalProperties['$ref'],
                 ownerClassName: $ownerClassName,
                 propertyName: $propertyName . 'Value',
+                inAContainer: true,
             );
             if ($aliasValueType !== null) {
                 // A nullable array alias admits null as a value, as it does as a property or an item.
@@ -10714,8 +10719,11 @@ final class GenerateDtoCommand extends Command
      * array type (e.g. `array<Item>`) so a property referencing it is typed as a list rather
      * than an empty generated class. Returns null for object schemas and external refs (which keep
      * the class-name typing). Only local `#/components/schemas/...` aliases are redirected.
+     *
+     * `$inAContainer` is set where the alias is a list ITEM or map VALUE — see
+     * `symfonyAliasInAContainerType()`.
      */
-    private function resolveArrayAliasRefType(string $ref, string $ownerClassName, string $propertyName): ?string
+    private function resolveArrayAliasRefType(string $ref, string $ownerClassName, string $propertyName, bool $inAContainer = false): ?string
     {
         $prefix = '#/components/schemas/';
         if (!str_starts_with($ref, $prefix)) {
@@ -10754,7 +10762,33 @@ final class GenerateDtoCommand extends Command
         $definition = $this->canonicalNullableRefContainers($definition);
         [$type] = $this->resolvePropertyType($definition, $className, $propertyName);
 
-        return $type;
+        return $inAContainer
+            ? $this->symfonyAliasInAContainerType(type: $type, definition: $definition, sourceFile: $this->getSchemaSourceFile($className))
+            : $type;
+    }
+
+    /**
+     * Symfony: an array alias held one container deep — `items: {$ref: Days}` over `Days: {type: array,
+     * nullable: true, items: {format: date}}` — is typed as the same list written inline there
+     * (`resolveNestedContainerDocType()`): `array<?array<string>>`, the callback checking the format and
+     * the enum. Typed as the alias's top-level list, `array<?array<DateTimeImmutable>>`,
+     * symfony/serializer's `ArrayDenormalizer` handed a null item to the inner `DateTimeImmutable[]`
+     * denormalization, which refused the null the document allows; and a non-nullable alias left the
+     * date to `DateTimeNormalizer`, which reads `"x"` as a military time zone, where the callback
+     * refuses it. Only dates and enums move to the strings they arrive as: a class stays a class
+     * (README.support-matrix, "a null VALUE of … a map of nullable LISTS of classes"), and a union the
+     * nested typing cannot name keeps its own type.
+     *
+     * @param array<string, mixed> $definition
+     */
+    private function symfonyAliasInAContainerType(string $type, array $definition, ?string $sourceFile): string
+    {
+        if ($this->attributeMode !== self::ATTRIBUTE_MODE_SYMFONY || !$this->isListOfBuiltObjects($type)) {
+            return $type;
+        }
+        $nested = $this->resolveNestedContainerDocType(schema: $definition, currentSourceFile: $sourceFile);
+
+        return $this->isListOfBuiltObjects($nested) || str_contains($nested, 'mixed') ? $type : $nested;
     }
 
     /**

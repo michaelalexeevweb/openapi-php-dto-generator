@@ -3,6 +3,30 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.159 — 2026-11-26
+
+- fuzz round fourteen: 9 fixes
+- allOf-wrapped ref branch marked
+- nullable list alias accepts null
+- union component as union branch
+- symfony anyOf object accepted
+
+The fourteenth fuzz round took the round-thirteen leftovers and the 1 finding from fresh seeds: 8 root causes,
+9 fixes, each with a test that failed before, and 2 framework limits documented. A fresh run on new seeds found
+1, in unions of several objects.
+
+**Regenerate after upgrading, in every mode.**
+
+- runtime: a `oneOf` of an inline object and `{allOf: [{$ref: Teal}]}` marks the inline branch as its class,
+  as with a bare `$ref` — a payload only Teal accepts was refused as matching two branches;
+- symfony: a list item or map value that is a `$ref` to a nullable array of dates, date-times or enums is typed
+  like the inline spelling and accepts `null` (it was refused); `anyOf: [$ref Shape, {type: string}]` with
+  Shape a union of classes is judged by the callback — every valid object was refused;
+- laravel, laravel-data: a `$ref` to a union component used as one branch of a wider union is spelled out —
+  laravel let `5` reach the constructor (a 500) and accepted a value two `oneOf` members match; laravel-data
+  builds an interface member; a morph base beside a scalar is handled;
+- yii3: a union member is held and checked.
+
 ## 2.15.158 — 2026-11-26
 
 - fuzz round thirteen: 9 fixes

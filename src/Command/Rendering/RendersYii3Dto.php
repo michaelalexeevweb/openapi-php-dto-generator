@@ -549,7 +549,14 @@ trait RendersYii3Dto
             // the hydrator built the FIRST one from any object, a Teal payload became an Olive with
             // its `dog` dropped, and neither class was checked. Held as the decoded array, the
             // interpreter judges it against the union, the way it does a union component.
-            if ($this->yii3IsUnionInterface($property['type']) || $this->yii3IsUnionOfClasses($property['type'])) {
+            // So can a union interface beside other members (`Shape|string`): only the WHOLE type was
+            // looked at, the hydrator could not build `Shape`, and the property was left unset —
+            // `{"swan": {"radius": "a"}}` passed, a valid object was dropped.
+            if (
+                $this->yii3IsUnionInterface($property['type'])
+                || $this->yii3IsUnionOfClasses($property['type'])
+                || $this->yii3HasUnionInterfaceMember($property['type'])
+            ) {
                 $docType = $type . '|array<string, mixed>';
                 $createDocType = $type;
                 $type = $this->yii3WithArrayMember($type);
@@ -1556,12 +1563,16 @@ trait RendersYii3Dto
             // would turn into the class, or into `true` for `array|bool`, is refused here. The class's own
             // keywords are `Nested`'s, the list's the interpreter's.
             $isGeneratedClass = array_key_exists($this->shortClassName($member), $this->dtoSchemas) && !$this->yii3IsUnionInterface($member);
+            // A union interface member is held as the decoded object (`renderYii3Parameter()`): an
+            // object on the wire as well, its members the interpreter's. Without a rule for it the
+            // union went unchecked, and the cast made `7` the `"7"` a string member accepts.
+            $isUnionInterface = array_key_exists($this->shortClassName($member), $this->dtoSchemas) && $this->yii3IsUnionInterface($member);
             $scalar = match (true) {
                 $member === 'int' => ['Integer', 'an integer'],
                 $member === 'float' => ['Number', 'a number'],
                 $member === 'string' => ['StringValue', 'a string'],
                 $member === 'bool' => ['BooleanValue', 'a boolean'],
-                $isGeneratedClass => ['Each', 'an object'],
+                $isGeneratedClass, $isUnionInterface => ['Each', 'an object'],
                 $member === 'array' => ['Each', 'an array'],
                 default => null,
             };
@@ -3491,6 +3502,25 @@ PHP;
         }
 
         return $classes >= 2;
+    }
+
+    /**
+     * Whether a union names a union interface beside other members — `Shape|string`, `Figure|Circle`.
+     * The hydrator cannot build the interface, so the property holds the decoded object instead.
+     */
+    private function yii3HasUnionInterfaceMember(string $phpType): bool
+    {
+        $members = $this->unionMembersBesideNull($phpType);
+        if (count($members) < 2) {
+            return false;
+        }
+        foreach ($members as $member) {
+            if ($this->yii3IsUnionInterface($member)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

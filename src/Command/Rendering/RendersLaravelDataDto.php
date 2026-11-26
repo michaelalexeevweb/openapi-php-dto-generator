@@ -1052,12 +1052,11 @@ trait RendersLaravelDataDto
             // Beside a free-form object member, only the object the class accepts is the class.
             $classMatch = $this->laravelClassMatchCondition($property, $variable);
             $enumCast = sprintf(
-                '%s ? %s::from(%s) : (%s)',
+                '%s ? %s : (%s)',
                 $this->unionHasArrayMember($property['type'])
                     ? sprintf('is_array(%1$s) && !array_is_list(%1$s)', $variable) . ($classMatch === null ? '' : ' && ' . $classMatch)
                     : sprintf('is_array(%s)', $variable),
-                $unionDataClass,
-                $variable,
+                $this->laravelDataBuildExpression(className: $unionDataClass, variable: $variable),
                 $enumCast,
             );
         }
@@ -1068,10 +1067,15 @@ trait RendersLaravelDataDto
         if ($unionDataClasses !== []) {
             $lastDataClass = array_pop($unionDataClasses);
             $arms = [];
+            // A union interface among them (`Shape|Disc`) is chosen as a whole, then built as its member.
             foreach ($unionDataClasses as $memberClass) {
-                $arms[] = sprintf('%s => %s::from(%s)', $this->laravelUnionMemberMatchCondition($memberClass, $variable), $memberClass, $variable);
+                $arms[] = sprintf(
+                    '%s => %s',
+                    $this->laravelUnionMemberMatchCondition($memberClass, $variable),
+                    $this->laravelDataBuildExpression(className: $memberClass, variable: $variable),
+                );
             }
-            $arms[] = sprintf('default => %s::from(%s)', $lastDataClass, $variable);
+            $arms[] = 'default => ' . $this->laravelDataBuildExpression(className: $lastDataClass, variable: $variable);
             $enumCast = sprintf(
                 '%s ? match (true) { %s } : (%s)',
                 $this->laravelUnionClassesObjectCondition(phpType: $property['type'], valueAccess: $variable),
@@ -1108,14 +1112,29 @@ trait RendersLaravelDataDto
                 $enumCast,
             );
         }
+        // `Pet|string`, `Pet` the abstract morph base: laravel-data resolves the morph of such a property
+        // for its messages whatever `#[WithoutValidation]` says, and `DataMorphClassResolver` died on the
+        // string — a TypeError 500 on a valid `"s"`. Spelled `PropertyMorphableData` on the property, it
+        // is no `Data` to that walk; the constructor builds the morph from an object, the interpreter has
+        // judged it, and `@var` keeps the real union.
+        $morphBase = $enumItemClass === null ? $this->laravelDataMorphBesideScalars($property) : null;
+        if ($morphBase !== null && $unionDataClass === null) {
+            $enumCast = sprintf('is_array(%1$s) ? %2$s::from(%1$s) : (%3$s)', $variable, $morphBase, $enumCast);
+            $unionDataClass = $morphBase;
+        }
         $propertyType = $declaredType;
         $parameterType = $declaredType;
         if ($enumCast !== $variable) {
             $unitEnumRef = $this->libraryClassRef('UnitEnum', $namespace, $attributeImports);
+            $morphableRef = $morphBase === null
+                ? null
+                : $this->libraryClassRef('Spatie\LaravelData\Contracts\PropertyMorphableData', $namespace, $attributeImports);
             $propertyType = implode('|', array_unique(array_map(
-                callback: fn(string $member): string => array_key_exists($this->shortClassName($member), $this->enumSchemas)
-                    ? $unitEnumRef
-                    : $member,
+                callback: fn(string $member): string => match (true) {
+                    array_key_exists($this->shortClassName($member), $this->enumSchemas) => $unitEnumRef,
+                    $morphableRef !== null && $this->shortClassName($member) === $morphBase => $morphableRef,
+                    default => $member,
+                },
                 array: explode('|', $declaredType),
             )));
         }
@@ -1258,13 +1277,18 @@ trait RendersLaravelDataDto
     /**
      * The one `Data` class of a union laravel-data leaves uncast: beside it another class (an enum, a
      * `DateTimeImmutable`) or a plain `array`. Beside scalars alone (`Shade|string`) laravel-data casts
-     * the class member itself, and null is returned.
+     * the class member itself, and null is returned — unless that member is a union INTERFACE
+     * (`Shape|string`, `Shape: {anyOf: [$ref Circle, $ref Square]}`), which it cannot cast: the payload
+     * array reached the constructor as it came, a TypeError on every valid object.
      */
     private function laravelDataUnionClassToBuild(string $phpType): ?string
     {
         $dataClass = $this->unionClassBesideScalars($phpType);
         if ($dataClass === null) {
             return null;
+        }
+        if ($this->laravelDataIsUnionInterface($dataClass) && $this->laravelUnionComponentMembers($dataClass) !== []) {
+            return $dataClass;
         }
         foreach ($this->unionMembersBesideNull($phpType) as $member) {
             if (!in_array($member, ['string', 'int', 'float', 'bool'], true) && $this->shortClassName($member) !== $dataClass) {
@@ -1273,6 +1297,44 @@ trait RendersLaravelDataDto
         }
 
         return null;
+    }
+
+    /**
+     * The discriminated morph base of a union beside members that are no `Data` (`Pet|string`,
+     * `Pet|Hue`); null for anything else, a bare `Pet` included — there laravel-data's own morph walk
+     * is what refuses an unmapped tag.
+     *
+     * @param SchemaProperty $property
+     */
+    private function laravelDataMorphBesideScalars(array $property): ?string
+    {
+        $target = $this->unionClassBesideScalars($property['type']);
+
+        return $target !== null && $this->laravelDtoClass($property) === null && $this->laravelDataIsMorphBase($target)
+            ? $target
+            : null;
+    }
+
+    /**
+     * The expression that builds `$className` from the array `$variable`: `from()` on a `Data` class, and
+     * on a union interface — which has no `from()` — the first of its members whose own schema the value
+     * matches, as the bare `$ref` to it is built. `Shape|Disc` called `Shape::from()`, an `Error` 500 on
+     * every Shape the validator had accepted.
+     */
+    private function laravelDataBuildExpression(string $className, string $variable): string
+    {
+        $members = $this->laravelDataIsUnionInterface($className) ? $this->laravelUnionComponentMembers($className) : [];
+        if ($members === []) {
+            return sprintf('%s::from(%s)', $className, $variable);
+        }
+        $lastMember = array_pop($members);
+        $arms = [];
+        foreach ($members as $member) {
+            $arms[] = sprintf('%s => %s::from(%s)', $this->laravelUnionMemberMatchCondition($member, $variable), $member, $variable);
+        }
+        $arms[] = sprintf('default => %s::from(%s)', $lastMember, $variable);
+
+        return sprintf('match (true) { %s }', implode(', ', $arms));
     }
 
     /**
@@ -1295,7 +1357,8 @@ trait RendersLaravelDataDto
      *
      * NOT applied when the target is a discriminated-union base. There the nested walk is also what adds
      * `EnsurePropertyMorphable`, which is why an unmapped discriminator value comes back as a 422 instead
-     * of dying in the morph resolver — see `MorphDiscriminatorTest`.
+     * of dying in the morph resolver — see `MorphDiscriminatorTest`. Except beside a scalar member
+     * (`Pet|string`), where that walk is what dies: the interpreter judges the morph there.
      *
      * @param SchemaProperty $property
      */
@@ -1311,6 +1374,13 @@ trait RendersLaravelDataDto
         }
         if ($target === null) {
             return false;
+        }
+        // `Pet|string`: beside a member that is no `Data`, laravel-data's walk resolved the morph on
+        // every value, and `DataMorphClassResolver` died on the string — a TypeError 500 on a valid
+        // `"s"` and on an invalid `5` alike. The emitted interpreter checks the morph there instead,
+        // the discriminator included.
+        if ($itemClass === null && $this->laravelDataMorphBesideScalars($property) !== null) {
+            return true;
         }
 
         return !array_key_exists($target, $this->discriminatorSchemas)

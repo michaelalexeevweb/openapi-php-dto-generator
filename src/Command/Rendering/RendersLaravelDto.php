@@ -1351,8 +1351,17 @@ trait RendersLaravelDto
                 'enum' => array_values($this->enumSchemas[$className]['values']),
             ];
         }
-        if (!array_key_exists($className, $this->dtoSchemas) || $this->laravelDiscriminatorBaseIsInterface($className)) {
+        if (!array_key_exists($className, $this->dtoSchemas)) {
             return [];
+        }
+        // A union component as one branch of a wider union (`oneOf: [$ref Shape, string]`) is its fold,
+        // pointed at the way a bare `$ref` to it is. Spelled as nothing, the branch matched everything,
+        // the whole union was pruned and the rules said only `sometimes`: `5` reached the constructor
+        // as a TypeError, and two matching members of a `oneOf` went through.
+        if ($this->laravelDiscriminatorBaseIsInterface($className)) {
+            $this->laravelRecordRecursiveFold($className);
+
+            return ['x-openapi-recurse' => $className];
         }
 
         return ['type' => 'object', ...$this->laravelInterpreterSchemaForClass(

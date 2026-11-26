@@ -3045,6 +3045,7 @@ PHP;
             || $this->anyOfBranchCarriesUnspelledEnum(property: $property, branches: $anyOf)
             || $this->anyOfBranchRequiresAnUndeclaredName($anyOf)
             || $this->symfonyUnionHasFreeFormObjectMember(['anyOf' => $anyOf])
+            || $this->symfonyAnyOfBranchNamesUnionHeldDecoded($anyOf)
             || $property['type'] === 'mixed'
         ) {
             return null;
@@ -3095,6 +3096,26 @@ PHP;
         }
 
         return count($branches) >= 2 ? '#[Assert\AtLeastOneOf([' . implode(', ', $branches) . '])]' : null;
+    }
+
+    /**
+     * Whether an `anyOf` branch names an undiscriminated union component of classes — `anyOf: [$ref
+     * Shape, {type: string}]`, Shape an `anyOf` of two classes. The value is held as the decoded array
+     * (`symfonyUndiscriminatedUnionHeldType()`), never as the interface, so `Type(Shape::class)` refused
+     * every valid object; the callback judges the array against the members, as it does for `oneOf`.
+     *
+     * @param array<mixed> $anyOf
+     */
+    private function symfonyAnyOfBranchNamesUnionHeldDecoded(array $anyOf): bool
+    {
+        foreach ($anyOf as $branch) {
+            $branchClass = is_array($branch) ? $branch['x-php-instanceof'] ?? null : null;
+            if (is_string($branchClass) && $this->isUnhydratableUnionClass($this->shortClassName($branchClass))) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

@@ -1372,9 +1372,16 @@ trait RendersLaravelValidation
             if ($matchedClass !== null) {
                 $this->laravelRecordRecursiveFold($matchedClass);
             }
-            // A union of classes is built as the first member whose own schema the value matches.
-            foreach ($this->laravelUndiscriminatedUnionClasses($property) as $memberClass) {
-                $this->laravelRecordRecursiveFold($memberClass);
+            // A union of classes is built as the first member whose own schema the value matches — and a
+            // union component among them (`Shape|Disc`, `Shape|string`) as the first of ITS members.
+            $besideScalars = $this->unionClassBesideScalars($property['type']);
+            foreach ([...$this->laravelUndiscriminatedUnionClasses($property), ...($besideScalars === null ? [] : [$besideScalars])] as $memberClass) {
+                if ($memberClass !== $besideScalars) {
+                    $this->laravelRecordRecursiveFold($memberClass);
+                }
+                foreach ($this->laravelUnionComponentMembers($memberClass) as $componentMember) {
+                    $this->laravelRecordRecursiveFold($componentMember);
+                }
             }
             // So is a list item or map value of such a union component, at any depth — in laravel mode,
             // whose hydrator builds it; laravel-data holds those items as the decoded arrays.
