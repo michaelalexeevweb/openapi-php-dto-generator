@@ -404,6 +404,14 @@ final class GenerateDtoCommand extends Command
     /** @var array<string, array<int, string>> */
     public array $unionInterfacesByClass = [];
 
+    /**
+     * The PHP type members each branch of an inline union contributed, by owner class and the union's
+     * type — see `withUnionBranchMembersGrouped()`.
+     *
+     * @var array<string, array<int, list<string>>>
+     */
+    private array $unionMembersByBranch = [];
+
     /** @var array<string, array{propertyName: string, mapping: array<array-key, string>}> */
     public array $discriminatorSchemas = [];
 
@@ -2538,6 +2546,7 @@ final class GenerateDtoCommand extends Command
         $this->parameterPayloadClasses = [];
         $this->parentClasses = [];
         $this->unionInterfacesByClass = [];
+        $this->unionMembersByBranch = [];
         $this->discriminatorSchemas = [];
         $this->componentNames = [];
         $this->pendingAllOfDiscriminators = [];
@@ -5789,6 +5798,12 @@ final class GenerateDtoCommand extends Command
                 type: $type,
                 ownerClassName: $ownerClassName,
             );
+            $constraints = $this->withUnionBranchMembersGrouped(
+                constraints: $constraints,
+                propertySchema: $propertySchema,
+                type: $type,
+                ownerClassName: $ownerClassName,
+            );
 
             $paramIn = $propertySchema['x-parameter-in'] ?? null;
             $isInPath = $paramIn === 'path';
@@ -6092,8 +6107,9 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
-     * Runtime: an inline object union branch with the enums of its properties kept as members — an
-     * inline `enum`, and a bare `$ref` to an enum component — at any depth of inline objects.
+     * Runtime, yii3, and a union Symfony holds as the decoded array: an inline object union branch with
+     * the enums of its properties kept as members — an inline `enum`, and a bare `$ref` to an enum
+     * component — at any depth of inline objects.
      *
      * Each such property becomes a PHP enum, so the extraction drops its members as the type's
      * business. A branch spelled out rather than marked as its class (`withOwnUnionBranchClassMarked()`)
@@ -6139,6 +6155,57 @@ final class GenerateDtoCommand extends Command
         $schema['properties'] = $properties;
 
         return $schema;
+    }
+
+    /**
+     * Runtime: a `oneOf` branch that is itself an `anyOf` stands for every class its members became, and
+     * says so — `x-php-union-members` lists them — so `DtoDeserializer` counts them as ONE branch.
+     *
+     * The members of the nested union are members of the property's PHP type beside the other branches'
+     * (`ProbeNewt|ProbeNewtAnyOf1|ProbeNewtAnyOf2`). Counted one by one, a payload two members of the
+     * same `anyOf` accept matched "more than one oneOf branch", and the valid payload was refused. A
+     * nested `oneOf` is left alone: two of its members accepting a payload is a refusal there too.
+     *
+     * @param array<string, mixed> $constraints
+     * @param array<string, mixed> $propertySchema
+     * @return array<string, mixed>
+     */
+    private function withUnionBranchMembersGrouped(array $constraints, array $propertySchema, string $type, string $ownerClassName): array
+    {
+        $variants = $propertySchema['oneOf'] ?? null;
+        $branches = $constraints['oneOf'] ?? null;
+        if (
+            $this->attributeMode !== self::ATTRIBUTE_MODE_RUNTIME
+            || !is_array($variants)
+            || !array_is_list($variants)
+            || !is_array($branches)
+            || !array_is_list($branches)
+            || count($branches) < count($variants)
+        ) {
+            return $constraints;
+        }
+        $typeMembers = array_values(array_filter(
+            array: explode('|', ltrim($type, '?')),
+            callback: static fn(string $member): bool => $member !== 'null',
+        ));
+        $membersByBranch = $this->unionMembersByBranch[$ownerClassName . '|' . implode('|', $typeMembers)] ?? [];
+        foreach ($variants as $index => $variant) {
+            if (!is_array($variant) || !is_array($variant['anyOf'] ?? null) || !is_array($branches[$index])) {
+                continue;
+            }
+            $classes = [];
+            foreach ($membersByBranch[$index] ?? [] as $member) {
+                if (array_key_exists($member, $this->dtoSchemas)) {
+                    $classes[] = ltrim(($this->schemaNamespaces[$member] ?? $this->baseNamespace) . '\\' . $member, '\\');
+                }
+            }
+            if (count($classes) > 1) {
+                $branches[$index]['x-php-union-members'] = $classes;
+            }
+        }
+        $constraints['oneOf'] = $branches;
+
+        return $constraints;
     }
 
     /**
@@ -7232,6 +7299,15 @@ final class GenerateDtoCommand extends Command
             $isEmittedClass = array_key_exists($branchClass, $this->dtoSchemas) || array_key_exists($branchClass, $this->enumSchemas);
             if ($branchClass === 'mixed' || (!$isEmittedClass && $this->attributeMode !== self::ATTRIBUTE_MODE_SYMFONY)) {
                 return [];
+            }
+            // Runtime: a union component of classes is spelled as its members, as the bare `$ref` is
+            // (`runtimeClassUnionSpelledOut()`). "Is that interface" named no member to build, and
+            // `DtoDeserializer` refused every object as "Unsupported type".
+            if ($this->attributeMode === self::ATTRIBUTE_MODE_RUNTIME) {
+                $spelled = $this->runtimeClassUnionSpelledOut(['$ref' => $ref]);
+                if (!array_key_exists('$ref', $spelled)) {
+                    return $this->extractValidationConstraints($spelled);
+                }
             }
 
             return ['x-php-instanceof' => $this->attributeMode === self::ATTRIBUTE_MODE_RUNTIME
@@ -8894,6 +8970,7 @@ final class GenerateDtoCommand extends Command
 
         $nullable = (bool)($propertySchema['nullable'] ?? false);
         $types = [];
+        $membersByBranch = [];
         $branchKinds = [];
         foreach ($variants as $index => $variant) {
             $branchKinds[$index] = is_array($variant) ? $this->unionBranchTypeOfItsOwn($variant, $ownerClassName) : null;
@@ -8949,10 +9026,12 @@ final class GenerateDtoCommand extends Command
             // a sibling (`array` beside it) is named once — PHP refuses `string|array|array` at load time.
             foreach (explode('|', $variantType) as $member) {
                 $types[] = $member;
+                $membersByBranch[$index][] = $member;
             }
         }
 
         $types = array_values(array_unique($types));
+        $this->unionMembersByBranch[$ownerClassName . '|' . implode('|', $types)] = $membersByBranch;
         if ($types === []) {
             return ['mixed', $nullable];
         }

@@ -86,7 +86,8 @@ final readonly class FuzzSpec
      * The case with its draws held to what they claim, by the reference oracle on the finished document.
      * Two object members of a union share the JSON type, so a value drawn for one may be a value of the
      * other as well: under `oneOf` that is no valid instance but a refusal — kept as one, of kind
-     * `matchesTwoMembers` — and a broken object of one member may be a sound one of the other, which is
+     * `matchesTwoMembers` (only when two members do take it; a draw no member takes is drawn again) —
+     * and a broken object of one member may be a sound one of the other, which is
      * no refusal at all and is dropped; one a member refuses only for a key it does not declare is
      * tagged {@see REFUSED_ONLY_BY_UNDECLARED_KEY}. A valid value is drawn again until one is taken
      * exactly once; null when none is. Runs after every case is drawn, so its own draws move nothing else.
@@ -119,7 +120,9 @@ final readonly class FuzzSpec
             if ($verdict !== false) {
                 return [...$case, 'valid' => $valid, 'mutations' => $mutations];
             }
-            if ($attempt === 0) {
+            // Kept as a refusal only when two `oneOf` members take the value; one no member takes is the
+            // instance generator and the oracle disagreeing, nothing to expect of a mode — drawn again.
+            if ($attempt === 0 && $oracle->acceptsWithOneOfTakingSeveral(self::payload($name, $valid['value'])) === true) {
                 $mutations[] = ['kind' => 'matchesTwoMembers', 'value' => $valid['value'], 'tags' => [...$valid['tags'], 'unionObjectPair']];
             }
             $valid = $instances->validInstance($case['node']);

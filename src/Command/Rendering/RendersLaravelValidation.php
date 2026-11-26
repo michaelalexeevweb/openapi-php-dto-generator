@@ -789,9 +789,11 @@ trait RendersLaravelValidation
                 continue;
             }
 
+            // `nullable` the way an item gets it: a dotted path has no presence to decide that, so
+            // `[{"colour": null}]` against `colour: {type: string, nullable: true}` failed `string`.
             $propertyPath = $path . '.' . $propertyName;
             $propertyRules = array_values(array_filter(
-                array: $this->laravelRulesForSchema($propertySchema),
+                array: $this->laravelItemRules($propertySchema),
                 callback: static fn(string $rule): bool => $rule !== "'present'" && $rule !== "'sometimes'",
             ));
             if ($propertyRules !== []) {

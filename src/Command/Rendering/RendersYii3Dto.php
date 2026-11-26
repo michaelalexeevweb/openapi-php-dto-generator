@@ -933,9 +933,12 @@ trait RendersYii3Dto
         // And through a `oneOf` / `anyOf` of ONE typed member and `{type: null}`, the 3.1 spelling of
         // `type: [string, "null"]`: it is declared `?string` the same way, and without the rule the cast
         // turned `7` into `"7"` and `true` into `"1"`.
+        // And through an `allOf` whose parts disagree on `type`: no value satisfies it, and the part the
+        // property is declared as is what lets the raw rule below refuse what the cast would drop.
         $declaredType = $constraints['type']
             ?? $this->foldScalarAllOfConstraints($constraints)['type']
-            ?? $this->yii3TypeBesideANullMember($constraints);
+            ?? $this->yii3TypeBesideANullMember($constraints)
+            ?? $this->yii3TypeOfAnAllOfPartDeclared(constraints: $constraints, phpType: $property['type']);
         $typeRule = is_string($declaredType)
             ? (self::YII3_TYPE_RULES[$declaredType] ?? null)
             : null;
@@ -2652,6 +2655,37 @@ PHP;
         // it — and it is the only place nullability declared through a `$ref` shows up, since the
         // property's own constraints carry the reference rather than the referenced keywords.
         return $this->propertyIsRequiredOnInput($property) && $property['nullable'];
+    }
+
+    /**
+     * The `type` of an `allOf` part that names the scalar the property is declared as, or null. Parts
+     * that disagree on `type` do not fold, yet the property is still declared as one of them — `allOf:
+     * [{type: object}, {type: string}]` is a `?string` — and every part applies to the value, so that
+     * part's type rule refuses only what the schema refuses. Without it the hydrator dropped `{}` it
+     * could not cast to a string, and the payload read as one without the key.
+     *
+     * @param array<string, mixed> $constraints
+     */
+    private function yii3TypeOfAnAllOfPartDeclared(array $constraints, string $phpType): ?string
+    {
+        $declared = match (ltrim($phpType, '?')) {
+            'string' => 'string',
+            'int' => 'integer',
+            'float' => 'number',
+            'bool' => 'boolean',
+            default => null,
+        };
+        $parts = $constraints['allOf'] ?? null;
+        if ($declared === null || !is_array($parts)) {
+            return null;
+        }
+        foreach ($parts as $part) {
+            if (is_array($part) && ($part['type'] ?? null) === $declared) {
+                return $declared;
+            }
+        }
+
+        return null;
     }
 
     /**

@@ -422,6 +422,43 @@ final class FuzzHarnessTest extends TestCase
     }
 
     /**
+     * A valid draw the reference oracle refuses is a `matchesTwoMembers` refusal only when two `oneOf`
+     * members take it. Every refusal was labelled so: seed 17090 drew a valid 3.1 tuple the oracle,
+     * blind to `prefixItems`, refused, and runtime, laravel and laravel-data were reported for taking it.
+     * One no member takes is a disagreement of the instance generator and the oracle, not a refusal to
+     * expect, and is drawn again.
+     */
+    public function testOnlyAValueTwoMembersTakeIsAMatchesTwoMembersRefusal(): void
+    {
+        $schemas = [
+            'Probe' => ['type' => 'object', 'properties' => ['fox' => ['oneOf' => [
+                ['type' => 'object', 'properties' => ['hyena' => ['type' => 'string'], 'lemur' => ['type' => 'integer']], 'required' => ['hyena']],
+                ['type' => 'object', 'properties' => ['hyena' => ['type' => 'string'], 'otter' => ['type' => 'boolean']], 'required' => ['otter']],
+                ['type' => 'boolean'],
+            ]]]],
+        ];
+        $document = ['openapi' => '3.1.0', 'components' => ['schemas' => $schemas]];
+        $method = new ReflectionMethod(FuzzSpec::class, 'confirmedByReference');
+        $kinds = static function (string $validJson) use ($schemas, $document, $method): array {
+            $case = [
+                // What a redraw draws from: a boolean, which the third member takes.
+                'node' => ['t' => 'boolean'],
+                'schema' => $schemas['Probe']['properties']['fox'],
+                'valid' => ['value' => json_decode($validJson), 'tags' => ['unionObjectPair']],
+                'mutations' => [],
+            ];
+            $confirmed = $method->invoke(null, 'fox', $case, $document, new InstanceGenerator(new FuzzRandom(1)));
+            self::assertIsArray($confirmed);
+
+            return array_column($confirmed['mutations'], 'kind');
+        };
+
+        $this->assertSame(['matchesTwoMembers'], $kinds('{"hyena":"a","otter":true}'));
+        $this->assertSame([], $kinds('{"lemur":1}'));
+        $this->assertSame([], $kinds('{"hyena":"a","otter":"no"}'));
+    }
+
+    /**
      * Symfony's PropertyInfo reports a union type's classes sorted by NAME (`Ant|Zebra` for a property
      * declared `Zebra|Ant`), and the serializer builds the first it tries. `objectOfPair` was set on
      * every object of the pair — a payload of `Ant`, which symfony builds, was filed under the row too,
@@ -650,15 +687,15 @@ final class FuzzHarnessTest extends TestCase
      * @param array<string, mixed> $schemas
      */
     #[DataProvider('referenceVerdicts')]
-    public function testTheReferenceOracleJudgesTheShrunkDocument(array $schemas, string $json, ?bool $accepted): void
+    public function testTheReferenceOracleJudgesTheShrunkDocument(array $schemas, string $json, ?bool $accepted, string $openApi = '3.1.0'): void
     {
-        $document = ['components' => ['schemas' => $schemas]];
+        $document = ['openapi' => $openApi, 'components' => ['schemas' => $schemas]];
 
         $this->assertSame($accepted, (new ReferenceOracle($document))->accepts($json));
     }
 
     /**
-     * @return iterable<string, array{0: array<string, mixed>, 1: string, 2: bool|null}>
+     * @return iterable<string, array{0: array<string, mixed>, 1: string, 2: bool|null, 3?: string}>
      */
     public static function referenceVerdicts(): iterable
     {
@@ -690,5 +727,17 @@ final class FuzzHarnessTest extends TestCase
         yield 'exclusive bound' => [$probe(['type' => 'integer', 'minimum' => 3, 'exclusiveMinimum' => true]), '{"fox":3}', false];
         yield 'multipleOf' => [$probe(['type' => 'number', 'multipleOf' => 0.5]), '{"fox":1.5}', true];
         yield 'unknown format is no answer' => [$probe(['type' => 'string', 'format' => 'hostname']), '{"fox":"x"}', null];
+        // 3.1 `prefixItems`: element i is checked against prefixItems[i], `items` only past them.
+        $tuple = $probe(['type' => 'array', 'prefixItems' => [['type' => ['boolean', 'null']]], 'items' => ['type' => 'string', 'format' => 'date']]);
+        yield 'prefixItems checks the head, items the rest' => [$tuple, '{"fox":[null,"2026-10-25"]}', true];
+        yield 'prefixItems alone' => [$tuple, '{"fox":[true]}', true];
+        yield 'prefixItems refuses an items value at its index' => [$tuple, '{"fox":["2026-10-25","2026-10-25"]}', false];
+        yield 'prefixItems refuses a head value past it' => [$tuple, '{"fox":[true,false]}', false];
+        $closedTuple = $probe(['type' => 'array', 'prefixItems' => [['type' => 'integer']], 'items' => false]);
+        yield 'items false takes the prefix' => [$closedTuple, '{"fox":[1]}', true];
+        yield 'items false refuses an extra element' => [$closedTuple, '{"fox":[1,2]}', false];
+        // 3.0 has no `prefixItems`: `items` holds for every element.
+        yield '3.0 items holds for every element' => [$tuple, '{"fox":[null,"2026-10-25"]}', false, '3.0.3'];
+        yield '3.0 items takes a list of its own' => [$tuple, '{"fox":["2026-10-25"]}', true, '3.0.3'];
     }
 }

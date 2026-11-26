@@ -136,6 +136,30 @@ trait RendersSymfonyDto
     }
 
     /**
+     * The properties `symfonyWithFreeFormObjectUnionsHeldAsArray()` holds as the decoded `array`, by
+     * OpenAPI name: their union branches are written out (`symfonyHeldUnionBranchesInlined()`), and no
+     * class is built below them, so every keyword there is the callback's.
+     *
+     * Left to the class the branch would have been, the filter dropped a written-out `$ref` branch
+     * (`allOf: [Sienna, {properties: …}]`) as that class's business and kept a marker that matched
+     * every object: `{"bison": {"tern": 5}}` passed beside a map of booleans.
+     *
+     * @param array<int, SchemaProperty> $properties
+     * @return array<string, true>
+     */
+    private function symfonyFreeFormObjectUnionsHeldAsArray(string $className, array $properties): array
+    {
+        $held = [];
+        foreach ($this->symfonyWithFreeFormObjectUnionsHeldAsArray($className, $properties) as $index => $property) {
+            if ($property['type'] !== ($properties[$index]['type'] ?? null)) {
+                $held[$property['openApiName']] = true;
+            }
+        }
+
+        return $held;
+    }
+
+    /**
      * Read through a member that is only a union itself — `oneOf: [{oneOf: [{type: object, required:
      * [gecko]}, {…class…}]}, {type: null}]`, the nullable wrapper around the real union. The free-form
      * member one level down was not seen, the class kept in the type, and the serializer built every
@@ -492,6 +516,7 @@ trait RendersSymfonyDto
         }
 
         $properties = $this->symfonyWithUnionListsTyped($className, $properties);
+        $heldAsArray = $this->symfonyFreeFormObjectUnionsHeldAsArray($className, $properties);
         $properties = $this->symfonyWithFreeFormObjectUnionsHeldAsArray($className, $properties);
         $heldDecoded = $this->symfonyUndiscriminatedUnionsHeldDecoded($className, $properties);
         $properties = $this->symfonyWithUndiscriminatedUnionsHeldDecoded($properties);
@@ -537,7 +562,7 @@ trait RendersSymfonyDto
             allowScalarKeywords: false,
             // Nothing is built below a union held as the decoded value: the callback judges all of it.
             forceScalarOnProperties: $forceRootCallbackBounds + $heldDecoded,
-            unmaterializedProperties: $this->mixedPropertyNames($properties) + $heldDecoded,
+            unmaterializedProperties: $this->mixedPropertyNames($properties) + $heldDecoded + $heldAsArray,
         );
         $validationConstraints = $this->symfonyWithClassLevelAnyOf(
             filtered: $validationConstraints,
@@ -762,6 +787,10 @@ trait RendersSymfonyDto
             }
         }
         $mixedProperties = $this->mixedPropertyNames($this->getSchemaProperties($className));
+        $heldAsArray = $this->symfonyFreeFormObjectUnionsHeldAsArray(
+            className: $className,
+            properties: $this->symfonyWithUnionListsTyped($className, $this->getSchemaProperties($className)),
+        );
 
         // `false` is the default, and it is spelled out on purpose: it is the contrasting half of
         // the argument below. Scalar keywords are OFF everywhere and ON for exactly these
@@ -777,7 +806,7 @@ trait RendersSymfonyDto
                 constraints: $extracted,
                 allowScalarKeywords: false,
                 forceScalarOnProperties: $forceRootCallbackBounds,
-                unmaterializedProperties: $mixedProperties,
+                unmaterializedProperties: $mixedProperties + $heldAsArray,
             ),
             className: $className,
             extracted: $extracted,
@@ -964,6 +993,10 @@ trait RendersSymfonyDto
      * `required` and `properties` gone, so `{}` matched it — and `{"gecko": 1}` matched it beside the
      * branch that requires `gecko`, refused as matching twice.
      *
+     * Where the property holds no generated class, an inline object branch keeps the enums of its
+     * properties as their members (`withPropertyEnumsSpelledOut()`): each had moved into a PHP enum the
+     * array never holds, and `{"bison": {"raven": 3}}` passed `enum: [0]` beside a map of booleans.
+     *
      * @param array<string, mixed> $schema
      * @return array<string, mixed>
      */
@@ -984,6 +1017,9 @@ trait RendersSymfonyDto
                 }
                 if (array_key_exists('$ref', $branch)) {
                     continue;
+                }
+                if ($holdsNoClass) {
+                    $branch = $this->withPropertyEnumsSpelledOut($branch);
                 }
                 $branch = $this->symfonyHeldUnionBranchesInlined(
                     schema: $branch,

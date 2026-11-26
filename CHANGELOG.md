@@ -3,6 +3,32 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.158 — 2026-11-26
+
+- fuzz round thirteen: 9 fixes
+- nested anyOf counted once
+- union component beside scalar built
+- symfony held-array union enums checked
+- laravel nested nullable takes null
+- fuzz oracle reads prefixItems
+
+The thirteenth fuzz round took the round-twelve leftovers and 5 findings from fresh seeds: 8 root causes,
+9 fixes, each with a test that failed before, and 2 framework limits documented. A fresh run on new seeds found
+1, in the shapes covered before round seven, and none in unions of several objects.
+
+**Regenerate after upgrading, in every mode.**
+
+- runtime: a `oneOf` branch that is itself an `anyOf` of objects counts as one branch — two of its classes
+  accepting a payload was refused as "matches more than one allowed oneOf branch"; a `$ref` to a union
+  component beside a scalar is built (it was "Unsupported type");
+- symfony: in a union held as an array (beside a map or free-form object), an inline branch's property enum is
+  checked, and a `$ref` branch with siblings is spelled out and checked;
+- laravel, laravel-data: a nullable property of a class written out under a wildcard path takes `null`;
+  conflicting `allOf` types are refused.
+
+Fuzz harness: the reference oracle reads `prefixItems` (a valid tuple was taken for invalid), and a "matches two
+members" mutation is filed only when two members really match.
+
 ## 2.15.157 — 2026-11-26
 
 - fuzz round twelve: 19 fixes

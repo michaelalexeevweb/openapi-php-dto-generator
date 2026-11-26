@@ -2327,6 +2327,52 @@ final class DtoDeserializer implements DtoDeserializerInterface
     }
 
     /**
+     * The `oneOf` branch a union member came from: the branch whose `x-php-union-members` — the classes
+     * the generator wrote for an `anyOf` nested there — names it, or the member itself.
+     *
+     * @param array<array-key, mixed> $unionConstraints
+     */
+    private function oneOfBranchOfMember(string $typeName, array $unionConstraints): string
+    {
+        $member = ltrim($typeName, '\\');
+        foreach (is_array($unionConstraints['oneOf'] ?? null) ? $unionConstraints['oneOf'] : [] as $index => $branch) {
+            $members = is_array($branch) ? ($branch['x-php-union-members'] ?? null) : null;
+            if (is_array($members) && in_array($member, $members, true)) {
+                return '#' . $index;
+            }
+        }
+
+        return $member;
+    }
+
+    /**
+     * The branch of a union that spells a union INTERFACE member out as its member classes — what
+     * `unionMembersFromConstraints()` builds the payload from — or nothing for any other member.
+     *
+     * The generator writes a `$ref` to a union component beside other branches as that component's
+     * `oneOf` / `anyOf` of "is that class" (`oneOf: [{anyOf: [Circle, Square]}, {type: string}]`).
+     * Without its branch the interface named no member, and every object was "Unsupported type".
+     *
+     * @param array<array-key, mixed> $unionConstraints
+     * @return array<array-key, mixed>
+     */
+    private function unionInterfaceBranch(string $typeName, array $unionConstraints): array
+    {
+        if (!interface_exists($typeName)) {
+            return [];
+        }
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            foreach (is_array($unionConstraints[$keyword] ?? null) ? $unionConstraints[$keyword] : [] as $branch) {
+                if (is_array($branch) && $this->unionMembersFromConstraints(typeName: $typeName, constraints: $branch) !== null) {
+                    return $branch;
+                }
+            }
+        }
+
+        return [];
+    }
+
+    /**
      * Whether a union property's constraints are a `oneOf` with no `discriminator` to pick the member:
      * the payload must then match exactly one class member, not merely the first. Where a discriminator
      * is declared, its tag chooses — the validator checks the built member against it — and members that
@@ -2465,8 +2511,15 @@ final class DtoDeserializer implements DtoDeserializerInterface
         $errors = [];
         $matched = false;
         $match = null;
+        $matchedBranch = null;
         foreach ($typeNames as $typeName) {
             if ($matched && !$this->isObjectUnionMember($typeName)) {
+                continue;
+            }
+            // A member of the same `oneOf` branch as the one already matched — the nested `anyOf` it
+            // and that one came from — can add no second match.
+            $branch = $this->oneOfBranchOfMember(typeName: $typeName, unionConstraints: $unionConstraints);
+            if ($matched && $branch === $matchedBranch) {
                 continue;
             }
             $temporalFormat = $typeName === DateTimeImmutable::class && $dtoReflection !== null
@@ -2495,6 +2548,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     arrayItemTemporalFormat: $arrayItemTemporalFormat,
                     nestedArrayItemType: $nestedArrayItemType,
                     nestedArrayItemsNullable: $nestedArrayItemsNullable,
+                    constraints: $this->unionInterfaceBranch(typeName: $typeName, unionConstraints: $unionConstraints),
                 );
             } catch (RuntimeException $e) {
                 if (!$matched) {
@@ -2524,6 +2578,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             }
             $matched = true;
             $match = $cast;
+            $matchedBranch = $branch;
         }
         if ($matched) {
             return $match;

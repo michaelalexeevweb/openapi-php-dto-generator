@@ -912,6 +912,17 @@ final class ValidationParityTest extends TestCase
             'allOf parent bound' => [['type' => 'integer', 'minimum' => 1, 'allOf' => [['minimum' => 10]]], '{"f":11}', '{"f":5}'],
             'allOf preserves nullable scope' => [['nullable' => true, 'allOf' => [['type' => 'string'], ['minLength' => 1]]], '{"f":"red"}', '{"f":null}'],
         ];
+        // A 3.1 tuple beside an object member of a `oneOf` (fuzz seed 17090): element i is held to
+        // prefixItems[i], `items` only to the elements past them. The fuzz oracle applied `items` to
+        // every element and filed the valid tuple as a value two members take.
+        $tupleOrObject = ['oneOf' => [
+            ['type' => 'object', 'properties' => ['raven' => ['type' => 'integer']], 'required' => ['raven']],
+            ['type' => 'array', 'prefixItems' => [['type' => ['boolean', 'null']], ['type' => 'string', 'format' => 'uuid']], 'items' => ['type' => 'string', 'format' => 'date'], 'maxItems' => 4],
+        ]];
+        $cases['tuple beside an object: items past the prefix'] = [$tupleOrObject, '{"f":[null,"1202079e-debb-41a7-825e-6341bd175222","2026-10-25"]}', '{"f":[null,"1202079e-debb-41a7-825e-6341bd175222","x"]}'];
+        $cases['tuple beside an object: prefix alone'] = [$tupleOrObject, '{"f":[true]}', '{"f":["2026-10-25","2026-10-25"]}'];
+        $cases['tuple beside an object: four elements'] = [$tupleOrObject, '{"f":[null,"1202079e-debb-41a7-825e-6341bd175222","2026-10-25","2013-01-13"]}', '{"f":[null,"1202079e-debb-41a7-825e-6341bd175222","2026-10-25","2013-01-13","2013-01-14"]}'];
+        $cases['tuple beside an object: the object'] = [$tupleOrObject, '{"f":{"raven":1}}', '{"f":{"raven":"x"}}'];
         foreach ([false, true] as $reverse) {
             $bounds = [['type' => 'integer', 'minimum' => 10], ['minimum' => 1]];
             $enums = [['type' => 'string', 'enum' => ['red']], ['enum' => ['red', 'blue']]];
@@ -8887,6 +8898,59 @@ final class ValidationParityTest extends TestCase
                     '{"koala":{"kind":"Disc","crane":6}}' => false,
                 ],
             ],
+            // A union of an object branch and a map Symfony holds as the decoded `?array`: no branch
+            // class is built, so the callback judges every branch. An enum of an inline branch's
+            // property (`bison`) had moved into a PHP enum the array never holds, and a `$ref` with
+            // keywords beside it (`heron`, `lynx` beside a nested union) was left to its class as a
+            // marker that matched every object. A bare `$ref` (`puma`) and a union Symfony builds as
+            // classes (`kiwi`) already held.
+            'symfony union held as an array keeps its branch checks' => [
+                '3.1.0',
+                $probe([
+                    'bison' => ['anyOf' => [
+                        ['type' => 'object', 'properties' => ['tern' => ['type' => 'string'], 'raven' => ['type' => 'integer', 'enum' => [0]]]],
+                        ['type' => 'object', 'additionalProperties' => ['type' => 'boolean']],
+                    ]],
+                    'heron' => ['anyOf' => [
+                        $ref('Sienna') + ['properties' => ['raven' => ['type' => 'integer', 'enum' => [0]]]],
+                        ['type' => 'object', 'additionalProperties' => ['type' => 'boolean']],
+                    ]],
+                    'lynx' => ['anyOf' => [
+                        $ref('Sienna') + ['properties' => ['raven' => ['type' => 'integer']]],
+                        ['anyOf' => [['type' => 'string'], ['type' => 'object', 'additionalProperties' => ['type' => 'boolean']]]],
+                    ]],
+                    'puma' => ['anyOf' => [$ref('Umber'), ['type' => 'object', 'additionalProperties' => ['type' => 'boolean']]]],
+                    'kiwi' => ['anyOf' => [
+                        ['type' => 'object', 'properties' => ['raven' => ['type' => 'integer', 'enum' => [0]]]],
+                        ['type' => 'string'],
+                    ]],
+                ]) + [
+                    'Sienna' => ['type' => 'object', 'properties' => ['tern' => ['type' => 'string']]],
+                    'Umber' => ['type' => 'object', 'properties' => ['tern' => ['type' => 'string', 'maxLength' => 2]]],
+                ],
+                [
+                    '{"bison":{"raven":3}}' => false,
+                    '{"bison":{"tern":5}}' => false,
+                    '{"bison":{"raven":0,"tern":"a"}}' => true,
+                    '{"bison":{"a":true}}' => true,
+                    '{"heron":{"raven":3}}' => false,
+                    '{"heron":{"tern":5}}' => false,
+                    '{"heron":{"raven":0,"tern":"a"}}' => true,
+                    '{"heron":{"a":true}}' => true,
+                    '{"lynx":{"raven":"x"}}' => false,
+                    '{"lynx":{"tern":5}}' => false,
+                    '{"lynx":{"raven":0,"tern":"a"}}' => true,
+                    '{"lynx":{"a":true}}' => true,
+                    '{"lynx":"s"}' => true,
+                    '{"puma":{"tern":"abc"}}' => false,
+                    '{"puma":{"tern":"ab"}}' => true,
+                    '{"puma":{"a":true}}' => true,
+                    '{"kiwi":{"raven":3}}' => false,
+                    '{"kiwi":{"raven":0}}' => true,
+                    '{"kiwi":"s"}' => true,
+                    '{"kiwi":5}' => false,
+                ],
+            ],
         ];
     }
 
@@ -9324,6 +9388,137 @@ final class ValidationParityTest extends TestCase
                 [
                     'symfony' => ['{"fox":{}}' => null],
                     'yii3' => ['{"fox":{}}' => false],
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * Runtime: the classes a `oneOf` / `anyOf` property is typed with, when one branch stands for more
+     * than one of them — an `anyOf` nested as a branch, a `$ref` to a union component.
+     *
+     * @param array<string, array<string, mixed>> $schemas
+     * @param array<string, bool|null> $payloads JSON payload => accepted (null: either verdict but a crash)
+     */
+    #[DataProvider('runtimeUnionBranchOfSeveralMembersProvider')]
+    public function testRuntimeCountsAUnionBranchOfSeveralMembersOnce(string $openApiVersion, array $schemas, array $payloads): void
+    {
+        $spec = [
+            'openapi' => $openApiVersion,
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => $schemas],
+        ];
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: $spec,
+                key: 'runtime union group ' . md5((string)json_encode($spec)),
+                payloads: $payloads,
+                skippedModes: array_values(array_filter(
+                    array: GenerationMode::cases(),
+                    callback: static fn(GenerationMode $mode): bool => $mode !== GenerationMode::Runtime,
+                )),
+            ),
+        );
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: array<string, array<string, mixed>>, 2: array<string, bool|null>}>
+     */
+    public static function runtimeUnionBranchOfSeveralMembersProvider(): array
+    {
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $probe = static fn(array $properties): array => ['Probe' => ['type' => 'object', 'properties' => $properties]];
+
+        return [
+            // A `oneOf` branch that is itself an `anyOf` of objects is ONE branch, though its members
+            // become classes of their own beside the other branches': a payload two members of the
+            // same `anyOf` accept matches that one branch, not two. A payload the `lion` branch and an
+            // `anyOf` member both accept still matches two (`wren`), and a nested `oneOf` stays
+            // exactly-one inside (`kite`).
+            'anyOf nested as a oneOf branch is one branch' => [
+                '3.1.0',
+                $probe([
+                    'newt' => ['oneOf' => [['anyOf' => [
+                        ['type' => 'object', 'properties' => ['otter' => ['type' => 'integer']]],
+                        ['type' => 'object', 'properties' => ['otter' => ['type' => 'integer'], 'marten' => ['type' => 'string']]],
+                    ]]]],
+                    'wren' => ['oneOf' => [
+                        ['type' => 'object', 'properties' => ['kind' => ['const' => 'lion']], 'required' => ['kind']],
+                        ['anyOf' => [
+                            ['type' => 'object', 'properties' => ['otter' => ['type' => 'integer']], 'required' => ['otter']],
+                            ['type' => 'object', 'properties' => ['marten' => ['type' => 'string']], 'required' => ['marten']],
+                        ]],
+                    ]],
+                    'kite' => ['oneOf' => [
+                        ['type' => 'string'],
+                        ['oneOf' => [
+                            ['type' => 'object', 'properties' => ['otter' => ['type' => 'integer']], 'required' => ['otter']],
+                            ['type' => 'object', 'properties' => ['marten' => ['type' => 'string']], 'required' => ['marten']],
+                        ]],
+                    ]],
+                    'lark' => ['anyOf' => [
+                        ['type' => 'string'],
+                        ['oneOf' => [
+                            ['type' => 'object', 'properties' => ['otter' => ['type' => 'integer']], 'required' => ['otter']],
+                            ['type' => 'object', 'properties' => ['marten' => ['type' => 'string']], 'required' => ['marten']],
+                        ]],
+                    ]],
+                ]),
+                [
+                    '{"newt":{"marten":"jfai"}}' => true,
+                    '{"newt":{"otter":1}}' => true,
+                    '{"newt":{}}' => true,
+                    '{"newt":{"otter":"x"}}' => false,
+                    '{"wren":{"otter":1,"marten":"m"}}' => true,
+                    '{"wren":{"otter":1}}' => true,
+                    '{"wren":{"kind":"lion"}}' => true,
+                    '{"wren":{"kind":"lion","otter":1}}' => false,
+                    '{"wren":{}}' => false,
+                    '{"kite":{"otter":1}}' => true,
+                    '{"kite":"s"}' => true,
+                    '{"kite":{"otter":1,"marten":"m"}}' => false,
+                    '{"lark":{"otter":1}}' => true,
+                    '{"lark":"s"}' => true,
+                    '{"lark":{"otter":1,"marten":"m"}}' => false,
+                ],
+            ],
+            // A `$ref` to a union component of classes, beside a scalar branch: the component's members
+            // are what a payload object is built as — `anyOf` the first that takes it, so an object both
+            // take is still one branch of the outer `oneOf` (`newt`) — as for the bare `$ref` (`fern`).
+            // A component that is a `oneOf` refuses an object both members take (`toad`).
+            'union component beside a scalar branch' => [
+                '3.1.0',
+                $probe([
+                    'newt' => ['oneOf' => [$ref('Shape'), ['type' => 'string']]],
+                    'moth' => ['anyOf' => [$ref('Shape'), ['type' => 'string']]],
+                    'fern' => $ref('Shape'),
+                    'toad' => ['oneOf' => [$ref('Form'), ['type' => 'integer']]],
+                ]) + [
+                    'Circle' => ['type' => 'object', 'properties' => ['radius' => ['type' => 'integer']]],
+                    'Square' => ['type' => 'object', 'properties' => ['side' => ['type' => 'integer']]],
+                    'Shape' => ['anyOf' => [$ref('Circle'), $ref('Square')]],
+                    'Disc' => ['type' => 'object', 'properties' => ['radius' => ['type' => 'integer']], 'required' => ['radius']],
+                    'Tile' => ['type' => 'object', 'properties' => ['side' => ['type' => 'integer']], 'required' => ['side']],
+                    'Form' => ['oneOf' => [$ref('Disc'), $ref('Tile')]],
+                ],
+                [
+                    '{"newt":{"radius":1}}' => true,
+                    '{"newt":{"side":2}}' => true,
+                    '{"newt":{"radius":1,"side":2}}' => true,
+                    '{"newt":"x"}' => true,
+                    '{"newt":5}' => false,
+                    '{"moth":{"radius":1}}' => true,
+                    '{"moth":"x"}' => true,
+                    '{"moth":{"radius":1,"side":2}}' => true,
+                    '{"moth":5}' => false,
+                    '{"fern":{"radius":1}}' => true,
+                    '{"fern":5}' => false,
+                    '{"toad":{"radius":1}}' => true,
+                    '{"toad":3}' => true,
+                    '{"toad":{"radius":1,"side":2}}' => false,
+                    '{"toad":{}}' => false,
                 ],
             ],
         ];
@@ -15767,12 +15962,16 @@ final class ValidationParityTest extends TestCase
         yield 'allOf object and an empty member' => [['allOf' => [['type' => 'object'], []]], $payloads, $listTakenForAnObject];
         // Neighbours: the plain object, and an `allOf` that also names a non-object type.
         yield 'object' => [['type' => 'object'], $payloads, $listTakenForAnObject];
+        // Parts that disagree on `type` admit no value. yii3 declares the property as its `string` part,
+        // and its hydrator dropped the object it could not cast to one, so the payload read as one
+        // without the key and was accepted — until that part's raw type rule refused it.
         yield 'allOf object and string' => [
             ['allOf' => [['type' => 'object'], ['type' => 'string']]],
-            ['{"bark":{}}' => false, '{"bark":{"a":1}}' => false, '{"bark":"a"}' => false, '{"bark":5}' => false],
-            // yii3 types the property by its `string` member, and its hydrator casts the object to one
-            // before the schema is asked. Not this question; left unasserted there.
-            ['yii3' => ['{"bark":{}}' => null, '{"bark":{"a":1}}' => null]],
+            ['{"bark":{}}' => false, '{"bark":{"a":1}}' => false, '{"bark":"a"}' => false, '{"bark":5}' => false, '{}' => true],
+        ];
+        yield 'allOf integer and string' => [
+            ['allOf' => [['type' => 'integer'], ['type' => 'string']]],
+            ['{"bark":{}}' => false, '{"bark":[1]}' => false, '{"bark":"a"}' => false, '{"bark":5}' => false, '{"bark":"5"}' => false, '{}' => true],
         ];
     }
 
@@ -16117,6 +16316,91 @@ final class ValidationParityTest extends TestCase
             '{"vine":[[{"hue":"x","tint":{}}]]}' => true,
             '{"moss":[{}]}' => true,
         ]];
+    }
+
+    /**
+     * Laravel spells the properties of an object no class sits under as dotted rules below a wildcard
+     * path — an item that is an `allOf` of a `$ref` plus 3.0 `nullable`, an `anyOf` of a `$ref` and
+     * `null`, a `$ref` two containers deep. Each such property got its schema's rules without the
+     * `nullable` its schema allows, so `[{"colour": null}]` failed `string` in laravel and laravel-data.
+     *
+     * @param array<string, mixed> $nullWrapped the `items` of `nullWrapped`
+     * @param array<string, mixed> $colour the nullable property of `Cat`
+     * @param array<string, bool> $payloads
+     * @param array<string, array<string, bool|null>> $diverging mode => payloads it answers otherwise
+     */
+    #[DataProvider('nullablePropertyOfAnInlinedItemProvider')]
+    public function testANullablePropertyOfAnInlinedItemTakesNull(
+        string $openApiVersion,
+        array $nullWrapped,
+        array $colour,
+        array $payloads,
+        array $diverging = [],
+    ): void {
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $spec = [
+            'openapi' => $openApiVersion,
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Probe' => ['type' => 'object', 'properties' => [
+                    'nullWrapped' => ['type' => 'array', 'items' => $nullWrapped],
+                    'grid' => ['type' => 'array', 'items' => ['type' => 'array', 'items' => $ref('Cat')]],
+                    'plain' => ['type' => 'array', 'items' => $ref('Cat')],
+                    'single' => ['allOf' => [$ref('Cat')]],
+                    'pack' => ['type' => 'array', 'items' => ['type' => 'array', 'items' => $ref('Dog')]],
+                ]],
+                'Cat' => ['type' => 'object', 'properties' => ['colour' => $colour]],
+                'Dog' => ['type' => 'object', 'required' => ['hue'], 'properties' => ['hue' => ['type' => 'string']]],
+            ]],
+        ];
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: $spec,
+                key: 'nullable property of an inlined item ' . md5((string)json_encode($spec)),
+                payloads: $payloads,
+                diverging: $diverging,
+            ),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{0: string, 1: array<string, mixed>, 2: array<string, mixed>, 3: array<string, bool>, 4?: array<string, array<string, bool|null>>}>
+     */
+    public static function nullablePropertyOfAnInlinedItemProvider(): iterable
+    {
+        $cat = ['$ref' => '#/components/schemas/Cat'];
+        $payloads = [
+            // Cause: the inlined property lost its `nullable`.
+            '{"nullWrapped":[{"colour":null}]}' => true,
+            '{"grid":[[{"colour":null}]]}' => true,
+            // Neighbours: a wrong type is still refused there, a valid value passes, and the paths a
+            // class answers for already took null.
+            '{"nullWrapped":[{"colour":5}]}' => false,
+            '{"nullWrapped":[{"colour":"red"}]}' => true,
+            '{"nullWrapped":[null]}' => true,
+            '{"grid":[[{"colour":5}]]}' => false,
+            '{"grid":[[{"colour":"red"}]]}' => true,
+            '{"plain":[{"colour":null}]}' => true,
+            '{"plain":[{"colour":5}]}' => false,
+            '{"single":{"colour":null}}' => true,
+            '{"single":{"colour":5}}' => false,
+            // A property that does not admit null keeps refusing it, and stays required.
+            '{"pack":[[{"hue":null}]]}' => false,
+            '{"pack":[[{}]]}' => false,
+            '{"pack":[[{"hue":"red"}]]}' => true,
+        ];
+
+        yield '3.0 allOf and nullable' => ['3.0.3', ['allOf' => [$cat], 'nullable' => true], ['type' => 'string', 'nullable' => true], $payloads];
+        yield '3.1 anyOf with null' => [
+            '3.1.0',
+            ['anyOf' => [$cat, ['type' => 'null']]],
+            ['type' => ['string', 'null']],
+            $payloads,
+            // README.support-matrix, "a `null` ITEM of a nullable list of DTOs": `#[DataCollectionOf]`.
+            ['laravel-data' => ['{"nullWrapped":[null]}' => false]],
+        ];
     }
 
     /**

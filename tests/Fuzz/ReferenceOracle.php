@@ -27,6 +27,9 @@ final class ReferenceOracle
 
     private bool $unsure = false;
 
+    /** Whether the document is OpenAPI 3.1 — JSON Schema 2020-12, where `prefixItems` holds; 3.0 has none. */
+    private bool $openApi31;
+
     /**
      * Whether an object member of a `oneOf` / `anyOf` lets keys it does not declare through, as the
      * Symfony serializer does: it builds the member's class from the keys the class has and leaves the
@@ -37,6 +40,9 @@ final class ReferenceOracle
     /** Whether EVERY object that declares properties lets the keys it does not declare through. */
     private bool $everyObjectOpen = false;
 
+    /** Whether a `oneOf` holds when ANY number of its members take the value, as an `anyOf` does. */
+    private bool $oneOfTakesSeveral = false;
+
     /**
      * @param array<string, mixed> $document
      */
@@ -44,6 +50,7 @@ final class ReferenceOracle
     {
         $schemas = $document['components']['schemas'] ?? [];
         $this->schemas = is_array($schemas) ? $schemas : [];
+        $this->openApi31 = !str_starts_with((string)($document['openapi'] ?? '3.1.0'), '3.0');
     }
 
     /**
@@ -75,10 +82,21 @@ final class ReferenceOracle
         return $this->judge(json: $json, unionMembersOpen: true, everyObjectOpen: true);
     }
 
-    private function judge(string $json, bool $unionMembersOpen, bool $everyObjectOpen): ?bool
+    /**
+     * Whether the JSON body is valid when a `oneOf` takes a value MORE than one member takes. A body
+     * {@see accepts()} refuses and this one takes is refused only because two members of a `oneOf` match
+     * it; null when the answer is out of reach.
+     */
+    public function acceptsWithOneOfTakingSeveral(string $json): ?bool
+    {
+        return $this->judge(json: $json, unionMembersOpen: false, everyObjectOpen: false, oneOfTakesSeveral: true);
+    }
+
+    private function judge(string $json, bool $unionMembersOpen, bool $everyObjectOpen, bool $oneOfTakesSeveral = false): ?bool
     {
         $this->unionMembersOpen = $unionMembersOpen;
         $this->everyObjectOpen = $everyObjectOpen;
+        $this->oneOfTakesSeveral = $oneOfTakesSeveral;
         $this->unsure = false;
         $decoded = json_decode($json, false);
         if (json_last_error() !== JSON_ERROR_NONE) {
@@ -144,7 +162,7 @@ final class ReferenceOracle
             $holds = match ($keyword) {
                 'allOf' => $matches === $count,
                 'anyOf' => $matches > 0,
-                'oneOf' => $matches === 1,
+                'oneOf' => $matches === 1 || ($this->oneOfTakesSeveral && $matches > 1),
             };
             if (!$holds) {
                 return false;
@@ -308,11 +326,12 @@ final class ReferenceOracle
                 return false;
             }
         }
-        if (array_key_exists('items', $schema)) {
-            foreach ($value as $item) {
-                if (!$this->valid(value: $item, schema: $schema['items'], depth: $depth + 1)) {
-                    return false;
-                }
+        // 2020-12: element i is held to prefixItems[i], `items` only to the elements past them.
+        $prefix = $this->openApi31 && is_array($schema['prefixItems'] ?? null) ? array_values($schema['prefixItems']) : [];
+        foreach (array_values($value) as $index => $item) {
+            $itemSchema = $index < count($prefix) ? $prefix[$index] : ($schema['items'] ?? true);
+            if (!$this->valid(value: $item, schema: $itemSchema, depth: $depth + 1)) {
+                return false;
             }
         }
 
