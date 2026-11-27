@@ -305,8 +305,15 @@ final class UnhydratableUnionParityTest extends TestCase
                         array: $warnings,
                         callback: static fn(string $warning): bool => str_contains($warning, 'an undiscriminated ' . $keyword . ' union'),
                     ));
-                    $silent = in_array($mode, [GenerationMode::Runtime, GenerationMode::Symfony], true);
-                    self::assertCount($silent ? 0 : 3, $matching, $mode->value . ': ' . implode(' ', $warnings));
+                    // Runtime builds the member a payload matches and symfony holds it decoded; laravel builds
+                    // the property, its list items and map values as the matching member too, laravel-data
+                    // only the property — the inline members are classes as `$ref` ones are.
+                    $expected = match ($mode) {
+                        GenerationMode::Runtime, GenerationMode::Symfony, GenerationMode::Laravel => 0,
+                        GenerationMode::LaravelData => 2,
+                        GenerationMode::Yii3 => 3,
+                    };
+                    self::assertCount($expected, $matching, $mode->value . ': ' . implode(' ', $warnings));
                     foreach ($matching as $warning) {
                         self::assertStringContainsString('Add a discriminator to Shape', $warning);
                     }
@@ -316,7 +323,12 @@ final class UnhydratableUnionParityTest extends TestCase
         }
     }
 
-    public function testLaravelInlineUnionNeverCallsAnInterfaceFactory(): void
+    /**
+     * A property, list item or map value typed as a union component of INLINE objects is built as the
+     * member the value matches (`ShapeOneOf1`, `ShapeOneOf2`), as a component of `$ref` members is. It
+     * used to throw "a union with no discriminator" for every payload the validator had accepted.
+     */
+    public function testLaravelInlineUnionIsBuiltAsTheMatchingMember(): void
     {
         foreach (['shape', 'many', 'byName'] as $field) {
             $suffix = 'InlineHydration' . ucfirst($field);
@@ -340,17 +352,20 @@ final class UnhydratableUnionParityTest extends TestCase
                 self::assertSame([], $empty->getMany());
                 self::assertSame([], $empty->getByName());
                 self::assertNull($empty->getShape());
-                $payload[$field] = match ($field) {
-                    'shape' => $contact,
-                    'many' => [$contact],
-                    default => ['primary' => $contact],
-                };
-                try {
-                    $probe::fromValidated($payload);
-                    self::fail('Inline object unions need a discriminator for hydration.');
-                } catch (RuntimeException $thrown) {
-                    self::assertStringContainsString('Property "' . $field . '"', $thrown->getMessage());
-                    self::assertStringContainsString('Add a discriminator to Shape', $thrown->getMessage());
+                $phone = ['type' => 'phone', 'value' => '+1234567'];
+                foreach ([[$contact, 'ShapeOneOf1'], [$phone, 'ShapeOneOf2']] as [$value, $member]) {
+                    $payload[$field] = match ($field) {
+                        'shape' => $value,
+                        'many' => [$value],
+                        default => ['primary' => $value],
+                    };
+                    $built = $probe::fromValidated($payload);
+                    $held = match ($field) {
+                        'shape' => $built->getShape(),
+                        'many' => $built->getMany()[0] ?? null,
+                        default => $built->getByName()['primary'] ?? null,
+                    };
+                    self::assertInstanceOf($namespace . chr(92) . $member, $held, $field);
                 }
             } finally {
                 spl_autoload_unregister($loader);

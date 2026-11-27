@@ -137,7 +137,7 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
     private ?array $listOfTheArrayMember = null;
 
     /**
-     * @var array<string, array{required: list<string>, properties: array<string, array<string, mixed>>, object: array<string, mixed>}|null>
+     * @var array<string, array{required: list<string>, nullable: list<string>, properties: array<string, array<string, mixed>>, object: array<string, mixed>}|null>
      */
     private array $rawObjectRulesCache = [];
 
@@ -922,7 +922,21 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
                 continue;
             }
 
-            $branchErrors = $this->validateConstraints($subject, $value, $branch, $depth + 1);
+            // A spelled-out branch judging a built DTO keeps its property rules: the DTO may be the class
+            // of a SIBLING branch, and its own validation never heard of this branch's rules. Stripped,
+            // `required: [walrus]` alone was left of `{walrus: $ref Coral}`, so a built `{walrus: 7,
+            // crane: "c"}` of the other member matched it too and `oneOf` refused a valid payload. The
+            // key-counting rules the DTO's class owns stay dropped, as everywhere: the class counted
+            // them against the raw body, the built object holds its declared keys alone.
+            $branchErrors = $value instanceof GeneratedDtoInterface && !$value instanceof BackedEnum
+                ? $this->validateConstraints(
+                    subject: $subject,
+                    value: $value,
+                    constraints: $this->withObjectRulesOwnedByTheDto(dto: $value, constraints: $branch),
+                    depth: $depth + 1,
+                    propertyRulesOwnedByDto: false,
+                )
+                : $this->validateConstraints($subject, $value, $branch, $depth + 1);
             // `oneOf` counts matches, and a branch that could not be finished may have been one.
             if ($isOneOf && $this->incompleteVerdict($branchErrors) !== []) {
                 return $this->incompleteVerdict($branchErrors);
@@ -1052,8 +1066,12 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
      * decides), one with no metadata, or a check that could not be finished.
      *
      * Only what the class states for certain is asked. A `required` property is missing only when its
-     * constructor has no default to fill it and it is neither `readOnly` nor `writeOnly`; a `null`
-     * value is left to the class, whose map does not say whether it admits one.
+     * constructor has no default to fill it and it is neither `readOnly` nor `writeOnly`. A `null` value
+     * is refused where the property does not admit null — read as the deserializer reads it: the
+     * constraints' `nullable` or `null` type when they say, else a required property whose PHP type
+     * admits null — and is otherwise passed without its rules, which judge the non-null value. Left to
+     * the class, `{"puffin": null}` against a `puffin: string` it requires was no refusal, and a union
+     * holding the raw object took it.
      *
      * @return list<string>
      */
@@ -1066,24 +1084,33 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
         }
 
         $properties = [];
+        $nullRefusals = [];
         foreach ($rules['properties'] as $wireName => $propertyRules) {
             $properties[$wireName] = ($payload[$wireName] ?? null) === null ? [] : $propertyRules;
+            if (
+                array_key_exists($wireName, $payload)
+                && $payload[$wireName] === null
+                && !in_array($wireName, $rules['nullable'], true)
+            ) {
+                $nullRefusals[] = sprintf('%s.%s must not be null', $subject, $wireName);
+            }
         }
-        $refusals = $this->validateConstraints(
+        $refusals = [...$nullRefusals, ...$this->validateConstraints(
             subject: $subject,
             value: $value,
             constraints: [...$rules['object'], 'required' => $rules['required'], 'properties' => $properties],
             depth: $depth + 1,
-        );
+        )];
 
         return $this->incompleteVerdict($refusals) === [] ? array_values(array_unique($refusals)) : [];
     }
 
     /**
-     * The `required` wire names and per-property rules of a generated class, read off its static
-     * metadata, or null when the class cannot be judged from them. See {@see rawObjectRefusalsOfClass()}.
+     * The `required` wire names, the wire names that admit null and the per-property rules of a generated
+     * class, read off its static metadata, or null when the class cannot be judged from them. See
+     * {@see rawObjectRefusalsOfClass()}.
      *
-     * @return array{required: list<string>, properties: array<string, array<string, mixed>>, object: array<string, mixed>}|null
+     * @return array{required: list<string>, nullable: list<string>, properties: array<string, array<string, mixed>>, object: array<string, mixed>}|null
      */
     private function rawObjectRulesOf(string $className): ?array
     {
@@ -1099,11 +1126,14 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
         }
 
         $defaults = [];
+        $phpAllowsNull = [];
         foreach ($reflection->getConstructor()?->getParameters() ?? [] as $parameter) {
             $defaults[$parameter->getName()] = $parameter->isDefaultValueAvailable();
+            $phpAllowsNull[$parameter->getName()] = $parameter->getType()?->allowsNull() ?? true;
         }
 
         $required = [];
+        $nullable = [];
         $properties = [];
         foreach ($className::getNormalizationMap() as $propertyName => $entry) {
             $metadata = $entry['metadata'];
@@ -1113,6 +1143,16 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
             }
             $constraints = $metadata['constraints'] ?? [];
             $properties[$wireName] = is_array($constraints) ? $constraints : [];
+            // As the deserializer reads it: the constraints when they say, else a required property
+            // whose PHP type admits null (the map's `nullable` where no constructor parameter is it).
+            // A `readOnly` one is not the request's to send, and its null is left alone, as its absence is.
+            $typeAllowsNull = $phpAllowsNull[$propertyName] ?? $entry['nullable'];
+            if (
+                ($metadata['readOnly'] ?? false) === true
+                || ($typeAllowsNull && (DtoServiceSupport::constraintsAdmitNull($properties[$wireName]) ?? (($metadata['required'] ?? true) !== false)))
+            ) {
+                $nullable[] = $wireName;
+            }
             if (
                 ($metadata['required'] ?? false) === true
                 && ($metadata['readOnly'] ?? false) !== true
@@ -1143,7 +1183,7 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
             }
         }
 
-        return $this->rawObjectRulesCache[$className] = ['required' => $required, 'properties' => $properties, 'object' => $object];
+        return $this->rawObjectRulesCache[$className] = ['required' => $required, 'nullable' => $nullable, 'properties' => $properties, 'object' => $object];
     }
 
     private function isRawObjectFor(mixed $value, string $className): bool
@@ -2701,36 +2741,8 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
 
     private function isValidDateTimeFormat(string $value): bool
     {
-        if ($value === '') {
-            return false;
-        }
-
-        // RFC 3339 `date-time`: a `T` separator and an offset are required, and both letters may be
-        // lowercase (RFC 3339 §5.6 NOTE). Reject structural mismatches (trailing garbage, a space
-        // separator, no offset) before createFromFormat, which silently accepts trailing characters.
-        if (preg_match('/^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(\.\d+)?([Zz]|[+-]\d{2}:\d{2})$/D', $value) !== 1) {
-            return false;
-        }
-        // `time-numoffset` is a time of day: PHP's `p` takes `+25:00` as an offset of a day and an hour.
-        if (preg_match('/[+-](\d{2}):(\d{2})$/D', $value, $offset) === 1 && ((int)$offset[1] > 23 || (int)$offset[2] > 59)) {
-            return false;
-        }
-
-        // Shared with the deserializer via GeneratedDtoInterface — including Z suffix (lowercase p).
-        // The patterns spell `T` and `Z` upper case; only they and digits are letters here.
-        $value = strtoupper($value);
-        foreach (GeneratedDtoInterface::DATE_TIME_FORMATS as $format) {
-            $dt = DateTimeImmutable::createFromFormat($format, $value);
-            // Reject calendar-invalid values that createFromFormat rolls over (e.g. Feb 30);
-            // such overflows are reported only as warnings.
-            $errors = DateTimeImmutable::getLastErrors();
-            $hasWarnings = $errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0);
-            if ($dt instanceof DateTimeImmutable && !$hasWarnings) {
-                return true;
-            }
-        }
-
-        return false;
+        // The deserializer's reader too, so a value held as decoded data is judged as a typed property is.
+        return DtoServiceSupport::parseDateTime($value) !== null;
     }
 
     private function isValidBase64(string $value): bool

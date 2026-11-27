@@ -390,8 +390,12 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
             $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 {% if readsEmptyContainers %}
             if ($rawJson !== null && $rawJson !== '') {
-                $payload = self::withRawEmptyObjects($payload, json_decode($rawJson, false));
+                $payload = self::withRawJsonObjects($payload, json_decode($rawJson, false));
             }
+{% if readsRawJsonShapes|default(false) %}
+            // Every JSON object is a `\stdClass` now: a PHP array left in the payload is a JSON array.
+            self::$openApiJsonShapesKnown = $rawJson !== null && $rawJson !== '';
+{% endif %}
 {% endif %}
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
@@ -410,9 +414,21 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
             // whole payload, so it is keyed `payload` — or by the property it names. `properties` and
             // `required` are not in this schema — the rule map owns them — so
             // nothing here is reported twice.
+{% if readsRawJsonShapes|default(false) %}
+            // The body is a JSON object: with the shapes known, a PHP array is no object any more.
+            $root = self::$openApiJsonShapesKnown ? (object)$payload : $payload;
+            foreach (self::validateOpenApiNode($root, self::OPENAPI_VALIDATION_CONSTRAINTS['object'], 'payload', 0) as $error) {
+{% else %}
             foreach (self::validateOpenApiNode($payload, self::OPENAPI_VALIDATION_CONSTRAINTS['object'], 'payload', 0) as $error) {
+{% endif %}
                 $validator->errors()->add(self::openApiObjectErrorKey($error), str_ends_with($error, '.') ? $error : $error . '.');
             }
+{% endif %}
+{% if readsRawJsonShapes|default(false) %}
+
+            // Hydration asks the interpreter too (which class a union value builds), over the decoded
+            // arrays: there a PHP array is an object again.
+            self::$openApiJsonShapesKnown = false;
 {% endif %}
 {% endif %}
 {% if checksObjectPaths or checksScalarPaths %}
@@ -533,27 +549,27 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
 
 {% if readsEmptyContainers %}
     /**
-     * The payload with every EMPTY JSON object of the raw body a `\stdClass` again. Decoded, `{}` is the
-     * empty PHP array `[]` is, so the interpreter matched `{}` against the `array` member of a union;
-     * as an object it can only be the object.
+     * The payload with every JSON object of the raw body a `\stdClass` again. Decoded, `{}` is the empty
+     * PHP array `[]` is and `{"0": "a"}` the list `["a"]`, so the interpreter matched an object against the
+     * `array` member of a union, and took a JSON array for a `type: object`. Put back, each object is the
+     * object the client sent, and a PHP array left in the payload is a JSON array.
      *
      * @param array<array-key, mixed> $data
      * @return array<array-key, mixed>
      */
-    private static function withRawEmptyObjects(array $data, mixed $raw): array
+    private static function withRawJsonObjects(array $data, mixed $raw): array
     {
         if (!$raw instanceof \stdClass && !is_array($raw)) {
             return $data;
         }
 
         foreach (is_array($raw) ? $raw : get_object_vars($raw) as $key => $member) {
-            if (!array_key_exists($key, $data)) {
+            if (!array_key_exists($key, $data) || !is_array($data[$key])) {
                 continue;
             }
-            if ($member instanceof \stdClass && get_object_vars($member) === [] && $data[$key] === []) {
-                $data[$key] = new \stdClass();
-            } elseif (is_array($data[$key])) {
-                $data[$key] = self::withRawEmptyObjects($data[$key], $member);
+            $data[$key] = self::withRawJsonObjects($data[$key], $member);
+            if ($member instanceof \stdClass) {
+                $data[$key] = (object)$data[$key];
             }
         }
 
@@ -844,6 +860,17 @@ final class {{ className }}{% if implementedInterfaces is not empty %} implement
             return;
         }
 
+{% if readsRawJsonShapes|default(false) %}
+        // Every JSON object of the raw body reached the interpreter as a `\stdClass`: an array refused for
+        // `object` is the JSON array it was, and is reported the way the raw shape check reports one.
+        $leaf = $segments === [] ? $value : ($node[$segments[array_key_last($segments)]] ?? null);
+        if ($claim === 'must be of type object' && is_array($leaf)) {
+            $validator->errors()->add($path, sprintf('%s expects object, got array.', $path));
+
+            return;
+        }
+
+{% endif %}
         $rule = match ($claim) {
             'is required' => 'present',
             'must be of type integer' => 'integer',

@@ -354,6 +354,13 @@ final class ValidationParityTest extends TestCase
                 '{"f":"2026-01-02T03:04:05.123Z"}',
                 '{"f":"not a timestamp"}',
             ],
+            // Any other fraction length: `date_format` round-trips only `.u`'s six digits and `.v`'s three,
+            // so laravel and laravel-data refused this until 2.15.163, while a union of it was taken.
+            'format date-time with one fraction digit' => [
+                ['type' => 'string', 'format' => 'date-time'],
+                '{"f":"2026-01-02T03:04:05.5Z"}',
+                '{"f":"not a timestamp"}',
+            ],
             'format date-time with a numeric offset' => [
                 ['type' => 'string', 'format' => 'date-time'],
                 '{"f":"2026-01-02T03:04:05+00:00"}',
@@ -3590,6 +3597,66 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * A JSON array where an object belongs, below a `oneOf`/`anyOf`/`allOf` member (support matrix
+     * "a JSON array for a `type: object` property"). The runtime walk of the raw shapes read only
+     * `type`, `items` and the property keywords and never stepped into composition, so `[[1, 2]]` for
+     * a union of a list of objects and `null` was accepted and written back unchanged. A union keeps
+     * the list when one of its members takes it, and `null` stays `null`.
+     *
+     * @param array<string, mixed> $propertySchema
+     * @param array<string, mixed> $extraSchemas
+     */
+    #[DataProvider('listBelowACompositionMemberCases')]
+    public function testAListWhereAnObjectBelongsIsRefusedBelowACompositionMember(
+        string $key,
+        array $propertySchema,
+        array $extraSchemas,
+        string $validJson,
+        string $invalidJson,
+    ): void {
+        $spec = self::probeSpec($propertySchema);
+        $spec['components']['schemas'] += $extraSchemas;
+
+        $this->assertSame(
+            expected: ['valid' => true, 'invalid' => false],
+            actual: $this->runtimeVerdict(spec: $spec, key: 'list-below-composition-' . $key, validJson: $validJson, invalidJson: $invalidJson),
+            message: $key,
+        );
+    }
+
+    /**
+     * @return iterable<string, array{0: string, 1: array<string, mixed>, 2: array<string, mixed>, 3: string, 4: string}>
+     */
+    public static function listBelowACompositionMemberCases(): iterable
+    {
+        $listOfObjects = ['type' => 'array', 'items' => ['type' => 'object']];
+        $jade = ['Jade' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => ['newt' => ['type' => 'string']]]]];
+        $fox = ['Fox' => ['type' => 'object', 'properties' => ['newt' => ['type' => 'string']]]];
+        $cases = [
+            // Refused before the fix only where no union stood in the way: these were accepted.
+            'oneOf list of objects or null' => [['oneOf' => [$listOfObjects, ['type' => 'null']]], [], '{"f":[{"a":1}]}', '{"f":[[1,2]]}'],
+            'oneOf list of objects, empty inner list' => [['oneOf' => [$listOfObjects, ['type' => 'null']]], [], '{"f":[{}]}', '{"f":[[]]}'],
+            'anyOf list of objects or integer' => [['anyOf' => [$listOfObjects, ['type' => 'integer']]], [], '{"f":3}', '{"f":[[1,2]]}'],
+            'oneOf ref to a list of objects' => [['oneOf' => [['$ref' => '#/components/schemas/Jade'], ['type' => 'null']]], $jade, '{"f":[{"newt":"a"}]}', '{"f":[[1,2]]}'],
+            'oneOf allOf ref to a list of objects' => [['oneOf' => [['allOf' => [['$ref' => '#/components/schemas/Jade']]], ['type' => 'null']]], $jade, '{"f":[{"newt":"a"}]}', '{"f":[[]]}'],
+            'oneOf list of ref objects' => [['oneOf' => [['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Fox']], ['type' => 'null']]], $fox, '{"f":[{"newt":"a"}]}', '{"f":[[1,2]]}'],
+            'anyOf map of objects or integer' => [['anyOf' => [['type' => 'object', 'additionalProperties' => ['type' => 'object']], ['type' => 'integer']]], [], '{"f":{"a":{}}}', '{"f":{"a":[1,2]}}'],
+            'anyOf map of objects, empty inner list' => [['anyOf' => [['type' => 'object', 'additionalProperties' => ['type' => 'object']], ['type' => 'integer']]], [], '{"f":{"a":{"b":1}}}', '{"f":{"a":[]}}'],
+            // Controls that already held.
+            'no union' => [$listOfObjects, [], '{"f":[{"a":1}]}', '{"f":[[1,2]]}'],
+            'union, null' => [['oneOf' => [$listOfObjects, ['type' => 'null']]], [], '{"f":null}', '{"f":[5]}'],
+            'union, item of the wrong type' => [['oneOf' => [['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Fox']], ['type' => 'null']]], $fox, '{"f":null}', '{"f":[{"newt":3}]}'],
+            'union of an object member' => [['oneOf' => [['type' => 'object'], ['type' => 'null']]], [], '{"f":{"a":1}}', '{"f":[1,2]}'],
+            // Another member takes the list: it is not refused.
+            'anyOf with a plain list member' => [['anyOf' => [$listOfObjects, ['type' => 'array']]], [], '{"f":[[1,2]]}', '{"f":"a"}'],
+            'oneOf with a list of lists member' => [['oneOf' => [['type' => 'array', 'items' => ['type' => 'object', 'required' => ['a']]], ['type' => 'array', 'items' => ['type' => 'array']]]], [], '{"f":[[1,2]]}', '{"f":"a"}'],
+        ];
+        foreach ($cases as $key => [$schema, $extraSchemas, $valid, $invalid]) {
+            yield $key => [$key, $schema, $extraSchemas, $valid, $invalid];
+        }
+    }
+
+    /**
      * Below a self-referring level the Laravel modes report each problem once, under the path it is
      * about — README.laravel "a violation is reported once" and "an error sits under the field it is
      * about". The rule that checks such a level folded the inner messages into one error on the outer
@@ -4621,13 +4688,8 @@ final class ValidationParityTest extends TestCase
      */
     public static function crashShapeProvider(): array
     {
-        // OPEN DEFECT: yiisoft's CollectionResolver skips an element it cannot build before any rule
-        // runs, and the raw payload is gone by then.
-        $droppedByYii3 = self::diverges(
-            mode: GenerationMode::Yii3,
-            expected: ['valid' => true, 'invalid' => true],
-            reason: 'open defect: yii3 Collection hydration drops a non-object item before validation',
-        );
+        // yiisoft's CollectionResolver skips an element it cannot build before any rule runs; since
+        // 2.15.163 the raw `Each` asks every item whether it is an object first.
         $tag = ['Tag' => ['type' => 'object', 'required' => ['id'], 'properties' => ['id' => ['type' => 'integer']]]];
         $tagRef = ['$ref' => '#/components/schemas/Tag'];
 
@@ -4667,8 +4729,8 @@ final class ValidationParityTest extends TestCase
             ],
             // A non-object ITEM of a DTO list or map. Laravel had no rule on `f.*` and yii3's collection
             // hydrator skipped what it could not build, so `["x"]` hydrated to `[]` without an error.
-            'string item in a list of DTOs' => [['type' => 'array', 'items' => $tagRef], $tag, '{"f":[{"id":1}]}', '{"f":["x"]}', $droppedByYii3],
-            'null item in a list of DTOs' => [['type' => 'array', 'items' => $tagRef], $tag, '{"f":[{"id":1}]}', '{"f":[null]}', $droppedByYii3],
+            'string item in a list of DTOs' => [['type' => 'array', 'items' => $tagRef], $tag, '{"f":[{"id":1}]}', '{"f":["x"]}'],
+            'null item in a list of DTOs' => [['type' => 'array', 'items' => $tagRef], $tag, '{"f":[{"id":1}]}', '{"f":[null]}'],
             'string value in a map of DTOs' => [
                 ['type' => 'object', 'additionalProperties' => $tagRef],
                 $tag,
@@ -5069,6 +5131,173 @@ final class ValidationParityTest extends TestCase
                     'symfony' => [
                         '{"pair":{"side":2}}' => null,
                         '{"pair":{"radius":"x"}}' => null,
+                    ],
+                ],
+            ),
+        );
+    }
+
+    /**
+     * A discriminated `oneOf` nested as one member of a wider union beside a scalar, reached through
+     * `allOf` with one `$ref`, whose member requires nothing and declares the discriminator as an EMPTY
+     * schema (`kind: {}`). An object without `kind` matches that member alone, and the emitted
+     * interpreter then looked for the tag: `property_exists()` answered for the member's PRIVATE
+     * `$kind`, and Symfony died reading it ("Cannot access private property"). The tag is looked up
+     * among the properties the interpreter may read now. Whether an object the untyped member accepts
+     * but its tag does not route there is valid differs by reading (JSON Schema `oneOf` or the OpenAPI
+     * discriminator), so those payloads are unasserted — but none may crash. The same union by a bare
+     * `$ref` (`bare`) is the neighbour.
+     */
+    public function testANestedDiscriminatedUnionWithAnUntypedTagIsCheckedInEveryMode(): void
+    {
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $spec = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Hexa' => ['type' => 'object', 'properties' => [
+                    'kind' => [],
+                    'size' => ['type' => 'integer', 'minimum' => 5, 'exclusiveMinimum' => true],
+                    'solid' => ['type' => 'boolean'],
+                ]],
+                'Disc' => ['type' => 'object', 'required' => ['kind', 'radius', 'depth']],
+                'Figure' => ['oneOf' => [
+                    ['type' => 'string', 'maxLength' => 0],
+                    [
+                        'oneOf' => [$ref('Hexa'), $ref('Disc')],
+                        'discriminator' => [
+                            'propertyName' => 'kind',
+                            'mapping' => ['hexagon' => '#/components/schemas/Hexa', 'circle' => '#/components/schemas/Disc'],
+                        ],
+                    ],
+                ]],
+                'Probe' => ['type' => 'object', 'properties' => [
+                    'plover' => ['allOf' => [$ref('Figure')]],
+                    'bare' => $ref('Figure'),
+                ]],
+            ]],
+        ];
+
+        $payloads = [];
+        $unasserted = [];
+        foreach (['plover', 'bare'] as $property) {
+            $payloads += [
+                sprintf('{"%s":{"kind":"hexagon","size":6,"solid":true}}', $property) => true,
+                sprintf('{"%s":{"kind":"hexagon","size":5}}', $property) => false,
+                sprintf('{"%s":""}', $property) => true,
+                sprintf('{"%s":"x"}', $property) => false,
+                sprintf('{"%s":5}', $property) => false,
+            ];
+            foreach (['{"solid":true}', '{"size":7,"solid":true}', '{"kind":"circle","radius":1}', '{"kind":"zzz"}'] as $object) {
+                $json = sprintf('{"%s":%s}', $property, $object);
+                $payloads[$json] = false;
+                $unasserted[$json] = null;
+            }
+        }
+        $diverging = [];
+        foreach (GenerationMode::cases() as $mode) {
+            $diverging[$mode->value] = $unasserted;
+        }
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(spec: $spec, key: 'nested discriminated union untyped tag', payloads: $payloads, diverging: $diverging),
+        );
+    }
+
+    /**
+     * A union COMPONENT whose first member is itself a `oneOf` of scalars — one of them a 3.1 `$ref`
+     * with an `enum` and a bound beside it — and whose other members are classes. The `$ref` with
+     * siblings was not read as a scalar, so the component became a union interface of its classes
+     * alone: runtime tried to build every class from `-3.5`, yii3 refused it as "must be an object",
+     * the Laravel modes as "must be an array". Its scalar members make it a value union now, inlined
+     * where it is used. The annotated `$ref` (`kiwi`), the bare one (`bare`) and the same union written
+     * flat on the property (`flat`) answer alike.
+     */
+    public function testScalarMembersOfANestedOneOfBesideClassesAreAccepted(): void
+    {
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Amount' => ['type' => 'number'],
+                'Flag' => ['type' => 'boolean'],
+                'Badge' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'label' => ['type' => 'string', 'maxLength' => 4],
+                        'shiny' => ['type' => 'boolean'],
+                        'weight' => ['type' => 'number', 'maximum' => 5.5],
+                    ],
+                    'required' => ['label', 'shiny', 'weight'],
+                ],
+                'Token' => ['oneOf' => [
+                    ['oneOf' => [
+                        $ref('Amount') + ['enum' => [-5, -3.5], 'exclusiveMinimum' => -5.5],
+                        ['type' => 'boolean'],
+                        ['type' => 'string', 'format' => 'uuid'],
+                    ]],
+                    [
+                        'type' => 'object',
+                        'properties' => [
+                            'stamp' => ['type' => 'string', 'format' => 'date-time'],
+                            'flag' => ['allOf' => [$ref('Flag')]],
+                        ],
+                        'required' => ['stamp', 'flag'],
+                        'additionalProperties' => false,
+                    ],
+                    $ref('Badge'),
+                ]],
+                'Probe' => ['type' => 'object', 'properties' => [
+                    'kiwi' => $ref('Token') + ['title' => 'Union', 'deprecated' => false],
+                    'bare' => $ref('Token'),
+                    'flat' => ['oneOf' => [
+                        $ref('Amount') + ['enum' => [-5, -3.5], 'exclusiveMinimum' => -5.5],
+                        ['type' => 'boolean'],
+                        ['type' => 'string', 'format' => 'uuid'],
+                        $ref('Badge'),
+                    ]],
+                ]],
+            ]],
+        ];
+
+        $payloads = [];
+        foreach (['kiwi', 'bare'] as $property) {
+            $payloads += [
+                sprintf('{"%s":-3.5}', $property) => true,
+                sprintf('{"%s":-5}', $property) => true,
+                sprintf('{"%s":true}', $property) => true,
+                sprintf('{"%s":"6f1c1b3e-6a7e-4b8e-9c3e-2f4f5a6b7c8d"}', $property) => true,
+                sprintf('{"%s":{"stamp":"2024-01-02T03:04:05Z","flag":true}}', $property) => true,
+                sprintf('{"%s":{"label":"ab","shiny":true,"weight":1}}', $property) => true,
+                sprintf('{"%s":-4}', $property) => false,
+                sprintf('{"%s":"x"}', $property) => false,
+                sprintf('{"%s":{"label":"abcdef","shiny":true,"weight":1}}', $property) => false,
+                sprintf('{"%s":{"stamp":"2024-01-02T03:04:05Z"}}', $property) => false,
+            ];
+        }
+        $payloads += [
+            '{"flat":-3.5}' => true,
+            '{"flat":true}' => true,
+            '{"flat":{"label":"ab","shiny":true,"weight":1}}' => true,
+            '{"flat":-4}' => false,
+            '{"flat":"x"}' => false,
+        ];
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: $spec,
+                key: 'scalar members of a nested oneOf beside classes',
+                payloads: $payloads,
+                diverging: [
+                    // Inlined where it is used, the union is a union of classes written on the property:
+                    // Symfony's serializer builds the member whose class name sorts first
+                    // (README.support-matrix.md), and that is `Badge`, not the inline object.
+                    'symfony' => [
+                        '{"kiwi":{"stamp":"2024-01-02T03:04:05Z","flag":true}}' => null,
+                        '{"bare":{"stamp":"2024-01-02T03:04:05Z","flag":true}}' => null,
                     ],
                 ],
             ),
@@ -6503,25 +6732,48 @@ final class ValidationParityTest extends TestCase
     public static function rfc3339DateTimeSpellings(): array
     {
         return [
-            // RFC 3339 allows both lower case; four of five modes parse with patterns that spell `T` and `Z`.
-            'lowercase t and z' => ['2026-03-10t12:00:00z', false, ['symfony' => true]],
-            'lowercase t, numeric offset' => ['2026-03-10t12:00:00+02:00', false, ['symfony' => true]],
-            'lowercase z' => ['2026-03-10T12:00:00z', false, ['symfony' => true, 'yii3' => true]],
+            // RFC 3339 allows both lower case; three of five modes parse with patterns that spell `T` and `Z`.
+            // Since 2.15.163 runtime's deserializer reads `t` and `z` as their upper case.
+            'lowercase t and z' => ['2026-03-10t12:00:00z', false, ['symfony' => true, 'runtime' => true]],
+            'lowercase t, numeric offset' => ['2026-03-10t12:00:00+02:00', false, ['symfony' => true, 'runtime' => true]],
+            // Since 2.15.163 laravel and laravel-data judge the plain property with the interpreter's own
+            // reader (the RFC 3339 shape and a warning-free parse), as a union of the same value already was:
+            // `date_format` formats the parsed value back and compares strings, and no format writes `z`,
+            // `-00:00` or a fraction of one, two, four or five digits back as it came.
+            'lowercase z' => ['2026-03-10T12:00:00z', true, []],
+            'lowercase z after a fraction' => ['2026-03-10T12:00:00.123z', true, []],
+            'unknown local offset' => ['2026-03-10T12:00:00-00:00', true, []],
+            'one fraction digit' => ['2026-03-10T12:00:00.5Z', true, []],
+            'two fraction digits' => ['2026-03-10T12:00:00.12+02:00', true, []],
+            'four fraction digits' => ['2026-03-10T12:00:00.1234Z', true, []],
+            'five fraction digits' => ['2026-03-10T12:00:00.12345-05:30', true, []],
+            // Refused everywhere the generator owns the check, and pinned so the reader above stays strict.
+            'offset minute out of range' => ['2026-03-10T12:00:00+02:60', false, ['symfony' => true]],
+            'offset hour 24' => ['2026-03-10T12:00:00+24:00', false, ['symfony' => true]],
+            'leap second' => ['2026-03-10T23:59:60Z', false, ['symfony' => true]],
             // Not RFC 3339, accepted by all five: one of the shared patterns (see the support matrix's note).
             'no offset' => ['2026-03-10T12:00:00', true, []],
             'space separator, no offset' => ['2026-03-10 12:00:00', true, []],
             // Not RFC 3339, and not a shared pattern.
             'space separator, offset' => ['2026-03-10 12:00:00Z', false, ['symfony' => true]],
-            'offset without colon' => ['2026-03-10T12:00:00+0200', false, ['symfony' => true, 'yii3' => true]],
-            // Laravel's `date_format` formats `+25:00` back unchanged; since 2.15.162 a `not_regex` beside it
-            // refuses it in both Laravel modes (laravel answered with a 500 from the hydration after it).
-            'offset hour out of range' => ['2026-03-10T12:00:00+25:00', false, ['symfony' => true, 'yii3' => true]],
+            // Since 2.15.163 yii3 matches the raw string against the interpreter's RFC 3339 shape before
+            // `#[ToDateTime]`, whose `P` read all four as offsets.
+            'offset without colon' => ['2026-03-10T12:00:00+0200', false, ['symfony' => true]],
+            'offset of hours only' => ['2026-03-10T12:00:00+02', false, ['symfony' => true]],
+            'zone name' => ['2026-03-10T12:00:00EST', false, ['symfony' => true]],
+            // Laravel's `date_format` formatted `+25:00` back unchanged (laravel answered with a 500 from the
+            // hydration after it); a `not_regex` refused it since 2.15.162, the RFC 3339 shape since 2.15.163.
+            'offset hour out of range' => ['2026-03-10T12:00:00+25:00', false, ['symfony' => true]],
+            // Neighbours every mode already accepted.
+            'numeric offset' => ['2026-03-10T12:00:00-05:30', true, []],
+            'fraction and Z' => ['2026-03-10T12:00:00.123456Z', true, []],
         ];
     }
 
     private const array RFC3339_DIVERGENCE_REASONS = [
         'symfony' => "the property is a DateTimeImmutable, so the serializer parses the string with PHP's free-form parser before any generated constraint runs",
-        'yii3' => '`#[ToDateTime]` parses with `p`, which reads `z` and `+0200` as offsets, and takes `+25:00` as an offset of a day and an hour',
+        'yii3' => 'the RFC 3339 shape the raw string is matched against reads the offset `z` in either case, as `#[ToDateTime]`\'s `P` does',
+        'runtime' => 'the deserializer reads the separator `t` and the zone `z` as their upper case, as RFC 3339 allows',
     ];
 
     /**
@@ -6580,8 +6832,9 @@ final class ValidationParityTest extends TestCase
      * A lowercase `t` is one answer per mode wherever the date-time sits. Symfony's serializer parses a
      * property and a list's items with PHP's free-form parser, which reads it; a list of lists stays a
      * list of strings there, and the emitted interpreter judged those case-sensitively — the same value
-     * accepted one level up was refused. The other modes refuse it everywhere (README.support-matrix,
-     * "RFC 3339 spellings").
+     * accepted one level up was refused. Runtime reads it everywhere since 2.15.163: its deserializer refused
+     * it on the parsed property while `DtoValidator` took it in a held list. Laravel, laravel-data and yii3
+     * refuse it everywhere (README.support-matrix, "RFC 3339 spellings").
      */
     public function testALowercaseDateTimeIsOneAnswerPerModeAtAnyDepth(): void
     {
@@ -6600,9 +6853,8 @@ final class ValidationParityTest extends TestCase
         $payloads = [];
         $lowercase = [];
         // Runtime holds an untyped item and a list of lists as the decoded strings, and `DtoValidator`
-        // judges decoded data by RFC 3339, which allows the lower case (since 2.15.161); the parsed
-        // property is the deserializer's patterns' answer.
-        $heldAsDecoded = [];
+        // judges decoded data by RFC 3339, which allows the lower case (since 2.15.161); since 2.15.163
+        // the deserializer reads the parsed property's `t` and `z` as their upper case too.
         foreach (['"%s"', '["%s"]', '[["%s"]]'] as $index => $shape) {
             $property = ['plain', 'owl', 'yak'][$index];
             $payloads[sprintf('{"%s":' . $shape . '}', $property, '2010-11-28T16:04:43+02:00')] = true;
@@ -6614,10 +6866,6 @@ final class ValidationParityTest extends TestCase
             $payloads[$lowercaseBoth] = false;
             $lowercase[$lowercaseT] = true;
             $lowercase[$lowercaseBoth] = true;
-            if ($property !== 'plain') {
-                $heldAsDecoded[$lowercaseT] = true;
-                $heldAsDecoded[$lowercaseBoth] = true;
-            }
         }
 
         $this->assertSame(
@@ -6626,7 +6874,7 @@ final class ValidationParityTest extends TestCase
                 spec: $spec,
                 key: 'lowercase date-time at any depth',
                 payloads: $payloads,
-                diverging: ['symfony' => $lowercase, 'runtime' => $heldAsDecoded],
+                diverging: ['symfony' => $lowercase, 'runtime' => $lowercase],
             ),
         );
     }
@@ -6654,45 +6902,53 @@ final class ValidationParityTest extends TestCase
             'arr' => ['oneOf' => [['type' => 'array', 'items' => $dateTime]]],
             'pair' => ['oneOf' => [$dateTime, ['type' => 'integer']]],
             'nul' => ['oneOf' => [$dateTime, ['type' => 'null']]],
+            // The plain property's own forms: Laravel's rule sits on a nullable property and on `list.*`.
+            'nullable' => ['type' => ['string', 'null'], 'format' => 'date-time'],
+            'list' => ['type' => 'array', 'items' => $dateTime],
         ]];
 
         $payloads = [];
-        $wrap = static fn(string $property, string $value): string => $property === 'arr'
-            ? sprintf('{"arr":["%s"]}', $value)
+        $wrap = static fn(string $property, string $value): string => in_array($property, ['arr', 'list'], true)
+            ? sprintf('{"%s":["%s"]}', $property, $value)
             : sprintf('{"%s":"%s"}', $property, $value);
-        $properties = ['plain', 'one', 'any', 'arr', 'pair', 'nul'];
+        $properties = ['plain', 'one', 'any', 'arr', 'pair', 'nul', 'nullable', 'list'];
+        // RFC 3339 also allows a lowercase `z`, the unknown local offset `-00:00` (§4.3) and a fraction of
+        // any length; a union took all three and laravel's and laravel-data's plain property refused them
+        // until 2.15.163, judged by a `date_format` round-trip instead of the interpreter's reader.
+        $rfc3339Spellings = ['2024-01-02T10:00:00z', '2024-01-02T10:00:00.123z', '2024-01-02T10:00:00-00:00', '2024-01-02T10:00:00.5Z', '2024-01-02T10:00:00.12345+02:00'];
         foreach ($properties as $property) {
-            foreach (['2024-01-02T10:00:00Z', '2024-01-02T10:00:00+02:00', '2024-01-02T10:00:00.585-05:30', '2024-01-02 10:00:00', '2024-01-02T10:00:00'] as $value) {
+            foreach (['2024-01-02T10:00:00Z', '2024-01-02T10:00:00+02:00', '2024-01-02T10:00:00.585-05:30', '2024-01-02 10:00:00', '2024-01-02T10:00:00', ...$rfc3339Spellings] as $value) {
                 $payloads[$wrap($property, $value)] = true;
             }
-            foreach (['2024-01-02T10:00:00+0200', '2024-01-02T10:00:00+02', '2024-01-02T10:00:00+25:00', '2024-01-02T10:00:00EST', '2024-02-30T10:00:00Z', 'x'] as $value) {
+            foreach (['2024-01-02T10:00:00+0200', '2024-01-02T10:00:00+02', '2024-01-02T10:00:00+25:00', '2024-01-02T10:00:00+24:00', '2024-01-02T10:00:00+02:60', '2024-01-02T23:59:60Z', '2024-01-02T10:00:00EST', '2024-02-30T10:00:00Z', 'x'] as $value) {
                 $payloads[$wrap($property, $value)] = false;
             }
         }
         $payloads['{"pair":7}'] = true;
         $payloads['{"nul":null}'] = true;
+        // RFC 3339's lower case: symfony's parser and runtime read it in every form (runtime's deserializer
+        // since 2.15.163 — it refused the parsed value while `DtoValidator` took it in a held list).
+        $lowercase = [];
+        foreach ($properties as $property) {
+            foreach (['2024-01-02t10:00:00z', '2024-01-02t10:00:00+02:00'] as $value) {
+                $payloads[$wrap($property, $value)] = false;
+                $lowercase[$wrap($property, $value)] = true;
+            }
+        }
 
         // The documented per-mode answers for the plain property (README.support-matrix.md, rows "a loose
         // `format: date-time` string", "RFC 3339 spellings", "an impossible calendar date"): symfony's
-        // serializer parses with PHP's free-form parser before any generated constraint runs, and yii3's
-        // `#[ToDateTime]` reads `p`. Unasserted there: both depend on how the parser is reached.
-        $diverging = ['symfony' => [], 'yii3' => [], 'runtime' => []];
+        // serializer parses with PHP's free-form parser before any generated constraint runs. Unasserted
+        // there: it depends on how the parser is reached. yii3 is asserted since 2.15.163: the raw string
+        // is matched against the RFC 3339 shape before `#[ToDateTime]`'s `P`, which took all four offsets.
+        $diverging = ['symfony' => $lowercase, 'runtime' => $lowercase];
         foreach ($properties as $property) {
-            foreach (['2024-01-02T10:00:00+0200', '2024-01-02T10:00:00+02', '2024-01-02T10:00:00+25:00', '2024-01-02T10:00:00EST', '2024-02-30T10:00:00Z', 'x'] as $value) {
+            foreach (['2024-01-02T10:00:00+0200', '2024-01-02T10:00:00+02', '2024-01-02T10:00:00+25:00', '2024-01-02T10:00:00+24:00', '2024-01-02T10:00:00+02:60', '2024-01-02T23:59:60Z', '2024-01-02T10:00:00EST', '2024-02-30T10:00:00Z', 'x'] as $value) {
                 $diverging['symfony'][$wrap($property, $value)] = null;
             }
-            if ($property === 'arr') {
-                // A list of strings in yii3: the interpreter judges each item, and refuses.
-                continue;
-            }
-            foreach (['2024-01-02T10:00:00+0200', '2024-01-02T10:00:00+02', '2024-01-02T10:00:00+25:00', '2024-01-02T10:00:00EST'] as $value) {
-                $diverging['yii3'][$wrap($property, $value)] = null;
-            }
         }
-        // A list inside a union is held as the decoded strings in runtime mode, and `DtoValidator` judges
-        // decoded data by RFC 3339 (since 2.15.161): the two offset-less spellings are refused there.
-        $diverging['runtime'][$wrap('arr', '2024-01-02 10:00:00')] = false;
-        $diverging['runtime'][$wrap('arr', '2024-01-02T10:00:00')] = false;
+        // A list inside a union is held as the decoded strings in runtime mode; `DtoValidator` judges them
+        // with the deserializer's own reader since 2.15.163, so the offset-less spellings are taken there too.
 
         $this->assertSame(
             expected: [],
@@ -6713,6 +6969,9 @@ final class ValidationParityTest extends TestCase
             '{"one":"2024-01-02T10:00:00Z"}' => '{"one":"2024-01-02T10:00:00+00:00"}',
             '{"any":"2024-01-02T10:00:00+02:00"}' => '{"any":"2024-01-02T10:00:00+02:00"}',
             '{"nul":"2024-01-02T10:00:00Z"}' => '{"nul":"2024-01-02T10:00:00+00:00"}',
+            '{"plain":"2024-01-02T10:00:00z"}' => '{"plain":"2024-01-02T10:00:00+00:00"}',
+            '{"nullable":"2024-01-02T10:00:00-00:00"}' => '{"nullable":"2024-01-02T10:00:00+00:00"}',
+            '{"one":"2024-01-02T10:00:00-00:00"}' => '{"one":"2024-01-02T10:00:00+00:00"}',
             '{"day":"2024-01-02"}' => '{"day":"2024-01-02"}',
             '{"dawn":"2024-01-02"}' => '{"dawn":"2024-01-02"}',
         ];
@@ -6736,6 +6995,21 @@ final class ValidationParityTest extends TestCase
                     message: $mode->value . ' ' . $json,
                 );
             }
+        }
+
+        // Runtime reads RFC 3339's lower case as the same instant the upper case spells, and writes it back
+        // the same way.
+        $lowercaseWrittenBack = [
+            '{"plain":"2024-01-02t10:00:00z"}' => '{"plain":"2024-01-02T10:00:00+00:00"}',
+            '{"one":"2024-01-02t10:00:00+02:00"}' => '{"one":"2024-01-02T10:00:00+02:00"}',
+            '{"pair":"2024-01-02T10:00:00.5z"}' => '{"pair":"2024-01-02T10:00:00.500000+00:00"}',
+        ];
+        foreach ($lowercaseWrittenBack as $json => $expected) {
+            $this->assertSame(
+                expected: $expected,
+                actual: $sentKey($this->runtimeRoundTrip($spec, 'date-time inside a union, written back', $json), $json),
+                message: 'runtime ' . $json,
+            );
         }
     }
 
@@ -8989,6 +9263,653 @@ final class ValidationParityTest extends TestCase
                 'required' => ['b'],
                 'properties' => ['kind' => ['type' => 'string'], 'b' => ['type' => 'integer', 'minimum' => 10]],
             ],
+        ];
+    }
+
+    /**
+     * A nullable union of an enum and a date (`okapi: {anyOf: [{enum: [0]}, {format: date}, {type:
+     * null}]}`) refuses an array or an object. yii3 typed it `ProbeOkapi|DateTimeImmutable|null` with no
+     * `#[ToString]` in front — that one makes null `""` — so `#[ToDateTime]` left the array as it came and
+     * the hydrator built the enum from it: `Cannot instantiate enum`, a 500. Pinned beside it: the same
+     * union where it cannot be null, and an integer in the enum's place, which always refused it.
+     *
+     * @param array<string, mixed> $okapi
+     * @param array<string, bool|null> $payloads JSON payload => accepted
+     */
+    #[DataProvider('nullableEnumBesideDateProvider')]
+    public function testANullableEnumBesideADateRefusesAnArray(array $okapi, array $payloads): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Probe' => ['type' => 'object', 'properties' => ['okapi' => $okapi]],
+            ]],
+        ];
+        $key = 'nullable enum beside date ' . md5((string)json_encode($spec));
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(spec: $spec, key: $key, payloads: $payloads),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>, 1: array<string, bool|null>}>
+     */
+    public static function nullableEnumBesideDateProvider(): iterable
+    {
+        $notScalar = [
+            '{"okapi":[2]}' => false,
+            '{"okapi":{"a":1}}' => false,
+            '{"okapi":"x"}' => false,
+        ];
+
+        // Cause: a `null` branch.
+        yield 'null branch' => [
+            ['anyOf' => [['enum' => [0]], ['type' => 'string', 'format' => 'date'], ['type' => 'null']]],
+            $notScalar + [
+                '{"okapi":0}' => true,
+                '{"okapi":"2020-01-01"}' => true,
+                '{"okapi":null}' => true,
+                '{"okapi":1}' => false,
+            ],
+        ];
+        // Cause: the 3.0 `nullable`.
+        yield 'nullable keyword' => [
+            ['anyOf' => [['enum' => ['red']], ['type' => 'string', 'format' => 'date']], 'nullable' => true],
+            $notScalar + [
+                '{"okapi":"red"}' => true,
+                '{"okapi":"2020-01-01"}' => true,
+                '{"okapi":null}' => true,
+                '{"okapi":0}' => false,
+            ],
+        ];
+        // Cause: `oneOf` beside a date-time. `"x"` is left unasserted: Symfony mode's answer depends on
+        // the serializer version.
+        yield 'oneOf date-time' => [
+            ['oneOf' => [['enum' => ['red']], ['type' => 'string', 'format' => 'date-time'], ['type' => 'null']]],
+            ['{"okapi":"x"}' => null] + $notScalar + [
+                '{"okapi":"red"}' => true,
+                '{"okapi":"2020-01-01T10:00:00Z"}' => true,
+                '{"okapi":null}' => true,
+            ],
+        ];
+        yield 'not nullable' => [
+            ['anyOf' => [['enum' => [0]], ['type' => 'string', 'format' => 'date']]],
+            $notScalar + [
+                '{"okapi":0}' => true,
+                '{"okapi":"2020-01-01"}' => true,
+                '{"okapi":null}' => false,
+            ],
+        ];
+        yield 'integer beside a date' => [
+            ['anyOf' => [['type' => 'integer'], ['type' => 'string', 'format' => 'date']], 'nullable' => true],
+            $notScalar + [
+                '{"okapi":1}' => true,
+                '{"okapi":"2020-01-01"}' => true,
+                '{"okapi":null}' => true,
+            ],
+        ];
+    }
+
+    /**
+     * A member of a discriminated union is a class of its own too: `wolf: {$ref: Kit}` beside `pet:
+     * {$ref: Pet}`, where `Pet` is `oneOf: [Kit, Dog]` on `kind`, takes a Kit with no `kind` — Kit's
+     * schema does not require it. laravel-data made the member extend the abstract base, whose `from()`
+     * required the tag on every call and whose constructor took it as a plain `string`: a Kit held
+     * through an `anyOf` was refused for `kind`, a Kit held through a `$ref` was a TypeError on the
+     * `Optional` it was handed, and Kit as the root class refused both a missing and an unlisted tag.
+     * Pinned beside it: through `Pet` the tag is still required and still one of the mapping.
+     *
+     * @param array<string, mixed> $wolf
+     */
+    #[DataProvider('discriminatedMemberOnItsOwnProvider')]
+    public function testADiscriminatedMemberOnItsOwnTakesNoTag(array $wolf): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Probe' => ['type' => 'object', 'properties' => [
+                    'pet' => ['$ref' => '#/components/schemas/Pet'],
+                    'wolf' => $wolf,
+                ]],
+                'Pet' => [
+                    'oneOf' => [['$ref' => '#/components/schemas/Kit'], ['$ref' => '#/components/schemas/Dog']],
+                    'discriminator' => ['propertyName' => 'kind'],
+                ],
+                'Kit' => ['type' => 'object', 'properties' => ['kind' => ['type' => 'string'], 'paw' => ['type' => 'string']]],
+                'Dog' => ['type' => 'object', 'properties' => ['kind' => ['type' => 'string'], 'bark' => ['type' => 'string']]],
+            ]],
+        ];
+        $key = 'discriminated member on its own ' . md5((string)json_encode($spec));
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(spec: $spec, key: $key, payloads: [
+                '{"wolf":{"paw":"x"}}' => true,
+                '{"pet":{"kind":"Kit","paw":"p"},"wolf":{"paw":"x"}}' => true,
+                '{"wolf":{"kind":"zzz","paw":"x"}}' => true,
+                '{"wolf":{"paw":5}}' => false,
+                '{"pet":{"kind":"Dog","bark":"b"}}' => true,
+                '{"pet":{"kind":"zzz"}}' => false,
+                '{"pet":{}}' => false,
+            ]),
+        );
+
+        // Kit as the root class.
+        $misses = [];
+        foreach (GenerationMode::cases() as $mode) {
+            $kit = str_replace('\Probe', '\Kit', $this->generate($spec, $this->namespaceFor($mode, $key), $mode->value));
+            if (!class_exists($kit)) {
+                continue;
+            }
+            /** @var class-string $kit */
+            foreach (['{"paw":"x"}' => true, '{"kind":"zzz","paw":"x"}' => true, '{"paw":5}' => false] as $json => $accepted) {
+                $outcome = $this->payloadOutcome($mode, $kit, $json, self::SYMFONY_REQUEST_PAYLOAD_CONTEXT);
+                $wanted = $accepted ? PayloadVerdict::Accepted : PayloadVerdict::Refused;
+                if ($outcome->verdict !== $wanted) {
+                    $misses[] = sprintf('%s: Kit %s %s (%s: %s)', $mode->value, $json, $outcome->verdict->value, $outcome->stage, $outcome->detail);
+                }
+            }
+        }
+        $this->assertSame(expected: [], actual: $misses);
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>}>
+     */
+    public static function discriminatedMemberOnItsOwnProvider(): iterable
+    {
+        // Cause: the base's `from()` checks the tag on a member call.
+        yield 'anyOf holder' => [['anyOf' => [['type' => 'array', 'items' => ['type' => 'string']], ['$ref' => '#/components/schemas/Kit']]]];
+        // Cause: the base's constructor takes the tag as a plain `string`.
+        yield 'reference' => [['$ref' => '#/components/schemas/Kit']];
+    }
+
+    /**
+     * A property `allOf` of one union and members that only constrain or annotate — `zebu: {allOf:
+     * [{anyOf: [<map of strings>, integer]}, {maxProperties: 3}]}` — is that union with the keywords
+     * beside it, as `{anyOf: […], maxProperties: 3}` already was. The extra member made the generator
+     * merge the `allOf` into a class of no properties: every mode typed the property as that empty
+     * class, so an integer was refused as no object, an object broke the union's rules and the
+     * sibling's unseen, and what was accepted was written back as `{}`. Pinned beside it: the
+     * one-member wrapper and the keyword written beside the union, which always worked.
+     *
+     * @param array<string, mixed> $zebu
+     * @param array<string, bool|null> $payloads JSON payload => accepted
+     * @param list<string> $writtenBack payloads the writing modes write back unchanged
+     * @param array<string, array<string, bool|null>> $diverging
+     */
+    #[DataProvider('allOfUnionWithConstraintMembersProvider')]
+    public function testAnAllOfOfAUnionAndConstraintMembersIsTheUnion(
+        array $zebu,
+        array $payloads,
+        array $writtenBack,
+        array $diverging = [],
+    ): void {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Probe' => ['type' => 'object', 'properties' => ['zebu' => $zebu]],
+                'Scarlet' => [
+                    'type' => 'object',
+                    'properties' => ['otter' => ['type' => 'string']],
+                    'required' => ['otter'],
+                ],
+            ]],
+        ];
+        $key = 'allOf union with constraint members ' . md5((string)json_encode($spec));
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(spec: $spec, key: $key, payloads: $payloads, diverging: $diverging),
+        );
+        foreach ($writtenBack as $json) {
+            $written = json_decode($json, true);
+            $this->assertEquals(expected: [$written, $written, $written], actual: $this->writtenBackByTheWritingModes($spec, $key, $json), message: $json);
+        }
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>, 1: array<string, bool|null>, 2: list<string>, 3?: array<string, array<string, bool|null>>}>
+     */
+    public static function allOfUnionWithConstraintMembersProvider(): iterable
+    {
+        $mapOrInteger = ['anyOf' => [['type' => 'object', 'additionalProperties' => ['type' => 'string']], ['type' => 'integer']]];
+        $mapOrIntegerPayloads = [
+            '{"zebu":{"a":"s"}}' => true,
+            '{"zebu":3}' => true,
+            '{"zebu":{"a":5}}' => false,
+            '{"zebu":"s"}' => false,
+        ];
+        $capped = $mapOrIntegerPayloads + [
+            '{"zebu":{"a":"s","b":"t","c":"u"}}' => true,
+            '{"zebu":{"a":"s","b":"t","c":"u","d":"v"}}' => false,
+        ];
+
+        // Cause: a keyword-only member beside the union.
+        yield 'maxProperties member' => [
+            ['allOf' => [$mapOrInteger, ['maxProperties' => 3]]],
+            $capped,
+            ['{"zebu":{"a":"s"}}', '{"zebu":3}'],
+        ];
+        // Cause: a member that only annotates.
+        yield 'description member' => [
+            ['allOf' => [$mapOrInteger, ['description' => 'd']]],
+            $mapOrIntegerPayloads + ['{"zebu":{"a":"s","b":"t","c":"u","d":"v"}}' => true],
+            ['{"zebu":{"a":"s"}}', '{"zebu":3}'],
+        ];
+        yield 'minimum member' => [
+            ['allOf' => [$mapOrInteger, ['minimum' => 1]]],
+            $mapOrIntegerPayloads + ['{"zebu":0}' => false],
+            ['{"zebu":{"a":"s"}}', '{"zebu":3}'],
+        ];
+        // The member's `type: object` holds beside the union: the integer branch is out.
+        yield 'object type member' => [
+            ['allOf' => [$mapOrInteger, ['type' => 'object', 'maxProperties' => 3]]],
+            ['{"zebu":3}' => false] + $capped,
+            ['{"zebu":{"a":"s"}}'],
+        ];
+        // Cause: a `$ref` member inside the union.
+        yield 'reference in the union' => [
+            ['allOf' => [['oneOf' => [['$ref' => '#/components/schemas/Scarlet'], ['type' => 'array', 'items' => ['type' => 'integer']]]], ['maxProperties' => 3]]],
+            [
+                '{"zebu":{"otter":"o"}}' => true,
+                '{"zebu":[1,2]}' => true,
+                '{"zebu":{"otter":5}}' => false,
+                '{"zebu":{}}' => false,
+                '{"zebu":3}' => false,
+                '{"zebu":"s"}' => false,
+            ],
+            ['{"zebu":{"otter":"o"}}', '{"zebu":[1,2]}'],
+            // README.support-matrix, the EMPTY JSON container row: the framework hands symfony and yii3
+            // the body decoded, `{}` is the empty list there, and the `array` member takes it.
+            ['symfony' => ['{"zebu":{}}' => true], 'yii3' => ['{"zebu":{}}' => true]],
+        ];
+        // Cause: an inline object member inside the union.
+        yield 'inline object in the union' => [
+            ['allOf' => [['oneOf' => [['type' => 'object', 'properties' => ['gibbon' => ['type' => 'integer']], 'required' => ['gibbon']], ['type' => 'string']]], ['maxProperties' => 3]]],
+            [
+                '{"zebu":"x"}' => true,
+                '{"zebu":{"gibbon":1}}' => true,
+                '{"zebu":{"gibbon":"x"}}' => false,
+                '{"zebu":{}}' => false,
+                '{"zebu":3}' => false,
+            ],
+            ['{"zebu":"x"}', '{"zebu":{"gibbon":1}}'],
+        ];
+        // Cause: the same `allOf` one level down — a list item, a map value, a union member.
+        $cappedUnion = ['allOf' => [$mapOrInteger, ['maxProperties' => 3]]];
+        yield 'list item' => [
+            ['type' => 'array', 'items' => $cappedUnion],
+            [
+                '{"zebu":[3,{"a":"s"}]}' => true,
+                '{"zebu":[{"a":5}]}' => false,
+                '{"zebu":[{"a":"s","b":"t","c":"u","d":"v"}]}' => false,
+                '{"zebu":["s"]}' => false,
+            ],
+            ['{"zebu":[3,{"a":"s"}]}'],
+        ];
+        yield 'map value' => [
+            ['type' => 'object', 'additionalProperties' => $cappedUnion],
+            [
+                '{"zebu":{"k":3,"j":{"a":"s"}}}' => true,
+                '{"zebu":{"j":{"a":5}}}' => false,
+                '{"zebu":{"j":{"a":"s","b":"t","c":"u","d":"v"}}}' => false,
+            ],
+            ['{"zebu":{"k":3,"j":{"a":"s"}}}'],
+        ];
+        yield 'union member' => [
+            ['oneOf' => [['type' => 'string'], $cappedUnion]],
+            [...$capped, '{"zebu":"s"}' => true, '{"zebu":true}' => false],
+            ['{"zebu":{"a":"s"}}', '{"zebu":3}', '{"zebu":"s"}'],
+        ];
+        // Pinned: the one-member wrapper, and the keyword beside the union.
+        yield 'one-member wrapper' => [
+            ['allOf' => [$mapOrInteger]],
+            $mapOrIntegerPayloads,
+            ['{"zebu":{"a":"s"}}', '{"zebu":3}'],
+        ];
+        yield 'maxProperties beside the union' => [
+            $mapOrInteger + ['maxProperties' => 3],
+            $capped,
+            ['{"zebu":{"a":"s"}}', '{"zebu":3}'],
+        ];
+    }
+
+    /**
+     * A component `allOf` with a member that is a union of objects — `Sepia: {allOf: [{$ref: Plum}]}`
+     * where Plum is `oneOf: [Cat, Dog]`, with or without an object member beside it — is still that
+     * union, every branch built and checked. Runtime rendered `final class Sepia extends Plum`, a class
+     * extending an interface, which PHP refuses at load (every request touching it a 500); laravel and
+     * laravel-data dropped the union and kept only the sibling's keys, so a payload of no branch or of
+     * both was accepted and a branch key was not written back. Pinned beside it: the classic discriminator
+     * `allOf: [$ref base, …]` variant and the single-`$ref` child.
+     *
+     * A branch's key the payload leaves out is echoed as `null` by laravel-data: the class holds it
+     * untyped, and an untyped optional property has no `|Optional` (README.support-matrix.md).
+     *
+     * @param array<string, array<string, mixed>> $components
+     * @param array<string, bool|null> $payloads JSON payload => accepted
+     * @param array<string, string|null> $writtenBack payload the writing modes write back unchanged => what
+     *     laravel-data writes back instead (null: unchanged too)
+     * @param array<string, array<string, bool|null>> $diverging
+     */
+    #[DataProvider('componentAllOfOfAUnionProvider')]
+    public function testAComponentAllOfOfAUnionIsTheUnion(
+        array $components,
+        array $payloads,
+        array $writtenBack,
+        array $diverging = [],
+    ): void {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => ['Probe' => ['type' => 'object', 'properties' => ['lynx' => ['$ref' => '#/components/schemas/Sepia']]]] + $components],
+        ];
+        $key = 'component allOf of a union ' . md5((string)json_encode($spec));
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(spec: $spec, key: $key, payloads: $payloads, diverging: $diverging),
+        );
+        foreach ($writtenBack as $json => $byLaravelData) {
+            $written = json_decode($json, true);
+            $this->assertEquals(
+                expected: [$written, $written, $byLaravelData === null ? $written : json_decode($byLaravelData, true)],
+                actual: $this->writtenBackByTheWritingModes($spec, $key, $json),
+                message: $json,
+            );
+        }
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, array<string, mixed>>, 1: array<string, bool|null>, 2: array<string, string|null>, 3?: array<string, array<string, bool|null>>}>
+     */
+    public static function componentAllOfOfAUnionProvider(): iterable
+    {
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $members = [
+            'Cat' => ['type' => 'object', 'properties' => ['paw' => ['type' => 'string']], 'required' => ['paw']],
+            'Dog' => ['type' => 'object', 'properties' => ['bark' => ['type' => 'integer']], 'required' => ['bark']],
+        ];
+        $plum = ['Plum' => ['oneOf' => [$ref('Cat'), $ref('Dog')]]] + $members;
+        $unionOnly = [
+            '{"lynx":{"paw":"x"}}' => true,
+            '{"lynx":{"bark":1}}' => true,
+            '{"lynx":{}}' => false,
+            '{"lynx":{"paw":5}}' => false,
+            '{"lynx":{"paw":"x","bark":1}}' => false,
+        ];
+        $withTail = [
+            '{"lynx":{"paw":"x","tail":"t"}}' => true,
+            '{"lynx":{"bark":1}}' => true,
+            '{"lynx":{"tail":"t"}}' => false,
+            '{"lynx":{"paw":"x","tail":5}}' => false,
+            '{"lynx":{"paw":"x","bark":1}}' => false,
+        ];
+        $tail = ['type' => 'object', 'properties' => ['tail' => ['type' => 'string']]];
+        $tailWrittenBack = [
+            '{"lynx":{"paw":"x","tail":"t"}}' => '{"lynx":{"paw":"x","tail":"t","bark":null}}',
+            '{"lynx":{"bark":1}}' => '{"lynx":{"paw":null,"bark":1}}',
+        ];
+
+        // Cause: one `$ref` to a union — runtime extended the interface.
+        yield 'one reference to a union' => [
+            $plum + ['Sepia' => ['allOf' => [$ref('Plum')], 'description' => 'x']],
+            $unionOnly,
+            ['{"lynx":{"paw":"x"}}' => '{"lynx":{"paw":"x","bark":null}}', '{"lynx":{"bark":1}}' => '{"lynx":{"paw":null,"bark":1}}'],
+        ];
+        // Cause: a union reference beside an object member — runtime extended the interface, laravel
+        // and laravel-data dropped the union.
+        yield 'reference to a union beside an object' => [
+            $plum + ['Sepia' => ['allOf' => [$ref('Plum'), $tail]]],
+            $withTail,
+            $tailWrittenBack,
+        ];
+        yield 'inline union beside an object' => [
+            $members + ['Sepia' => ['allOf' => [['oneOf' => [$ref('Cat'), $ref('Dog')]], $tail]]],
+            $withTail,
+            $tailWrittenBack,
+        ];
+        // The same with a discriminator on the union.
+        $kinded = [
+            'Plum' => ['oneOf' => [$ref('Cat'), $ref('Dog')], 'discriminator' => ['propertyName' => 'kind']],
+            'Cat' => ['type' => 'object', 'properties' => ['kind' => ['type' => 'string'], 'paw' => ['type' => 'string']], 'required' => ['kind', 'paw']],
+            'Dog' => ['type' => 'object', 'properties' => ['kind' => ['type' => 'string'], 'bark' => ['type' => 'integer']], 'required' => ['kind', 'bark']],
+        ];
+        yield 'reference to a discriminated union beside an object' => [
+            $kinded + ['Sepia' => ['allOf' => [$ref('Plum'), $tail]]],
+            [
+                '{"lynx":{"kind":"Cat","paw":"x","tail":"t"}}' => true,
+                '{"lynx":{"kind":"Dog","bark":1}}' => true,
+                '{"lynx":{"tail":"t"}}' => false,
+                '{"lynx":{"kind":"Cat","tail":"t"}}' => false,
+                '{"lynx":{"kind":"Cat","paw":"x","tail":5}}' => false,
+            ],
+            [
+                '{"lynx":{"kind":"Cat","paw":"x","tail":"t"}}' => '{"lynx":{"kind":"Cat","paw":"x","tail":"t","bark":null}}',
+                '{"lynx":{"kind":"Dog","bark":1}}' => '{"lynx":{"kind":"Dog","paw":null,"bark":1}}',
+            ],
+        ];
+        // Pinned: the same union written beside the `allOf`.
+        yield 'union beside an object allOf' => [
+            $members + ['Sepia' => ['allOf' => [$tail], 'oneOf' => [$ref('Cat'), $ref('Dog')]]],
+            $withTail,
+            $tailWrittenBack,
+        ];
+        // Pinned: the classic discriminator variant `allOf: [$ref base, {…}]`, and the single-`$ref` child.
+        yield 'discriminator base variant' => [
+            [
+                'Sepia' => [
+                    'type' => 'object',
+                    'properties' => ['kind' => ['type' => 'string']],
+                    'required' => ['kind'],
+                    'discriminator' => ['propertyName' => 'kind', 'mapping' => ['cat' => '#/components/schemas/Cat']],
+                ],
+                'Cat' => ['allOf' => [$ref('Sepia'), ['type' => 'object', 'properties' => ['paw' => ['type' => 'string']], 'required' => ['paw']]]],
+            ],
+            [
+                '{"lynx":{"kind":"cat","paw":"x"}}' => true,
+                '{"lynx":{"kind":"cat"}}' => false,
+                '{"lynx":{"kind":"cat","paw":5}}' => false,
+            ],
+            ['{"lynx":{"kind":"cat","paw":"x"}}' => null],
+        ];
+        yield 'single reference child' => [
+            $members + ['Sepia' => ['allOf' => [$ref('Cat')], 'description' => 'x']],
+            [
+                '{"lynx":{"paw":"x"}}' => true,
+                '{"lynx":{}}' => false,
+                '{"lynx":{"paw":5}}' => false,
+            ],
+            ['{"lynx":{"paw":"x"}}' => null],
+        ];
+    }
+
+    /**
+     * A mapping target of a `oneOf` discriminator base that is itself composed with `allOf` — required
+     * keys in an `allOf` member, or `allOf: [$ref Fur, {…}]` — is a member of that base. Runtime left it
+     * unlinked and refused its payload: "Discriminator mapping class Kit must extend or implement Hue".
+     * Pinned beside it: the plain member next to it.
+     *
+     * @param array<string, array<string, mixed>> $components
+     * @param array<string, bool|null> $payloads JSON payload => accepted
+     * @param list<string> $writtenBack payloads the writing modes write back unchanged
+     */
+    #[DataProvider('discriminatorMemberWithAllOfProvider')]
+    public function testADiscriminatorMemberComposedWithAllOfIsAMember(array $components, array $payloads, array $writtenBack): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $spec = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Probe' => ['type' => 'object', 'properties' => ['lynx' => $ref('Hue')]],
+                'Hue' => ['oneOf' => [$ref('Kit'), $ref('Dog')], 'discriminator' => ['propertyName' => 'kind']],
+                'Dog' => ['type' => 'object', 'properties' => ['kind' => ['type' => 'string'], 'bark' => ['type' => 'integer']], 'required' => ['kind']],
+            ] + $components],
+        ];
+        $key = 'discriminator member with allOf ' . md5((string)json_encode($spec));
+
+        $this->assertSame(expected: [], actual: $this->payloadTableMisses(spec: $spec, key: $key, payloads: $payloads));
+        foreach ($writtenBack as $json) {
+            $written = json_decode($json, true);
+            $this->assertEquals(expected: [$written, $written, $written], actual: $this->writtenBackByTheWritingModes($spec, $key, $json), message: $json);
+        }
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, array<string, mixed>>, 1: array<string, bool|null>, 2: list<string>}>
+     */
+    public static function discriminatorMemberWithAllOfProvider(): iterable
+    {
+        $kitProperties = ['kind' => ['type' => 'string'], 'paw' => ['type' => 'string']];
+
+        yield 'required keys in an allOf member' => [
+            ['Kit' => ['type' => 'object', 'properties' => $kitProperties, 'allOf' => [['required' => ['kind', 'paw']]]]],
+            [
+                '{"lynx":{"kind":"Kit","paw":"x"}}' => true,
+                '{"lynx":{"kind":"Dog","bark":1}}' => true,
+                '{"lynx":{"kind":"Kit"}}' => false,
+                '{"lynx":{"kind":"Cow"}}' => false,
+            ],
+            ['{"lynx":{"kind":"Kit","paw":"x"}}', '{"lynx":{"kind":"Dog","bark":1}}'],
+        ];
+        yield 'allOf of a reference and an object' => [
+            [
+                'Fur' => ['type' => 'object', 'properties' => ['kind' => ['type' => 'string']], 'required' => ['kind']],
+                'Kit' => ['allOf' => [['$ref' => '#/components/schemas/Fur'], ['type' => 'object', 'properties' => ['paw' => ['type' => 'string']], 'required' => ['paw']]]],
+            ],
+            [
+                '{"lynx":{"kind":"Kit","paw":"x"}}' => true,
+                '{"lynx":{"kind":"Dog","bark":1}}' => true,
+                '{"lynx":{"kind":"Kit"}}' => false,
+                '{"lynx":{"kind":"Cow"}}' => false,
+            ],
+            ['{"lynx":{"kind":"Kit","paw":"x"}}', '{"lynx":{"kind":"Dog","bark":1}}'],
+        ];
+    }
+
+    /**
+     * A union branch that references a pure ALIAS component (`Amber: {$ref: Azure}`) is checked as the
+     * component the alias names, as a branch referencing it directly is. Symfony left the branch as
+     * "is that class" where the direct reference was written out: the property is `mixed` or
+     * `bool|array`, the value stays the decoded array, so an `anyOf` let any object through unjudged
+     * and a `oneOf` refused every object as no branch. Pinned beside it: the direct reference.
+     *
+     * @param array<string, mixed> $components the components besides `Probe`
+     * @param array<string, bool|null> $payloads JSON payload => accepted
+     */
+    #[DataProvider('unionBranchNamingAnAliasProvider')]
+    public function testAUnionBranchNamingAnAliasIsCheckedAsTheAliasTarget(string $property, array $components, array $payloads): void
+    {
+        if (!class_exists(Validation::class)) {
+            $this->markTestSkipped('symfony/validator not installed');
+        }
+
+        $spec = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Probe' => ['type' => 'object', 'properties' => [$property => ['$ref' => '#/components/schemas/Union']]],
+                ...$components,
+            ]],
+        ];
+        $key = 'union branch naming an alias ' . md5((string)json_encode($spec));
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(spec: $spec, key: $key, payloads: $payloads),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{0: string, 1: array<string, mixed>, 2: array<string, bool|null>}>
+     */
+    public static function unionBranchNamingAnAliasProvider(): iterable
+    {
+        $azure = [
+            'type' => 'object',
+            'properties' => ['walrus' => ['type' => 'string'], 'bison' => ['type' => 'string', 'maxLength' => 1]],
+            'required' => ['walrus', 'bison'],
+        ];
+        $anyOfPayloads = [
+            '{"tapir":{"walrus":"x","bison":"e"}}' => true,
+            '{"tapir":5}' => true,
+            '{"tapir":[1,"s"]}' => true,
+            '{"tapir":{"bison":"eb"}}' => false,
+            '{"tapir":{"walrus":"x","bison":"eb"}}' => false,
+            '{"tapir":{"walrus":"x"}}' => false,
+            '{"tapir":"s"}' => false,
+        ];
+        $anyOf = static fn(string $branchRef): array => ['anyOf' => [
+            ['type' => 'integer'],
+            ['$ref' => $branchRef],
+            ['type' => 'array'],
+        ]];
+        // Cause: an `anyOf` let any object through the alias branch.
+        yield 'anyOf branch naming an alias' => [
+            'tapir',
+            ['Azure' => $azure, 'Amber' => ['$ref' => '#/components/schemas/Azure'], 'Union' => $anyOf('#/components/schemas/Amber')],
+            $anyOfPayloads,
+        ];
+        yield 'anyOf branch naming the component' => [
+            'tapir',
+            ['Azure' => $azure, 'Union' => $anyOf('#/components/schemas/Azure')],
+            $anyOfPayloads,
+        ];
+
+        $teal = ['type' => 'object', 'properties' => ['otter' => ['type' => 'string']], 'required' => ['otter']];
+        $oneOfPayloads = [
+            '{"tern":{"otter":"x"}}' => true,
+            '{"tern":true}' => true,
+            '{"tern":[1,2]}' => true,
+            '{"tern":{"otter":5}}' => false,
+            // `{}` decodes to the same empty array as `[]`, which the list branch takes in the modes that
+            // judge the decoded array: either answer, as long as it is not a crash.
+            '{"tern":{}}' => null,
+            '{"tern":["s"]}' => false,
+            '{"tern":"s"}' => false,
+        ];
+        $oneOf = static fn(string $branchRef): array => ['oneOf' => [
+            ['$ref' => $branchRef],
+            ['type' => 'boolean'],
+            ['type' => 'array', 'items' => ['type' => 'integer']],
+        ]];
+        // Cause: a `oneOf` refused every object as no branch.
+        yield 'oneOf branch naming an alias' => [
+            'tern',
+            ['Teal' => $teal, 'Scarlet' => ['$ref' => '#/components/schemas/Teal'], 'Union' => $oneOf('#/components/schemas/Scarlet')],
+            $oneOfPayloads,
+        ];
+        yield 'oneOf branch naming the component' => [
+            'tern',
+            ['Teal' => $teal, 'Union' => $oneOf('#/components/schemas/Teal')],
+            $oneOfPayloads,
         ];
     }
 
@@ -11414,6 +12335,31 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * An object member nested in a union beside an `array` member: laravel took the property for a list
+     * and wrote `{"a": 1}` back as `[1]`. Each writing mode writes the value back as it came.
+     */
+    public function testAnObjectInANestedUnionBesideAListIsWrittenBackKeyed(): void
+    {
+        $spec = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => ['Probe' => ['type' => 'object', 'properties' => [
+                'mole' => ['anyOf' => [
+                    ['anyOf' => [['type' => 'object'], ['type' => 'boolean']]],
+                    ['type' => 'array', 'items' => ['type' => 'string']],
+                ]],
+            ]]]],
+        ];
+        foreach (['{"mole":{"a":1,"b":true}}' => ['mole' => ['a' => 1, 'b' => true]], '{"mole":["x","y"]}' => ['mole' => ['x', 'y']], '{"mole":true}' => ['mole' => true]] as $json => $written) {
+            $this->assertEquals(
+                expected: [$written, $written, $written],
+                actual: $this->writtenBackByTheWritingModes($spec, 'nested union object written back', $json),
+                message: $json,
+            );
+        }
+    }
+
+    /**
      * Shapes whose object paths the laravel modes checked against the raw body without asking which
      * branch holds the value: every member of a discriminated union put its `type: object` paths at
      * the union's own path, so a square's list `hue` was refused as the triangle's object; and a list
@@ -11474,6 +12420,10 @@ final class ValidationParityTest extends TestCase
         $listHue = ['type' => 'array', 'items' => ['type' => 'string']];
         $objectHue = ['type' => 'object', 'properties' => ['red' => ['type' => 'boolean']]];
         $colours = ['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['red', 'blue']]];
+        $probe = static fn(array $properties): array => ['Probe' => ['type' => 'object', 'properties' => $properties]];
+        $strings = ['type' => 'array', 'items' => ['type' => 'string']];
+        $redObject = ['type' => 'object', 'required' => ['red']];
+        $newtObject = ['type' => 'object', 'properties' => ['newt' => ['type' => 'string']]];
 
         return [
             'a list member beside an object member of a discriminated union' => [
@@ -11548,6 +12498,102 @@ final class ValidationParityTest extends TestCase
                     '{"owl":["red"]}' => true,
                     '{"owl":{"a":1}}' => true,
                     '{"owl":5}' => false,
+                ],
+            ],
+            // A union of object members nested in a union with an `array` member: the list belongs to
+            // the array member, and the nested union is no map keyed 0..n-1 for it. `[null]` passed as
+            // such a map, and the `oneOf` counted `["x"]` twice.
+            'a list beside a nested union of object members' => [
+                $probe([
+                    'lynx' => ['anyOf' => [['oneOf' => [$redObject, ['type' => 'object']]], $strings]],
+                    'mole' => ['anyOf' => [['anyOf' => [['type' => 'object'], ['type' => 'boolean']]], $strings]],
+                    'wren' => ['oneOf' => [['anyOf' => [$redObject, ['type' => 'object']]], $strings]],
+                    // Controls: the object member a direct sibling, and a nested union of scalars.
+                    'yak' => ['anyOf' => [['type' => 'object'], $strings]],
+                    'ibis' => ['anyOf' => [['oneOf' => [['type' => 'integer'], ['type' => 'boolean']]], $strings]],
+                    // The map boundary: no `array` member anywhere, so the decoded list is a map to symfony
+                    // and yii3.
+                    'kiwi' => ['type' => 'object'],
+                ]),
+                [
+                    '{"lynx":[null]}' => false,
+                    '{"lynx":[2.5]}' => false,
+                    '{"lynx":["x"]}' => true,
+                    '{"lynx":{"blue":1}}' => true,
+                    '{"lynx":5}' => false,
+                    '{"mole":[null]}' => false,
+                    '{"mole":["x"]}' => true,
+                    '{"mole":true}' => true,
+                    '{"mole":{"blue":1}}' => true,
+                    '{"wren":["x"]}' => true,
+                    '{"wren":[null]}' => false,
+                    '{"wren":{"red":1}}' => true,
+                    '{"wren":{"blue":1}}' => true,
+                    '{"yak":[null]}' => false,
+                    '{"yak":["x"]}' => true,
+                    '{"yak":{"blue":1}}' => true,
+                    '{"ibis":[null]}' => false,
+                    '{"ibis":["x"]}' => true,
+                    '{"ibis":true}' => true,
+                    '{"kiwi":[null]}' => false,
+                    '{"kiwi":{"blue":1}}' => true,
+                ],
+                [
+                    // README.support-matrix, "a JSON array for a `type: object` property".
+                    'symfony' => ['{"kiwi":[null]}' => true],
+                    'yii3' => ['{"kiwi":[null]}' => true],
+                ],
+            ],
+            // Object items under the `array` member of a union: an inner list is no object. Without the
+            // union (`$ref Jade`, `allOf: [$ref Jade]`) the laravel modes refused it from the raw body.
+            'object items under the array member of a union' => [
+                [
+                    'Jade' => ['type' => 'array', 'items' => $newtObject],
+                    ...$probe([
+                        'puffin' => ['anyOf' => [['type' => 'array', 'items' => $newtObject], ['type' => 'integer']]],
+                        'quail' => ['oneOf' => [$ref('Jade'), ['type' => 'boolean']]],
+                        // Controls: no union around the list.
+                        'robin' => $ref('Jade'),
+                        'stork' => ['allOf' => [$ref('Jade')]],
+                    ]),
+                ],
+                [
+                    '{"puffin":[[1,2]]}' => false,
+                    '{"puffin":[[]]}' => false,
+                    '{"puffin":[5]}' => false,
+                    '{"puffin":[{"newt":"a"}]}' => true,
+                    '{"puffin":[{}]}' => true,
+                    '{"puffin":7}' => true,
+                    '{"quail":[[1,2]]}' => false,
+                    '{"quail":[[]]}' => false,
+                    '{"quail":[{"newt":"a"}]}' => true,
+                    '{"quail":true}' => true,
+                    '{"robin":[[1,2]]}' => false,
+                    '{"robin":[{"newt":"a"}]}' => true,
+                    '{"stork":[[1,2]]}' => false,
+                    '{"stork":[{"newt":"a"}]}' => true,
+                ],
+                [
+                    // Runtime refuses all four too ('param "puffin.0" expects object, got array'), so it
+                    // takes the shared expectations above.
+                    // README.support-matrix, "a JSON array for a `type: object` property" and "an EMPTY
+                    // JSON container": decoded, `[1,2]` is `{"0":1,"1":2}` and `[]` is `{}`.
+                    'symfony' => [
+                        '{"puffin":[[1,2]]}' => null,
+                        '{"puffin":[[]]}' => null,
+                        '{"quail":[[1,2]]}' => null,
+                        '{"quail":[[]]}' => null,
+                        '{"robin":[[1,2]]}' => null,
+                        '{"stork":[[1,2]]}' => null,
+                    ],
+                    'yii3' => [
+                        '{"puffin":[[1,2]]}' => null,
+                        '{"puffin":[[]]}' => null,
+                        '{"quail":[[1,2]]}' => null,
+                        '{"quail":[[]]}' => null,
+                        '{"robin":[[1,2]]}' => null,
+                        '{"stork":[[1,2]]}' => null,
+                    ],
                 ],
             ],
         ];
@@ -13084,8 +14130,6 @@ final class ValidationParityTest extends TestCase
                 ],
                 [
                     'symfony' => ['{"f":[null]}' => null, '{"f":["x"]}' => null, '{"f":[7]}' => null],
-                    // The same row: the collection hydrator drops what it cannot build.
-                    'yii3' => ['{"f":[null]}' => null, '{"f":["x"]}' => null, '{"f":[7]}' => null],
                 ],
             ],
             'non-object value of a map of requirement-free DTOs' => [
@@ -13779,9 +14823,8 @@ final class ValidationParityTest extends TestCase
                 '{"greens":[null]}' => false,
             ],
             // README.support-matrix "a `null` ITEM of a nullable list of DTOs": refused before
-            // `#[DataCollectionOf]` builds it. README.support-matrix "a non-object ITEM of a list or map of
-            // DTOs": yii3's collection hydrator drops the null it cannot build.
-            ['yii3' => ['{"greens":[null]}' => true], 'laravel-data' => [
+            // `#[DataCollectionOf]` builds it. yii3 refuses the non-object item of `greens` since 2.15.163.
+            ['laravel-data' => [
                 '{"reds":[null]}' => false,
                 '{"reds":[{"tail":true},null]}' => false,
                 '{"blues":[null]}' => false,
@@ -14040,6 +15083,109 @@ final class ValidationParityTest extends TestCase
                 '{"fox":[1]}' => true,
             ],
         ];
+        // A nested union holds its object member as the raw array: the spelled-out member is all that
+        // checks it, and an enum component a property names has to arrive there as its members — with a
+        // `description` or `title` beside the `$ref` as much as without one.
+        $walrusObject = static fn(array $walrus): array => [
+            'type' => 'object',
+            'required' => ['walrus'],
+            'properties' => ['walrus' => $walrus],
+        ];
+        $stringList = ['type' => 'array', 'items' => ['type' => 'string']];
+        $ivory = ['type' => 'string', 'enum' => ['amber', 'teal']];
+        $coral = ['type' => 'integer', 'enum' => [-10, -16]];
+        yield 'a nested union object naming an enum component beside a description' => [
+            [
+                'Probe' => $probe(['anyOf' => [
+                    ['oneOf' => [$walrusObject(['description' => 'heron'] + $ref('Ivory')), ['type' => 'string']]],
+                    $stringList,
+                ]]),
+                'Ivory' => $ivory,
+            ],
+            ['{"fox":{"walrus":"zzq"}}' => false, '{"fox":{"walrus":5}}' => false, '{"fox":{"walrus":"amber"}}' => true, '{"fox":"x"}' => true, '{"fox":["x"]}' => true],
+        ];
+        yield 'a nested union object naming a bare enum component' => [
+            [
+                'Probe' => $probe(['anyOf' => [['oneOf' => [$walrusObject($ref('Ivory')), ['type' => 'string']]], $stringList]]),
+                'Ivory' => $ivory,
+            ],
+            ['{"fox":{"walrus":"zzq"}}' => false, '{"fox":{"walrus":5}}' => false, '{"fox":{"walrus":"teal"}}' => true, '{"fox":["x"]}' => true],
+        ];
+        yield 'a nested union of two objects, one naming an enum component beside a title' => [
+            [
+                'Probe' => $probe(['anyOf' => [
+                    ['oneOf' => [
+                        [
+                            'type' => 'object',
+                            'required' => ['walrus', 'crane'],
+                            'properties' => ['walrus' => ['type' => 'integer'], 'crane' => ['type' => 'string']],
+                        ],
+                        $walrusObject(['title' => 'Heron'] + $ref('Coral')),
+                    ]],
+                    $stringList,
+                ]]),
+                'Coral' => $coral,
+            ],
+            [
+                '{"fox":{"walrus":"zzq"}}' => false,
+                '{"fox":{"walrus":7}}' => false,
+                '{"fox":{"walrus":-10}}' => true,
+                '{"fox":{"walrus":7,"crane":"c"}}' => true,
+                '{"fox":{"walrus":-10,"crane":"c"}}' => false,
+                '{"fox":["x"]}' => true,
+                '{"fox":[1]}' => false,
+            ],
+        ];
+        yield 'a nested union of two objects, one naming a bare enum component' => [
+            [
+                'Probe' => $probe(['anyOf' => [
+                    ['oneOf' => [
+                        [
+                            'type' => 'object',
+                            'required' => ['walrus', 'crane'],
+                            'properties' => ['walrus' => ['type' => 'integer'], 'crane' => ['type' => 'string']],
+                        ],
+                        $walrusObject($ref('Coral')),
+                    ]],
+                    $stringList,
+                ]]),
+                'Coral' => $coral,
+            ],
+            [
+                '{"fox":{"walrus":"zzq"}}' => false,
+                '{"fox":{"walrus":7}}' => false,
+                '{"fox":{"walrus":-16}}' => true,
+                // Only the first member matches: the built first class was judged against the second
+                // member's spelling, whose `required: [walrus]` alone it met.
+                '{"fox":{"walrus":7,"crane":"c"}}' => true,
+                '{"fox":{"walrus":-10,"crane":"c"}}' => false,
+                '{"fox":["x"]}' => true,
+                '{"fox":[1]}' => false,
+            ],
+        ];
+        yield 'a flat union of the same two objects beside an array member' => [
+            [
+                'Probe' => $probe(['oneOf' => [
+                    [
+                        'type' => 'object',
+                        'required' => ['walrus', 'crane'],
+                        'properties' => ['walrus' => ['type' => 'integer'], 'crane' => ['type' => 'string']],
+                    ],
+                    $walrusObject($ref('Coral')),
+                    $stringList,
+                ]]),
+                'Coral' => $coral,
+            ],
+            [
+                '{"fox":{"walrus":"zzq"}}' => false,
+                '{"fox":{"walrus":7}}' => false,
+                '{"fox":{"walrus":-16}}' => true,
+                '{"fox":{"walrus":7,"crane":"c"}}' => true,
+                '{"fox":{"walrus":-10,"crane":"c"}}' => false,
+                '{"fox":["x"]}' => true,
+                '{"fox":[1]}' => false,
+            ],
+        ];
         yield 'an inline object with an inline enum, beside an array member' => [
             ['Probe' => $probe(['anyOf' => [
                 ['type' => 'array'],
@@ -14250,6 +15396,110 @@ final class ValidationParityTest extends TestCase
                 '{"crane":"2024-01-02"}' => true,
                 '{"plain":4}' => false,
                 '{"plain":3}' => true,
+            ],
+        ];
+
+        // The controls of the next case: an integer branch's `maximum` beside a date and a boolean
+        // member is carried by the raw check, and without the boolean member `#[ToString]` keeps the
+        // integer from becoming a timestamp date.
+        yield 'an integer branch beside a date: the carried bound and the guarded union' => [
+            '3.0.3',
+            [
+                'Probe' => $probe([
+                    'lemur' => ['oneOf' => [['type' => 'boolean'], ['type' => 'integer', 'maximum' => 5], ['type' => 'string', 'format' => 'date']]],
+                    'otter' => ['oneOf' => [['type' => 'integer', 'multipleOf' => 5], ['type' => 'string', 'format' => 'date']]],
+                ]),
+            ],
+            [
+                '{"lemur":101}' => false,
+                '{"lemur":5}' => true,
+                '{"lemur":true}' => true,
+                '{"lemur":"2024-01-02"}' => true,
+                '{"otter":101}' => false,
+                '{"otter":10}' => true,
+                '{"otter":"2024-01-02"}' => true,
+            ],
+        ];
+
+        // An integer branch beside a date and a boolean member keeps its `multipleOf` and its 3.0
+        // `exclusiveMinimum: true` / `exclusiveMaximum: true` bounds: no `#[ToString]` guards that
+        // union, yii3 read the refused integer as a Unix timestamp, and the raw check carried neither.
+        yield 'an integer branch beside a date and a boolean: multipleOf and the 3.0 exclusive bounds' => [
+            '3.0.3',
+            [
+                'Probe' => $probe([
+                    'lemur' => ['oneOf' => [['type' => 'boolean'], ['type' => 'integer', 'multipleOf' => 5], ['type' => 'string', 'format' => 'date']]],
+                    'otter' => ['oneOf' => [['type' => 'boolean'], ['type' => 'integer', 'minimum' => 5, 'exclusiveMinimum' => true], ['type' => 'string', 'format' => 'date']]],
+                    'marten' => ['oneOf' => [['type' => 'boolean'], ['type' => 'integer', 'maximum' => 5, 'exclusiveMaximum' => true], ['type' => 'string', 'format' => 'date']]],
+                    'badger' => ['oneOf' => [['type' => 'boolean'], ['type' => 'integer', 'multipleOf' => 2.5], ['type' => 'string', 'format' => 'date']]],
+                ]),
+            ],
+            [
+                '{"lemur":101}' => false,
+                '{"lemur":10}' => true,
+                '{"lemur":10.0}' => true,
+                '{"lemur":true}' => true,
+                '{"lemur":"2024-01-02"}' => true,
+                '{"otter":3}' => false,
+                '{"otter":5}' => false,
+                '{"otter":6}' => true,
+                '{"otter":false}' => true,
+                '{"otter":"2024-01-02"}' => true,
+                '{"marten":5}' => false,
+                '{"marten":7}' => false,
+                '{"marten":4}' => true,
+                '{"marten":"2024-01-02"}' => true,
+                '{"badger":5}' => true,
+                '{"badger":7}' => false,
+                '{"badger":"2024-01-02"}' => true,
+            ],
+            // Whether the serializer takes a whole float for `int` depends on its version.
+            ['symfony' => ['{"lemur":10.0}' => null]],
+        ];
+
+        // The integer member beside a date may sit one level down — in a nested `anyOf` / `oneOf`, or
+        // asserted through an `allOf`. yii3's raw check found only a direct branch, carried a bare
+        // integer rule, and `#[ToDateTime]` read the refused integer as a timestamp date. `flat` is
+        // the control that already refused.
+        yield 'a nested integer member beside a date and a boolean' => [
+            '3.1.0',
+            [
+                'Probe' => $probe([
+                    'flat' => ['anyOf' => [['type' => 'string', 'format' => 'date'], ['type' => 'integer', 'maximum' => -30], ['type' => 'boolean']]],
+                    'nested' => ['anyOf' => [['type' => 'string', 'format' => 'date'], ['anyOf' => [['type' => 'integer', 'maximum' => -30], ['type' => 'boolean']]]]],
+                    'divided' => ['anyOf' => [['type' => 'string', 'format' => 'date'], ['oneOf' => [['type' => 'integer', 'multipleOf' => 5], ['type' => 'boolean']]]]],
+                    'asserted' => ['anyOf' => [['type' => 'string', 'format' => 'date'], ['allOf' => [['type' => 'integer', 'maximum' => -30]]], ['type' => 'boolean']]],
+                ]),
+            ],
+            [
+                '{"flat":-25}' => false,
+                '{"flat":-31}' => true,
+                '{"nested":-25}' => false,
+                '{"nested":-31}' => true,
+                '{"nested":true}' => true,
+                '{"nested":"2024-01-02"}' => true,
+                '{"divided":-36}' => false,
+                '{"divided":-35}' => true,
+                '{"divided":"2024-01-02"}' => true,
+                '{"asserted":-25}' => false,
+                '{"asserted":-31}' => true,
+                '{"asserted":false}' => true,
+            ],
+        ];
+
+        // The 3.0 `exclusiveMinimum: true` of a nested integer member is the strict comparison.
+        yield 'a nested integer member beside a date: the 3.0 exclusive bound' => [
+            '3.0.3',
+            [
+                'Probe' => $probe([
+                    'nested' => ['anyOf' => [['type' => 'string', 'format' => 'date'], ['anyOf' => [['type' => 'integer', 'minimum' => 5, 'exclusiveMinimum' => true], ['type' => 'boolean']]]]],
+                ]),
+            ],
+            [
+                '{"nested":5}' => false,
+                '{"nested":3}' => false,
+                '{"nested":6}' => true,
+                '{"nested":true}' => true,
             ],
         ];
 
@@ -15526,6 +16776,107 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * A raw object judged against a class branch refuses `null` on a property the class does not let
+     * be null. `oneOf: [{oneOf: [{required: [gibbon]}, $ref Scarlet]}, {type: array}]` with `Scarlet.puffin:
+     * string` (required) took `{"zebu":{"puffin":null}}` in runtime mode: the raw object was kept, and
+     * the validator dropped the rules of every null-valued property, so nothing refused the null. A
+     * property that admits null — `nullable: true`, `type: [string, "null"]` — still takes it; the class
+     * directly in the outer `oneOf` was refused already and stays so.
+     *
+     * @param array<string, mixed> $schemas
+     * @param array<string, bool|null> $payloads
+     */
+    #[DataProvider('rawObjectNullCases')]
+    public function testARawObjectRefusesNullOnAPropertyTheClassDoesNotLetBeNull(string $version, array $schemas, array $payloads): void
+    {
+        $spec = [
+            'openapi' => $version,
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => $schemas],
+        ];
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: $spec,
+                key: (string)$this->dataName(),
+                payloads: $payloads,
+                // `{}` and `[]` are one decoded PHP array there, so `{}` is the empty list the `array`
+                // member takes (README.support-matrix, "an EMPTY JSON container").
+                diverging: [
+                    GenerationMode::Symfony->value => ['{"zebu":{}}' => null],
+                    GenerationMode::Yii3->value => ['{"zebu":{}}' => null],
+                ],
+            ),
+        );
+    }
+
+    /**
+     * The specs and payloads of {@see testARawObjectRefusesNullOnAPropertyTheClassDoesNotLetBeNull()}.
+     *
+     * @return iterable<string, array{0: string, 1: array<string, mixed>, 2: array<string, bool|null>}>
+     */
+    public static function rawObjectNullCases(): iterable
+    {
+        $probe = static fn(array $zebu): array => ['type' => 'object', 'properties' => ['zebu' => $zebu]];
+        $nested = ['oneOf' => [
+            ['oneOf' => [
+                ['type' => 'object', 'properties' => ['gibbon' => ['type' => 'integer']], 'required' => ['gibbon']],
+                ['$ref' => '#/components/schemas/Scarlet'],
+            ]],
+            ['type' => 'array', 'items' => ['type' => 'string']],
+        ]];
+        $flat = ['oneOf' => [
+            ['type' => 'object', 'properties' => ['gibbon' => ['type' => 'integer']], 'required' => ['gibbon']],
+            ['$ref' => '#/components/schemas/Scarlet'],
+            ['type' => 'array', 'items' => ['type' => 'string']],
+        ]];
+        $scarlet = static fn(array $puffin): array => [
+            'type' => 'object',
+            'properties' => ['puffin' => $puffin],
+            'required' => ['puffin'],
+        ];
+        $refusesNull = [
+            '{"zebu":{"puffin":null}}' => false,
+            '{"zebu":{"puffin":5}}' => false,
+            '{"zebu":{}}' => false,
+            '{"zebu":{"puffin":"a"}}' => true,
+            '{"zebu":{"gibbon":1}}' => true,
+        ];
+        $takesNull = [
+            '{"zebu":{"puffin":null}}' => true,
+            '{"zebu":{"puffin":5}}' => false,
+            '{"zebu":{"puffin":"a"}}' => true,
+        ];
+
+        yield 'nested union, non-nullable property' => [
+            '3.0.3',
+            ['Probe' => $probe($nested), 'Scarlet' => $scarlet(['type' => 'string'])],
+            $refusesNull,
+        ];
+        yield 'flat union, non-nullable property' => [
+            '3.0.3',
+            ['Probe' => $probe($flat), 'Scarlet' => $scarlet(['type' => 'string'])],
+            $refusesNull,
+        ];
+        yield 'nested union, optional non-nullable property' => [
+            '3.0.3',
+            ['Probe' => $probe($nested), 'Scarlet' => ['type' => 'object', 'properties' => ['puffin' => ['type' => 'string']]]],
+            ['{"zebu":{"puffin":null}}' => false, '{"zebu":{"puffin":"a"}}' => true],
+        ];
+        yield 'nested union, nullable property' => [
+            '3.0.3',
+            ['Probe' => $probe($nested), 'Scarlet' => $scarlet(['type' => 'string', 'nullable' => true])],
+            $takesNull,
+        ];
+        yield 'nested union, property typed string or null' => [
+            '3.1.0',
+            ['Probe' => $probe($nested), 'Scarlet' => $scarlet(['type' => ['string', 'null']])],
+            $takesNull,
+        ];
+    }
+
+    /**
      * A property typed with a union COMPONENT of classes and no `discriminator` (`comp: $ref Shade`,
      * `Shade: {anyOf: [$ref Olive, $ref Teal]}`) is built as the member the payload matches, as the
      * inline `anyOf: [$ref Olive, $ref Teal]` is — directly, as a list item, and under `oneOf` only when
@@ -16527,6 +17878,462 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * A one-member `allOf` with something asserted or annotated BESIDE it is that member plus the
+     * sibling, wherever it stands. Two spellings kept the wrapper and lost the member's rules: list items
+     * `{allOf: [{$ref: Ochre}], description: …}` over a union component were a bare list in symfony
+     * (no item class, no interpreter entry), and a property `{allOf: [{oneOf: […]}], nullable: true}`
+     * (or `minProperties`) left yii3 holding an object branch as a raw array nobody checked. The bare
+     * spellings beside them are the controls.
+     *
+     * @param array<string, mixed> $probe
+     * @param array<string, bool> $payloads
+     * @param array<string, array<string, bool|null>> $diverging
+     */
+    #[DataProvider('allOfWrapperWithSiblingsProvider')]
+    public function testAnAllOfWrapperWithSiblingsIsItsMemberPlusTheSiblings(array $probe, array $payloads, array $diverging = []): void
+    {
+        $spec = self::probeSpec(['type' => 'object']);
+        $spec['openapi'] = '3.0.3';
+        $spec['components']['schemas'] = [
+            'Probe' => ['type' => 'object', 'properties' => $probe],
+            'Azure' => ['type' => 'object', 'required' => ['kind'], 'properties' => ['kind' => ['type' => 'string', 'enum' => ['hexagon']]]],
+            'Amber' => [
+                'type' => 'object',
+                'required' => ['kind'],
+                'properties' => ['kind' => ['type' => 'string', 'enum' => ['circle']], 'egret' => ['type' => 'integer', 'maximum' => 36]],
+            ],
+            'Ochre' => ['anyOf' => [['$ref' => '#/components/schemas/Azure'], ['$ref' => '#/components/schemas/Amber']]],
+        ];
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: $spec,
+                key: 'allOf wrapper with siblings ' . md5((string)json_encode($spec)),
+                payloads: $payloads,
+                diverging: $diverging,
+            ),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>, 1: array<string, bool>, 2?: array<string, array<string, bool|null>>}>
+     */
+    public static function allOfWrapperWithSiblingsProvider(): iterable
+    {
+        $ochre = ['allOf' => [['$ref' => '#/components/schemas/Ochre']]];
+        $unionItems = [
+            '{"stoat":[{"kind":"circle","egret":3}]}' => true,
+            '{"stoat":[{"kind":"hexagon"}]}' => true,
+            '{"stoat":[]}' => true,
+            '{"stoat":[{"kind":"zzq"}]}' => false,
+            '{"stoat":[{"kind":"circle","egret":99}]}' => false,
+            '{"stoat":[{"kind":"circle","egret":2.5}]}' => false,
+        ];
+
+        yield 'list items, no sibling' => [['stoat' => ['type' => 'array', 'items' => $ochre]], $unionItems];
+        yield 'list items, description beside' => [
+            ['stoat' => ['type' => 'array', 'items' => $ochre + ['description' => 'Wrapped.']]],
+            $unionItems,
+        ];
+        yield 'list items, title and readOnly beside' => [
+            ['stoat' => ['type' => 'array', 'items' => $ochre + ['title' => 'Wrapped', 'readOnly' => false]]],
+            $unionItems,
+        ];
+        yield 'list items, nullable beside' => [
+            ['stoat' => ['type' => 'array', 'items' => $ochre + ['nullable' => true]]],
+            ['{"stoat":[null]}' => true] + $unionItems,
+        ];
+        $nested = [];
+        foreach ($unionItems as $json => $accepted) {
+            $nested[str_replace('"stoat":[', '"stoat":[[', substr($json, 0, -1)) . ']}'] = $accepted;
+        }
+        yield 'list of lists, description beside' => [
+            ['stoat' => ['type' => 'array', 'items' => ['type' => 'array', 'items' => $ochre + ['description' => 'Wrapped.']]]],
+            $nested,
+        ];
+        yield 'list items, plain class $ref with description beside' => [
+            ['stoat' => ['type' => 'array', 'items' => ['allOf' => [['$ref' => '#/components/schemas/Amber']], 'description' => 'Wrapped.']]],
+            [
+                '{"stoat":[{"kind":"circle","egret":3}]}' => true,
+                '{"stoat":[{"kind":"zzq"}]}' => false,
+                '{"stoat":[{"kind":"circle","egret":99}]}' => false,
+                '{"stoat":[{"kind":"circle","egret":2.5}]}' => false,
+            ],
+        ];
+        yield 'map value, description beside' => [
+            ['stoat' => ['type' => 'object', 'additionalProperties' => $ochre + ['description' => 'Wrapped.']]],
+            [
+                '{"stoat":{"a":{"kind":"circle","egret":3}}}' => true,
+                '{"stoat":{"a":{"kind":"hexagon"}}}' => true,
+                '{"stoat":{"a":{"kind":"zzq"}}}' => false,
+                '{"stoat":{"a":{"kind":"circle","egret":99}}}' => false,
+                '{"stoat":{"a":{"kind":"circle","egret":2.5}}}' => false,
+            ],
+        ];
+
+        $tapir = ['type' => 'object', 'properties' => ['tapir' => ['type' => 'string', 'maxLength' => 1]]];
+        $union = static fn(string $keyword): array => ['allOf' => [[$keyword => [
+            ['type' => 'boolean'],
+            ['allOf' => [['type' => 'object'], $tapir]],
+        ]]]];
+        $hyena = [
+            '{"hyena":true}' => true,
+            '{"hyena":{"tapir":"a"}}' => true,
+            '{"hyena":{"tapir":7}}' => false,
+            '{"hyena":{"tapir":"abc"}}' => false,
+            '{"hyena":"x"}' => false,
+        ];
+
+        yield 'wrapped oneOf, no sibling' => [['hyena' => $union('oneOf')], $hyena];
+        yield 'wrapped oneOf, nullable beside' => [['hyena' => $union('oneOf') + ['nullable' => true]], ['{"hyena":null}' => true] + $hyena];
+        yield 'wrapped anyOf, nullable beside' => [['hyena' => $union('anyOf') + ['nullable' => true]], ['{"hyena":null}' => true] + $hyena];
+        yield 'wrapped oneOf, minProperties beside' => [['hyena' => $union('oneOf') + ['minProperties' => 0]], $hyena];
+        yield 'wrapped oneOf of a number and a multipleOf object, nullable beside' => [
+            ['hyena' => ['allOf' => [['oneOf' => [
+                ['type' => 'boolean'],
+                ['type' => 'number', 'maximum' => -4.5],
+                ['allOf' => [['type' => 'object', 'properties' => ['ocelot' => ['type' => 'integer', 'multipleOf' => 3]]], ['type' => 'object', 'properties' => []]]],
+            ]]], 'nullable' => true]],
+            [
+                '{"hyena":null}' => true,
+                '{"hyena":-5}' => true,
+                '{"hyena":{"ocelot":6}}' => true,
+                '{"hyena":{"ocelot":true}}' => false,
+                '{"hyena":{"ocelot":4}}' => false,
+                '{"hyena":3}' => false,
+            ],
+        ];
+    }
+
+    /**
+     * A union whose class branches the PHP type cannot hold, reached through a wrapper. Until 2.15.163
+     * symfony lost the branch's checks in three spellings: a property `{allOf: [$ref Crim]}` over a
+     * union with a list member (typed `?array`, the class branch left "is an Ivory", which any raw
+     * object passed); an array COMPONENT whose items are `{allOf: [$ref Scarlet]}` over a union
+     * component (a bare list, no item checks at all); and an inline union branch `{type: object, allOf:
+     * […]}` (only `type: object` kept, so it matched every object beside the other branch). The bare
+     * spellings beside each are the controls.
+     *
+     * @param array<string, mixed> $schemas
+     * @param array<string, bool|null> $payloads
+     * @param array<string, array<string, bool|null>> $diverging
+     */
+    #[DataProvider('wrappedUnionBranchProvider')]
+    public function testAUnionBranchReachedThroughAWrapperKeepsItsChecks(string $openapi, array $schemas, array $payloads, array $diverging = []): void
+    {
+        $spec = self::probeSpec(['type' => 'object']);
+        $spec['openapi'] = $openapi;
+        $spec['components']['schemas'] = $schemas;
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: $spec,
+                key: 'wrapped union branch ' . md5((string)json_encode($spec)),
+                payloads: $payloads,
+                diverging: $diverging,
+            ),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{0: string, 1: array<string, mixed>, 2: array<string, bool|null>, 3?: array<string, array<string, bool|null>>}>
+     */
+    public static function wrappedUnionBranchProvider(): iterable
+    {
+        $ivory = [
+            'type' => 'object',
+            'properties' => ['yak' => ['type' => 'number'], 'egret' => ['type' => 'number', 'maximum' => 1]],
+            'required' => ['yak', 'egret'],
+        ];
+        $crim = ['anyOf' => [['type' => 'array', 'items' => ['type' => 'string']], ['$ref' => '#/components/schemas/Ivory']]];
+        $cranePayloads = [
+            '{"crane":{"yak":1,"egret":0.5}}' => true,
+            '{"crane":["a","b"]}' => true,
+            '{"crane":{"yak":1}}' => false,
+            '{"crane":{"yak":1,"egret":5}}' => false,
+            '{"crane":{"yak":-5.5}}' => false,
+            '{"crane":{"egret":0}}' => false,
+            '{"crane":[1]}' => false,
+            '{"crane":"x"}' => false,
+        ];
+        $craneSchemas = static fn(array $crane, array $crimSchema): array => [
+            'Probe' => ['type' => 'object', 'properties' => ['crane' => $crane]],
+            'Crim' => $crimSchema,
+            'Ivory' => $ivory,
+        ];
+        $crimRef = ['$ref' => '#/components/schemas/Crim'];
+        yield 'property $ref to a union with a list member' => ['3.1.0', $craneSchemas($crimRef, $crim), $cranePayloads];
+        yield 'property allOf over a union with a list member' => ['3.1.0', $craneSchemas(['allOf' => [$crimRef]], $crim), $cranePayloads];
+        yield 'property allOf over a union with a date, a list and a null member' => [
+            '3.1.0',
+            $craneSchemas(['allOf' => [$crimRef]], ['anyOf' => [['type' => 'string', 'format' => 'date'], ...$crim['anyOf'], ['type' => 'null']]]),
+            [
+                '{"crane":"2024-01-02"}' => true,
+                '{"crane":null}' => true,
+                '{"crane":{"yak":1,"egret":0}}' => true,
+                '{"crane":{"yak":-5.5}}' => false,
+                '{"crane":{"egret":0}}' => false,
+                '{"crane":{"yak":1,"egret":5}}' => false,
+            ],
+        ];
+
+        $scarletRef = ['$ref' => '#/components/schemas/Scarlet'];
+        $otterSchemas = static fn(array $olive, bool $discriminated): array => [
+            'Probe' => ['type' => 'object', 'properties' => ['otter' => ['$ref' => '#/components/schemas/Olive']]],
+            'Olive' => $olive,
+            'Crimson' => ['type' => 'object', 'properties' => ['kind' => ['type' => 'string']]],
+            'Azure' => ['type' => 'object', 'properties' => ['kind' => ['type' => 'string'], 'raven' => ['type' => 'string', 'minLength' => 2]]],
+            'Scarlet' => ['oneOf' => [['$ref' => '#/components/schemas/Crimson'], ['$ref' => '#/components/schemas/Azure']]]
+                + ($discriminated ? ['discriminator' => ['propertyName' => 'kind', 'mapping' => [
+                    'oval' => '#/components/schemas/Crimson',
+                    'circle' => '#/components/schemas/Azure',
+                ]]] : []),
+        ];
+        $discriminatedItems = [
+            '{"otter":[{"kind":"circle","raven":"ab"}]}' => true,
+            '{"otter":[{"kind":"oval"}]}' => true,
+            '{"otter":[]}' => true,
+            '{"otter":["zzq"]}' => false,
+            '{"otter":[{"kind":"circle","raven":"i"}]}' => false,
+            '{"otter":[{"kind":"circle","raven":null}]}' => false,
+        ];
+        // Crimson admits every object, so an item Azure takes as well matches twice.
+        $overlappingItems = [
+            '{"otter":[{"kind":"circle","raven":"i"}]}' => true,
+            '{"otter":[]}' => true,
+            '{"otter":["zzq"]}' => false,
+            '{"otter":[{"kind":"circle","raven":"ab"}]}' => false,
+        ];
+        foreach (['discriminated' => [true, $discriminatedItems], 'undiscriminated' => [false, $overlappingItems]] as $name => [$discriminated, $items]) {
+            yield 'array component, items $ref, ' . $name => ['3.0.3', $otterSchemas(['type' => 'array', 'items' => $scarletRef], $discriminated), $items];
+            yield 'array component, items allOf, ' . $name => ['3.0.3', $otterSchemas(['type' => 'array', 'items' => ['allOf' => [$scarletRef]]], $discriminated), $items];
+            $inline = $otterSchemas([], $discriminated);
+            $inline['Probe']['properties']['otter'] = ['type' => 'array', 'items' => ['allOf' => [$scarletRef]]];
+            yield 'inline array, items allOf, ' . $name => ['3.0.3', array_diff_key($inline, ['Olive' => true]), $items];
+        }
+        yield 'array component, items allOf of a plain class' => [
+            '3.0.3',
+            $otterSchemas(['type' => 'array', 'items' => ['allOf' => [['$ref' => '#/components/schemas/Azure']]]], false),
+            [
+                '{"otter":[{"kind":"circle","raven":"ab"}]}' => true,
+                '{"otter":["zzq"]}' => false,
+                '{"otter":[{"kind":"circle","raven":"i"}]}' => false,
+            ],
+        ];
+
+        $hyenaFragment = ['type' => 'object', 'properties' => ['hyena' => ['type' => 'string']], 'required' => ['hyena']];
+        $toucanSchemas = static fn(string $keyword, array $branch): array => [
+            'Probe' => ['type' => 'object', 'properties' => ['toucan' => [$keyword => [$branch, ['$ref' => '#/components/schemas/Azureb']]]]],
+            'Azureb' => ['type' => 'object', 'properties' => ['sable' => ['type' => 'integer']], 'required' => ['sable']],
+        ];
+        $toucanPayloads = [
+            '{"toucan":{"sable":16}}' => true,
+            '{"toucan":{"sable":16,"llama":24}}' => true,
+            '{"toucan":{"hyena":"x"}}' => true,
+            '{"toucan":{}}' => false,
+            '{"toucan":{"sable":"x"}}' => false,
+            '{"toucan":{"hyena":3}}' => false,
+        ];
+        // Symfony's serializer builds the member whose class name sorts first, `Azureb` before `ProbeToucan`
+        // (README.support-matrix, the inline undiscriminated union row): a value only the inline branch
+        // takes is refused there, and one both take loses `hyena` on the way in.
+        $boundary = ['symfony' => ['{"toucan":{"hyena":"x"}}' => null, '{"toucan":{"hyena":"x","sable":3}}' => null]];
+        foreach (['bare allOf' => ['allOf' => [$hyenaFragment]], 'type beside allOf' => ['type' => 'object', 'allOf' => [['type' => 'object'], $hyenaFragment]]] as $name => $branch) {
+            yield 'oneOf branch, ' . $name => ['3.1.0', $toucanSchemas('oneOf', $branch), ['{"toucan":{"hyena":"x","sable":3}}' => false] + $toucanPayloads, $boundary];
+            yield 'anyOf branch, ' . $name => ['3.1.0', $toucanSchemas('anyOf', $branch), ['{"toucan":{"hyena":"x","sable":3}}' => true] + $toucanPayloads, $boundary];
+        }
+    }
+
+    /**
+     * A union COMPONENT whose `oneOf` holds a direct member beside a branch that is itself a union —
+     * `Olive: {oneOf: [{anyOf: [$ref Amber]}, $ref Scarlet]}` — has every class of both branches as a
+     * member. The runtime read only the direct one: a payload only Amber accepts was refused for the
+     * keys Scarlet requires, and one both accept was built as Scarlet alone, `lemur` dropped, instead of
+     * refused for matching two `oneOf` branches. The one-member nested union also got no interface file,
+     * so Amber implemented nothing the property could hold. Plain `$ref`s, an `allOf` wrapper and the
+     * same union written on the property are the controls.
+     *
+     * Symfony's serializer builds an inline union's first class, so it sits out the spelling on the
+     * property (README.support-matrix).
+     *
+     * @param array<string, mixed> $olive
+     * @param array<string, bool|null> $payloads
+     * @param list<GenerationMode> $skippedModes
+     */
+    #[DataProvider('unionComponentNestedBranchProvider')]
+    public function testAUnionComponentKeepsTheMembersOfANestedUnionBranch(
+        array $olive,
+        bool $inline,
+        bool $overlapping,
+        array $payloads,
+        array $skippedModes = [],
+    ): void {
+        $spec = self::probeSpec(['type' => 'object']);
+        $spec['openapi'] = '3.0.3';
+        $spec['components']['schemas'] = [
+            'Probe' => ['type' => 'object', 'properties' => ['crane' => $inline ? $olive : ['$ref' => '#/components/schemas/Olive']]],
+            'Amber' => [
+                'type' => 'object',
+                'required' => ['macaw', 'lemur'],
+                'properties' => ['macaw' => ['type' => 'string'], 'lemur' => ['type' => 'integer']],
+            ],
+            'Scarlet' => $overlapping
+                ? ['type' => 'object', 'required' => ['macaw'], 'properties' => ['macaw' => ['type' => 'string']]]
+                : ['type' => 'object', 'required' => ['ibis'], 'properties' => ['ibis' => ['type' => 'string']]],
+            'Teal' => ['type' => 'object', 'required' => ['heron'], 'properties' => ['heron' => ['type' => 'string']]],
+        ];
+        if (!$inline) {
+            $spec['components']['schemas']['Olive'] = $olive;
+        }
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: $spec,
+                key: 'union component nested branch ' . md5((string)json_encode($spec)),
+                payloads: $payloads,
+                skippedModes: $skippedModes,
+            ),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>, 1: bool, 2: bool, 3: array<string, bool|null>, 4?: list<GenerationMode>}>
+     */
+    public static function unionComponentNestedBranchProvider(): iterable
+    {
+        $amber = ['$ref' => '#/components/schemas/Amber'];
+        $scarlet = ['$ref' => '#/components/schemas/Scarlet'];
+        $teal = ['$ref' => '#/components/schemas/Teal'];
+        $disjoint = [
+            '{"crane":{"macaw":"ab","lemur":3}}' => true,
+            '{"crane":{"ibis":"x"}}' => true,
+            '{"crane":{"macaw":"ab"}}' => false,
+            '{"crane":{"macaw":"ab","lemur":"x"}}' => false,
+        ];
+        $overlapping = [
+            '{"crane":{"macaw":"ab","lemur":3}}' => false,
+            '{"crane":{"macaw":"ab"}}' => true,
+            '{"crane":{"lemur":3}}' => false,
+        ];
+        $spellings = [
+            'plain $ref' => [['oneOf' => [$amber, $scarlet]], false, []],
+            'allOf wrapper' => [['oneOf' => [['allOf' => [$amber]], $scarlet]], false, []],
+            'nested anyOf' => [['oneOf' => [['anyOf' => [$amber]], $scarlet]], false, []],
+            'nested anyOf, nullable' => [['oneOf' => [['anyOf' => [$amber], 'nullable' => true], $scarlet]], false, []],
+            'nested oneOf' => [['oneOf' => [['oneOf' => [$amber]], $scarlet]], false, []],
+            'nested anyOf, on the property' => [['oneOf' => [['anyOf' => [$amber]], $scarlet]], true, [GenerationMode::Symfony]],
+        ];
+        foreach ($spellings as $name => [$olive, $inline, $skipped]) {
+            yield $name . ', disjoint' => [$olive, $inline, false, $disjoint, $skipped];
+            yield $name . ', overlapping' => [$olive, $inline, true, $overlapping, $skipped];
+        }
+
+        // Two members of ONE nested `anyOf` accepting the payload are one `oneOf` branch; two of a
+        // nested `oneOf` are a refusal there as well.
+        $both = ['{"crane":{"macaw":"ab","lemur":3}}' => true, '{"crane":{"heron":"x"}}' => true, '{"crane":{"lemur":3}}' => false];
+        yield 'nested anyOf of two overlapping members' => [['oneOf' => [['anyOf' => [$amber, $scarlet]], $teal]], false, true, $both];
+        yield 'nested oneOf of two overlapping members' => [
+            ['oneOf' => [['oneOf' => [$amber, $scarlet]], $teal]],
+            false,
+            true,
+            ['{"crane":{"macaw":"ab","lemur":3}}' => false] + $both,
+        ];
+    }
+
+    /**
+     * A union COMPONENT whose branch is itself a union — an inline `anyOf` of two classes (`Shade:
+     * {anyOf: [{anyOf: [$ref Amber, $ref Coral]}, $ref Scarlet]}`), a one-member wrapper (`{anyOf: [$ref
+     * Amber]}`) or a `$ref` to another undiscriminated union component (`Mix`) — is built as the class a
+     * payload matches, as a property, and in laravel as a list item. Laravel and laravel-data read only
+     * bare `$ref` branches: the property stayed typed as the interface, and every payload the validator
+     * accepted died on the "no discriminator" throw (laravel) or a TypeError (laravel-data). The same
+     * nesting written on the property is the control; symfony's serializer builds an inline union's first
+     * class (README.support-matrix), so it sits that one out.
+     *
+     * @param array<string, mixed> $fox
+     * @param array<string, array<string, mixed>> $components
+     * @param array<string, bool> $payloads
+     * @param list<GenerationMode> $skippedModes
+     */
+    #[DataProvider('unionComponentOfNestedUnionsProvider')]
+    public function testAUnionComponentOfNestedUnionsIsBuiltAsItsMatchingClass(
+        array $fox,
+        array $components,
+        array $payloads,
+        array $skippedModes = [],
+    ): void {
+        $closed = static fn(string $name, array $type): array => [
+            'type' => 'object',
+            'required' => [$name],
+            'properties' => [$name => $type],
+            'additionalProperties' => false,
+        ];
+        $spec = self::probeSpec(['type' => 'object']);
+        $spec['components']['schemas'] = [
+            'Probe' => ['type' => 'object', 'required' => ['fox'], 'properties' => ['fox' => $fox]],
+            'Amber' => $closed('hue', ['type' => 'string']),
+            'Coral' => $closed('tone', ['type' => 'integer']),
+            'Scarlet' => $closed('shade', ['type' => 'boolean']),
+        ] + $components;
+        $key = 'union component of nested unions ' . md5((string)json_encode($spec));
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(spec: $spec, key: $key, payloads: $payloads, skippedModes: $skippedModes),
+        );
+        foreach ([GenerationMode::Laravel, GenerationMode::LaravelData] as $mode) {
+            foreach (array_keys(array_filter($payloads)) as $json) {
+                $this->assertSame(expected: $json, actual: $this->writtenBack($mode, $spec, $key, (string)$json), message: $mode->value);
+            }
+        }
+    }
+
+    /**
+     * @return iterable<string, array{0: array<string, mixed>, 1: array<string, array<string, mixed>>, 2: array<string, bool>, 3?: list<GenerationMode>}>
+     */
+    public static function unionComponentOfNestedUnionsProvider(): iterable
+    {
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $refused = ['{"fox":{"zz":1}}' => false, '{"fox":{"hue":"x","shade":true}}' => false, '{"fox":5}' => false];
+        $threeClasses = [
+            '{"fox":{"hue":"red"}}' => true,
+            '{"fox":{"tone":3}}' => true,
+            '{"fox":{"shade":true}}' => true,
+            '{"fox":{"tone":"x"}}' => false,
+        ] + $refused;
+        $twoClasses = [
+            '{"fox":{"hue":"red"}}' => true,
+            '{"fox":{"shade":true}}' => true,
+            '{"fox":{"tone":3}}' => false,
+        ] + $refused;
+        $nestedPair = ['anyOf' => [['anyOf' => [$ref('Amber'), $ref('Coral')]], $ref('Scarlet')]];
+        $wrapper = ['oneOf' => [['anyOf' => [$ref('Amber')]], $ref('Scarlet')]];
+
+        yield 'nested anyOf of two classes' => [$ref('Shade'), ['Shade' => $nestedPair], $threeClasses];
+        yield 'one-member anyOf wrapper' => [$ref('Shade'), ['Shade' => $wrapper], $twoClasses];
+        yield 'member that is a union component' => [
+            $ref('Shade'),
+            ['Mix' => ['anyOf' => [$ref('Amber'), $ref('Coral')]], 'Shade' => ['anyOf' => [$ref('Mix'), $ref('Scarlet')]]],
+            $threeClasses,
+        ];
+        yield 'list item, nested anyOf of two classes' => [
+            ['type' => 'array', 'items' => $ref('Shade')],
+            ['Shade' => $nestedPair],
+            [
+                '{"fox":[{"tone":3}]}' => true,
+                '{"fox":[{"hue":"a"},{"shade":false}]}' => true,
+                '{"fox":[{"zz":1}]}' => false,
+                '{"fox":[{"hue":"x","shade":true}]}' => false,
+            ],
+        ];
+        yield 'nested anyOf of two classes, on the property' => [$nestedPair, [], $threeClasses, [GenerationMode::Symfony]];
+        yield 'one-member anyOf wrapper, on the property' => [$wrapper, [], $twoClasses, [GenerationMode::Symfony]];
+    }
+
+    /**
      * A property spelled `allOf: [$ref Mauve]` over a MAP component (`Mauve: {type: object,
      * additionalProperties: …}`) is the map the bare `$ref` names: same value class or enum, same PHP
      * type, same constraints. The wrapped spelling was typed `array<string, mixed>` and its values went
@@ -16681,8 +18488,6 @@ final class ValidationParityTest extends TestCase
             ]),
             [
                 'symfony' => ['{"ibis":["x"]}' => null, '{"emu":["x"]}' => null],
-                // The hydrator drops an item it cannot build.
-                'yii3' => ['{"ibis":["x"]}' => true, '{"emu":["x"]}' => true],
             ],
         ];
     }
@@ -16986,7 +18791,7 @@ final class ValidationParityTest extends TestCase
      * mode that writes one, and a list where the object belonged was held as one.
      *
      * The item is then a DTO like any other, with the limits README.support-matrix gives a list of DTOs:
-     * a non-object item in symfony and yii3 ("a non-object ITEM of a list or map of DTOs"), a `null`
+     * a non-object item in symfony ("a non-object ITEM of a list or map of DTOs"), a `null`
      * item in laravel-data ("a `null` ITEM of a nullable list of DTOs").
      */
     public function testAComposedObjectItemHasItsOwnClass(): void
@@ -17030,7 +18835,6 @@ final class ValidationParityTest extends TestCase
                 diverging: [
                     'symfony' => ['{"stems":[5]}' => null, '{"bark":[5]}' => null],
                     'laravel-data' => ['{"leaves":[{},null]}' => false],
-                    'yii3' => ['{"stems":[5]}' => null, '{"bark":[5]}' => null],
                 ],
             ),
         );
@@ -18322,6 +20126,1853 @@ final class ValidationParityTest extends TestCase
         ] as $json) {
             $this->assertSame(expected: $json, actual: $this->writtenBack(GenerationMode::Laravel, $spec, 'free form in a self-referring class', $json));
         }
+    }
+
+    /**
+     * A union component's branch `{allOf: [$ref Amber], nullable: true}` is Amber, or null: the 3.0
+     * `nullable` beside the one-member `allOf` is what kept it from being unwrapped, and the branch was
+     * then a member of no class — `Olive`'s members were Scarlet alone, so an object only Amber's
+     * sibling matched was refused as `Unsupported type: Olive`, and one both members match passed a
+     * `oneOf`. The same branch without `nullable` (`Olivine`) already was Amber, and is the neighbour
+     * pinned here; `null` is accepted through the branch's `nullable`, as the generator reads 3.0.
+     */
+    public function testANullableAllOfWrappedRefMemberOfAUnionComponentIsThatMember(): void
+    {
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $spec = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Probe' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'crane' => $ref('Olive'),
+                            'heron' => ['allOf' => [$ref('Olive')]],
+                            'egret' => ['type' => 'array', 'items' => $ref('Olive')],
+                            'stork' => $ref('Olivine'),
+                        ],
+                    ],
+                    'Amber' => [
+                        'type' => 'object',
+                        'properties' => ['macaw' => ['type' => 'string'], 'lemur' => ['type' => 'integer']],
+                        'required' => ['macaw', 'lemur'],
+                    ],
+                    'Scarlet' => [
+                        'type' => 'object',
+                        'properties' => ['macaw' => ['type' => 'string']],
+                        'required' => ['macaw'],
+                    ],
+                    'Olive' => ['oneOf' => [['allOf' => [$ref('Amber')], 'nullable' => true], $ref('Scarlet')]],
+                    'Olivine' => ['oneOf' => [['allOf' => [$ref('Amber')]], $ref('Scarlet')]],
+                ],
+            ],
+        ];
+        $payloads = [];
+        foreach (['crane' => '%s', 'heron' => '%s', 'egret' => '[%s]', 'stork' => '%s'] as $field => $wrap) {
+            $payloads += [
+                sprintf('{"%s":%s}', $field, sprintf($wrap, '{"macaw":"ab"}')) => true,
+                sprintf('{"%s":%s}', $field, sprintf($wrap, '{"macaw":"ab","lemur":3}')) => false,
+                sprintf('{"%s":%s}', $field, sprintf($wrap, '{"lemur":3}')) => false,
+                sprintf('{"%s":%s}', $field, sprintf($wrap, '{"macaw":1}')) => false,
+            ];
+        }
+        $payloads += ['{"crane":null}' => true, '{"heron":null}' => true, '{"egret":[null]}' => true];
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(spec: $spec, key: 'nullable allOf wrapped ref member', payloads: $payloads),
+        );
+        // The member built is Scarlet, written back without Amber's `lemur`. Only `crane` is compared:
+        // laravel-data writes the absent optional keys back as null.
+        $this->assertSame(
+            expected: array_fill(0, 3, ['macaw' => 'ab']),
+            actual: array_map(
+                callback: static fn(mixed $written): mixed => is_array($written) ? $written['crane'] ?? 'absent' : $written,
+                array: $this->writtenBackByTheWritingModes($spec, 'nullable allOf wrapped ref member', '{"crane":{"macaw":"ab"}}'),
+            ),
+        );
+    }
+
+    /**
+     * A property `$ref Teal` where `Teal` is a union whose member is a `$ref` to a component that admits
+     * null — `Maroon: {type: array, nullable: true}`, a list, a map, an object, the 3.1 `[array, null]` —
+     * admits null itself. Only a literal `{type: null}` branch of the union was read as null, so laravel,
+     * laravel-data, symfony and yii3 refused `{"lynx": null}` (laravel-data with a `TypeError`). The
+     * same union inline, and the `$ref` to `Maroon` directly, already took it, and are pinned here.
+     */
+    public function testAUnionComponentWhoseMemberAdmitsNullTakesNull(): void
+    {
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $schemas = [
+            'Probe' => [
+                'type' => 'object',
+                'properties' => [
+                    'lynx' => $ref('Teal'),
+                    'puma' => $ref('TealOne'),
+                    'ibex' => $ref('TealMix'),
+                    'mink' => $ref('TealList'),
+                    'seal' => $ref('TealMap'),
+                    'wolf' => $ref('TealObject'),
+                    'hare' => $ref('TealDuo'),
+                    'mole' => ['anyOf' => [$ref('Maroon')]],
+                    'newt' => $ref('Maroon'),
+                ],
+            ],
+            'Maroon' => ['type' => 'array', 'nullable' => true],
+            'MaroonList' => ['type' => 'array', 'items' => ['type' => 'integer'], 'nullable' => true],
+            'MaroonMap' => ['type' => 'object', 'additionalProperties' => ['type' => 'integer'], 'nullable' => true],
+            'MaroonObject' => ['type' => 'object', 'properties' => ['emu' => ['type' => 'string']], 'nullable' => true],
+            'Teal' => ['anyOf' => [$ref('Maroon')]],
+            'TealOne' => ['oneOf' => [$ref('Maroon')]],
+            'TealMix' => ['anyOf' => [$ref('Maroon'), ['type' => 'integer']]],
+            'TealList' => ['anyOf' => [$ref('MaroonList')]],
+            'TealMap' => ['anyOf' => [$ref('MaroonMap')]],
+            'TealObject' => ['anyOf' => [$ref('MaroonObject')]],
+            'TealDuo' => ['anyOf' => [$ref('Maroon'), ['type' => 'object', 'properties' => ['plover' => ['type' => 'string']]]]],
+        ];
+        $spec = ['openapi' => '3.0.3', 'info' => ['title' => 'T', 'version' => '1.0.0'], 'components' => ['schemas' => $schemas]];
+        $payloads = [];
+        foreach (['lynx', 'puma', 'ibex', 'mink', 'seal', 'wolf', 'hare', 'mole', 'newt'] as $field) {
+            $payloads[sprintf('{"%s":null}', $field)] = true;
+            $payloads[sprintf('{"%s":"x"}', $field)] = false;
+        }
+        $payloads += [
+            '{"lynx":[1]}' => true,
+            '{"ibex":3}' => true,
+            '{"mink":[1]}' => true,
+            '{"mink":["a"]}' => false,
+            '{"seal":{"a":1}}' => true,
+            '{"seal":{"a":"b"}}' => false,
+            '{"wolf":{"emu":"s"}}' => true,
+            '{"wolf":{"emu":1}}' => false,
+            '{"hare":{"plover":"s"}}' => true,
+        ];
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(spec: $spec, key: 'union component member admits null', payloads: $payloads),
+        );
+        foreach (['lynx', 'wolf'] as $field) {
+            foreach (GenerationMode::cases() as $mode) {
+                if ($mode === GenerationMode::Runtime || $mode === GenerationMode::Symfony || $mode === GenerationMode::Yii3) {
+                    continue;
+                }
+                $json = sprintf('{"%s":null}', $field);
+                $this->assertSame(
+                    expected: [$field => null],
+                    actual: array_intersect_key(
+                        (array)json_decode($this->writtenBack($mode, $spec, 'union component member admits null', $json), true),
+                        [$field => true],
+                    ),
+                    message: $mode->value . ' ' . $json,
+                );
+            }
+        }
+
+        // The 3.1 spelling of the member.
+        $spec31 = self::probeSpec($ref('Teal'));
+        $spec31['components']['schemas']['Probe']['required'] = [];
+        $spec31['components']['schemas'] += [
+            'Teal' => ['anyOf' => [$ref('Maroon')]],
+            'Maroon' => ['type' => ['array', 'null']],
+        ];
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: $spec31,
+                key: 'union component member admits null 3.1',
+                payloads: ['{"f":null}' => true, '{"f":[1]}' => true, '{"f":"x"}' => false],
+            ),
+        );
+    }
+
+    /**
+     * A property spelled `allOf: [{$ref: Mauve}]` — beside annotations or `nullable` too — where Mauve
+     * is an undiscriminated union of an object member built from `allOf` fragments and an `array`
+     * member is the bare `$ref: Mauve`. yii3 holds the value as the decoded array, and only the bare
+     * reference was spelled out as the component's union: behind the wrapper the object member was cut
+     * down to `{type: object}`, so `{"tern": "x"}` passed an integer `tern`, `{"toucan": 31}` passed
+     * a member's `required`, and `{"toucan": 1, "llama": "x"}` matched "more than one oneOf branch".
+     * The bare reference and the inline union, pinned here, already worked.
+     */
+    #[DataProvider('openApiVersions')]
+    public function testASingleRefAllOfAroundAUnionComponentIsTheReference(string $version): void
+    {
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $wrapped = static fn(string $name): array => ['allOf' => [$ref($name)]];
+        $mauvea = [
+            'oneOf' => [
+                [
+                    'type' => 'object',
+                    'allOf' => [
+                        ['type' => 'object', 'properties' => ['tern' => ['type' => 'number']], 'required' => ['tern']],
+                        ['type' => 'object', 'properties' => ['toucan' => ['type' => 'integer']], 'required' => ['toucan']],
+                    ],
+                ],
+                ['type' => 'array', 'items' => ['type' => 'string']],
+                [
+                    'type' => 'object',
+                    'properties' => ['toucan' => ['type' => 'integer'], 'llama' => ['type' => 'string']],
+                    'required' => ['toucan', 'llama'],
+                ],
+            ],
+        ];
+        $mauve = [
+            'anyOf' => [
+                [
+                    'type' => 'object',
+                    'allOf' => [['type' => 'object', 'properties' => ['tern' => ['type' => 'integer']], 'required' => ['tern']]],
+                ],
+                ['type' => 'array', 'items' => ['type' => 'string']],
+            ],
+        ];
+        $anyOfFields = ['jackal' => $wrapped('Mauve'), 'vole' => $ref('Mauve')];
+        $oneOfFields = [
+            'ibex' => $wrapped('Mauvea'),
+            'lynx' => $wrapped('Mauvea') + ['description' => 'A wrapped union.'],
+            'puma' => $ref('Mauvea'),
+            'mink' => $mauvea,
+        ];
+        if ($version === '3.0.3') {
+            $oneOfFields['otter'] = $wrapped('Mauvea') + ['nullable' => true];
+        }
+        $spec = [
+            'openapi' => $version,
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Probe' => ['type' => 'object', 'properties' => $anyOfFields + $oneOfFields],
+                    'Mauve' => $mauve,
+                    'Mauvea' => $mauvea,
+                ],
+            ],
+        ];
+        $payloads = [];
+        foreach (array_keys($anyOfFields) as $field) {
+            foreach (['{"tern":1}' => true, '{"tern":"x"}' => false, '["a"]' => true, '[1]' => false, '"x"' => false] as $value => $expected) {
+                $payloads[sprintf('{"%s":%s}', $field, $value)] = $expected;
+            }
+        }
+        foreach (array_keys($oneOfFields) as $field) {
+            $values = [
+                '{"tern":1.5,"toucan":2}' => true,
+                '{"toucan":31}' => false,
+                '{"llama":"q"}' => false,
+                '{"toucan":1,"llama":"x"}' => true,
+                '{"tern":1,"toucan":1,"llama":"x"}' => false,
+                '["a"]' => true,
+                '"x"' => false,
+            ];
+            foreach ($values as $value => $expected) {
+                $payloads[sprintf('{"%s":%s}', $field, $value)] = $expected;
+            }
+        }
+        if ($version === '3.0.3') {
+            $payloads['{"otter":null}'] = true;
+        }
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(spec: $spec, key: 'single ref allOf around union ' . $version, payloads: $payloads),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function openApiVersions(): iterable
+    {
+        yield '3.0' => ['3.0.3'];
+        yield '3.1' => ['3.1.0'];
+    }
+
+    /**
+     * A union member that is a `$ref` WITH annotations beside it — `{$ref: Olive, title: Fern}`,
+     * `{$ref: Olive, description: …}` — to a component that admits null (`nullable: true`, 3.1
+     * `type: [object, "null"]`) admits null as the bare `{$ref: Olive}` does: the 3.0 siblings of a
+     * `$ref` are ignored, and in 3.1 a title or a description asserts nothing. Only the bare member
+     * passed its null on, so symfony refused `{"tern": null}` (a `not: {type: null}` guard, or a type
+     * without null), yii3 refused it, laravel crashed on a required property and laravel-data on every
+     * one — on the property and through a union component (`Teal: {anyOf: [{$ref: Olive, title: …}]}`).
+     * The bare member, pinned here, already worked. A member with an ASSERTING sibling (3.1 `{$ref:
+     * Olive, type: object}`) still refuses the null.
+     *
+     * @param array<string, mixed> $olive
+     */
+    #[DataProvider('annotatedNullableRefMemberVersions')]
+    public function testAnAnnotatedRefMemberAdmittingNullTakesNull(string $version, array $olive): void
+    {
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $number = ['type' => 'number'];
+        $properties = [
+            'tern' => ['anyOf' => [$ref('Olive') + ['title' => 'Fern'], $number]],
+            'wren' => ['oneOf' => [$ref('Olive') + ['description' => 'An olive.'], $number]],
+            'kite' => ['anyOf' => [$ref('Olive') + ['title' => 'Fern'], $number, ['type' => 'object']]],
+            'lark' => $ref('Teal'),
+            'loon' => $ref('TealOne'),
+            'bare' => ['anyOf' => [$ref('Olive'), $number]],
+            'rook' => ['anyOf' => [$ref('Olive') + ['title' => 'Fern'], $number]],
+            'crow' => ['oneOf' => [$ref('Olive') + ['description' => 'An olive.'], $number]],
+        ];
+        if ($version === '3.1.0') {
+            $properties['gull'] = ['anyOf' => [$ref('Olive') + ['type' => 'object'], $number]];
+        }
+        $spec = [
+            'openapi' => $version,
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Probe' => ['type' => 'object', 'required' => ['rook', 'crow'], 'properties' => $properties],
+                    'Olive' => $olive + ['properties' => ['ibis' => ['type' => 'integer']]],
+                    'Teal' => ['anyOf' => [$ref('Olive') + ['title' => 'Object'], $number]],
+                    'TealOne' => ['oneOf' => [$ref('Olive') + ['description' => 'An olive.'], $number]],
+                ],
+            ],
+        ];
+        $base = '"rook":1,"crow":1';
+        $payloads = ['{' . $base . '}' => true];
+        foreach (['rook', 'crow'] as $field) {
+            $payloads[sprintf('{"%s":%s}', $field, $field === 'rook' ? '"crow":1' : '"rook":1')] = false;
+        }
+        foreach (array_keys($properties) as $field) {
+            $prefix = in_array($field, ['rook', 'crow'], true)
+                ? '{' . ($field === 'rook' ? '"crow":1' : '"rook":1') . ','
+                : '{' . $base . ',';
+            $payloads[sprintf('%s"%s":null}', $prefix, $field)] = $field !== 'gull';
+            $payloads[sprintf('%s"%s":{"ibis":1}}', $prefix, $field)] = true;
+            $payloads[sprintf('%s"%s":2.5}', $prefix, $field)] = true;
+            $payloads[sprintf('%s"%s":"x"}', $prefix, $field)] = false;
+        }
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(spec: $spec, key: 'annotated ref member admits null ' . $version, payloads: $payloads),
+        );
+        // Written back, the annotated member is the bare one: an absent key and a null alike. Laravel
+        // wrote an absent annotated `tern` as `{}`, the bare `bare` as the documented null.
+        foreach (['{' . $base . '}', '{' . $base . ',"tern":null,"bare":null}'] as $json) {
+            foreach ($this->writtenBackByTheWritingModes($spec, 'annotated ref member admits null ' . $version, $json) as $position => $written) {
+                $this->assertIsArray($written, $json);
+                $this->assertSame(
+                    expected: array_key_exists('bare', $written) ? $written['bare'] : 'absent',
+                    actual: array_key_exists('tern', $written) ? $written['tern'] : 'absent',
+                    message: $position . ' ' . $json,
+                );
+            }
+        }
+    }
+
+    /**
+     * @return iterable<string, array{string, array<string, mixed>}>
+     */
+    public static function annotatedNullableRefMemberVersions(): iterable
+    {
+        yield '3.0 nullable' => ['3.0.3', ['type' => 'object', 'nullable' => true]];
+        yield '3.1 type null' => ['3.1.0', ['type' => ['object', 'null']]];
+    }
+
+    /**
+     * Wherever a union member is read as "the reference" — a discriminated union on a property, in a
+     * list or as a component, a nullable item `anyOf: [$ref, null]`, a scalar alias beside null, a
+     * union component of classes, a union of classes with `properties` beside it — a `$ref` member
+     * with only annotations beside it (`title`, `description`) is that reference too. Read as anything
+     * else, a discriminated union matched twice (yii3 refused every pet, symfony took any tag), a list
+     * of them dispatched on nothing in every mode, laravel and laravel-data could not build a union
+     * component, and symfony dropped the checks beside a union of classes. The bare members already
+     * worked; `$nullableMember` also gives a member that admits null.
+     */
+    #[DataProvider('nullableMemberSwitch')]
+    public function testAnAnnotatedRefMemberIsTheReferenceItNames(bool $nullableMember): void
+    {
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $spec = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Probe' => ['type' => 'object', 'properties' => [
+                    'pet' => ['oneOf' => [$ref('Cat') + ['title' => 'A cat'], $ref('Dog') + ['description' => 'A dog']], 'discriminator' => ['propertyName' => 'kind']],
+                    'hue' => ['anyOf' => [$ref('Tone') + ['title' => 'Tone'], ['type' => 'boolean']]],
+                    'pets' => ['type' => 'array', 'items' => ['oneOf' => [$ref('Cat') + ['title' => 'A cat'], $ref('Dog') + ['description' => 'A dog']], 'discriminator' => ['propertyName' => 'kind']]],
+                    'zoo' => $ref('Pet'),
+                    'herd' => $ref('Herd'),
+                    'cats' => ['type' => 'array', 'items' => ['anyOf' => [$ref('Cat') + ['title' => 'A cat'], ['type' => 'null']]]],
+                    'tint' => ['anyOf' => [$ref('Shade') + ['description' => 'A shade'], ['type' => 'null']]],
+                    'owner' => ['anyOf' => [$ref('Cat') + ['title' => 'A cat'], $ref('Dog') + ['description' => 'A dog']], 'properties' => ['paw' => ['type' => 'integer', 'minimum' => 0]]],
+                ]],
+                'Shade' => ['type' => 'string', 'minLength' => 2],
+                'Hen' => ['type' => 'object', 'required' => ['egg'], 'properties' => ['egg' => ['type' => 'integer']]] + ($nullableMember ? ['nullable' => true] : []),
+                'Ram' => ['type' => 'object', 'required' => ['horn'], 'properties' => ['horn' => ['type' => 'integer']]],
+                'Herd' => ['anyOf' => [$ref('Hen') + ['title' => 'A hen'], $ref('Ram') + ['description' => 'A ram']]],
+                'Pet' => ['oneOf' => [$ref('Cat') + ['title' => 'A cat'], $ref('Dog') + ['description' => 'A dog']], 'discriminator' => ['propertyName' => 'kind']],
+                'Cat' => ['type' => 'object', 'required' => ['kind'], 'properties' => ['kind' => ['type' => 'string'], 'paw' => ['type' => 'integer']]] + ($nullableMember ? ['nullable' => true] : []),
+                'Dog' => ['type' => 'object', 'required' => ['kind'], 'properties' => ['kind' => ['type' => 'string'], 'bark' => ['type' => 'integer']]],
+                'Tone' => ['anyOf' => [['type' => 'string'], ['type' => 'integer']]],
+            ]],
+        ];
+        $this->assertSame(expected: [], actual: $this->payloadTableMisses(spec: $spec, key: 'annotated ref member is the reference ' . (int)$nullableMember, payloads: [
+            '{}' => true,
+            '{"pet":{"kind":"Cat","paw":1}}' => true,
+            '{"pet":{"kind":"Dog","bark":1}}' => true,
+            '{"pet":{"kind":"Cat","paw":"x"}}' => false,
+            '{"pet":{"kind":"Dog","bark":"x"}}' => false,
+            '{"pet":{"kind":"Owl"}}' => false,
+            '{"pet":null}' => $nullableMember,
+            '{"pet":5}' => false,
+            '{"hue":"a"}' => true,
+            '{"hue":1}' => true,
+            '{"hue":true}' => true,
+            '{"hue":1.5}' => false,
+            '{"hue":null}' => false,
+            '{"pets":[{"kind":"Cat","paw":1},{"kind":"Dog","bark":1}]}' => true,
+            '{"pets":[{"kind":"Dog","bark":"x"}]}' => false,
+            '{"pets":[{"kind":"Owl"}]}' => false,
+            '{"zoo":{"kind":"Cat","paw":1}}' => true,
+            '{"zoo":{"kind":"Dog","bark":1}}' => true,
+            '{"zoo":{"kind":"Dog","bark":"x"}}' => false,
+            '{"zoo":{"kind":"Owl"}}' => false,
+            '{"zoo":null}' => $nullableMember,
+            '{"cats":[null,{"kind":"Cat","paw":1}]}' => true,
+            '{"cats":[{"kind":"Cat","paw":"x"}]}' => false,
+            '{"cats":[5]}' => false,
+            '{"tint":null}' => true,
+            '{"tint":"ab"}' => true,
+            '{"tint":"a"}' => false,
+            '{"tint":5}' => false,
+            '{"herd":{"egg":1}}' => true,
+            '{"herd":{"horn":2}}' => true,
+            '{"herd":{"egg":"x"}}' => false,
+            '{"herd":5}' => false,
+            '{"herd":null}' => $nullableMember,
+            '{"owner":{"kind":"Cat","paw":1}}' => true,
+            '{"owner":{"kind":"Cat","paw":-1}}' => false,
+        ]), message: (string)$nullableMember);
+    }
+
+    /**
+     * @return iterable<string, array{bool}>
+     */
+    public static function nullableMemberSwitch(): iterable
+    {
+        yield 'members refuse null' => [false];
+        yield 'a member admits null' => [true];
+    }
+
+    /**
+     * A list whose items are `allOf: [$ref Pet]`, `Pet` a union of classes, is a list of `Pet`, as
+     * `items: $ref Pet` is. Symfony held it as a bare `?array` checked for a list only, so an item that
+     * was no `Pet` at all — `7`, `null`, a `Cat` without its `paw` — passed. `items: $ref Pet` and a
+     * property `allOf: [$ref Pet]` already checked the item, and are pinned here.
+     *
+     * @param array<string, mixed> $pet
+     * @param array<string, bool> $memberPayloads an item => accepted
+     */
+    #[DataProvider('listOfAnAllOfWrappedUnionCases')]
+    public function testAListOfAnAllOfWrappedUnionComponentChecksItsItems(array $pet, array $memberPayloads): void
+    {
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $spec = self::probeSpec(['type' => 'array', 'items' => ['allOf' => [$ref('Pet')]]]);
+        $spec['components']['schemas']['Probe']['required'] = [];
+        $spec['components']['schemas']['Probe']['properties'] += [
+            'vole' => ['type' => 'array', 'items' => $ref('Pet')],
+            'mole' => ['allOf' => [$ref('Pet')]],
+        ];
+        $spec['components']['schemas'] += [
+            'Cat' => [
+                'type' => 'object',
+                'properties' => ['kind' => ['type' => 'string'], 'paw' => ['type' => 'integer']],
+                'required' => ['kind', 'paw'],
+            ],
+            'Dog' => ['type' => 'object', 'properties' => ['kind' => ['type' => 'string']], 'required' => ['kind']],
+            'Pet' => $pet,
+        ];
+        $payloads = [];
+        foreach (['f', 'vole'] as $field) {
+            $payloads[sprintf('{"%s":[7]}', $field)] = false;
+            $payloads[sprintf('{"%s":[null]}', $field)] = false;
+            foreach ($memberPayloads as $item => $accepted) {
+                $payloads[sprintf('{"%s":[%s]}', $field, $item)] = $accepted;
+            }
+        }
+        $payloads['{"mole":7}'] = false;
+        foreach ($memberPayloads as $item => $accepted) {
+            $payloads[sprintf('{"mole":%s}', $item)] = $accepted;
+        }
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(spec: $spec, key: 'list of an allOf wrapped union ' . count($pet), payloads: $payloads),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>, array<string, bool>}>
+     */
+    public static function listOfAnAllOfWrappedUnionCases(): iterable
+    {
+        $members = ['oneOf' => [['$ref' => '#/components/schemas/Cat'], ['$ref' => '#/components/schemas/Dog']]];
+        yield 'discriminated' => [
+            $members + ['discriminator' => ['propertyName' => 'kind', 'mapping' => [
+                'cat' => '#/components/schemas/Cat',
+                'dog' => '#/components/schemas/Dog',
+            ]]],
+            ['{"kind":"cat","paw":1}' => true, '{"kind":"dog"}' => true, '{"kind":"cat"}' => false],
+        ];
+        yield 'undiscriminated' => [
+            $members,
+            ['{"kind":"cat"}' => true, '{"kind":"cat","paw":1}' => false, '{"paw":1}' => false],
+        ];
+    }
+
+    /**
+     * A union component whose member is itself a DISCRIMINATED union — `Pet: {anyOf: [{anyOf: [Cobalt,
+     * Mauve], discriminator: kind}, integer]}` — builds the member the tag names. Symfony flattened the
+     * inner union into `Cobalt|Mauve|int` without its discriminator map, so the serializer tried Cobalt
+     * first and refused a `Mauve` for Cobalt's `kind` enum. The same union inline (`heron`) and the
+     * discriminated union alone behind a `$ref` (`egret`) already worked, and are pinned here.
+     */
+    public function testADiscriminatedUnionMemberOfAUnionComponentKeepsItsDiscriminator(): void
+    {
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $inner = ['anyOf' => [$ref('Cobalt'), $ref('Mauve')], 'discriminator' => ['propertyName' => 'kind']];
+        $spec = self::probeSpec($ref('Pet'));
+        $spec['components']['schemas']['Probe']['required'] = [];
+        $spec['components']['schemas']['Probe']['properties'] += [
+            'heron' => ['anyOf' => [$inner, ['type' => 'integer']]],
+            'egret' => $ref('Duo'),
+        ];
+        $spec['components']['schemas'] += [
+            'Cobalt' => ['type' => 'object', 'properties' => ['kind' => ['type' => 'string', 'enum' => ['Cobalt']]]],
+            'Mauve' => ['type' => 'object', 'properties' => ['kind' => ['type' => 'string'], 'koala' => ['type' => 'integer']]],
+            'Pet' => ['anyOf' => [$inner, ['type' => 'integer']]],
+            'Duo' => $inner,
+        ];
+        $payloads = [];
+        foreach (['f', 'heron', 'egret'] as $field) {
+            $payloads += [
+                sprintf('{"%s":{"kind":"Mauve"}}', $field) => true,
+                sprintf('{"%s":{"kind":"Mauve","koala":2}}', $field) => true,
+                sprintf('{"%s":{"kind":"Cobalt"}}', $field) => true,
+                sprintf('{"%s":{"kind":"Mauve","koala":"x"}}', $field) => false,
+            ];
+        }
+        $payloads += ['{"f":3}' => true, '{"f":"x"}' => false, '{"heron":3}' => true];
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(spec: $spec, key: 'discriminated union member of a union component', payloads: $payloads),
+        );
+    }
+
+    /**
+     * `allOf: [{anyOf: [{type: array}, <object>]}]` is that `anyOf`: the `allOf` around one union and
+     * nothing else asserts nothing more. Symfony and yii3 judged it otherwise than the bare `anyOf` —
+     * symfony dropped the enum of an object member's property and typed a `$ref` member's property
+     * `?array`, so the member class was never built; yii3 checked the object member for `type: object`
+     * only — and an object no member describes passed. The bare `anyOf` (`bare`) is the neighbour.
+     */
+    public function testAnAllOfAroundOneUnionOfAnArrayAndAnObjectIsThatUnion(): void
+    {
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $bisonOnly = ['type' => 'object', 'properties' => ['bison' => ['type' => 'integer', 'enum' => [30]]], 'required' => ['bison']];
+        $bisonRef = ['type' => 'object', 'properties' => ['bison' => $ref('Crimson')], 'required' => ['bison']];
+        $indigoInline = [
+            'type' => 'object',
+            'properties' => ['bison' => ['type' => 'integer'], 'robin' => ['type' => 'string']],
+            'required' => ['bison', 'robin'],
+        ];
+        $wrapped = static fn(array $member): array => ['allOf' => [['anyOf' => [['type' => 'array'], $member]]]];
+        $spec = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Probe' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'enumed' => $wrapped($bisonOnly),
+                            'refenum' => $wrapped($bisonRef),
+                            'inline' => $wrapped($indigoInline),
+                            'reffed' => $wrapped($ref('Indigo')),
+                            'bare' => ['anyOf' => [['type' => 'array'], $ref('Indigo')]],
+                        ],
+                    ],
+                    'Crimson' => ['type' => 'integer', 'enum' => [30]],
+                    'Indigo' => $indigoInline,
+                ],
+            ],
+        ];
+        $payloads = [];
+        foreach (['enumed', 'refenum'] as $field) {
+            $payloads += [
+                sprintf('{"%s":{"bison":30}}', $field) => true,
+                sprintf('{"%s":[1]}', $field) => true,
+                sprintf('{"%s":{"bison":25}}', $field) => false,
+                sprintf('{"%s":{"bison":"zzq"}}', $field) => false,
+                sprintf('{"%s":{"okapi":7}}', $field) => false,
+                sprintf('{"%s":"x"}', $field) => false,
+            ];
+        }
+        foreach (['inline', 'reffed', 'bare'] as $field) {
+            $payloads += [
+                sprintf('{"%s":{"bison":1,"robin":"x"}}', $field) => true,
+                sprintf('{"%s":[1]}', $field) => true,
+                sprintf('{"%s":{"okapi":7}}', $field) => false,
+                sprintf('{"%s":{"bison":"x","robin":""}}', $field) => false,
+                sprintf('{"%s":"x"}', $field) => false,
+            ];
+        }
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(spec: $spec, key: 'allOf around one union of array and object', payloads: $payloads),
+        );
+    }
+
+    /**
+     * A list component whose items are an alias of an alias of a date — `Ivory: {items: $ref Jade}`,
+     * `Jade: $ref Sienna`, `Sienna: {type: string, format: date}` — checks the date. Symfony followed
+     * one hop of the alias, typed the items `DateTimeImmutable` without the strict `Y-m-d` reading, and
+     * took `"now"`. The list of `$ref Sienna` (`crane`) already refused it, and is pinned here.
+     */
+    public function testAListComponentOfAnAliasChainOfADateChecksTheDate(): void
+    {
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $spec = self::probeSpec($ref('Ivory'));
+        $spec['components']['schemas']['Probe']['required'] = [];
+        $spec['components']['schemas']['Probe']['properties']['crane'] = $ref('Ivy');
+        $spec['components']['schemas'] += [
+            'Sienna' => ['type' => 'string', 'format' => 'date'],
+            'Jade' => $ref('Sienna'),
+            'Ivory' => ['type' => 'array', 'items' => $ref('Jade')],
+            'Ivy' => ['type' => 'array', 'items' => $ref('Sienna')],
+        ];
+        $payloads = [];
+        foreach (['f', 'crane'] as $field) {
+            $payloads += [
+                sprintf('{"%s":["2024-01-02"]}', $field) => true,
+                sprintf('{"%s":["now"]}', $field) => false,
+                sprintf('{"%s":["2024-01-02T10:00:00Z"]}', $field) => false,
+                sprintf('{"%s":[3]}', $field) => false,
+            ];
+        }
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(spec: $spec, key: 'list component of an alias chain of a date', payloads: $payloads),
+        );
+        $this->assertSame(
+            expected: array_fill(0, 3, ['f' => ['2024-01-02']]),
+            actual: $this->writtenBackByTheWritingModes($spec, 'list component of an alias chain of a date', '{"f":["2024-01-02"]}'),
+        );
+    }
+
+    /**
+     * A `format: date` beside an inline object member (`DateTimeImmutable|ProbeCrane`) is read with the
+     * one date pattern in symfony too. It used to be read by PHP's free parser there, the strict context
+     * left out because it reaches the class's own properties: `"now"`, `"@0"` and a date-time passed.
+     * A class holding a date-time (`ProbeHeron.stamp`) resets the pattern on its own property, so its
+     * date-time is still read as one (a loose date-time stays the symfony row of the support matrix).
+     */
+    public function testADateBesideAnObjectMemberIsParsedStrictly(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Probe' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'crane' => ['anyOf' => [
+                                ['type' => 'object', 'properties' => ['kind' => ['type' => 'string']], 'required' => ['kind']],
+                                ['type' => 'string', 'format' => 'date'],
+                            ]],
+                            'heron' => ['anyOf' => [
+                                [
+                                    'type' => 'object',
+                                    'properties' => ['stamp' => ['type' => 'string', 'format' => 'date-time']],
+                                    'required' => ['stamp'],
+                                ],
+                                ['type' => 'string', 'format' => 'date'],
+                            ]],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+        $payloads = [];
+        foreach (['crane', 'heron'] as $field) {
+            $payloads += [
+                sprintf('{"%s":"2024-01-02"}', $field) => true,
+                sprintf('{"%s":"now"}', $field) => false,
+                sprintf('{"%s":"@0"}', $field) => false,
+                sprintf('{"%s":"2024-01-02T10:00:00Z"}', $field) => false,
+                sprintf('{"%s":5}', $field) => false,
+            ];
+        }
+        $payloads += [
+            '{"crane":{"kind":"x"}}' => true,
+            '{"crane":{}}' => false,
+            '{"heron":{"stamp":"2024-01-02T10:00:00Z"}}' => true,
+            '{"heron":{"stamp":"2024-01-02"}}' => false,
+        ];
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: $spec,
+                key: 'date beside an object member',
+                payloads: $payloads,
+                // Symfony reads a date-time with PHP's free parser (the loose date-time row).
+                diverging: ['symfony' => ['{"heron":{"stamp":"2024-01-02"}}' => true]],
+            ),
+        );
+    }
+
+    /**
+     * A class held beside `array` (`array|Pet`, `array|Indigo`) is judged when the serializer leaves the
+     * value raw. Symfony falls back to the array member whenever it cannot build the class — no tag, an
+     * unknown or null tag, `[]` — and the branch "is that class" let such a raw object through, so
+     * `{"tern": []}` and `{"tern": {"kind": null}}` passed `anyOf: [{type: array, minItems: 1}, $ref
+     * Pet]`. The class's schema now judges it, as runtime judges a raw object. A class that takes `{}`
+     * (`Loose`) still takes `[]` in symfony, which cannot tell the two apart (the EMPTY JSON container
+     * row of the support matrix).
+     */
+    public function testAClassBesideAListIsJudgedWhenTheSerializerLeavesTheValueRaw(): void
+    {
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $list = ['type' => 'array', 'minItems' => 1, 'items' => ['type' => 'string']];
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Probe' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'tern' => ['anyOf' => [$list, $ref('Pet')]],
+                            'wren' => ['anyOf' => [$list, $ref('Indigo')]],
+                            'lark' => ['anyOf' => [$list, $ref('Loose')]],
+                        ],
+                    ],
+                    'Cat' => [
+                        'type' => 'object',
+                        'properties' => ['kind' => ['type' => 'string'], 'paw' => ['type' => 'integer']],
+                        'required' => ['kind', 'paw'],
+                    ],
+                    'Dog' => ['type' => 'object', 'properties' => ['kind' => ['type' => 'string']], 'required' => ['kind']],
+                    'Pet' => [
+                        'oneOf' => [$ref('Cat'), $ref('Dog')],
+                        'discriminator' => [
+                            'propertyName' => 'kind',
+                            'mapping' => ['cat' => '#/components/schemas/Cat', 'dog' => '#/components/schemas/Dog'],
+                        ],
+                    ],
+                    'Indigo' => [
+                        'type' => 'object',
+                        'properties' => ['bison' => ['type' => 'integer', 'minimum' => 5]],
+                        'required' => ['bison'],
+                    ],
+                    'Loose' => ['type' => 'object', 'properties' => ['robin' => ['type' => 'integer']]],
+                ],
+            ],
+        ];
+        $payloads = [];
+        foreach (['tern', 'wren', 'lark'] as $field) {
+            $payloads += [
+                sprintf('{"%s":["a"]}', $field) => true,
+                sprintf('{"%s":[3]}', $field) => false,
+                sprintf('{"%s":5}', $field) => false,
+            ];
+        }
+        $payloads += [
+            '{"tern":[]}' => false,
+            '{"tern":{}}' => false,
+            '{"tern":{"kind":null}}' => false,
+            '{"tern":{"kind":"zzz"}}' => false,
+            '{"tern":{"kind":"cat"}}' => false,
+            '{"tern":{"kind":"dog"}}' => true,
+            '{"tern":{"kind":"cat","paw":1}}' => true,
+            '{"wren":[]}' => false,
+            '{"wren":{}}' => false,
+            '{"wren":{"bison":1}}' => false,
+            '{"wren":{"bison":"q"}}' => false,
+            '{"wren":{"bison":7}}' => true,
+            '{"lark":{}}' => true,
+            '{"lark":{"robin":2}}' => true,
+            '{"lark":{"robin":"q"}}' => false,
+            '{"lark":[]}' => false,
+        ];
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: $spec,
+                key: 'class beside a list left raw',
+                payloads: $payloads,
+                // `[]` and `{}` are one decoded value in symfony and yii3 (the EMPTY JSON container row):
+                // symfony takes both as the empty `Loose`, yii3 judges both as the short list.
+                diverging: ['symfony' => ['{"lark":[]}' => true], 'yii3' => ['{"lark":{}}' => false]],
+            ),
+        );
+    }
+
+    /**
+     * A list branch of null items beside a scalar (`anyOf: [{type: array, items: {type: 'null'}},
+     * {type: integer}]`) checks its items in symfony too. `null` has no `Assert\Type` spelling, so the
+     * branch was "a list" and `[7]` matched it. The same branch with integer items, and a plain list of
+     * null items, are the neighbours pinned here.
+     */
+    public function testAListBranchOfNullItemsChecksItsItems(): void
+    {
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Probe' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'tern' => ['anyOf' => [['type' => 'array', 'items' => ['type' => 'null']], ['type' => 'integer']]],
+                            'wren' => ['anyOf' => [['type' => 'array', 'items' => ['type' => 'integer']], ['type' => 'boolean']]],
+                            'lark' => ['type' => 'array', 'items' => ['type' => 'null']],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+        $payloads = [
+            '{"tern":[null]}' => true,
+            '{"tern":[]}' => true,
+            '{"tern":7}' => true,
+            '{"tern":[7]}' => false,
+            '{"tern":["xyz"]}' => false,
+            '{"tern":[null,1]}' => false,
+            '{"tern":"x"}' => false,
+            '{"wren":[1]}' => true,
+            '{"wren":true}' => true,
+            '{"wren":["x"]}' => false,
+            '{"lark":[null]}' => true,
+            '{"lark":[7]}' => false,
+        ];
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(spec: $spec, key: 'list branch of null items', payloads: $payloads),
+        );
+    }
+
+    /**
+     * An item of a list of DTOs that is no object — `"x"`, a `null` the items do not admit, a list — is
+     * refused. yii3's `#[Collection]` dropped such an item before any rule ran, so `[{…}, "x"]` arrived
+     * as the valid `[{…}]`; the raw `Each` now asks every item whether it is an object, as the
+     * interpreter asks the value of a map of them. Pinned beside it: the map, items that admit null, a
+     * requirement-free item class (an empty object is one), and the valid lists. Symfony's answer for
+     * the requirement-free class depends on the serializer release (see the support matrix).
+     */
+    public function testANonObjectItemOfAListOfDtosIsRefused(): void
+    {
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Probe' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'emu' => ['type' => 'array', 'items' => $ref('Hare')],
+                            'owl' => ['type' => 'object', 'additionalProperties' => $ref('Hare')],
+                            'yak' => ['type' => 'array', 'items' => ['anyOf' => [$ref('Hare'), ['type' => 'null']]]],
+                            'elk' => ['type' => 'array', 'items' => $ref('Pika')],
+                        ],
+                    ],
+                    'Hare' => ['type' => 'object', 'properties' => ['ka' => ['type' => 'string']], 'required' => ['ka']],
+                    'Pika' => ['type' => 'object', 'properties' => ['ka' => ['type' => 'string']]],
+                ],
+            ],
+        ];
+        $payloads = [
+            '{"emu":["x"]}' => false,
+            '{"emu":[null]}' => false,
+            '{"emu":[{"ka":"a"},"x"]}' => false,
+            '{"emu":[{"ka":"a"},7]}' => false,
+            '{"emu":[["a"]]}' => false,
+            '{"emu":[{"ka":"a"}]}' => true,
+            '{"emu":[]}' => true,
+            '{"emu":[{"ka":1}]}' => false,
+            '{"emu":{"a":{"ka":"a"}}}' => false,
+            '{"owl":{"a":"x"}}' => false,
+            '{"owl":{"a":{"ka":"a"}}}' => true,
+            '{"yak":["x"]}' => false,
+            '{"yak":[{"ka":"a"},null]}' => true,
+            '{"elk":["x"]}' => false,
+            '{"elk":[null]}' => false,
+            '{"elk":[[1]]}' => false,
+            '{"elk":[{}]}' => true,
+            '{"elk":[{"ka":"a"}]}' => true,
+        ];
+        $diverging = [
+            // A requirement-free item class: the serializer builds a scalar or null into an empty object
+            // on older releases (7.4.10), and refuses it on newer ones.
+            'symfony' => ['{"elk":["x"]}' => null, '{"elk":[null]}' => null, '{"elk":[[1]]}' => null],
+            // A `null` item of a nullable list of DTOs: see the support matrix's row for it.
+            'laravel-data' => ['{"yak":[{"ka":"a"},null]}' => null],
+        ];
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(spec: $spec, key: 'non-object item of a list of dtos', payloads: $payloads, diverging: $diverging),
+        );
+    }
+
+    /**
+     * One `Data` class beside a free-form object member (`oneOf: [{type: object, required: [yak]}, $ref
+     * Heron]`, typed `array|Heron`) is built only from the object Heron accepts. laravel-data's cast pipe
+     * built Heron from every object first, so `{"yak": 1, "egret": "x"}`, which only the free-form member
+     * takes, died on Heron's `int $egret` (a 500), and `{"yak": 1, "llama": 3}` came back as Heron's
+     * `{"llama": "3"}`. The same with the branches wrapped in `allOf`, and as an `anyOf`; an object
+     * Heron takes is still Heron.
+     */
+    public function testAClassBesideAFreeFormObjectIsBuiltOnlyFromWhatItAccepts(): void
+    {
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $free = ['type' => 'object', 'required' => ['yak']];
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Probe' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'lynx' => ['oneOf' => [$free, $ref('Heron')]],
+                            'puma' => ['anyOf' => [$free, $ref('Heron')]],
+                            'ibex' => ['oneOf' => [['allOf' => [$free]], ['allOf' => [$ref('Heron')]]]],
+                        ],
+                    ],
+                    'Heron' => ['type' => 'object', 'properties' => ['llama' => ['type' => 'string'], 'egret' => ['type' => 'integer']]],
+                ],
+            ],
+        ];
+        $payloads = [];
+        $diverging = ['symfony' => []];
+        foreach (['lynx', 'puma', 'ibex'] as $field) {
+            $payloads += [
+                sprintf('{"%s":{"yak":1,"egret":"x"}}', $field) => true,
+                sprintf('{"%s":{"yak":1,"llama":3}}', $field) => true,
+                sprintf('{"%s":{"llama":"a","egret":1}}', $field) => true,
+                sprintf('{"%s":{"egret":"x"}}', $field) => false,
+            ];
+        }
+        // An `allOf`-wrapped `$ref` branch: the serializer builds Heron from the object before any
+        // constraint runs, and refuses what Heron's types do not take.
+        $diverging['symfony']['{"ibex":{"yak":1,"egret":"x"}}'] = null;
+        $diverging['symfony']['{"ibex":{"yak":1,"llama":3}}'] = null;
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(spec: $spec, key: 'class beside a free-form object', payloads: $payloads, diverging: $diverging),
+        );
+        foreach (['lynx', 'puma', 'ibex'] as $field) {
+            $this->assertSame(
+                expected: array_fill(0, 3, [$field => ['yak' => 1, 'llama' => 3]]),
+                actual: $this->writtenBackByTheWritingModes(
+                    spec: $spec,
+                    key: 'class beside a free-form object',
+                    json: sprintf('{"%s":{"yak":1,"llama":3}}', $field),
+                ),
+                message: $field,
+            );
+        }
+    }
+
+    /**
+     * A single-reference `allOf` whose reference carries an annotation — `allOf: [{$ref: Count,
+     * description: d}]` — is that reference, wherever it stands: a union branch, a map value, a
+     * nullable property around a list alias, a list alias in a union branch, a union inside a union.
+     * Only the bare `allOf: [{$ref: Count}]` was unwrapped, so the property was typed with the alias
+     * class Count or Ints, which is never written: runtime refused every value as an unsupported
+     * type, yii3 refused a number as no object or string, and symfony, laravel and laravel-data named
+     * a class that does not exist. Pinned beside it: the bare spellings, a branch that adds a check
+     * beside the annotated reference, and the property-level positions that already worked — a scalar
+     * alias, an enum, an object, a map of objects, a map component.
+     */
+    #[DataProvider('referenceAnnotationSwitch')]
+    public function testAnAnnotatedSingleRefAllOfIsTheAliasItNames(bool $annotated): void
+    {
+        $ref = static fn(string $name): array => $annotated
+            ? ['$ref' => '#/components/schemas/' . $name, 'description' => 'd']
+            : ['$ref' => '#/components/schemas/' . $name];
+        $spec = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Count' => ['type' => 'integer', 'minimum' => 10],
+                    'Ints' => ['type' => 'array', 'items' => ['type' => 'integer', 'maximum' => 5]],
+                    'Colour' => ['type' => 'string', 'enum' => ['red', 'blue']],
+                    'Pet' => ['type' => 'object', 'required' => ['name'], 'properties' => ['name' => ['type' => 'string']]],
+                    'Tallies' => ['type' => 'object', 'additionalProperties' => ['type' => 'integer']],
+                    'Probe' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'noted' => ['oneOf' => [['allOf' => [$ref('Count')]], ['type' => 'string']]],
+                            'mapNoted' => ['type' => 'object', 'additionalProperties' => ['allOf' => [$ref('Count')]]],
+                            'pNoted' => ['allOf' => [$ref('Ints')], 'nullable' => true],
+                            'uNoted' => ['oneOf' => [['allOf' => [$ref('Ints')]], ['type' => 'string']]],
+                            'nested' => ['anyOf' => [['oneOf' => [['allOf' => [$ref('Count')]], ['type' => 'boolean']]], ['type' => 'string']]],
+                            'split' => ['oneOf' => [['allOf' => [$ref('Count'), ['maximum' => 30]]], ['type' => 'string']]],
+                            'scalar' => ['allOf' => [$ref('Count')]],
+                            'colour' => ['allOf' => [$ref('Colour')]],
+                            'pet' => ['allOf' => [$ref('Pet')]],
+                            'pets' => ['type' => 'object', 'additionalProperties' => ['allOf' => [$ref('Pet')]]],
+                            'tallies' => ['allOf' => [$ref('Tallies')]],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+        $payloads = [
+            '{"noted":20}' => true,
+            '{"noted":"x"}' => true,
+            '{"noted":5}' => false,
+            '{"mapNoted":{"a":20}}' => true,
+            '{"mapNoted":{"a":5}}' => false,
+            '{"pNoted":[1]}' => true,
+            '{"pNoted":null}' => true,
+            '{"pNoted":[9]}' => false,
+            '{"uNoted":[1]}' => true,
+            '{"uNoted":"x"}' => true,
+            '{"uNoted":[9]}' => false,
+            '{"nested":20}' => true,
+            '{"nested":true}' => true,
+            '{"nested":"x"}' => true,
+            '{"nested":5}' => false,
+            '{"split":20}' => true,
+            '{"split":40}' => false,
+            '{"split":5}' => false,
+            '{"scalar":20}' => true,
+            '{"scalar":5}' => false,
+            '{"colour":"red"}' => true,
+            '{"colour":"green"}' => false,
+            '{"pet":{"name":"x"}}' => true,
+            '{"pet":{}}' => false,
+            '{"pets":{"a":{"name":"x"}}}' => true,
+            '{"pets":{"a":{}}}' => false,
+            '{"tallies":{"a":1}}' => true,
+            '{"tallies":{"a":"x"}}' => false,
+        ];
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: $spec,
+                key: 'annotated single ref allOf ' . ($annotated ? 'noted' : 'bare'),
+                payloads: $payloads,
+            ),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{bool}>
+     */
+    public static function referenceAnnotationSwitch(): iterable
+    {
+        yield 'bare reference' => [false];
+        yield 'annotated reference' => [true];
+    }
+
+    /**
+     * An `allOf` of a reference to a scalar alias and a keyword-only fragment — `allOf: [{$ref: Num},
+     * {multipleOf: 0.5}]` — folds to that scalar, as the inline `allOf: [{type: number}, {multipleOf:
+     * 0.5}]` and the bare `allOf: [{$ref: Num}]` always did. A reference was accepted only as the sole
+     * fragment, so beside a discriminated union of classes symfony typed the property `mixed` and took
+     * `{"walrus": 2.5}`, and yii3 typed it as any value. Pinned: the type every mode gives it is the
+     * one it gives the inline spelling, and the payloads agree — for an annotated reference too, and
+     * for a union component spelled that way.
+     */
+    public function testAReferenceToAScalarBesideAKeywordFragmentFoldsToTheScalar(): void
+    {
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $shape = static fn(array $second): array => ['anyOf' => [$ref('Shape'), ['allOf' => [$second, ['multipleOf' => 0.5]]]]];
+        $spec = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Num' => ['type' => 'number'],
+                    'Wrap' => $shape($ref('Num')),
+                    'Shape' => [
+                        'oneOf' => [$ref('Square'), $ref('Circle')],
+                        'discriminator' => [
+                            'propertyName' => 'kind',
+                            'mapping' => ['square' => '#/components/schemas/Square', 'circle' => '#/components/schemas/Circle'],
+                        ],
+                    ],
+                    'Square' => [
+                        'type' => 'object',
+                        'required' => ['kind'],
+                        'properties' => [
+                            'kind' => ['type' => 'string', 'enum' => ['square']],
+                            'walrus' => ['type' => 'string'],
+                        ],
+                    ],
+                    'Circle' => [
+                        'type' => 'object',
+                        'required' => ['kind'],
+                        'properties' => ['kind' => ['type' => 'string', 'enum' => ['circle']]],
+                    ],
+                    'Probe' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'panda' => $shape($ref('Num')),
+                            'koala' => $shape(['type' => 'number']),
+                            'lynx' => $shape(['$ref' => '#/components/schemas/Num', 'description' => 'd']),
+                            'otter' => $ref('Wrap'),
+                        ],
+                    ],
+                ],
+            ],
+        ];
+        $payloads = [];
+        foreach (['panda', 'koala', 'lynx', 'otter'] as $field) {
+            $payloads += [
+                sprintf('{"%s":2.5}', $field) => true,
+                sprintf('{"%s":0.7}', $field) => false,
+                sprintf('{"%s":{"kind":"square","walrus":"w"}}', $field) => true,
+                sprintf('{"%s":{"kind":"circle"}}', $field) => true,
+                sprintf('{"%s":{"walrus":2.5}}', $field) => false,
+                sprintf('{"%s":"x"}', $field) => false,
+            ];
+        }
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(spec: $spec, key: 'ref beside keyword fragment', payloads: $payloads),
+        );
+        foreach ([GenerationMode::Symfony, GenerationMode::Yii3] as $mode) {
+            $fqcn = $this->generate($spec, $this->namespaceFor($mode, 'ref beside keyword fragment types'), $mode->value);
+            foreach (['panda', 'lynx'] as $field) {
+                $this->assertSame(
+                    expected: (string)(new ReflectionProperty($fqcn, 'koala'))->getType(),
+                    actual: (string)(new ReflectionProperty($fqcn, $field))->getType(),
+                    message: $mode->value . ' ' . $field,
+                );
+            }
+        }
+    }
+
+    /**
+     * A union branch naming a union component of classes — `anyOf: [{$ref: Shape}, {not: {type:
+     * object}}]`, `Shape: {oneOf: [$ref Square, $ref Circle]}`, with a discriminator or without — under
+     * a property no PHP type can spell (`mixed`). Nothing builds the interface there, so the value stays
+     * the decoded array, and symfony judged it as "is a Shape": `anyOf` took every object unchecked
+     * (`{"walrus": 2.5}` matches no member, `kind` is required), `oneOf` refused every object, the
+     * valid ones included. The members are written out for the raw object now, as the other modes do.
+     * Pinned beside it: a property typed with the interface, where symfony builds the member and the
+     * branch is still "is a Shape".
+     */
+    #[DataProvider('discriminatorSwitch')]
+    public function testAUnionComponentBranchUnderAMixedPropertyJudgesTheRawObject(bool $discriminated): void
+    {
+        $shape = [
+            'oneOf' => [['$ref' => '#/components/schemas/Square'], ['$ref' => '#/components/schemas/Circle']],
+        ];
+        if ($discriminated) {
+            $shape['discriminator'] = [
+                'propertyName' => 'kind',
+                'mapping' => ['square' => '#/components/schemas/Square', 'circle' => '#/components/schemas/Circle'],
+            ];
+        }
+        $spec = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Shape' => $shape,
+                    'Square' => [
+                        'type' => 'object',
+                        'required' => ['kind'],
+                        'properties' => ['kind' => ['type' => 'string', 'enum' => ['square']], 'walrus' => ['type' => 'string']],
+                    ],
+                    'Circle' => [
+                        'type' => 'object',
+                        'required' => ['kind'],
+                        'properties' => ['kind' => ['type' => 'string', 'enum' => ['circle']]],
+                    ],
+                    'Probe' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'anyPanda' => ['anyOf' => [['$ref' => '#/components/schemas/Shape'], ['not' => ['type' => 'object']]]],
+                            'onePanda' => ['oneOf' => [['$ref' => '#/components/schemas/Shape'], ['not' => ['type' => 'object']]]],
+                            'typed' => ['oneOf' => [['$ref' => '#/components/schemas/Shape'], ['type' => 'string']]],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+        $payloads = [];
+        foreach (['anyPanda', 'onePanda', 'typed'] as $property) {
+            $payloads += [
+                sprintf('{"%s":{"walrus":2.5}}', $property) => false,
+                sprintf('{"%s":{"kind":"square"}}', $property) => true,
+                sprintf('{"%s":{"kind":"circle"}}', $property) => true,
+                sprintf('{"%s":{"kind":"square","walrus":"x"}}', $property) => true,
+                sprintf('{"%s":{"kind":"square","walrus":2.5}}', $property) => false,
+                sprintf('{"%s":{"kind":"oval"}}', $property) => false,
+            ];
+        }
+        $payloads += [
+            '{"anyPanda":3}' => true,
+            '{"onePanda":3}' => true,
+            '{"typed":"x"}' => true,
+            '{"typed":3}' => false,
+        ];
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: $spec,
+                key: 'union component branch raw object ' . ($discriminated ? 'tagged' : 'untagged'),
+                payloads: $payloads,
+            ),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{bool}>
+     */
+    public static function discriminatorSwitch(): iterable
+    {
+        yield 'with a discriminator' => [true];
+        yield 'without a discriminator' => [false];
+    }
+
+    /**
+     * A union component written out for a raw value (`x-php-raw-object`) keeps the `allOf` of its
+     * object members: `stoat: {anyOf: [{not: {type: object}}, $ref Mauve]}` with `Mauve: {oneOf:
+     * [{type: object, allOf: [{required: [tern]}]}, {required: [newt]}]}`. Symfony reduced such a
+     * member to "the class checks it" — `type: object` alone — though under a `mixed` property no class
+     * is ever built, so the member matched every object and `{"stoat": {}}` passed. The same member
+     * without the wrapper (`bare`) and the scalar `allOf` branch beside it (`heron`) are the controls.
+     * yii3 lost the same `allOf` one property down a class it holds as the decoded array (`kiwi:
+     * Umber|array|null`, `Umber.pika`); a class symfony falls back from (`wolf`) and one built by
+     * `allOf` (`lynx`) are pinned beside it.
+     */
+    public function testAnAllOfMemberOfAUnionComponentHeldRawIsJudged(): void
+    {
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $spec = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Probe' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'stoat' => ['anyOf' => [['not' => ['type' => 'object']], $ref('Mauve')]],
+                            'bare' => ['anyOf' => [['not' => ['type' => 'object']], $ref('Plum')]],
+                            'heron' => [
+                                'anyOf' => [
+                                    ['allOf' => [$ref('Teal'), ['type' => 'integer', 'multipleOf' => 5]]],
+                                    $ref('Ochre'),
+                                ],
+                            ],
+                            'kiwi' => ['oneOf' => [['type' => 'array', 'items' => ['type' => 'integer']], $ref('Umber')]],
+                            'lynx' => ['oneOf' => [['type' => 'array', 'items' => ['type' => 'integer']], $ref('Sepia')]],
+                            'wolf' => ['anyOf' => [['type' => 'array', 'minItems' => 1, 'items' => ['type' => 'string']], $ref('Kit')]],
+                            'mink' => ['anyOf' => [['type' => 'array', 'minItems' => 1, 'items' => ['type' => 'string']], $ref('Pet')]],
+                        ],
+                    ],
+                    'Umber' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'pika' => [
+                                'oneOf' => [
+                                    [
+                                        'type' => 'object',
+                                        'allOf' => [['type' => 'object', 'properties' => ['tern' => ['type' => 'number']], 'required' => ['tern']]],
+                                    ],
+                                    ['type' => 'object', 'properties' => ['newt' => ['type' => 'string']], 'required' => ['newt']],
+                                ],
+                            ],
+                        ],
+                    ],
+                    'Pet' => [
+                        'oneOf' => [$ref('Cub'), $ref('Dog')],
+                        'discriminator' => [
+                            'propertyName' => 'kind',
+                            'mapping' => ['cub' => '#/components/schemas/Cub', 'dog' => '#/components/schemas/Dog'],
+                        ],
+                    ],
+                    'Cub' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'kind' => ['type' => 'string'],
+                            'paw' => [
+                                'oneOf' => [
+                                    [
+                                        'type' => 'object',
+                                        'allOf' => [['type' => 'object', 'properties' => ['tern' => ['type' => 'number']], 'required' => ['tern']]],
+                                    ],
+                                    ['type' => 'string'],
+                                ],
+                            ],
+                        ],
+                    ],
+                    'Dog' => ['type' => 'object', 'properties' => ['kind' => ['type' => 'string']], 'required' => ['kind']],
+                    'Sepia' => [
+                        'allOf' => [
+                            $ref('Bone'),
+                            ['type' => 'object', 'properties' => ['vole' => ['type' => 'string']], 'required' => ['vole']],
+                        ],
+                    ],
+                    'Mauve' => [
+                        'oneOf' => [
+                            [
+                                'type' => 'object',
+                                'allOf' => [['type' => 'object', 'properties' => ['tern' => ['type' => 'number']], 'required' => ['tern']]],
+                            ],
+                            ['type' => 'object', 'properties' => ['newt' => ['type' => 'string']], 'required' => ['newt']],
+                        ],
+                    ],
+                    'Plum' => [
+                        'oneOf' => [
+                            ['type' => 'object', 'properties' => ['tern' => ['type' => 'number']], 'required' => ['tern']],
+                            ['type' => 'object', 'properties' => ['newt' => ['type' => 'string']], 'required' => ['newt']],
+                        ],
+                    ],
+                    'Kit' => [
+                        'type' => 'object',
+                        'required' => ['paw'],
+                        'properties' => [
+                            'paw' => [
+                                'oneOf' => [
+                                    [
+                                        'type' => 'object',
+                                        'allOf' => [['type' => 'object', 'properties' => ['tern' => ['type' => 'number']], 'required' => ['tern']]],
+                                    ],
+                                    ['type' => 'string'],
+                                ],
+                            ],
+                        ],
+                    ],
+                    'Bone' => ['type' => 'object', 'properties' => ['tern' => ['type' => 'number']], 'required' => ['tern']],
+                    'Teal' => ['type' => 'integer', 'enum' => [45, 60]],
+                    'Ochre' => [
+                        'oneOf' => [
+                            [
+                                'type' => 'object',
+                                'allOf' => [
+                                    ['type' => 'object', 'properties' => ['tern' => ['type' => 'number']], 'required' => ['tern']],
+                                    [
+                                        'type' => 'object',
+                                        'properties' => ['ibis' => ['type' => 'boolean'], 'macaw' => ['type' => 'boolean']],
+                                        'required' => ['ibis', 'macaw'],
+                                    ],
+                                ],
+                            ],
+                            [
+                                'type' => 'object',
+                                'properties' => ['newt' => ['type' => 'string'], 'bison' => ['type' => 'boolean']],
+                                'required' => ['newt'],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ];
+        $payloads = [];
+        foreach (['stoat', 'bare'] as $property) {
+            $payloads += [
+                sprintf('{"%s":{}}', $property) => false,
+                sprintf('{"%s":{"tern":"x"}}', $property) => false,
+                sprintf('{"%s":{"tern":1}}', $property) => true,
+                sprintf('{"%s":{"newt":"a"}}', $property) => true,
+                sprintf('{"%s":5}', $property) => true,
+                sprintf('{"%s":"x"}', $property) => true,
+            ];
+        }
+        $payloads += [
+            '{"heron":{}}' => false,
+            '{"heron":{"macaw":false}}' => false,
+            '{"heron":{"bison":"zzq"}}' => false,
+            '{"heron":{"tern":1}}' => false,
+            '{"heron":{"tern":1,"ibis":true,"macaw":false}}' => true,
+            '{"heron":{"newt":"a"}}' => true,
+            '{"heron":{"newt":"a","bison":"zzq"}}' => false,
+            '{"heron":45}' => true,
+            '{"heron":50}' => false,
+            '{"heron":"x"}' => false,
+            '{"kiwi":[1]}' => true,
+            '{"kiwi":{}}' => true,
+            '{"kiwi":{"pika":{}}}' => false,
+            '{"kiwi":{"pika":{"tern":"x"}}}' => false,
+            '{"kiwi":{"pika":{"tern":1}}}' => true,
+            '{"kiwi":{"pika":{"newt":"a"}}}' => true,
+            '{"lynx":[1]}' => true,
+            '{"lynx":{"vole":"x"}}' => false,
+            '{"lynx":{"tern":1}}' => false,
+            '{"lynx":{"tern":1,"vole":"x"}}' => true,
+            '{"lynx":{"tern":"x","vole":"x"}}' => false,
+            '{"wolf":["a"]}' => true,
+            '{"wolf":{"paw":"x"}}' => true,
+            '{"wolf":{"paw":{"tern":1}}}' => true,
+            '{"wolf":{"paw":{}}}' => false,
+            '{"wolf":{"paw":{"tern":"x"}}}' => false,
+            '{"wolf":{"paw":1}}' => false,
+            '{"mink":{"paw":{}}}' => false,
+            '{"mink":{"paw":{"tern":"x"}}}' => false,
+            '{"mink":{"kind":"cub","paw":{"tern":1}}}' => true,
+            '{"mink":{"kind":"dog"}}' => true,
+        ];
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: $spec,
+                key: 'union component raw allOf member',
+                payloads: $payloads,
+                // Symfony builds `Umber` and, for `pika`, tries the first class of the inline union: the
+                // framework boundary of README.support-matrix ("an inline union of classes").
+                diverging: [GenerationMode::Symfony->value => ['{"kiwi":{"pika":{"newt":"a"}}}' => null]],
+            ),
+        );
+    }
+
+    /**
+     * A property inside an inline `allOf` branch that references a component admitting null —
+     * `urchin: {$ref: Amber}` with `Amber: {type: object, nullable: true}` (3.1: `[object, null]`),
+     * its items, an array alias reached through a chain, a union with such a branch, the 3.1
+     * nullable scalar alias union and the null alias — admits null just like the same property
+     * outside the `allOf`. Only a schema's own `properties` had their references normalized, so
+     * the branch kept the bare reference: runtime refused the null at deserialization, laravel and
+     * laravel-data with `validation.array`, symfony and yii3 in their object type rule. Covered for a
+     * top-level `allOf` component (with a nested `allOf`) and for an inline `allOf` property; the list
+     * outside any `allOf` is the control.
+     */
+    #[DataProvider('openApiVersions')]
+    public function testAPropertyOfAnAllOfBranchTakesTheNullItsReferenceAdmits(string $version): void
+    {
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $is31 = $version === '3.1.0';
+        $branchProperties = [
+            'urchin' => $ref('Amber'),
+            'heron' => ['type' => 'array', 'items' => $ref('Amber')],
+            'sable' => $ref('Pewter'),
+            'tapir' => ['anyOf' => [$ref('Amber'), ['type' => 'integer']]],
+        ];
+        if ($is31) {
+            $branchProperties += [
+                'ocelot' => ['anyOf' => [$ref('Pebble'), ['type' => 'null']]],
+                'pika' => $ref('Hollow'),
+            ];
+        }
+        $schemas = [
+            'Probe' => [
+                'type' => 'object',
+                'properties' => [
+                    'zebu' => $ref('Zebu'),
+                    'heron' => ['type' => 'array', 'items' => $ref('Amber')],
+                    'mole' => [
+                        'allOf' => [
+                            ['type' => 'object', 'properties' => ['otter' => ['type' => 'integer']]],
+                            ['type' => 'object', 'properties' => $branchProperties],
+                        ],
+                    ],
+                ],
+            ],
+            'Amber' => $is31
+                ? ['type' => ['object', 'null'], 'properties' => ['hyena' => ['type' => 'string']]]
+                : ['type' => 'object', 'nullable' => true, 'properties' => ['hyena' => ['type' => 'string']]],
+            'Pewter' => $ref('PewterBase'),
+            'PewterBase' => $is31
+                ? ['type' => ['array', 'null'], 'items' => ['type' => 'integer']]
+                : ['type' => 'array', 'nullable' => true, 'items' => ['type' => 'integer']],
+            'Zebu' => [
+                'allOf' => [
+                    ['type' => 'object', 'properties' => $branchProperties],
+                    ['allOf' => [['type' => 'object', 'properties' => ['wren' => $ref('Amber')]]]],
+                ],
+            ],
+        ];
+        if ($is31) {
+            $schemas += [
+                'Pebble' => ['type' => 'string'],
+                'Hollow' => ['type' => 'null'],
+            ];
+        }
+        $spec = ['openapi' => $version, 'info' => ['title' => 'T', 'version' => '1.0.0'], 'components' => ['schemas' => $schemas]];
+        $payloads = [];
+        foreach (['zebu', 'mole'] as $container) {
+            $member = static fn(string $body): string => sprintf('{"%s":{%s}}', $container, $body);
+            $payloads += [
+                $member('"urchin":null') => true,
+                $member('"urchin":{"hyena":"x"}') => true,
+                $member('"urchin":{"hyena":1}') => false,
+                $member('"urchin":"x"') => false,
+                $member('"heron":[null]') => true,
+                $member('"heron":[{"hyena":"x"}]') => true,
+                $member('"heron":["x"]') => false,
+                $member('"sable":null') => true,
+                $member('"sable":[1]') => true,
+                $member('"sable":["a"]') => false,
+                $member('"tapir":null') => true,
+                $member('"tapir":3') => true,
+                $member('"tapir":"x"') => false,
+            ];
+            if ($is31) {
+                $payloads += [
+                    $member('"ocelot":null') => true,
+                    $member('"ocelot":"s"') => true,
+                    $member('"ocelot":3') => false,
+                    $member('"pika":null') => true,
+                    $member('"pika":1') => false,
+                ];
+            }
+        }
+        $payloads += [
+            '{"heron":[null]}' => true,
+            '{"heron":["x"]}' => false,
+            '{"zebu":{"wren":null}}' => true,
+            '{"zebu":{"wren":"x"}}' => false,
+            '{"mole":{"otter":1,"urchin":null}}' => true,
+            '{"mole":{"otter":"x","urchin":null}}' => false,
+        ];
+
+        // Both as outside an `allOf` (README.support-matrix): laravel-data's `#[DataCollectionOf]` has no
+        // null item, and symfony's serializer builds a scalar item into an empty object on 7.4.10.
+        $diverging = [];
+        foreach (['{"heron":%s}', '{"zebu":{"heron":%s}}', '{"mole":{"heron":%s}}'] as $shape) {
+            $diverging[GenerationMode::LaravelData->value][sprintf($shape, '[null]')] = false;
+            $diverging[GenerationMode::Symfony->value][sprintf($shape, '["x"]')] = null;
+        }
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: $spec,
+                key: 'allof branch ref null ' . $version,
+                payloads: $payloads,
+                diverging: $diverging,
+            ),
+        );
+    }
+
+    /**
+     * A `$ref` with an `enum` beside it, on a property of an inline object branch of a union Symfony
+     * holds as the decoded array (the `array` member is what keeps it decoded). In OpenAPI 3.1 the
+     * sibling asserts. The extraction left the members to the backed enum the property became, which
+     * the decoded array never holds: `{"pet": {"colour": "zzq"}}` passed every mode but Symfony refused
+     * it. The same branch held as the built class (`plain`, no array member), the `enum` written
+     * inline (`inline`), on the component (`hued`) and beside a `$ref` through `allOf` (`wrapped`)
+     * are the neighbours pinned here.
+     */
+    public function testARefWithAnEnumBesideItInAHeldDecodedUnionBranchKeepsTheMembers(): void
+    {
+        $branch = static fn(array $colour): array => ['oneOf' => [
+            ['type' => 'object', 'properties' => ['colour' => $colour]],
+            ['type' => 'object', 'properties' => ['shape' => ['type' => 'string']], 'required' => ['shape']],
+            ['type' => 'array'],
+        ]];
+        $hue = ['$ref' => '#/components/schemas/Hue'];
+        $members = ['enum' => ['cyan', 'red']];
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Probe' => ['type' => 'object', 'properties' => [
+                    'pet' => $branch($hue + $members),
+                    'plain' => ['oneOf' => [
+                        ['type' => 'object', 'properties' => ['colour' => $hue + $members]],
+                        ['type' => 'object', 'properties' => ['shape' => ['type' => 'string']], 'required' => ['shape']],
+                    ]],
+                    'inline' => $branch(['type' => 'string'] + $members),
+                    'hued' => $branch(['$ref' => '#/components/schemas/Tint']),
+                    'wrapped' => $branch(['allOf' => [$hue]] + $members),
+                ]],
+                'Hue' => ['type' => 'string'],
+                'Tint' => ['type' => 'string'] + $members,
+            ]],
+        ];
+        $payloads = [];
+        foreach (['pet', 'plain', 'inline', 'hued', 'wrapped'] as $property) {
+            $payloads['{"' . $property . '":{"colour":"cyan"}}'] = true;
+            $payloads['{"' . $property . '":{"colour":"zzq"}}'] = false;
+            $payloads['{"' . $property . '":{"colour":"zzq","shape":"x"}}'] = true;
+        }
+        $payloads['{"pet":[]}'] = true;
+        $payloads['{"pet":{"colour":5}}'] = false;
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: $spec,
+                key: 'ref enum sibling held decoded',
+                payloads: $payloads,
+                // Built, not held: the serializer builds the first member class and reports its enum
+                // (README.support-matrix, the row on an object only a later union member accepts).
+                diverging: ['symfony' => ['{"plain":{"colour":"zzq","shape":"x"}}' => false]],
+            ),
+        );
+    }
+
+    /**
+     * A union COMPONENT of objects whose members are written inline or as an `allOf` — an `allOf` of two
+     * objects, of an object and a requirement, the one-member wrapper, a `$ref` with siblings beside it,
+     * a plain inline object — is built (laravel, laravel-data) or held decoded (symfony) as a component
+     * of `$ref` members is. Its members were not counted as objects: symfony typed the property as the
+     * bare interface and refused every object as `must be one of "Pet" ("array" given)`, laravel called
+     * the interface's missing `fromValidated()` (allOf members) or threw "a union with no discriminator"
+     * (inline members), and laravel-data died on a TypeError. A list of such a component (`herd`), the
+     * `$ref` members (`ctl`) and a branch that only requires a key (`bare`, a value) are the neighbours
+     * pinned here.
+     */
+    public function testAUnionComponentOfInlineOrAllOfObjectMembersIsUsable(): void
+    {
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $object = static fn(array $properties, array $required = []): array => ['type' => 'object', 'properties' => $properties]
+            + ($required === [] ? [] : ['required' => $required]);
+        $integer = ['type' => 'integer'];
+        $string = ['type' => 'string'];
+        $boolean = ['type' => 'boolean'];
+        $catOwl = ['allOf' => [$object(['cat' => $integer]), $object(['owl' => $string], ['owl'])]];
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => ['schemas' => [
+                'Probe' => ['type' => 'object', 'properties' => [
+                    'pet' => $ref('Pet'),
+                    'sib' => $ref('Sib'),
+                    'one' => $ref('Uno'),
+                    'req' => $ref('Req'),
+                    'inl' => $ref('Inl'),
+                    'mix' => $ref('Mix'),
+                    'wrap' => $ref('Wrap'),
+                    'ctl' => $ref('Ctl'),
+                    'bare' => $ref('Bare'),
+                    'herd' => ['type' => 'array', 'items' => $ref('Pet')],
+                ]],
+                'Cat' => $object(['purr' => $boolean]),
+                'Yak' => $object(['yak' => $integer], ['yak']),
+                'Owl' => $object(['owl' => $string], ['owl']),
+                'Pet' => ['anyOf' => [
+                    ['allOf' => [$object(['fin' => $integer]), $object(['purr' => $boolean])]],
+                    ['allOf' => [$object(['wing' => $integer]), $object(['bark' => $string], ['bark'])]],
+                ]],
+                'Sib' => ['anyOf' => [
+                    $ref('Cat') + ['properties' => []],
+                    ['allOf' => [$object(['wing' => $integer]), $object(['bark' => $string], ['bark'])]],
+                ]],
+                'Uno' => ['oneOf' => [
+                    $ref('Cat') + ['properties' => []],
+                    ['allOf' => [$object(['wing' => $integer]), $object(['bark' => $string], ['bark'])]],
+                ]],
+                'Req' => ['anyOf' => [['allOf' => [$object(['yak' => $integer]), ['required' => ['yak']]]], $catOwl]],
+                'Inl' => ['anyOf' => [$object(['owl' => $boolean]), $object(['cat' => $integer, 'owl' => $boolean])]],
+                'Mix' => ['anyOf' => [$ref('Yak'), $object(['owl' => $string], ['owl'])]],
+                'Wrap' => ['anyOf' => [['allOf' => [$object(['yak' => $integer], ['yak'])]], $catOwl]],
+                'Ctl' => ['anyOf' => [$ref('Yak'), $ref('Owl')]],
+                'Bare' => ['anyOf' => [['required' => ['yak']], $catOwl]],
+            ]],
+        ];
+        $payloads = [
+            '{"pet":{"purr":true}}' => true,
+            '{"pet":{"bark":"x"}}' => true,
+            '{"pet":{"purr":1}}' => false,
+            '{"pet":{"fin":"x"}}' => false,
+            '{"pet":5}' => false,
+            '{"sib":{"purr":true}}' => true,
+            '{"sib":{"bark":"x"}}' => true,
+            '{"sib":{"purr":1}}' => false,
+            '{"one":{"purr":true}}' => true,
+            '{"one":{"purr":1,"bark":"x"}}' => true,
+            '{"one":{"purr":true,"bark":"x"}}' => false,
+            '{"one":{"purr":1}}' => false,
+            '{"req":{"yak":1}}' => true,
+            '{"req":{"owl":"x"}}' => true,
+            '{"req":{"yak":"x"}}' => false,
+            '{"req":{"cat":1}}' => false,
+            '{"inl":{"owl":true}}' => true,
+            '{"inl":{"cat":1,"owl":true}}' => true,
+            '{"inl":{"owl":1}}' => false,
+            '{"mix":{"yak":1}}' => true,
+            '{"mix":{"owl":"x"}}' => true,
+            '{"mix":{"owl":1}}' => false,
+            '{"wrap":{"yak":1}}' => true,
+            '{"wrap":{"owl":"x"}}' => true,
+            '{"wrap":{"yak":"x"}}' => false,
+            '{"wrap":{"cat":1}}' => false,
+            '{"ctl":{"yak":1}}' => true,
+            '{"ctl":{"owl":"x"}}' => true,
+            '{"ctl":{"owl":1}}' => false,
+            '{"bare":{"yak":1}}' => true,
+            '{"bare":{"owl":"x"}}' => true,
+            '{"bare":{"owl":1}}' => false,
+            '{"bare":{}}' => false,
+            '{"herd":[{"purr":true},{"bark":"x"}]}' => true,
+            '{"herd":[{"purr":1}]}' => false,
+        ];
+        $key = 'union component of inline or allOf object members';
+
+        $this->assertSame(expected: [], actual: $this->payloadTableMisses(spec: $spec, key: $key, payloads: $payloads));
+        // Symfony holds the object decoded, beside the interface a DTO built by hand holds — not `mixed`,
+        // which an `allOf` member made the union before.
+        $namespace = $this->namespaceFor(GenerationMode::Symfony, $key);
+        $fqcn = $this->generate(spec: $spec, namespace: $namespace, mode: GenerationMode::Symfony->value);
+        foreach (['pet' => 'Pet', 'sib' => 'Sib', 'one' => 'Uno', 'req' => 'Req', 'inl' => 'Inl'] as $property => $interface) {
+            $this->assertSame(
+                expected: sprintf('%s\%s|array|null', $namespace, $interface),
+                actual: (string)(new ReflectionProperty($fqcn, $property))->getType(),
+                message: $property,
+            );
+        }
+        // The member the payload matches is the one built: the first under `anyOf`. `bare` — a branch that
+        // only requires a key — is a value, which laravel-data writes back as `null` when absent: left out.
+        $writeSpec = $spec;
+        $writeSpec['components']['schemas']['Probe']['properties'] = array_diff_key(
+            $spec['components']['schemas']['Probe']['properties'],
+            ['bare' => true],
+        );
+        foreach (['{"req":{"owl":"x"}}' => ['req' => ['owl' => 'x']], '{"mix":{"owl":"x"}}' => ['mix' => ['owl' => 'x']], '{"inl":{"owl":true}}' => ['inl' => ['owl' => true]]] as $json => $written) {
+            $this->assertSame(
+                expected: array_fill(start_index: 0, count: 3, value: $written),
+                actual: $this->writtenBackByTheWritingModes(spec: $writeSpec, key: $key . ' written back', json: $json),
+                message: $json,
+            );
+        }
+    }
+
+    /**
+     * A union COMPONENT that inline would be a value — a scalar branch, a map branch, a branch that
+     * names no type — is that value wherever it is referenced, with an asserting keyword beside the
+     * union (`minimum`, `maxLength`, `maxProperties`, …), with the union wrapped in an `allOf` (and
+     * members that only constrain), or with a branch that only requires a key. Kept a class, it was an
+     * empty class or an interface whose only members were the object branches: every scalar was refused
+     * as no object, a map was refused, crashed or written back `{}`, and the keyword beside the union
+     * was checked by nothing. The union of two real objects with a key count stays an interface (`two`),
+     * and the union without a sibling (`nomax`) and the list arm (`wd`) are pinned as neighbours.
+     *
+     * @param array<string, mixed> $teal
+     * @param array<string, bool> $payloads
+     */
+    #[DataProvider('valueUnionComponents')]
+    public function testAValueUnionComponentIsTheValueWhereverItIsReferenced(string $key, array $teal, array $payloads): void
+    {
+        $members = [
+            'Olive' => ['type' => 'object', 'properties' => ['k' => ['type' => 'string']], 'required' => ['k']],
+            'Amber' => ['type' => 'object', 'properties' => ['m' => ['type' => 'integer']], 'required' => ['m']],
+        ];
+        $spec = [
+            'openapi' => '3.0.3',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'components' => [
+                'schemas' => [
+                    'Probe' => ['type' => 'object', 'properties' => ['lynx' => ['$ref' => '#/components/schemas/Teal']]],
+                    'Teal' => $teal,
+                    ...$members,
+                ],
+            ],
+        ];
+        $wired = [];
+        foreach ($payloads as $value => $expected) {
+            $wired[sprintf('{"lynx":%s}', $value)] = $expected;
+        }
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(spec: $spec, key: 'value union component ' . $key, payloads: $wired),
+        );
+        if (($payloads['{"a":"x"}'] ?? false) === true) {
+            $this->assertSame(
+                expected: array_fill(start_index: 0, count: 3, value: ['lynx' => ['a' => 'x']]),
+                actual: $this->writtenBackByTheWritingModes(spec: $spec, key: 'value union component ' . $key, json: '{"lynx":{"a":"x"}}'),
+            );
+        }
+    }
+
+    /**
+     * @return iterable<string, array{string, array<string, mixed>, array<string, bool>}>
+     */
+    public static function valueUnionComponents(): iterable
+    {
+        $map = ['type' => 'object', 'additionalProperties' => ['type' => 'string']];
+        $scalars = [['type' => 'string'], ['type' => 'integer']];
+        $mapOrInt = ['anyOf' => [$map, ['type' => 'integer']]];
+        $fourKeys = '{"a":"x","b":"x","c":"x","d":"x"}';
+
+        yield 'scalars beside minimum' => [
+            'mn',
+            ['anyOf' => $scalars, 'minimum' => 3],
+            ['5' => true, '"s"' => true, '1' => false, '{"a":"x"}' => false, 'true' => false],
+        ];
+        yield 'scalars beside maxLength' => [
+            'ml',
+            ['anyOf' => $scalars, 'maxLength' => 2],
+            ['5' => true, '"ab"' => true, '"abc"' => false, '{"a":"b"}' => false],
+        ];
+        yield 'map or integer beside maxProperties' => [
+            'mp',
+            [...$mapOrInt, 'maxProperties' => 3],
+            ['5' => true, '{"a":"x"}' => true, $fourKeys => false, '{"a":1}' => false, '"s"' => false],
+        ];
+        yield 'object or integer beside maxProperties' => [
+            'ob',
+            ['anyOf' => [['type' => 'object', 'properties' => array_fill_keys(keys: ['k', 'p', 'q', 'r'], value: ['type' => 'string'])], ['type' => 'integer']], 'maxProperties' => 3],
+            ['5' => true, '{"k":"x"}' => true, '{"k":1}' => false, '{"k":"x","p":"x","q":"x","r":"x"}' => false, '"s"' => false],
+        ];
+        yield 'map or list beside maxProperties' => [
+            'ls',
+            ['anyOf' => [$map, ['type' => 'array', 'items' => ['type' => 'string']]], 'maxProperties' => 3],
+            ['{"a":"x"}' => true, '["x"]' => true, $fourKeys => false, '[1]' => false, '5' => false],
+        ];
+        yield 'oneOf map or string beside minProperties' => [
+            'on',
+            ['oneOf' => [$map, ['type' => 'string']], 'minProperties' => 1],
+            ['"s"' => true, '{"a":"x"}' => true, '{}' => false, '5' => false],
+        ];
+        yield 'two objects beside maxProperties' => [
+            'tw',
+            ['anyOf' => [['$ref' => '#/components/schemas/Olive'], ['$ref' => '#/components/schemas/Amber']], 'maxProperties' => 1],
+            ['{"k":"x"}' => true, '{"m":1}' => true, '{"k":"x","m":1}' => false, '5' => false],
+        ];
+        yield 'map or integer alone' => [
+            'nm',
+            $mapOrInt,
+            ['5' => true, '{"a":"x"}' => true, '{"a":1}' => false, '"s"' => false],
+        ];
+        yield 'allOf around map or integer' => [
+            'wa',
+            ['allOf' => [$mapOrInt]],
+            ['5' => true, '{"a":"x"}' => true, '{"a":1}' => false, '"s"' => false],
+        ];
+        yield 'allOf around scalars and a key count' => [
+            'wb',
+            ['allOf' => [['anyOf' => $scalars], ['maxProperties' => 3]]],
+            ['"s"' => true, '5' => true, '{"a":1}' => false],
+        ];
+        yield 'allOf around map or integer and a minimum' => [
+            'wc',
+            ['allOf' => [$mapOrInt, ['minimum' => 3]]],
+            ['5' => true, '1' => false, '{"a":"x"}' => true, '{"a":1}' => false],
+        ];
+        yield 'allOf around map or integer and a key count' => [
+            'wr',
+            ['allOf' => [$mapOrInt, ['maxProperties' => 3]]],
+            ['5' => true, '{"a":"x"}' => true, $fourKeys => false, '{"a":1}' => false],
+        ];
+        yield 'allOf around list or integer and a minimum' => [
+            'wd',
+            ['allOf' => [['anyOf' => [['type' => 'array', 'items' => ['type' => 'string']], ['type' => 'integer']]], ['minimum' => 3]]],
+            ['["x"]' => true, '5' => true, '1' => false, '[1]' => false],
+        ];
+        yield 'a branch that only requires a key' => [
+            'rq',
+            ['anyOf' => [['required' => ['yak']], ['type' => 'object', 'properties' => ['owl' => ['type' => 'string']], 'required' => ['owl']]]],
+            ['5' => true, '{"yak":1}' => true, '{"owl":"x"}' => true, '{"owl":1}' => false, '{}' => false],
+        ];
     }
 
     /**

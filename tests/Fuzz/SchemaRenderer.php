@@ -28,6 +28,9 @@ final class SchemaRenderer
     /** @var array<string, mixed> */
     private array $components = [];
 
+    /** @var array<int, int> the `unionId` of every union spelled as a component of its own */
+    private array $componentUnions = [];
+
     /**
      * `$variety` makes the spellings added after the rest (`allOf: [$ref]` beyond scalars, the 3.0
      * `{allOf: [$ref Union], nullable: true}`, annotation siblings) on a stream of its own, checked
@@ -47,6 +50,28 @@ final class SchemaRenderer
     public function components(): array
     {
         return $this->components;
+    }
+
+    /**
+     * The node with every union in it saying whether it was spelled as a component of its own
+     * (`asComponent`), once rendered. A union of two objects says so from the grammar; any other union
+     * is the renderer's roll ({@see union()}), so only the rendering knows — and the instances need it:
+     * a draw at a union component of several objects is tagged `undiscriminatedComponent`.
+     *
+     * @param array<string, mixed> $node
+     * @return array<string, mixed>
+     */
+    public function placed(array $node): array
+    {
+        $placed = [];
+        foreach ($node as $key => $value) {
+            $placed[$key] = is_array($value) ? $this->placed($value) : $value;
+        }
+        if (($node['t'] ?? null) === 'union' && ($node['objectPair'] ?? false) !== true) {
+            $placed['asComponent'] = in_array($node['unionId'] ?? null, $this->componentUnions, true);
+        }
+
+        return $placed;
     }
 
     /**
@@ -390,6 +415,9 @@ final class SchemaRenderer
             $schema = ['$ref' => '#/components/schemas/' . $name];
             if ($this->allOfSingleRefChosen()) {
                 $schema = ['allOf' => [$schema]];
+            }
+            if (is_int($node['unionId'] ?? null)) {
+                $this->componentUnions[] = $node['unionId'];
             }
         }
         if ($nullOutside) {

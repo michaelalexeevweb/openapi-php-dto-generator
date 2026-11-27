@@ -150,6 +150,41 @@ final class FuzzHarnessTest extends TestCase
     }
 
     /**
+     * `[]` for the `minItems: 1` list member of a union beside an object member: the Symfony serializer
+     * decodes it to the PHP `[]` that `{}` is too and builds the object member's class from it, so it
+     * accepts — the empty-container row. yii3 refuses it, so the row is filed for symfony alone.
+     */
+    public function testAnEmptyListBesideAnObjectMemberIsTheEmptyContainerRow(): void
+    {
+        $object = ['t' => 'object', 'props' => ['ruby' => ['t' => 'integer']], 'required' => [], 'additional' => null];
+        $list = ['t' => 'array', 'items' => ['t' => 'integer'], 'minItems' => 1, 'unique' => false];
+        $unions = [
+            'beside an object' => [['t' => 'union', 'op' => 'anyOf', 'branches' => [$object, ['t' => 'boolean'], $list]], true],
+            'beside a boolean' => [['t' => 'union', 'op' => 'anyOf', 'branches' => [['t' => 'boolean'], $list]], false],
+        ];
+        foreach ($unions as $label => [$union, $besideObject]) {
+            $empty = [];
+            foreach (range(1, 12) as $seed) {
+                foreach ((new InstanceGenerator(new FuzzRandom($seed)))->mutations($union) as $mutation) {
+                    if ($mutation['kind'] === 'tooFewItems') {
+                        $empty[] = $mutation;
+                    }
+                }
+            }
+            $this->assertNotSame([], $empty, $label);
+            foreach ($empty as $mutation) {
+                $this->assertSame([], $mutation['value'], $label);
+                $this->assertSame($besideObject, in_array('emptyListBesideObject', $mutation['tags'], true), $label);
+                $row = KnownDivergences::explain(mode: GenerationMode::Symfony, category: 'wrong-accept', kind: $mutation['kind'], tags: $mutation['tags']);
+                $this->assertSame($besideObject, $row !== null, $label);
+                foreach ([GenerationMode::Runtime, GenerationMode::Laravel, GenerationMode::LaravelData, GenerationMode::Yii3] as $mode) {
+                    $this->assertNull(KnownDivergences::explain(mode: $mode, category: 'wrong-accept', kind: $mutation['kind'], tags: $mutation['tags']), $label . ', ' . $mode->value);
+                }
+            }
+        }
+    }
+
+    /**
      * `{}` for an object that requires a key beside an `array` member, or for a bare list, is the `[]`
      * symfony and yii3 decode it to: tagged, and filed under the empty-container row for those two
      * (`anyOf: [{type: object, minProperties: 1}, {type: array}]` took `{}` in symfony too).
@@ -298,6 +333,23 @@ final class FuzzHarnessTest extends TestCase
         yield 'scalar item of a list of classes requiring a key' => [$probe(['lemur' => ['type' => 'array', 'items' => $limeRef]], $requiringLime), '{"lemur":["x"]}', GenerationMode::Symfony, false];
         yield 'null item of a list of classes requiring a key' => [$probe(['lemur' => ['type' => 'array', 'items' => $limeRef]], $requiringLime), '{"lemur":[null]}', GenerationMode::Symfony, false];
         yield 'null item of a list of allOf classes requiring a key' => [$probe(['lemur' => ['type' => 'array', 'items' => ['allOf' => [$limeRef]]]], $requiringLime), '{"lemur":[null]}', GenerationMode::Symfony, false];
+
+        // A property that reaches its list through a chain of component aliases: the walk follows the
+        // whole chain, not one hop of it (fuzz seed 28064).
+        $looseList = ['type' => 'array', 'items' => ['type' => 'object', 'properties' => ['plover' => ['type' => 'string']]]];
+        $aliasChain = $probe(['walrus' => ['$ref' => '#/components/schemas/Ivory']], [
+            'Ivory' => ['$ref' => '#/components/schemas/Jade'],
+            'Jade' => $looseList,
+        ]);
+        yield 'null item of a list behind an alias chain' => [$aliasChain, '{"walrus":[null]}', GenerationMode::Symfony, true];
+        yield 'scalar item of a list behind an alias chain' => [$aliasChain, '{"walrus":[5]}', GenerationMode::Symfony, true];
+        yield 'null item of a list behind one ref' => [$probe(['walrus' => ['$ref' => '#/components/schemas/Jade']], ['Jade' => $looseList]), '{"walrus":[null]}', GenerationMode::Symfony, true];
+        yield 'null item of an inline list' => [$probe(['walrus' => $looseList]), '{"walrus":[null]}', GenerationMode::Symfony, true];
+        $cycle = $probe(['walrus' => ['$ref' => '#/components/schemas/Ivory']], [
+            'Ivory' => ['$ref' => '#/components/schemas/Jade'],
+            'Jade' => ['$ref' => '#/components/schemas/Ivory'],
+        ]);
+        yield 'null item behind an alias cycle' => [$cycle, '{"walrus":[null]}', GenerationMode::Symfony, false];
     }
 
     /**
@@ -312,7 +364,10 @@ final class FuzzHarnessTest extends TestCase
                 'loose' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Loose']],
                 'strict' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Strict']],
                 'either' => ['anyOf' => [['$ref' => '#/components/schemas/Loose'], ['type' => 'string', 'maxLength' => 2]]],
+                'aliased' => ['$ref' => '#/components/schemas/LooseAlias'],
             ]],
+            'LooseAlias' => ['$ref' => '#/components/schemas/LooseList'],
+            'LooseList' => ['type' => 'array', 'items' => ['$ref' => '#/components/schemas/Loose']],
             'Loose' => ['type' => 'object', 'properties' => ['petal' => ['type' => 'string']]],
             'Strict' => ['type' => 'object', 'properties' => ['petal' => ['type' => 'string']], 'required' => ['petal']],
         ];
@@ -323,6 +378,7 @@ final class FuzzHarnessTest extends TestCase
             $payload('strict', '{"strict":["x"]}'),
             $payload('either', '{"either":"long"}'),
             $payload('loose', '{"loose":[{"petal":5}]}'),
+            $payload('aliased', '{"aliased":[null]}'),
             ['property' => null, 'kind' => 'empty', 'json' => '{}', 'expected' => PayloadVerdict::Accepted, 'tags' => []],
         ];
 
@@ -331,7 +387,7 @@ final class FuzzHarnessTest extends TestCase
             array: $method->invoke(null, $payloads, ['components' => ['schemas' => $schemas]]),
         );
 
-        $this->assertSame([true, true, false, true, false, false], $tagged);
+        $this->assertSame([true, true, false, true, false, true, false], $tagged);
     }
 
     /**
@@ -430,7 +486,7 @@ final class FuzzHarnessTest extends TestCase
 
     /**
      * The date-time rows stay keyed on what they document: symfony's free-form parse on a temporal site,
-     * the no-offset pattern every mode shares, yii3's `p` for an offset without a colon, and the four
+     * the no-offset pattern every mode shares, yii3's `p` for an offset without a colon, and the three
      * modes that refuse a lower-case `t` / `z`. `format: date` is strict in symfony since 2.15.160, so
      * no row covers a parseable string sent for it.
      */
@@ -455,14 +511,17 @@ final class FuzzHarnessTest extends TestCase
             $this->assertNotNull($explain($mode, 'wrong-accept', 'parseableNonDate:date-time', ['site:temporal', 'dateTimeNoOffset']), $mode->value);
             $this->assertNull($explain($mode, 'wrong-accept', 'parseableNonDate:date', ['site:temporal', 'dateTimeNoOffset']), $mode->value);
         }
-        $this->assertNotNull($explain(GenerationMode::Yii3, 'wrong-accept', 'parseableNonDate:date-time', ['site:temporal', 'dateTimeOffsetWithoutColon']));
+        // yii3 matches the raw string against the RFC 3339 shape since 2.15.163: no row left for it.
+        $this->assertNull($explain(GenerationMode::Yii3, 'wrong-accept', 'parseableNonDate:date-time', ['site:temporal', 'dateTimeOffsetWithoutColon']));
         $this->assertNull($explain(GenerationMode::Yii3, 'wrong-accept', 'parseableNonDate:date-time', ['site:temporal']));
         $this->assertNull($explain(GenerationMode::Laravel, 'wrong-accept', 'parseableNonDate:date-time', ['site:temporal', 'dateTimeOffsetWithoutColon']));
 
-        foreach ([GenerationMode::Runtime, GenerationMode::Laravel, GenerationMode::LaravelData, GenerationMode::Yii3] as $mode) {
+        foreach ([GenerationMode::Laravel, GenerationMode::LaravelData, GenerationMode::Yii3] as $mode) {
             $this->assertNotNull($explain($mode, 'wrong-refuse', 'valid', ['lowercaseDateTime']), $mode->value);
         }
         $this->assertNull($explain(GenerationMode::Symfony, 'wrong-refuse', 'valid', ['lowercaseDateTime']));
+        // Runtime's deserializer reads `t` and `z` as their upper case since 2.15.163.
+        $this->assertNull($explain(GenerationMode::Runtime, 'wrong-refuse', 'valid', ['lowercaseDateTime']));
         $this->assertNull($explain(GenerationMode::Runtime, 'wrong-refuse', 'valid', []));
         $this->assertNull($explain(GenerationMode::Laravel, 'wrong-accept', 'nearMissFormat:email', ['site:string']));
 
@@ -812,6 +871,36 @@ final class FuzzHarnessTest extends TestCase
     }
 
     /**
+     * A `format: date-time` member beside the pair is typed `DateTimeImmutable`, a built-in class no
+     * object of the pair is built into: sorted in with the generated classes it came first, matched no
+     * object member, and the object of the pair went untagged — filed as a defect although it is the
+     * row-166 boundary (seed 32007).
+     */
+    public function testABuiltInClassMemberDoesNotTakePartInTheSortOfThePair(): void
+    {
+        $runner = new FuzzRunner(outputDirectory: sys_get_temp_dir() . '/fuzz-harness-pair-date', modes: [GenerationMode::Symfony], propertiesPerSpec: 1);
+        $generate = new ReflectionMethod(FuzzRunner::class, 'generateChecked');
+        $tag = new ReflectionMethod(FuzzRunner::class, 'tagObjectsOfAPair');
+        $document = ['openapi' => '3.0.3', 'info' => ['title' => 'Fuzz', 'version' => '1.0.0'], 'components' => ['schemas' => [
+            'Probe' => ['type' => 'object', 'properties' => ['otter' => ['oneOf' => [
+                ['type' => 'object', 'required' => ['raven'], 'properties' => ['raven' => ['type' => 'number']]],
+                ['type' => 'string', 'format' => 'date-time'],
+                ['type' => 'object', 'properties' => ['tern' => ['type' => 'integer', 'nullable' => true]]],
+            ]]]],
+        ]]];
+        $generation = $generate->invoke($runner, $document, GenerationMode::Symfony);
+        $tagged = static function (string $json) use ($tag, $document, $generation): bool {
+            $payload = ['property' => 'otter', 'kind' => 'valid', 'json' => $json, 'expected' => PayloadVerdict::Accepted, 'tags' => ['unionObjectPair']];
+
+            return in_array('objectOfPair', $tag->invoke(null, [$payload], $document, $generation['fqcn'])[0]['tags'], true);
+        };
+
+        $this->assertTrue($tagged('{"otter":{"tern":-4}}'), 'a value of the member that sorts after the first');
+        $this->assertTrue($tagged('{"otter":{"plover":"amber","tern":-4}}'), 'the unshrunk seed');
+        $this->assertFalse($tagged('{"otter":{"raven":1.5}}'), 'a value of the member that sorts first');
+    }
+
+    /**
      * A member spelled as an `allOf` with no `type` of its own is an object of the pair too — it is
      * generated as a class (`ProbeGibbonOneOf2`). `isObjectShaped()` read only `$ref`, `type` and
      * `anyOf`/`oneOf`, so the pair counted one member, and a value of the second, refused by symfony
@@ -844,6 +933,53 @@ final class FuzzHarnessTest extends TestCase
         $plain = $document($blue);
         $this->assertTrue($tagged($plain, '{"gibbon":{"blue":3}}'), 'the plain control');
         $this->assertFalse($tagged($plain, '{"gibbon":{"red":true}}'), 'the plain control, first member');
+    }
+
+    /**
+     * A bare `anyOf` nested in the `oneOf` is flattened into the PHP union (`Scarleta|ProbeWalrus|int|
+     * string`), so its two objects are a pair to the serializer. `objectMembers()` read the top-level
+     * members only, counted one object-shaped member, and a value of the member that sorts after
+     * `ProbeWalrus`, refused by symfony (row 166), was filed as undocumented (seed 23081). A nested union
+     * with its own discriminator is not flattened by the generator, so it is no pair here either.
+     */
+    public function testANestedBareUnionIsFlattenedIntoThePair(): void
+    {
+        $runner = new FuzzRunner(outputDirectory: sys_get_temp_dir() . '/fuzz-harness-pair-nested', modes: [GenerationMode::Symfony], propertiesPerSpec: 1);
+        $generate = new ReflectionMethod(FuzzRunner::class, 'generateChecked');
+        $tag = new ReflectionMethod(FuzzRunner::class, 'tagObjectsOfAPair');
+        $tagged = static function (array $document, string $json) use ($runner, $generate, $tag): bool {
+            $generation = $generate->invoke($runner, $document, GenerationMode::Symfony);
+            $payload = ['property' => 'walrus', 'kind' => 'valid', 'json' => $json, 'expected' => PayloadVerdict::Accepted, 'tags' => ['unionObjectPair']];
+
+            return in_array('objectOfPair', $tag->invoke(null, [$payload], $document, $generation['fqcn'])[0]['tags'], true);
+        };
+        $document = static fn(array $nested): array => ['openapi' => '3.1.0', 'info' => ['title' => 'Fuzz', 'version' => '1.0.0'], 'components' => ['schemas' => [
+            'Probe' => ['type' => 'object', 'properties' => ['walrus' => ['oneOf' => [$nested, ['type' => 'integer'], ['type' => 'string']]]]],
+            'Scarleta' => ['type' => 'object', 'properties' => ['okapi' => ['type' => 'null']], 'required' => ['okapi'], 'additionalProperties' => ['type' => 'string', 'minLength' => 0]],
+        ]]];
+        $members = [
+            ['$ref' => '#/components/schemas/Scarleta'],
+            ['type' => 'object', 'properties' => ['walrus' => ['type' => 'null']], 'required' => ['walrus']],
+        ];
+
+        $nested = $document(['anyOf' => $members]);
+        $this->assertTrue($tagged($nested, '{"walrus":{"okapi":null}}'), 'the seed-23081 value of Scarleta');
+        $this->assertFalse($tagged($nested, '{"walrus":{"walrus":null}}'), 'a value of ProbeWalrus, which sorts first');
+
+        // The same pair spelled flat: the neighbour that already worked.
+        $flat = ['openapi' => '3.1.0', 'info' => ['title' => 'Fuzz', 'version' => '1.0.0'], 'components' => ['schemas' => [
+            'Probe' => ['type' => 'object', 'properties' => ['walrus' => ['oneOf' => [...$members, ['type' => 'integer'], ['type' => 'string']]]]],
+            'Scarleta' => $nested['components']['schemas']['Scarleta'],
+        ]]];
+        $this->assertTrue($tagged($flat, '{"walrus":{"okapi":null}}'), 'the flat control');
+        $this->assertFalse($tagged($flat, '{"walrus":{"walrus":null}}'), 'the flat control, first member');
+
+        // A nested union with its own discriminator stays one member of the outer union.
+        $objectMembers = new ReflectionMethod(FuzzRunner::class, 'objectMembers');
+        $schemas = $nested['components']['schemas'];
+        $discriminated = ['oneOf' => [['oneOf' => $members, 'discriminator' => ['propertyName' => 'okapi']], ['type' => 'integer']]];
+        $this->assertSame([], $objectMembers->invoke(null, $discriminated, $schemas, 0));
+        $this->assertSame($members, $objectMembers->invoke(null, ['oneOf' => [['anyOf' => $members], ['type' => 'integer']]], $schemas, 0));
     }
 
     /**
@@ -1322,23 +1458,73 @@ final class FuzzHarnessTest extends TestCase
     }
 
     /**
-     * Every draw at a union of two objects spelled as a component is tagged `undiscriminatedComponent`,
-     * and no draw at an inline one is.
+     * Every draw at a union COMPONENT with two object members or more is tagged `undiscriminatedComponent`
+     * — a union of two objects the grammar placed as a component, and a union of other kinds the renderer
+     * rolled into one whose objects come from a union of two objects nested as its branch — and no draw
+     * at an inline one, nor at a component with fewer than two object members, is.
      */
     public function testAComponentUnionOfObjectsIsTagged(): void
     {
         $member = static fn(string $key): array => ['t' => 'object', 'props' => [$key => ['t' => 'integer', 'nullable' => false]], 'required' => [$key], 'additional' => null, 'nullable' => false];
         $pair = ['t' => 'union', 'op' => 'oneOf', 'branches' => [$member('otter'), $member('heron')], 'objectPair' => true, 'overlap' => false, 'nullable' => false];
-        $instances = new InstanceGenerator(new FuzzRandom(5));
+        $scalar = ['t' => 'string', 'nullable' => false];
+        $nodes = [
+            'pair' => [true => [...$pair, 'asComponent' => true], false => [...$pair, 'asComponent' => false]],
+            'pairNestedInUnion' => [
+                true => ['t' => 'union', 'op' => 'anyOf', 'branches' => [[...$pair, 'asComponent' => false], $scalar], 'asComponent' => true, 'nullable' => false],
+                false => ['t' => 'union', 'op' => 'anyOf', 'branches' => [[...$pair, 'asComponent' => false], $scalar], 'asComponent' => false, 'nullable' => false],
+            ],
+            // A component of ONE object member and a scalar: no union of objects.
+            'singleObjectComponent' => [
+                false => ['t' => 'union', 'op' => 'oneOf', 'branches' => [$member('lynx'), $scalar], 'asComponent' => true, 'nullable' => false],
+            ],
+        ];
 
-        foreach ([true, false] as $asComponent) {
-            $node = [...$pair, 'asComponent' => $asComponent];
-            $this->assertSame($asComponent, in_array('undiscriminatedComponent', $instances->validInstance($node)['tags'], true));
-            foreach ($instances->mutations($node) as $mutation) {
-                if (in_array('in:union', $mutation['tags'], true)) {
-                    $this->assertSame($asComponent, in_array('undiscriminatedComponent', $mutation['tags'], true));
+        foreach ($nodes as $label => $byExpectation) {
+            foreach ($byExpectation as $tagged => $node) {
+                foreach (range(1, 6) as $seed) {
+                    $instances = new InstanceGenerator(new FuzzRandom($seed));
+                    $this->assertSame((bool)$tagged, in_array('undiscriminatedComponent', $instances->validInstance($node)['tags'], true), $label);
+                    foreach ($instances->mutations($node) as $mutation) {
+                        if (in_array('in:union', $mutation['tags'], true)) {
+                            $this->assertSame((bool)$tagged, in_array('undiscriminatedComponent', $mutation['tags'], true), $label . ' ' . $mutation['kind']);
+                        }
+                    }
                 }
             }
+        }
+    }
+
+    /**
+     * Whether a union other than one of two objects is a component is the renderer's roll; the node of
+     * the case says what it rolled (`asComponent`), as the document spells it, so the draws at a union
+     * component of several objects can carry `undiscriminatedComponent`.
+     */
+    public function testTheNodeOfAUnionSaysWhetherTheDocumentMadeItAComponent(): void
+    {
+        $seen = [];
+        // Seed 317 draws one with objects of a union of two objects nested as its branch — a rare shape.
+        foreach ([...range(1, 120), 317] as $seed) {
+            $spec = FuzzSpec::generate(seed: $seed, propertyCount: 4);
+            $document = $spec->document();
+            foreach ($spec->cases as $name => $case) {
+                if ($case['node']['t'] !== 'union') {
+                    continue;
+                }
+                $schema = $document['components']['schemas']['Probe']['properties'][$name];
+                $this->assertSame(self::componentUnionIn(schema: $schema, document: $document) !== null, $case['node']['asComponent'] ?? null, 'seed ' . $seed . ' ' . $name);
+                if (($case['node']['objectPair'] ?? false) === true) {
+                    continue;
+                }
+                $seen[$case['node']['asComponent'] ? 'component' : 'inline'] = true;
+                if (in_array('undiscriminatedComponent', $case['valid']['tags'], true)) {
+                    $seen['severalObjectComponent'] = true;
+                }
+            }
+        }
+
+        foreach (['component', 'inline', 'severalObjectComponent'] as $expected) {
+            $this->assertArrayHasKey($expected, $seen, $expected);
         }
     }
 

@@ -530,17 +530,11 @@ trait RendersLaravelValidation
                 $consumed[] = 'format';
                 // Every rule `laravelFormatRule()` returns refuses a non-string, so `type: string` is
                 // enforced even where the `string` rule itself was suppressed — which is the case for
-                // a DateTimeImmutable property, whose `date_format:` rule would otherwise be reported
+                // a DateTimeImmutable property, whose date-time rule would otherwise be reported
                 // ALONGSIDE the interpreter's own "must be of type string" — see the "date-time + not"
                 // case in `LaravelRulesEnforcementTest::overlapProvider()`.
                 if ($typeRule === null) {
                     $consumed[] = 'type';
-                }
-                // `date_format` with `P` / `p` formats `+25:00` back unchanged — PHP reads it as an offset
-                // of a day and an hour — so the rule passed it, and laravel's `new DateTimeImmutable()`
-                // died on it after validation: a 500. RFC 3339's offset is a time of day.
-                if (in_array($schema['format'], ['date-time', 'datetime'], true)) {
-                    $rules[] = '\'not_regex:/[+-](2[4-9]|[3-9]\d):\d\d$|[+-]\d\d:[6-9]\d$/\'';
                 }
             }
         }
@@ -857,6 +851,28 @@ trait RendersLaravelValidation
     }
 
     /**
+     * The rule of a `format: date-time` string: the emitted interpreter's own reader — the RFC 3339 shape
+     * (`RFC3339_DATE_TIME_PATTERN`), then a warning-free parse by one of the four shared patterns — so a
+     * plain property, a nullable one and a list item are judged as a union of the same value is.
+     *
+     * Not `date_format:`. Laravel's rule does not merely parse: it formats the parsed value back and
+     * compares the STRING, so it refused every RFC 3339 spelling no format writes back as it came — a
+     * lowercase `z`, the unknown local offset `-00:00` (§4.3), and a fraction of one, two, four or five
+     * digits (`.u` writes six, `.v` three) — while the interpreter took all three inside a union. It also
+     * formatted `+25:00` back unchanged and needed a `not_regex` beside it; the shape refuses that offset.
+     * The error stays `validation.date_format` with the format its message used to name, and like every
+     * rule `laravelFormatRule()` returns it refuses a non-string.
+     */
+    private function laravelDateTimeRule(): string
+    {
+        $rule = <<<'PHP'
+            static function (string $attribute, mixed $value, \Closure $fail): void { if (is_string($value) && preg_match(%s, $value) === 1) { foreach (['Y-m-d\TH:i:sp', 'Y-m-d\TH:i:s.up', 'Y-m-d H:i:s', 'Y-m-d\TH:i:s'] as $format) { if (\DateTimeImmutable::createFromFormat($format, $value) !== false && \DateTimeImmutable::getLastErrors() === false) { return; } } } $fail('validation.date_format')->translate(['format' => 'Y-m-d\TH:i:sP']); }
+            PHP;
+
+        return sprintf($rule, $this->phpStringLiteral(self::RFC3339_DATE_TIME_PATTERN));
+    }
+
+    /**
      * Formats Laravel has a rule for. Everything else (`hostname`, `byte`, `duration`,
      * `json-pointer`, `uri-template`, `idn-*`, `regex`) is an interpreter job — see M2.
      */
@@ -870,21 +886,7 @@ trait RendersLaravelValidation
             'ipv4' => "'ipv4'",
             'ipv6' => "'ipv6'",
             'date' => "'date_format:Y-m-d'",
-            // BOTH offset spellings, and that is not redundancy. Laravel's `date_format` does not
-            // merely parse: it formats the parsed value back and compares the STRING. `P` writes a UTC
-            // offset as `+00:00` and `p` writes it as `Z`, so each pattern round-trips exactly one of
-            // them and refuses the other. With `P` alone — which is what this emitted until 2.15.40 —
-            // `2026-01-02T03:04:05Z` was refused, the commonest spelling there is, on a payload every
-            // other mode accepts. The canonical list this claims to mirror
-            // (`GeneratedDtoInterface::DATE_TIME_FORMATS`) uses `p`, and the deserializer only PARSES
-            // with it, where either letter reads either spelling — which is why the disagreement could
-            // sit here unnoticed.
-            //
-            // And `.v` beside `.u` for the same reason: `.u` formats back to SIX digits, so `.123Z` —
-            // what JavaScript's `toISOString()` writes — was refused while every other mode accepted it.
-            // `.v` round-trips exactly three. One, two, four or five digits still need `.u`'s six.
-            'date-time', 'datetime' => "'date_format:Y-m-d\\TH:i:sP,Y-m-d\\TH:i:s.uP,Y-m-d\\TH:i:s.vP,"
-                . "Y-m-d\\TH:i:sp,Y-m-d\\TH:i:s.up,Y-m-d\\TH:i:s.vp,Y-m-d H:i:s,Y-m-d\\TH:i:s'",
+            'date-time', 'datetime' => $this->laravelDateTimeRule(),
             default => null,
         };
     }
@@ -982,7 +984,7 @@ trait RendersLaravelValidation
                 && $this->attributeMode === self::ATTRIBUTE_MODE_LARAVEL
                 && $this->isUnhydratableUnionClass($referenced)
                 // A property, item or value typed as such a component is built as its matching member
-                // instead, when every member is a `$ref` class.
+                // instead, when every member is a `$ref` class or a union of them.
                 && $this->laravelUnionComponentMembers($referenced) === []
             ) {
                 $this->importLibraryClass(fqcn: 'RuntimeException', namespace: $namespace, useStatements: $imports);
@@ -1283,12 +1285,14 @@ trait RendersLaravelValidation
      *
      * @param array{fields: array<string, mixed>, object: array<string, mixed>} $constraints
      * @param array<string, mixed> $recursiveSchemas self-referential schemas a marker re-enters
-     * @return array{consts: string, methods: string}
+     * @param bool $readsRawBody whether `withValidator()` puts the JSON objects of the raw body back into
+     *                           the payload it hands the interpreter (`withRawJsonObjects()`)
+     * @return array{consts: string, methods: string, readsRawJsonShapes: bool}
      */
-    private function renderLaravelInterpreterBlock(array $constraints, array $recursiveSchemas = []): array
+    private function renderLaravelInterpreterBlock(array $constraints, array $recursiveSchemas = [], bool $readsRawBody = false): array
     {
         if ($constraints['fields'] === [] && $constraints['object'] === []) {
-            return ['consts' => '', 'methods' => ''];
+            return ['consts' => '', 'methods' => '', 'readsRawJsonShapes' => false];
         }
 
         // The envelope separates payload names from root assertions. Its slots are storage, not
@@ -1299,6 +1303,15 @@ trait RendersLaravelValidation
             }
         }
         $constraints['object'] = $this->expandBooleanSubschemasForInterpreter($constraints['object']);
+
+        // With the raw body's JSON objects put back as `\stdClass`, a PHP array the interpreter meets is a
+        // JSON array, so `type: object` refuses it — inside a union, below an `array` member, where no
+        // static path of the raw shape check reaches. Only worth a flag where `object` is asked at all.
+        $readsRawJsonShapes = $readsRawBody && in_array(
+            needle: 'object',
+            haystack: $this->collectSchemaKeywordStrings(['fields' => $constraints, 'folds' => $recursiveSchemas], 'type'),
+            strict: true,
+        );
 
         // No enum/temporal normalization: the validator runs on the raw request payload, where those
         // values are still the scalars the client sent.
@@ -1313,11 +1326,13 @@ trait RendersLaravelValidation
             // Only this mode needs them: Symfony cascades into each nested DTO's own constraints, so a
             // recursive schema never has to be written down in one piece there.
             recursiveSchemas: $recursiveSchemas,
+            readsRawJsonShapes: $readsRawJsonShapes,
         );
 
         return [
             'consts' => $this->laravelStaticizeEmittedInterpreter($block['consts']),
             'methods' => $this->laravelStaticizeEmittedInterpreter($block['methods']),
+            'readsRawJsonShapes' => $readsRawJsonShapes,
         ];
     }
 
@@ -3332,8 +3347,16 @@ trait RendersLaravelValidation
 
     /**
      * The member classes of a union component of classes with no discriminator (`Shade: {anyOf: [$ref
-     * Olive, $ref Teal]}`), in document order; `[]` for anything else — a member written inline, one that
-     * is itself a union, or a single member, which leaves the class to the "no discriminator" throw.
+     * Olive, $ref Teal]}`, or with members written inline — see `laravelUnionComponentLeaves()`), in
+     * document order; `[]` for anything else — a member that names no class, a discriminated one, or
+     * fewer than two classes, which leaves the class to the "no discriminator" throw.
+     *
+     * A branch that is itself a union — written inline (`{anyOf: [$ref Olive, $ref Teal]}`, the
+     * one-member wrapper `{anyOf: [$ref Olive]}` too) or a `$ref` to another such component — counts with
+     * its own classes, flattened and de-duplicated, as `unionClassMembers()` reads the same nesting
+     * written on the property. The validator has already decided which branch holds, so building the
+     * first class a value matches is enough. Left out, the property stayed typed as the interface, and
+     * every payload the validator accepted died on that throw (laravel) or a TypeError (laravel-data).
      *
      * @return list<string>
      */
@@ -3342,35 +3365,91 @@ trait RendersLaravelValidation
         if (!$this->isUnhydratableUnionClass($className)) {
             return [];
         }
-        $schema = $this->dtoSchemas[$className] ?? [];
-        $branches = $schema['oneOf'] ?? $schema['anyOf'] ?? null;
+        $members = $this->laravelUnionComponentLeaves(schema: $this->dtoSchemas[$className] ?? [], ownerClassName: $className, seen: [$className]);
+
+        return $members !== null && count($members) >= 2 ? $members : [];
+    }
+
+    /**
+     * The classes the `oneOf` / `anyOf` of a union schema stands for, read through nested inline unions
+     * and `$ref`s to other undiscriminated union components (see `laravelUnionComponentMembers()`);
+     * `null` when a branch is anything else. `$seen` holds the components already entered, so a
+     * component that reaches itself gives up instead of recursing.
+     *
+     * A branch written inline as an object, or as an `allOf` that merges into one, is the member class
+     * `collectUnionTypes()` registered for it under `$ownerClassName` (`RedAnyOf2`). Left out, a union
+     * with such a member was never built: laravel threw "a union with no discriminator" and laravel-data
+     * died on a TypeError for every object the validator had accepted.
+     *
+     * @param array<array-key, mixed> $schema
+     * @param list<string> $seen
+     * @return list<string>|null
+     */
+    private function laravelUnionComponentLeaves(array $schema, string $ownerClassName, array $seen): ?array
+    {
+        $keyword = is_array($schema['oneOf'] ?? null) ? 'oneOf' : 'anyOf';
+        $branches = $schema[$keyword] ?? null;
         if (!is_array($branches)) {
-            return [];
+            return null;
         }
 
         $members = [];
-        foreach ($branches as $branch) {
-            if ($branch === ['type' => 'null']) {
+        foreach (array_values($branches) as $index => $branch) {
+            if (!is_array($branch) || $branch === ['type' => 'null']) {
+                if (is_array($branch)) {
+                    continue;
+                }
+
+                return null;
+            }
+            // A nested inline union, `nullable` beside it the only other keyword: its classes are members.
+            $keywords = array_keys($branch);
+            $nestedKeywords = array_values(array_intersect($keywords, ['anyOf', 'oneOf']));
+            if (count($nestedKeywords) === 1 && array_diff($keywords, ['anyOf', 'oneOf', 'nullable']) === []) {
+                $nested = $this->laravelUnionComponentLeaves(
+                    schema: $branch,
+                    ownerClassName: $this->inlineUnionMemberClassName(ownerClassName: $ownerClassName, keyword: $keyword, index: $index),
+                    seen: $seen,
+                );
+                if ($nested === null) {
+                    return null;
+                }
+                $members = array_values(array_unique([...$members, ...$nested]));
+
                 continue;
             }
-            $ref = is_array($branch) && count($branch) === 1 ? ($branch['$ref'] ?? null) : null;
-            if (!is_string($ref)) {
-                return [];
+            // The 3.0 `{$ref: Olive, nullable: true}`, or `{$ref: Olive, title: …}`, is still the Olive
+            // member; its null reaches the property through `componentAdmitsNull()`.
+            $ref = $this->isAnnotatedReference($branch) ? $branch['$ref'] : null;
+            if (is_string($ref)) {
+                $member = $this->schemaRefToClassName($ref, $this->constraintSourceFile ?? $this->rootSpecFile);
+            } elseif ($this->isObjectUnionMemberOfItsOwn($branch, $ownerClassName)) {
+                $member = $this->inlineUnionMemberClassName(ownerClassName: $ownerClassName, keyword: $keyword, index: $index);
+            } else {
+                return null;
             }
-            $member = $this->schemaRefToClassName($ref, $this->constraintSourceFile ?? $this->rootSpecFile);
             $memberSchema = $this->dtoSchemas[$member] ?? null;
-            if (
-                !is_array($memberSchema)
-                || $this->rendersAsUnion($memberSchema)
-                || array_key_exists($member, $this->discriminatorSchemas)
-                || in_array($member, $members, true)
-            ) {
-                return [];
+            if (!is_array($memberSchema) || array_key_exists($member, $this->discriminatorSchemas)) {
+                return null;
             }
-            $members[] = $member;
+            if ($this->rendersAsUnion($memberSchema)) {
+                if (in_array($member, $seen, true) || !$this->isUnhydratableUnionClass($member)) {
+                    return null;
+                }
+                $nested = $this->laravelUnionComponentLeaves(schema: $memberSchema, ownerClassName: $member, seen: [...$seen, $member]);
+                if ($nested === null) {
+                    return null;
+                }
+                $members = array_values(array_unique([...$members, ...$nested]));
+
+                continue;
+            }
+            if (!in_array($member, $members, true)) {
+                $members[] = $member;
+            }
         }
 
-        return count($members) >= 2 ? $members : [];
+        return $members;
     }
 
     /**

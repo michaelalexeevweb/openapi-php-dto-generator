@@ -561,7 +561,7 @@ Natively expressed by `yiisoft/validator`:
 | `pattern` | `#[Regex]` |
 | `minItems` / `maxItems` | `#[Count(min:, max:)]` |
 | `format: email` / `uuid` / `uri` / `ipv4` / `ipv6` | `#[Email]`, `#[Uuid]`, `#[Url]`, `#[Ip]` |
-| `format: date` / `date-time` | `#[Date]` / `#[DateTime]`, plus stacked `#[ToDateTime]` for hydration and a raw `#[Validate]` against the same formats (`Date`, or `AnyRule` of `DateTime`s — "must be a date") |
+| `format: date` / `date-time` | `#[Date]` / `#[DateTime]`, plus stacked `#[ToDateTime]` for hydration and a raw `#[Validate]` against the same formats (`Date` after its digits, or the RFC 3339 shape and then `AnyRule` of `DateTime`s — "must be a date") |
 | nested object | `#[Nested]` — argument-free; it cascades into the nested class's own attributes |
 | list of nested objects | `#[Each(new Nested())]` plus `#[Collection(…)]` for hydration |
 | `enum` | backed enums become the property TYPE, with a raw `#[Validate(new In([...]))]` of the cases (strict in a body); inline enums use JSON equality in the interpreter |
@@ -762,7 +762,9 @@ the items the same way, and one that does not read as its type is refused under 
   hydrator cannot parse was lost the same way, and is checked the same way — against the formats
   `#[ToDateTime]` is given, with Yii's "must be a date" message. So is a list, a map or an object sent
   as a scalar in a BODY — `{"ids": "x"}` — with `#[Validate(new Each([]))]` and "must be an array" /
-  "must be an object". Not for a parameter: a query string writes a one-item list `?ids=1`, which
+  "must be an object". An item of a list of objects that is none — `["x"]`, a `null` the items do not
+  admit — is asked the same by a check that `Each` runs on every raw item: `#[Collection]` drops such an
+  item before any rule sees the list. Not for a parameter: a query string writes a one-item list `?ids=1`, which
   arrives as a string;
 - **what the hydrator decides before any check runs stays decided**: a JSON array for a `type: object`
   property, a key `additionalProperties: false` forbids, `null` for a `oneOf` / `anyOf` with a string

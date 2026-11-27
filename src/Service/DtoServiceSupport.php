@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Service;
 
+use DateTimeImmutable;
+use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use WeakMap;
 
 /**
@@ -291,6 +293,35 @@ final class DtoServiceSupport
     }
 
     /**
+     * What a property's own constraints say about `null`: the OpenAPI 3.0 `nullable` when it is there,
+     * `true` for a `null` type (3.1 `type: [string, "null"]`) or a `oneOf` / `anyOf` member that admits
+     * null, and null when they say nothing — the caller then decides by whether the property is required
+     * and its PHP type admits null. The deserializer reads a property's null by it, and the validator a
+     * raw object's property, so a null the one refuses is never one the other lets in.
+     *
+     * @param array<array-key, mixed> $constraints
+     */
+    public static function constraintsAdmitNull(array $constraints): ?bool
+    {
+        if (array_key_exists('nullable', $constraints)) {
+            return $constraints['nullable'] === true;
+        }
+        if (self::typeAdmitsNull($constraints['type'] ?? null)) {
+            return true;
+        }
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            $members = $constraints[$keyword] ?? null;
+            foreach (is_array($members) ? $members : [] as $member) {
+                if (is_array($member) && (($member['nullable'] ?? false) === true || self::typeAdmitsNull($member['type'] ?? null))) {
+                    return true;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Whether the only JSON container a schema admits is an object, so that a PHP list held for it
      * is that object keyed `0..n-1` (`{}` among them) and never a JSON array.
      *
@@ -392,6 +423,40 @@ final class DtoServiceSupport
     }
 
     /**
+     * A `format: date-time` string as the instant it names, or null when it is not one — the one reader
+     * both the deserializer (a typed `DateTimeImmutable` property) and the validator (a value held as
+     * decoded data) use, so a value is never accepted in one place and refused in the other.
+     *
+     * Lenient where clients already depend on it: a space separator and a missing offset are taken (a
+     * strict RFC 3339 reading is left for a major release). A lowercase `t` / `z` is taken (RFC 3339
+     * §5.6). Refused: an offset out of range (`+25:00`, `+02:60` — PHP would read them as days), an
+     * offset without its colon, a calendar overflow (Feb 30), and anything else PHP would merely parse.
+     */
+    public static function parseDateTime(string $value): ?DateTimeImmutable
+    {
+        // createFromFormat accepts trailing characters silently, so the shape is checked first.
+        if (preg_match('/^\d{4}-\d{2}-\d{2}[Tt ]\d{2}:\d{2}:\d{2}(\.\d+)?([Zz]|[+-]\d{2}:\d{2})?$/D', $value) !== 1) {
+            return null;
+        }
+        if (preg_match('/[+-](\d{2}):(\d{2})$/D', $value, $offset) === 1 && ((int)$offset[1] > 23 || (int)$offset[2] > 59)) {
+            return null;
+        }
+        // The formats spell `T` and `Z` upper case; the shape above leaves no other letter.
+        $normalized = strtoupper($value);
+        foreach (GeneratedDtoInterface::DATE_TIME_FORMATS as $format) {
+            $parsed = DateTimeImmutable::createFromFormat($format, $normalized);
+            // An overflow (Feb 30 rolled into March) is reported only as a warning.
+            $errors = DateTimeImmutable::getLastErrors();
+            $hasWarnings = $errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0);
+            if ($parsed instanceof DateTimeImmutable && !$hasWarnings) {
+                return $parsed;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Notes the PHP names of the fields of `$dto` that hold `{}` as `[]`.
      *
      * @param array<string, true> $propertyNames
@@ -445,5 +510,10 @@ final class DtoServiceSupport
         }
 
         return self::$undeclaredKeysSent[$dto];
+    }
+
+    private static function typeAdmitsNull(mixed $type): bool
+    {
+        return $type === 'null' || (is_array($type) && in_array('null', $type, true));
     }
 }

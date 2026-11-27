@@ -135,16 +135,17 @@ trait RendersLaravelDto
 
         $interpreterConstraints = $this->laravelInterpreterConstraints($properties, $className);
         $recursiveSchemas = array_filter($this->laravelRecursiveFolds, static fn(mixed $fold): bool => $fold !== []);
+        $readsEmptyContainers = $readsRawBody && $this->laravelReadsEmptyContainers(
+            className: $className,
+            interpreterConstraints: $interpreterConstraints,
+            recursiveSchemas: $recursiveSchemas,
+        );
         $interpreter = $this->renderLaravelInterpreterBlock(
             constraints: $interpreterConstraints,
             // A class whose fold carries no assertion needs no entry: the marker pointing at it resolves
             // to nothing, which is what "nothing left to check here" means.
             recursiveSchemas: $recursiveSchemas,
-        );
-        $readsEmptyContainers = $readsRawBody && $this->laravelReadsEmptyContainers(
-            className: $className,
-            interpreterConstraints: $interpreterConstraints,
-            recursiveSchemas: $recursiveSchemas,
+            readsRawBody: $readsEmptyContainers,
         );
         $hasWithValidator = $interpreter['methods'] !== '' || $checksPaths;
         $this->laravelClassesWithInterpreter[$className] = $hasWithValidator;
@@ -219,6 +220,7 @@ trait RendersLaravelDto
             'objectShapePaths' => $objectShapePaths,
             'scalarTypePaths' => $scalarTypePaths,
             'readsEmptyContainers' => $readsEmptyContainers,
+            'readsRawJsonShapes' => $interpreter['readsRawJsonShapes'],
             'freeFormPaths' => $freeFormPaths,
             'recursiveFreeForm' => $recursiveFreeForm,
             'collectsFreeFormPaths' => $readsRawBody,
@@ -987,6 +989,13 @@ trait RendersLaravelDto
             if (count($topLevelMembers) > 1 && $this->laravelUnionAdmitsObjectButNoArray($this->laravelConstraintsFor($property))) {
                 return sprintf('is_array(%1$s) ? (object)%1$s : %1$s', $propertyAccess);
             }
+            // `anyOf: [{anyOf: [{type: object}, {type: boolean}]}, {type: array}]`: the object member sits
+            // in a nested union, and `array_values()` wrote `{"a": 1}` back as `[1]`. The array may be
+            // either, so it goes out keyed as it is.
+            $admittedTypes = $this->laravelAdmittedJsonTypes($this->laravelConstraintsFor($property));
+            if (count($topLevelMembers) > 1 && $admittedTypes !== null && in_array('object', $admittedTypes, true)) {
+                return $propertyAccess;
+            }
             if (count($topLevelMembers) > 1) {
                 return sprintf('is_array(%1$s) ? array_values(%1$s) : %1$s', $propertyAccess);
             }
@@ -1433,9 +1442,9 @@ trait RendersLaravelDto
      */
     private function laravelNestedDtoExpression(string $dtoClass, string $rawAccess, string $wireName): string
     {
-        // A union COMPONENT of `$ref` classes with no discriminator — a list item, a map value — is
-        // built as the first member whose own schema the value matches, as a property of that type is;
-        // the validator has already decided one does. It used to throw below, a 500 for every valid item.
+        // A union COMPONENT of `$ref` classes (or of unions of them) with no discriminator — a list item,
+        // a map value — is built as the first member whose own schema the value matches, as a property of
+        // that type is; the validator has already decided one does. It used to throw below, a 500 for every valid item.
         $members = $this->laravelUnionComponentMembers($dtoClass);
         if ($members !== []) {
             $lastMember = array_pop($members);

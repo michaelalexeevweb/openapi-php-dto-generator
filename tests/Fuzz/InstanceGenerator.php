@@ -162,9 +162,9 @@ final class InstanceGenerator
             // Which member's object it is, as the Symfony serializer sees it, depends on the generated
             // class names: `FuzzRunner::tagObjectsOfAPair()` adds `objectOfPair` once they exist.
             $this->validTags[] = 'unionObjectPair';
-            if ($node['asComponent'] ?? false) {
-                $this->validTags[] = 'undiscriminatedComponent';
-            }
+        }
+        if (self::isUndiscriminatedComponent($node)) {
+            $this->validTags[] = 'undiscriminatedComponent';
         }
 
         $besideArray = in_array('array', self::admittedTypes($node), true);
@@ -180,6 +180,24 @@ final class InstanceGenerator
         }
 
         return $value;
+    }
+
+    /**
+     * Whether a union is spelled as a component of its own (`asComponent`, {@see SchemaRenderer::placed()})
+     * and has two object members or more — a union of two objects, or another union with one nested as
+     * its branch: the component the Laravel modes are documented, and warned, not to hydrate (support
+     * matrix, "hydration of a union COMPONENT of OBJECTS with no `discriminator`").
+     *
+     * @param array<string, mixed> $node
+     */
+    private static function isUndiscriminatedComponent(array $node): bool
+    {
+        if (($node['asComponent'] ?? false) !== true) {
+            return false;
+        }
+        $objects = array_filter(self::memberBranches($node), static fn(array $member): bool => $member['t'] === 'object');
+
+        return count($objects) >= 2;
     }
 
     /**
@@ -477,11 +495,18 @@ final class InstanceGenerator
 
         // `{}` where the node also admits a list — the object member of a union beside an `array`
         // member, or a bare `type: array` — is `[]` once a framework decodes it to a PHP array.
-        $admitsArray = in_array('array', self::admittedTypes($node), true);
+        // The other way round, `[]` where the node also admits an object — the list member of a union
+        // beside an object member — is the same PHP `[]`, which the Symfony serializer builds into
+        // the object member's class.
+        $admitted = self::admittedTypes($node);
+        $admitsArray = in_array('array', $admitted, true);
+        $admitsObject = in_array('object', $admitted, true);
         $tagged = array_map(
-            callback: static fn(array $mutation): array => $admitsArray && $mutation['value'] instanceof stdClass && get_object_vars($mutation['value']) === []
-                ? [...$mutation, 'tags' => [...$mutation['tags'], 'emptyBesideArray']]
-                : $mutation,
+            callback: static fn(array $mutation): array => match (true) {
+                $admitsArray && $mutation['value'] instanceof stdClass && get_object_vars($mutation['value']) === [] => [...$mutation, 'tags' => [...$mutation['tags'], 'emptyBesideArray']],
+                $admitsObject && $mutation['value'] === [] => [...$mutation, 'tags' => [...$mutation['tags'], 'emptyListBesideObject']],
+                default => $mutation,
+            },
             array: [...$common, ...$own],
         );
 
@@ -839,7 +864,7 @@ final class InstanceGenerator
                     ...($withTemporal && $type === 'integer' ? ['integerBesideTemporal'] : []),
                     ...($scalar ? $classMember : []),
                     ...($objectPair ? ['unionObjectPair'] : []),
-                    ...($objectPair && ($node['asComponent'] ?? false) ? ['undiscriminatedComponent'] : []),
+                    ...(self::isUndiscriminatedComponent($node) ? ['undiscriminatedComponent'] : []),
                     ...$inner['tags'],
                 ];
                 $mutations[] = ['kind' => $inner['kind'], 'value' => $inner['value'], 'tags' => $tags];

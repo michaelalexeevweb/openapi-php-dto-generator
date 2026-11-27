@@ -43,8 +43,8 @@ final class KnownDivergences
     }
 
     /**
-     * A crash or a refusal at a union COMPONENT of two objects and no discriminator (tagged
-     * `undiscriminatedComponent`) in a mode the generator WARNED, for a component this property reaches,
+     * A crash or a refusal at a union COMPONENT of two objects or more and no discriminator (tagged
+     * `undiscriminatedComponent`, whether the objects are its own members or a nested union's) in a mode the generator WARNED, for a component this property reaches,
      * that it cannot hydrate a payload into: the support matrix, "Not generated in any mode", "hydration
      * of a union COMPONENT of OBJECTS with no `discriminator`" — the generator names the property at
      * generation time instead of letting the request find out. Only laravel and laravel-data, the modes
@@ -214,7 +214,17 @@ final class KnownDivergences
                 // it is the `[]` the `array` member (or the list itself) accepts.
                 'kinds' => ['missingRequired', 'tooFewProperties', 'wrongType:object'],
                 'tagsAll' => ['emptyBesideArray'],
-                'row' => 'support matrix: "an EMPTY JSON container: `[]` for an object, `{}` for a list or for the object member of a union beside an `array` member" (symfony and yii3 read `[]` and `{}` as one)',
+                'row' => 'support matrix: "an EMPTY JSON container: `[]` for an object, `{}` for a list or for the object member of a union beside an `array` member, `[]` for the list member of a union beside an object member" (symfony and yii3 read `[]` and `{}` as one)',
+            ],
+            [
+                'modes' => [GenerationMode::Symfony],
+                'category' => 'wrong-accept',
+                // `[]` for the `minItems` list member of a union beside an object member: decoded, it is
+                // the `[]` that `{}` is too, and the serializer builds the object member's class from it.
+                // yii3 hydrates the union property as sent and refuses.
+                'kinds' => ['tooFewItems'],
+                'tagsAll' => ['emptyListBesideObject'],
+                'row' => 'support matrix: "an EMPTY JSON container: `[]` for an object, `{}` for a list or for the object member of a union beside an `array` member, `[]` for the list member of a union beside an object member" (symfony reads `[]` and `{}` as one)',
             ],
             [
                 'modes' => [GenerationMode::Symfony, GenerationMode::Yii3],
@@ -328,14 +338,8 @@ final class KnownDivergences
                 'row' => 'support matrix: the note under the keyword matrix, "A `format: date-time` with no offset … is accepted … in all five"',
             ],
             [
-                'modes' => [GenerationMode::Yii3],
-                'category' => 'wrong-accept',
-                'kinds' => ['parseableNonDate:date-time'],
-                'tagsAll' => ['dateTimeOffsetWithoutColon'],
-                'row' => 'support matrix: "RFC 3339 spellings of a `format: date-time` property" (yii3 reads `+0200` with `p`)',
-            ],
-            [
-                'modes' => [GenerationMode::Runtime, GenerationMode::Laravel, GenerationMode::LaravelData, GenerationMode::Yii3],
+                // Runtime's deserializer reads `t` and `z` as their upper case since 2.15.163.
+                'modes' => [GenerationMode::Laravel, GenerationMode::LaravelData, GenerationMode::Yii3],
                 'category' => 'wrong-refuse',
                 'kinds' => ['valid'],
                 'tagsAll' => ['lowercaseDateTime'],
@@ -369,7 +373,7 @@ final class KnownDivergences
                 // framework, it is the `[]` the list member judges — and `minItems` refuses.
                 'kinds' => ['valid'],
                 'tagsAll' => ['emptyBesideArray'],
-                'row' => 'support matrix: "an EMPTY JSON container: `[]` for an object, `{}` for a list or for the object member of a union beside an `array` member" (symfony and yii3 read `[]` and `{}` as one)',
+                'row' => 'support matrix: "an EMPTY JSON container: `[]` for an object, `{}` for a list or for the object member of a union beside an `array` member, `[]` for the list member of a union beside an object member" (symfony and yii3 read `[]` and `{}` as one)',
             ],
             [
                 'modes' => [GenerationMode::Symfony],
@@ -410,13 +414,6 @@ final class KnownDivergences
                 'kinds' => ['valid'],
                 'tagsAny' => ['nullItem:nullable-dto', 'nullItem:nullable-discriminated', 'nullMapValue:nullable-dto', 'nullMapValue:nullable-discriminated'],
                 'row' => 'support matrix: "a `null` ITEM of a nullable list of DTOs", or a `null` VALUE of such a map (laravel-data refuses)',
-            ],
-            [
-                'modes' => [GenerationMode::Yii3],
-                'category' => 'wrong-accept',
-                'kinds' => ['nullForbidden', 'wrongType:'],
-                'tagsAny' => ['itemsOf:dto', 'itemsOf:discriminated'],
-                'row' => 'support matrix: "a non-object ITEM of a list or map of DTOs" (yii3 drops it)',
             ],
         ];
     }

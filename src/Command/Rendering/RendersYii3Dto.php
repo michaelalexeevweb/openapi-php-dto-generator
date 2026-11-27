@@ -140,6 +140,23 @@ trait RendersYii3Dto
     private const string YII3_LIST_SHAPE_METHOD = 'validateOpenApiListShape';
 
     /**
+     * The public static check the raw `Each` of a list-of-objects property runs on every item — see
+     * `yii3ValidationAttributes()`.
+     */
+    private const string YII3_OBJECT_ITEM_METHOD = 'validateOpenApiObjectItem';
+
+    /**
+     * The prefix of the public static `multipleOf` check a numeric union member's raw rule calls, the
+     * divisor spelled after it — see `yii3NumericBranchKeywordRules()`.
+     */
+    private const string YII3_MULTIPLE_OF_METHOD = 'validateOpenApiMultipleOf';
+
+    /**
+     * How a divisor's literal is spelled inside its method name, and back.
+     */
+    private const array YII3_MULTIPLE_OF_NAME_SPELLING = ['.' => 'Dot', '-' => 'Minus', '+' => 'Plus'];
+
+    /**
      * The framework classes this mode's emitted code names, by the short name it uses for them.
      *
      * A document may call a schema `Result`, `Data`, `Query` or `Nested` — ordinary words for an API —
@@ -286,7 +303,7 @@ trait RendersYii3Dto
                     ),
                 ),
                 allowScalarKeywords: true,
-                unmaterializedProperties: $this->mixedPropertyNames($properties),
+                unmaterializedProperties: $this->mixedPropertyNames($properties) + $this->yii3HeldDecodedPropertyNames($properties),
             ),
             properties: $properties,
         );
@@ -418,28 +435,67 @@ trait RendersYii3Dto
     }
 
     /**
-     * The check behind the raw `Callback` rule of a list of objects, or an empty string when no
-     * property calls it. Public and static: the hydrator runs the rule outside the object, so the
-     * callback is the class method itself.
+     * The checks behind the raw `Callback` rules — of a list of objects, and of a numeric union
+     * member's `multipleOf` — or an empty string when no property calls one. Public and static: the
+     * hydrator runs the rule outside the object, so the callback is the class method itself.
      *
      * @param array<int, array{attributes: array<int, string>}> $parameters
      * @param array<int, string> $ruleImports
      */
     private function yii3ListShapeMethod(array $parameters, array &$ruleImports): string
     {
-        $called = false;
+        $called = [];
         foreach ($parameters as $parameter) {
             foreach ($parameter['attributes'] as $attribute) {
-                if (str_contains($attribute, "'" . self::YII3_LIST_SHAPE_METHOD . "'")) {
-                    $called = true;
+                foreach ([self::YII3_LIST_SHAPE_METHOD, self::YII3_OBJECT_ITEM_METHOD] as $method) {
+                    if (str_contains($attribute, "'" . $method . "'")) {
+                        $called[$method] = true;
+                    }
                 }
             }
         }
-        if (!$called) {
+        $divisors = [];
+        foreach ($parameters as $parameter) {
+            foreach ($parameter['attributes'] as $attribute) {
+                preg_match_all("/'" . self::YII3_MULTIPLE_OF_METHOD . "([0-9A-Za-z]+)'/", $attribute, $matches);
+                // A list, not a map by name: the name `5` would become an integer key.
+                foreach ($matches[1] as $spelledDivisor) {
+                    if (!in_array($spelledDivisor, $divisors, true)) {
+                        $divisors[] = $spelledDivisor;
+                    }
+                }
+            }
+        }
+        if ($called === [] && $divisors === []) {
             return '';
         }
         $ruleImports[] = 'Yiisoft\Validator\Result';
         $ruleImports[] = 'Yiisoft\Validator\ValidationContext';
+        $blocks = [];
+        if (array_key_exists(self::YII3_LIST_SHAPE_METHOD, $called)) {
+            $blocks[] = $this->yii3ListShapeMethodBody();
+        }
+        if (array_key_exists(self::YII3_OBJECT_ITEM_METHOD, $called)) {
+            $blocks[] = $this->yii3ObjectItemMethodBody();
+        }
+        foreach ($divisors as $spelledDivisor) {
+            $blocks[] = $this->yii3MultipleOfMethodBody(
+                spelledDivisor: $spelledDivisor,
+                divisor: strtr($spelledDivisor, array_flip(self::YII3_MULTIPLE_OF_NAME_SPELLING)),
+            );
+        }
+        if ($divisors !== []) {
+            $blocks[] = $this->yii3RawMultipleHelperBody();
+        }
+
+        return implode("\n\n", $blocks);
+    }
+
+    /**
+     * The list-shape check `yii3ListShapeMethod()` emits.
+     */
+    private function yii3ListShapeMethodBody(): string
+    {
         $method = self::YII3_LIST_SHAPE_METHOD;
 
         return <<<PHP
@@ -455,6 +511,115 @@ trait RendersYii3Dto
                     }
 
                     return \$result;
+                }
+            PHP;
+    }
+
+    /**
+     * The per-item check `yii3ListShapeMethod()` emits: an item of a list of objects is a JSON object.
+     * `#[Collection]` drops an item it cannot build — `"x"`, a null, a list — before any rule sees the
+     * hydrated list, so the raw item is asked here. An empty array is the decoded `{}`.
+     */
+    private function yii3ObjectItemMethodBody(): string
+    {
+        $method = self::YII3_OBJECT_ITEM_METHOD;
+
+        return <<<PHP
+                /**
+                 * Whether an item of a list of objects is one: the hydrator drops an item it cannot build
+                 * before any other check sees the list.
+                 */
+                public static function {$method}(mixed \$value, {$this->yii3Lib('Callback')} \$rule, {$this->yii3Lib('ValidationContext')} \$context): {$this->yii3Lib('Result')}
+                {
+                    \$result = new {$this->yii3Lib('Result')}();
+                    if (!is_object(\$value) && (!is_array(\$value) || (\$value !== [] && array_is_list(\$value)))) {
+                        \$result->addError('{Property} must be an object.', ['Property' => \$context->getCapitalizedTranslatedProperty()]);
+                    }
+
+                    return \$result;
+                }
+            PHP;
+    }
+
+    /**
+     * The `multipleOf` check a numeric union member's raw rule calls, one per divisor: the member is
+     * checked before the hydrator reads an integer as a Unix timestamp date, after which nothing sees
+     * the number again. A value of another type is the other members' business.
+     */
+    private function yii3MultipleOfMethodBody(string $spelledDivisor, string $divisor): string
+    {
+        $method = self::YII3_MULTIPLE_OF_METHOD . $spelledDivisor;
+        $message = $this->phpStringLiteral('{Property} must be a multiple of ' . $divisor . '.');
+
+        return <<<PHP
+                /**
+                 * Whether a number is a multiple of {$divisor}, as JSON counts it: `10.0` and `10` are one
+                 * number. A value of another type is left to the other members of its union.
+                 */
+                public static function {$method}(mixed \$value, {$this->yii3Lib('Callback')} \$rule, {$this->yii3Lib('ValidationContext')} \$context): {$this->yii3Lib('Result')}
+                {
+                    \$result = new {$this->yii3Lib('Result')}();
+                    if ((is_int(\$value) || is_float(\$value)) && !self::isOpenApiRawMultiple(\$value, {$divisor})) {
+                        \$result->addError({$message}, ['Property' => \$context->getCapitalizedTranslatedProperty()]);
+                    }
+
+                    return \$result;
+                }
+            PHP;
+    }
+
+    /**
+     * The exact decimal `multipleOf` comparison behind `yii3MultipleOfMethodBody()`: static, since the
+     * callback runs outside the object. Two integers are compared as integers; otherwise both numbers
+     * are taken as the shortest decimal that reads back as them — see `DtoValidator::isDecimalMultiple()`.
+     */
+    private function yii3RawMultipleHelperBody(): string
+    {
+        return <<<'PHP'
+                private static function isOpenApiRawMultiple(int|float $value, int|float $of): bool
+                {
+                    if (is_int($value) && is_int($of)) {
+                        return $value % $of === 0;
+                    }
+                    if (!is_finite((float)$value)) {
+                        return false;
+                    }
+                    $parts = [];
+                    foreach ([$value, $of] as $number) {
+                        $number = abs((float)$number);
+                        $rendered = sprintf('%.16e', $number);
+                        for ($precision = 0; $precision < 17; $precision++) {
+                            $candidate = sprintf('%.' . $precision . 'e', $number);
+                            if ((float)$candidate === $number) {
+                                $rendered = $candidate;
+                                break;
+                            }
+                        }
+                        [$mantissa, $exponent] = explode('e', $rendered);
+                        $digits = ltrim(str_replace('.', '', $mantissa), '0');
+                        $parts[] = [$digits === '' ? '0' : $digits, (int)$exponent - strlen(explode('.', $mantissa . '.')[1])];
+                    }
+                    [[$valueDigits, $valueExponent], [$ofDigits, $ofExponent]] = $parts;
+                    if ($valueDigits === '0') {
+                        return true;
+                    }
+                    $shift = $valueExponent - $ofExponent;
+                    if ($shift < 0) {
+                        // Scaling the value down must not cut off a non-zero digit.
+                        if (strlen($valueDigits) <= -$shift || substr($valueDigits, $shift) !== str_repeat('0', -$shift)) {
+                            return false;
+                        }
+                        $valueDigits = substr($valueDigits, 0, $shift);
+                    } else {
+                        $valueDigits .= str_repeat('0', $shift);
+                    }
+                    $divisor = (int)$ofDigits;
+                    $remainder = 0;
+                    foreach (str_split($valueDigits) as $digit) {
+                        $remainder = ($remainder * 10 + (int)$digit) % $divisor;
+                    }
+
+                    return $remainder === 0;
                 }
             PHP;
     }
@@ -581,7 +746,17 @@ trait RendersYii3Dto
             // every other mode refuses. With `array` in the type the native caster keeps the array, the
             // checks refuse it, and a member still becomes its case. The getter and `create()` keep the
             // type without it. Not beside a generated class, which is what an array is built into.
-            if ($this->yii3HoldsArrayForEnum($property['type'])) {
+            // So does a NULLABLE enum beside a date (`ProbeOkapi|DateTimeImmutable|null`): where it cannot
+            // be null `#[ToString]` empties the array before the hydrator sees it, but `ToString` makes
+            // null `""` and is left off here, so `{"okapi": [2]}` failed `#[ToDateTime]` and was handed
+            // to the enum — `Cannot instantiate enum`, a 500 where the rule refuses it.
+            if (
+                $this->yii3HoldsArrayForEnum($property['type'])
+                || (
+                    ($property['schemaNullable'] ?? $property['nullable'])
+                    && $this->yii3HoldsArrayForEnum($property['type'], besideDate: true)
+                )
+            ) {
                 $heldEnumType = $type;
                 $type = $this->yii3WithArrayMember($type);
             }
@@ -765,7 +940,8 @@ trait RendersYii3Dto
         $payloadValue = $wireBoolean
             ? sprintf("match (\$this->%1\$s) { 'true', '1' => true, 'false', '0' => false, default => \$this->%1\$s }", $property['name'])
             : $wireItems ?? '$this->' . $property['name'];
-        $held = $this->yii3HoldsUnbuiltObjects($property['type']);
+        $held = $this->yii3HoldsUnbuiltObjects($property['type'])
+            ?? ($this->yii3CountsKeysOfABuiltUnionMember($property) ? 'value' : null);
         $dataSet = $this->yii3Lib('DataSetInterface');
         if ($held === 'value') {
             $payloadValue = sprintf('$this->%1$s instanceof %2$s ? $this->%1$s->getData() : $this->%1$s', $property['name'], $dataSet);
@@ -1245,15 +1421,30 @@ trait RendersYii3Dto
         $rawRules = [];
         if ($holdsArray && !$isParameter) {
             $isList = str_contains($heldType, '<') && !$this->isMapType($heldType);
+            $itemType = $this->yii3ArrayItemType($property);
+            $itemClass = $itemType === null ? null : ltrim($itemType, '?');
+            $listOfObjects = $isList && $itemClass !== null && $this->isGeneratedDtoType($itemClass) && !$this->yii3IsUnionInterface($itemClass);
+            // `#[Collection]` drops an item it cannot build (`"x"`, a null the items do not admit), so
+            // `[{…}, "x"]` arrived as the valid `[{…}]`. Each raw item is asked whether it is an object,
+            // as the interpreter asks the value of a map of them.
+            $itemRules = '[]';
+            if ($listOfObjects) {
+                $ruleImports[] = $this->yii3RuleClass('Callback');
+                $itemArguments = [sprintf("callback: [self::class, '%s']", self::YII3_OBJECT_ITEM_METHOD)];
+                if ($itemType !== $itemClass) {
+                    $ruleImports[] = 'Yiisoft\Validator\EmptyCondition\WhenNull';
+                    $itemArguments[] = sprintf('skipOnEmpty: new %s()', $this->yii3Lib('WhenNull'));
+                }
+                $itemRules = sprintf('[new %s(%s)]', $this->yii3Lib('Callback'), implode(', ', $itemArguments));
+            }
             $rawRules[] = [
                 'rule' => 'Each',
-                'arguments' => ['[]', sprintf("incorrectInputMessage: '{Property} must be %s. {type} given.'", $isList ? 'an array' : 'an object')],
+                'arguments' => [$itemRules, sprintf("incorrectInputMessage: '{Property} must be %s. {type} given.'", $isList ? 'an array' : 'an object')],
             ];
             // A list of generated objects is built by `#[Collection]`, which takes the members of
             // `{"a": {…}}` as readily as those of `[{…}]` and keeps no key — the interpreter then saw a
             // list. The raw value is asked whether it is one.
-            $itemType = $this->yii3ArrayItemType($property);
-            if ($isList && $itemType !== null && $this->isGeneratedDtoType($itemType) && !$this->yii3IsUnionInterface($itemType)) {
+            if ($listOfObjects && $itemType === $itemClass) {
                 $rawRules[] = ['rule' => 'Callback', 'arguments' => [sprintf("callback: [self::class, '%s']", self::YII3_LIST_SHAPE_METHOD)]];
             }
         }
@@ -1485,54 +1676,84 @@ trait RendersYii3Dto
      */
     private function yii3TemporalParserRule(array $temporalFormats, string $propertyName, array &$ruleImports): array
     {
-        $parsers = [];
+        $kind = $temporalFormats === ['time'] ? 'time' : 'date';
+        $message = $this->phpStringLiteral(sprintf('%s must be a %s.', ucfirst($propertyName), $kind));
+        // Each alternative is a rule expression, or the rules of a `Composite` that must all pass.
+        $alternatives = [];
         foreach ($temporalFormats as $temporalFormat) {
             $dateRule = self::YII3_FORMAT_RULES[$temporalFormat];
-            foreach (self::YII3_TEMPORAL_WIRE_FORMATS[$temporalFormat] as $wireFormat) {
-                $parsers[] = ['rule' => $dateRule, 'format' => "format: 'php:" . $wireFormat . "'", 'digits' => $temporalFormat === 'date'];
-            }
-        }
-        if (count($parsers) === 1 && !$parsers[0]['digits']) {
-            return ['rule' => $parsers[0]['rule'], 'arguments' => [$parsers[0]['format']]];
-        }
-
-        $rendered = [];
-        foreach ($parsers as ['rule' => $dateRule, 'format' => $formatArgument, 'digits' => $digits]) {
             $fqcn = $this->yii3RuleClass($dateRule);
+            $parsers = [];
+            foreach (self::YII3_TEMPORAL_WIRE_FORMATS[$temporalFormat] as $wireFormat) {
+                $parsers[] = sprintf("new %s(format: 'php:%s')", $this->yii3Lib($dateRule, $fqcn), $wireFormat);
+            }
             $ruleImports[] = $fqcn;
-            $parser = sprintf('new %s(%s)', $this->yii3Lib($dateRule, $fqcn), $formatArgument);
-            if (!$digits) {
-                $rendered[] = $parser;
+            if ($temporalFormat === 'date') {
+                // Its digits AND its calendar: the pattern first, then the parser.
+                $alternatives[] = ['composite' => $this->yii3PatternThenRule(
+                    pattern: self::YII3_STRICT_DATE_PATTERN,
+                    message: $this->phpStringLiteral(sprintf('%s must be a date.', ucfirst($propertyName))),
+                    rule: $parsers[0],
+                    ruleImports: $ruleImports,
+                )];
 
                 continue;
             }
-            $regexFqcn = $this->yii3RuleClass('Regex');
-            $ruleImports[] = $regexFqcn;
-            // Its digits AND its calendar: the pattern first, then the parser.
-            $bothRules = sprintf(
-                '[new %s(%s, message: %s), %s]',
-                $this->yii3Lib('Regex', $regexFqcn),
-                $this->phpStringLiteral(self::YII3_STRICT_DATE_PATTERN),
-                $this->phpStringLiteral(sprintf('%s must be a date.', ucfirst($propertyName))),
-                $parser,
-            );
-            if (count($parsers) === 1) {
-                return ['rule' => 'Composite', 'arguments' => [$bothRules]];
+            if ($temporalFormat === 'date-time') {
+                // The RFC 3339 shape the interpreter checks, then the parsers, which only the calendar is
+                // left to: PHP's `P` reads `+0200`, `+02`, `+25:00` and a zone name (`EST`) as offsets,
+                // and all four passed.
+                $anyRuleFqcn = $this->yii3RuleClass('AnyRule');
+                $ruleImports[] = $anyRuleFqcn;
+                $alternatives[] = ['composite' => $this->yii3PatternThenRule(
+                    pattern: self::RFC3339_DATE_TIME_PATTERN,
+                    message: $message,
+                    rule: sprintf('new %s([%s], message: %s)', $this->yii3Lib('AnyRule', $anyRuleFqcn), implode(', ', $parsers), $message),
+                    ruleImports: $ruleImports,
+                )];
+
+                continue;
             }
-            $compositeFqcn = $this->yii3RuleClass('Composite');
-            $ruleImports[] = $compositeFqcn;
-            $rendered[] = sprintf('new %s(%s)', $this->yii3Lib('Composite', $compositeFqcn), $bothRules);
+            foreach ($parsers as $parser) {
+                $alternatives[] = ['rule' => $parser];
+            }
+        }
+        if (count($alternatives) === 1 && array_key_exists('composite', $alternatives[0])) {
+            return ['rule' => 'Composite', 'arguments' => [$alternatives[0]['composite']]];
         }
 
-        $kind = $temporalFormats === ['time'] ? 'time' : 'date';
+        $compositeFqcn = $this->yii3RuleClass('Composite');
+        $rendered = [];
+        foreach ($alternatives as $alternative) {
+            if (array_key_exists('composite', $alternative)) {
+                $ruleImports[] = $compositeFqcn;
+                $rendered[] = sprintf('new %s(%s)', $this->yii3Lib('Composite', $compositeFqcn), $alternative['composite']);
+
+                continue;
+            }
+            $rendered[] = $alternative['rule'];
+        }
 
         return [
             'rule' => 'AnyRule',
             'arguments' => [
                 '[' . implode(', ', $rendered) . ']',
-                'message: ' . $this->phpStringLiteral(sprintf('%s must be a %s.', ucfirst($propertyName), $kind)),
+                'message: ' . $message,
             ],
         ];
+    }
+
+    /**
+     * The rules of a `Composite` that matches a raw string against `$pattern` before `$rule` runs on it.
+     *
+     * @param array<int, string> $ruleImports
+     */
+    private function yii3PatternThenRule(string $pattern, string $message, string $rule, array &$ruleImports): string
+    {
+        $regexFqcn = $this->yii3RuleClass('Regex');
+        $ruleImports[] = $regexFqcn;
+
+        return sprintf('[new %s(%s, message: %s), %s]', $this->yii3Lib('Regex', $regexFqcn), $this->phpStringLiteral($pattern), $message, $rule);
     }
 
     /**
@@ -1652,8 +1873,12 @@ trait RendersYii3Dto
     }
 
     /**
-     * The enum and bound rules of the one `oneOf` / `anyOf` branch of this numeric type, rendered for
-     * a `Composite` beside the type rule — none when no branch, or more than one, has the type.
+     * The enum, bound and `multipleOf` rules of the one `oneOf` / `anyOf` member of this numeric type, rendered for
+     * a `Composite` beside the type rule — none when no member, or more than one, has the type.
+     *
+     * The member may sit one level down, as the PHP type flattens it: in a nested `oneOf` / `anyOf`, or
+     * asserted through an `allOf`. Only a direct branch was looked at, so `{anyOf: [date, {anyOf: [{integer,
+     * maximum: -30}, boolean]}]}` got a bare integer rule, and `#[ToDateTime]` read `-25` as a timestamp date.
      *
      * @param array<string, mixed> $constraints
      * @param array<int, string> $ruleImports
@@ -1661,16 +1886,8 @@ trait RendersYii3Dto
      */
     private function yii3NumericBranchKeywordRules(string $branchType, array $constraints, array &$ruleImports): array
     {
-        $matching = [];
-        foreach (['oneOf', 'anyOf'] as $keyword) {
-            foreach (is_array($constraints[$keyword] ?? null) ? $constraints[$keyword] : [] as $branch) {
-                $declared = is_array($branch) ? $branch['type'] ?? null : null;
-                if ($declared === $branchType || (is_array($declared) && in_array($branchType, $declared, true))) {
-                    $matching[] = $branch;
-                }
-            }
-        }
-        if (count($matching) !== 1) {
+        $matching = $this->yii3NumericUnionMembers(schema: $constraints, branchType: $branchType, depth: 0);
+        if (count($matching) !== 1 || $matching[0] === null) {
             return [];
         }
         $branch = $matching[0];
@@ -1685,11 +1902,24 @@ trait RendersYii3Dto
             ] as $keyword => $rule
         ) {
             $bound = $branch[$keyword] ?? null;
-            if (is_numeric($bound) && !$this->yii3BoundIsExclusiveByModifier($branch, $keyword)) {
+            if (is_numeric($bound)) {
+                // The 3.0 spelling, `minimum: 5` beside `exclusiveMinimum: true`, is the strict
+                // comparison; the modifier itself is no number and is skipped as a bound.
+                if ($this->yii3BoundIsExclusiveByModifier($branch, $keyword)) {
+                    $rule = $keyword === 'minimum' ? 'GreaterThan' : 'LessThan';
+                }
                 $fqcn = $this->yii3RuleClass($rule);
                 $ruleImports[] = $fqcn;
                 $rules[] = sprintf("new %s(%s, type: 'original')", $this->yii3Lib($rule, $fqcn), $this->yii3NumberLiteral($bound));
             }
+        }
+        // `multipleOf` has no yiisoft rule: a static check of this class, one per divisor.
+        $multipleOf = $branch['multipleOf'] ?? null;
+        if ((is_int($multipleOf) || is_float($multipleOf)) && $multipleOf > 0) {
+            $callbackFqcn = $this->yii3RuleClass('Callback');
+            $ruleImports[] = $callbackFqcn;
+            $method = self::YII3_MULTIPLE_OF_METHOD . strtr($this->yii3NumberLiteral($multipleOf), self::YII3_MULTIPLE_OF_NAME_SPELLING);
+            $rules[] = sprintf("new %s(callback: [self::class, '%s'])", $this->yii3Lib('Callback', $callbackFqcn), $method);
         }
         $enum = $branch['enum'] ?? null;
         $values = is_array($enum) ? array_values(array_filter(
@@ -1713,6 +1943,102 @@ trait RendersYii3Dto
         return $rules;
     }
 
+    /**
+     * The `oneOf` / `anyOf` members of this schema that declare the numeric type, found through nested
+     * `oneOf` / `anyOf` members and `allOf` assertions, each with the keywords it carries. A null entry is a
+     * member of the type whose keywords cannot be read safely — an `allOf` naming one keyword twice, or a
+     * member with keywords of its own around a nested union — and keeps the caller from carrying any.
+     *
+     * @param array<mixed> $schema
+     * @return list<array<mixed>|null>
+     */
+    private function yii3NumericUnionMembers(array $schema, string $branchType, int $depth): array
+    {
+        if ($depth > 8) {
+            return [null];
+        }
+        $found = [];
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            foreach (is_array($schema[$keyword] ?? null) ? $schema[$keyword] : [] as $branch) {
+                if (!is_array($branch)) {
+                    continue;
+                }
+                array_push($found, ...$this->yii3NumericMemberCandidates(branch: $branch, branchType: $branchType, depth: $depth));
+            }
+        }
+
+        return $found;
+    }
+
+    /**
+     * The numeric members of this one `oneOf` / `anyOf` branch — see `yii3NumericUnionMembers()`.
+     *
+     * @param array<mixed> $branch
+     * @return list<array<mixed>|null>
+     */
+    private function yii3NumericMemberCandidates(array $branch, string $branchType, int $depth): array
+    {
+        $nestsUnion = is_array($branch['oneOf'] ?? null) || is_array($branch['anyOf'] ?? null);
+        $asserts = is_array($branch['allOf'] ?? null) ? $branch['allOf'] : [];
+        if ($nestsUnion) {
+            $nested = $this->yii3NumericUnionMembers(schema: $branch, branchType: $branchType, depth: $depth + 1);
+            if ($nested === []) {
+                return $this->yii3DeclaresType(schema: $branch, branchType: $branchType) ? [$branch] : [];
+            }
+            // Keywords beside the nested union narrow every member of it; they are not merged in.
+            foreach (array_keys($branch) as $key) {
+                if (!in_array($key, ['oneOf', 'anyOf', 'title', 'description'], true)) {
+                    return [null];
+                }
+            }
+
+            return $nested;
+        }
+        if ($asserts === []) {
+            return $this->yii3DeclaresType(schema: $branch, branchType: $branchType) ? [$branch] : [];
+        }
+        // An `allOf` member asserts its type and keywords on the branch: merged into one schema, unless a
+        // part cannot be read inline or two parts name one keyword.
+        $merged = [];
+        $readable = true;
+        foreach ([$branch, ...$asserts] as $part) {
+            if (!is_array($part) || array_key_exists('$ref', $part) || is_array($part['oneOf'] ?? null) || is_array($part['anyOf'] ?? null)) {
+                $readable = false;
+
+                continue;
+            }
+            foreach ($part as $key => $value) {
+                if ($key === 'allOf') {
+                    if ($part !== $branch) {
+                        $readable = false;
+                    }
+
+                    continue;
+                }
+                if (array_key_exists($key, $merged) && $merged[$key] !== $value) {
+                    $readable = false;
+                }
+                $merged[$key] = $value;
+            }
+        }
+        if (!$this->yii3DeclaresType(schema: $merged, branchType: $branchType)) {
+            return [];
+        }
+
+        return $readable ? [$merged] : [null];
+    }
+
+    /**
+     * Whether this schema's own `type` is, or lists, the given JSON type.
+     *
+     * @param array<mixed> $schema
+     */
+    private function yii3DeclaresType(array $schema, string $branchType): bool
+    {
+        $declared = $schema['type'] ?? null;
+
+        return $declared === $branchType || (is_array($declared) && in_array($branchType, $declared, true));
+    }
     /**
      * The PHP type with `array` among its members — once: a union of classes beside a list member
      * (`oneOf: [{type: object}, {type: object}, {type: array}]`) already declares one, and a second
@@ -3078,7 +3404,8 @@ PHP;
      * passed a `multipleOf: 2`. Only a bare `$ref`, or one beside annotations that assert nothing
      * (`description`, `title`, …): beside `description: d` the union was left to the component, its
      * object member reduced to `{type: object}`, and `{"quokka": {"crane": "x"}}` passed an integer
-     * `crane`. Other siblings leave the property as it is.
+     * `crane`. Other siblings leave the property as it is. The wrapper `allOf: [{$ref: Mauve}]` is the
+     * same reference: behind it `{"jackal": {"tern": "x"}}` passed an integer `tern`.
      *
      * A member written `{$ref: Hen, properties: {…}}` is spelled out as `allOf: [{$ref: Hen}, {…}]`, the
      * way the same member inline on a property is read: left as the reference it was, the branch went
@@ -3090,13 +3417,21 @@ PHP;
      */
     private function yii3WithUnionComponentInlined(array $propertySchema, string $className): array
     {
-        $ref = $propertySchema['$ref'] ?? null;
+        // The single-member wrapper `allOf: [{$ref: Mauve}]` names the same component: left as it was,
+        // the union stayed the component's and its `allOf`-built object member was cut to `{type: object}`.
+        $ref = $this->referenceOrSingleRefAllOf($propertySchema);
         $nullable = ($propertySchema['nullable'] ?? null) === true;
-        if (!is_string($ref)) {
+        if ($ref === null) {
             return $propertySchema;
         }
+        // The keyword that carries the reference; an `allOf` beside a `$ref` asserts and keeps the property.
+        $carrier = array_key_exists('$ref', $propertySchema) ? '$ref' : 'allOf';
         foreach (array_keys($propertySchema) as $keyword) {
-            if ($keyword !== '$ref' && !in_array($keyword, self::YII3_ANNOTATION_KEYWORDS, true) && !str_starts_with($keyword, 'x-')) {
+            if (
+                $keyword !== $carrier
+                && !in_array($keyword, self::YII3_ANNOTATION_KEYWORDS, true)
+                && !str_starts_with($keyword, 'x-')
+            ) {
                 return $propertySchema;
             }
         }
@@ -3164,6 +3499,55 @@ PHP;
         }
 
         return $schema;
+    }
+
+    /**
+     * The properties whose union holds the decoded array where a class stands in the type — beside an
+     * `array` or `bool` member, or two classes and more (`Umber|array|null`, `Olive|Teal`). Nothing
+     * builds a class there, so an `allOf` anywhere inside is the interpreter's, as under `mixed`: a
+     * member `{type: object, allOf: [{required: [tern]}]}` of a union one property down was cut to
+     * `{type: object}` and matched every object.
+     *
+     * @param array<int, SchemaProperty> $properties
+     * @return array<string, true>
+     */
+    private function yii3HeldDecodedPropertyNames(array $properties): array
+    {
+        $held = [];
+        foreach ($properties as $property) {
+            if ($this->yii3HoldsUnionClassAsArray($property['type']) || $this->yii3IsUnionOfClasses($property['type'])) {
+                $held[$property['openApiName']] = true;
+            }
+        }
+
+        return $held;
+    }
+
+    /**
+     * Whether a property holds a BUILT class beside scalars (`ProbeLynx|int`) and a key count or key
+     * names stand beside its union — `{anyOf: [{type: object, properties: …}, {type: integer}],
+     * maxProperties: 3}`. The class checks its own schema, which has no such keyword, and the interpreter
+     * leaves a built object to it, so an object of four keys passed. Its payload is the built object's
+     * data then, judged against the whole union.
+     *
+     * @param SchemaProperty $property
+     */
+    private function yii3CountsKeysOfABuiltUnionMember(array $property): bool
+    {
+        $constraints = $property['constraints'] ?? [];
+        if (
+            $this->unionClassBesideScalars($property['type']) === null
+            || (!is_array($constraints['oneOf'] ?? null) && !is_array($constraints['anyOf'] ?? null))
+        ) {
+            return false;
+        }
+        foreach (['minProperties', 'maxProperties', 'propertyNames', 'dependentRequired'] as $keyword) {
+            if (array_key_exists($keyword, $constraints)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -3478,8 +3862,9 @@ PHP;
 
     /**
      * The object keywords a union component carries beside its `oneOf`/`anyOf` — `type`, `required`,
-     * `properties` — which judge every member alike. A union checked as its members' list lost them:
-     * `{"plain": {"value": "x", "kind": "mail"}}` passed the component's `value: {type: integer}`.
+     * `properties`, a key count or key names — which judge every member alike. A union checked as its
+     * members' list lost them: `{"plain": {"value": "x", "kind": "mail"}}` passed the component's
+     * `value: {type: integer}`, and an object of two keys passed a `maxProperties: 1` beside the union.
      *
      * @param array<mixed> $union
      * @return array<string, mixed>
@@ -3487,7 +3872,7 @@ PHP;
     private function yii3UnionOwnKeywords(array $union, string $className): array
     {
         $own = [];
-        foreach (['type', 'required', 'properties'] as $keyword) {
+        foreach (['type', 'required', 'properties', 'minProperties', 'maxProperties', 'dependentRequired', 'propertyNames'] as $keyword) {
             if (array_key_exists($keyword, $union)) {
                 $own[$keyword] = $union[$keyword];
             }
@@ -3599,8 +3984,10 @@ PHP;
     /**
      * Whether the property is an enum, or a union of enums and scalars, with no generated class and no
      * `array` among its members — the shapes an array payload could only be handed to the enum for.
+     * `$besideDate` also admits a `DateTimeImmutable` member, whose `#[ToDateTime]` leaves an array as
+     * it came.
      */
-    private function yii3HoldsArrayForEnum(string $type): bool
+    private function yii3HoldsArrayForEnum(string $type, bool $besideDate = false): bool
     {
         if (str_contains($type, '<')) {
             return false;
@@ -3610,7 +3997,10 @@ PHP;
             $member = ltrim($member, '\\');
             if (array_key_exists($member, $this->enumSchemas)) {
                 $hasEnum = true;
-            } elseif (!in_array($member, ['string', 'int', 'float', 'bool', 'null'], true)) {
+            } elseif (
+                !in_array($member, ['string', 'int', 'float', 'bool', 'null'], true)
+                && !($besideDate && $member === 'DateTimeImmutable')
+            ) {
                 return false;
             }
         }

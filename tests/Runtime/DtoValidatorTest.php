@@ -102,6 +102,77 @@ final class BrokenDtoStub implements GeneratedDtoInterface
 }
 
 /**
+ * A generated class as a raw object is judged against: `puffin` a required string, `wren` a required
+ * `nullable` one, `tern` an optional string, `kite` an optional `nullable` one, and `heron` a required
+ * property typed `?string` whose constraints say nothing about null — the PHP type admits it, as the
+ * deserializer reads a required nullable property.
+ */
+final class RawObjectNullStub implements GeneratedDtoInterface
+{
+    public function __construct(
+        public readonly string $puffin,
+        public readonly ?string $wren,
+        public readonly ?string $heron,
+        public readonly ?string $tern = null,
+        public readonly ?string $kite = null,
+    ) {
+    }
+
+    public function toArray(): array
+    {
+        return [];
+    }
+
+    public function jsonSerialize(): mixed
+    {
+        return [];
+    }
+
+    public function toJson(): string
+    {
+        return '{}';
+    }
+
+    public static function getNormalizationMap(): array
+    {
+        $map = [];
+        foreach (['puffin' => [true, false], 'wren' => [true, true], 'heron' => [true, true], 'tern' => [false, true], 'kite' => [false, true]] as $name => [$required, $nullable]) {
+            $map[$name] = [
+                'getter' => 'get' . ucfirst($name),
+                'type' => 'string',
+                'nullable' => $nullable,
+                'metadata' => [
+                    'openApiName' => $name,
+                    'required' => $required,
+                    'constraints' => self::getConstraints()[$name],
+                    'writeOnly' => false,
+                    'readOnly' => false,
+                    'isParameter' => false,
+                ],
+            ];
+        }
+
+        return $map;
+    }
+
+    public static function getAliases(): array
+    {
+        return [];
+    }
+
+    public static function getConstraints(): array
+    {
+        return [
+            'puffin' => ['type' => 'string'],
+            'wren' => ['type' => 'string', 'nullable' => true],
+            'heron' => [],
+            'tern' => ['type' => 'string'],
+            'kite' => ['type' => ['string', 'null']],
+        ];
+    }
+}
+
+/**
  * Unit tests for DtoValidator.
  *
  * Covers every constraint category directly, without going through the deserializer:
@@ -1200,8 +1271,8 @@ final class DtoValidatorTest extends TestCase
             'lowercase t, numeric offset' => ['2024-06-15t12:00:00+02:00', true],
             'fraction, lowercase z' => ['2024-06-15T12:00:00.250z', true],
             'upper case Z' => ['2024-06-15T12:00:00Z', true],
-            'no offset' => ['2024-06-15T12:00:00', false],
-            'space separator, no offset' => ['2024-06-15 12:00:00', false],
+            'no offset (taken, as the deserializer takes it; strict RFC 3339 is a 3.0 candidate)' => ['2024-06-15T12:00:00', true],
+            'space separator, no offset (taken, as the deserializer takes it)' => ['2024-06-15 12:00:00', true],
             'space separator, offset' => ['2024-06-15 12:00:00Z', false],
             'offset without colon' => ['2024-06-15T12:00:00+0200', false],
             'offset hour out of range' => ['2024-06-15T12:00:00+25:00', false],
@@ -3985,5 +4056,38 @@ final class DtoValidatorTest extends TestCase
         self::assertFalse(DtoValidator::admitsObjectContainerOnly(['allOf' => [['minProperties' => 1]]]));
         self::assertFalse(DtoValidator::admitsObjectContainerOnly(['allOf' => [['type' => ['object', 'array']]]]));
         self::assertFalse(DtoValidator::admitsObjectContainerOnly(['anyOf' => [['allOf' => [['minimum' => 1]]], ['type' => 'object']]]));
+    }
+
+    /**
+     * A raw object a class branch is asked about refuses `null` on a property the class does not let
+     * be null, and still takes it where the property admits null. Every null-valued property used to
+     * lose its rules, so `{"puffin": null}` left the class branch undecided and the union accepted.
+     */
+    public function testARawObjectForAClassBranchRefusesNullOnANonNullableProperty(): void
+    {
+        $union = ['oneOf' => [
+            ['type' => 'object', 'required' => ['gibbon'], 'properties' => ['gibbon' => ['type' => 'integer']]],
+            ['x-php-instanceof' => RawObjectNullStub::class],
+            ['type' => 'array', 'items' => ['type' => 'string']],
+        ]];
+        $complete = ['puffin' => 'a', 'wren' => 'b', 'heron' => 'c'];
+
+        self::assertSame([], $this->validator->validate('zebu', $complete, $union));
+        foreach (['puffin', 'tern'] as $refusesNull) {
+            self::assertNotSame(
+                expected: [],
+                actual: $this->validator->validate('zebu', [...$complete, $refusesNull => null], $union),
+                message: $refusesNull,
+            );
+        }
+        foreach (['wren', 'heron', 'kite'] as $takesNull) {
+            self::assertSame(
+                expected: [],
+                actual: $this->validator->validate('zebu', [...$complete, $takesNull => null], $union),
+                message: $takesNull,
+            );
+        }
+        // The same raw object as a `stdClass`, the shape the runtime decodes a body into.
+        self::assertNotSame([], $this->validator->validate('zebu', (object)[...$complete, 'puffin' => null], $union));
     }
 }

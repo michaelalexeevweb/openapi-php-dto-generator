@@ -123,8 +123,10 @@ final class GenerateLaravelDtoTest extends TestCase
         $this->assertStringContainsString('use Illuminate\Validation\Rule;', $article);
         // `array` alone accepts an associative array, so a JSON array needs `list` too.
         $this->assertStringContainsString("'tags' => self::withBlankStringValidation(['sometimes', 'list'])", $article);
-        // The date-time formats are the ones every mode accepts.
-        $this->assertStringContainsString("'date_format:Y-m-d\\TH:i:sP,", $article);
+        // A date-time is judged by the interpreter's own reader (the RFC 3339 shape, then the four shared
+        // patterns), not by a `date_format` round-trip, which refused `z`, `-00:00` and `.5Z`.
+        $this->assertStringContainsString("\$fail('validation.date_format')->translate(['format' => 'Y-m-d\\TH:i:sP'])", $article);
+        $this->assertStringNotContainsString("'date_format:Y-m-d\\TH", $article);
 
         $this->assertNull($this->lintError($target . '/Article.php'));
     }

@@ -1,4 +1,4 @@
-# symfony mode — 77 files, 13999 lines
+# symfony mode — 77 files, 14004 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -5216,6 +5216,24 @@ final class ChainMiddle
     public function getLinks(): array
     {
         return $this->links;
+    }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['links'] = $this->links;
+
+        return $payload;
     }
 }
 
@@ -10828,7 +10846,6 @@ use function ltrim;
 use function method_exists;
 use function preg_match;
 use function preg_replace;
-use function property_exists;
 use function sprintf;
 use function str_contains;
 use function str_ends_with;
@@ -11144,14 +11161,17 @@ final class TestPostRequest
                     $phpProperty = $discriminatorPhpProperty ?? $discriminatorProperty;
                     // The DTO keeps its state private: read the discriminator from the payload it
                     // reports, keyed by the OpenAPI name, and fall back to a public property for a
-                    // hand-written object.
+                    // hand-written object. get_object_vars() lists only what this scope may read:
+                    // property_exists() also answers for a private property of another DTO, and
+                    // reading that one is an Error.
                     $discriminatorPayload = $this->normalizeOpenApiStructuralValue($value);
                     $discriminatorCarrier = is_array($discriminatorPayload) ? $discriminatorPayload : [];
-                    if (!array_key_exists($discriminatorProperty, $discriminatorCarrier) && !property_exists($value, $phpProperty)) {
+                    $readableProperties = get_object_vars($value);
+                    if (!array_key_exists($discriminatorProperty, $discriminatorCarrier) && !array_key_exists($phpProperty, $readableProperties)) {
                         $errors[] = sprintf('%s discriminator property %s is required', $path, $discriminatorProperty);
                     } else {
                         $discriminatorValue = $discriminatorCarrier[$discriminatorProperty]
-                            ?? (property_exists($value, $phpProperty) ? $value->{$phpProperty} : null);
+                            ?? $readableProperties[$phpProperty] ?? null;
                         // A variant whose discriminator is a one-value `enum` holds it as its enum case.
                         if ($discriminatorValue instanceof BackedEnum) {
                             $discriminatorValue = $discriminatorValue->value;
@@ -11498,7 +11518,6 @@ use function is_string;
 use function ltrim;
 use function mb_strlen;
 use function method_exists;
-use function property_exists;
 use function sprintf;
 use function str_ends_with;
 use function str_starts_with;
@@ -11813,14 +11832,17 @@ final class TreeNode
                     $phpProperty = $discriminatorPhpProperty ?? $discriminatorProperty;
                     // The DTO keeps its state private: read the discriminator from the payload it
                     // reports, keyed by the OpenAPI name, and fall back to a public property for a
-                    // hand-written object.
+                    // hand-written object. get_object_vars() lists only what this scope may read:
+                    // property_exists() also answers for a private property of another DTO, and
+                    // reading that one is an Error.
                     $discriminatorPayload = $this->normalizeOpenApiStructuralValue($value);
                     $discriminatorCarrier = is_array($discriminatorPayload) ? $discriminatorPayload : [];
-                    if (!array_key_exists($discriminatorProperty, $discriminatorCarrier) && !property_exists($value, $phpProperty)) {
+                    $readableProperties = get_object_vars($value);
+                    if (!array_key_exists($discriminatorProperty, $discriminatorCarrier) && !array_key_exists($phpProperty, $readableProperties)) {
                         $errors[] = sprintf('%s discriminator property %s is required', $path, $discriminatorProperty);
                     } else {
                         $discriminatorValue = $discriminatorCarrier[$discriminatorProperty]
-                            ?? (property_exists($value, $phpProperty) ? $value->{$phpProperty} : null);
+                            ?? $readableProperties[$phpProperty] ?? null;
                         // A variant whose discriminator is a one-value `enum` holds it as its enum case.
                         if ($discriminatorValue instanceof BackedEnum) {
                             $discriminatorValue = $discriminatorValue->value;
@@ -12170,7 +12192,6 @@ use function is_string;
 use function ltrim;
 use function mb_strlen;
 use function method_exists;
-use function property_exists;
 use function sprintf;
 use function str_ends_with;
 use function str_starts_with;
@@ -12235,50 +12256,7 @@ final class UnionUnderContainer
                     ],
                 ],
             ],
-            'chainAllOf' => [
-                'items' => [
-                    'allOf' => [
-                        [
-                            'type' => 'object',
-                            'required' => [
-                                'links',
-                            ],
-                            'properties' => [
-                                'links' => [
-                                    'type' => 'array',
-                                    'items' => [
-                                        'type' => 'object',
-                                        'required' => [
-                                            'code',
-                                        ],
-                                        'properties' => [
-                                            'code' => [
-                                                'type' => 'string',
-                                                'minLength' => 3,
-                                            ],
-                                            'tags' => [
-                                                'type' => 'array',
-                                                'items' => [
-                                                    'type' => 'object',
-                                                    'required' => [
-                                                        'label',
-                                                    ],
-                                                    'properties' => [
-                                                        'label' => [
-                                                            'type' => 'string',
-                                                            'minLength' => 2,
-                                                        ],
-                                                    ],
-                                                ],
-                                            ],
-                                        ],
-                                    ],
-                                ],
-                            ],
-                        ],
-                    ],
-                ],
-            ],
+            'chainAllOf' => [],
             'listOfUnions' => [
                 'items' => [
                     'anyOf' => [
@@ -12330,8 +12308,12 @@ final class UnionUnderContainer
     #[Ignore]
     private bool $chainProvided = false;
 
+    /**
+     * @var ?array<ChainMiddle>
+     */
     #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
+    #[Assert\Valid]
     #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
     private ?array $chainAllOf = null;
 
@@ -12380,11 +12362,17 @@ final class UnionUnderContainer
         return $this->chainProvided;
     }
 
+    /**
+     * @return ?array<ChainMiddle>
+     */
     public function getChainAllOf(): ?array
     {
         return $this->chainAllOf;
     }
 
+    /**
+     * @param array<ChainMiddle> $chainAllOf
+     */
     public function setChainAllOf(array $chainAllOf): void
     {
         $this->chainAllOf = $chainAllOf;
@@ -12430,6 +12418,8 @@ final class UnionUnderContainer
     /**
      * The DTO in one expression: required properties as in the constructor, optional ones by name.
      * A null optional argument means "not set" — to send an explicit null, call the setter.
+     *
+     * @param ?array<ChainMiddle> $chainAllOf
      */
     public static function create(
         TreeNode $tree,
@@ -12597,14 +12587,17 @@ final class UnionUnderContainer
                     $phpProperty = $discriminatorPhpProperty ?? $discriminatorProperty;
                     // The DTO keeps its state private: read the discriminator from the payload it
                     // reports, keyed by the OpenAPI name, and fall back to a public property for a
-                    // hand-written object.
+                    // hand-written object. get_object_vars() lists only what this scope may read:
+                    // property_exists() also answers for a private property of another DTO, and
+                    // reading that one is an Error.
                     $discriminatorPayload = $this->normalizeOpenApiStructuralValue($value);
                     $discriminatorCarrier = is_array($discriminatorPayload) ? $discriminatorPayload : [];
-                    if (!array_key_exists($discriminatorProperty, $discriminatorCarrier) && !property_exists($value, $phpProperty)) {
+                    $readableProperties = get_object_vars($value);
+                    if (!array_key_exists($discriminatorProperty, $discriminatorCarrier) && !array_key_exists($phpProperty, $readableProperties)) {
                         $errors[] = sprintf('%s discriminator property %s is required', $path, $discriminatorProperty);
                     } else {
                         $discriminatorValue = $discriminatorCarrier[$discriminatorProperty]
-                            ?? (property_exists($value, $phpProperty) ? $value->{$phpProperty} : null);
+                            ?? $readableProperties[$phpProperty] ?? null;
                         // A variant whose discriminator is a one-value `enum` holds it as its enum case.
                         if ($discriminatorValue instanceof BackedEnum) {
                             $discriminatorValue = $discriminatorValue->value;
@@ -12694,16 +12687,6 @@ final class UnionUnderContainer
                     ...$errors,
                     ...$this->validateOpenApiNode($itemValue, $schema['items'], $path . '[' . $index . ']', $depth + 1),
                 ];
-            }
-        }
-
-        if (is_array($schema['allOf'] ?? null)) {
-            foreach ($schema['allOf'] as $branch) {
-                if (!is_array($branch)) {
-                    continue;
-                }
-
-                $errors = [...$errors, ...$this->validateOpenApiNode($value, $branch, $path, $depth + 1)];
             }
         }
 
@@ -12839,8 +12822,10 @@ final class UnionUnderContainer
     }
 
     /**
-     * The types a schema admits through its own `type` and every `allOf` member's: an object branch
-     * spelled `allOf: [{type: object}]` is one as much as `type: object` is. Empty when nothing says.
+     * The types a schema admits through its own `type`, every `allOf` member's, and a nested `oneOf` /
+     * `anyOf` whose members all say: an object branch spelled `allOf: [{type: object}]` or
+     * `oneOf: [{type: object, required: [a]}, {type: object}]` is one as much as `type: object` is.
+     * Empty when nothing says.
      *
      * @return array<array-key, mixed>
      */
@@ -12850,8 +12835,28 @@ final class UnionUnderContainer
             return [];
         }
         $types = is_string($schema['type'] ?? null) ? [$schema['type']] : (is_array($schema['type'] ?? null) ? $schema['type'] : null);
+        $asserted = [];
         foreach (is_array($schema['allOf'] ?? null) ? $schema['allOf'] : [] as $member) {
-            $memberTypes = self::openApiAssertedTypes($member);
+            $asserted[] = self::openApiAssertedTypes($member);
+        }
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            if (!is_array($schema[$keyword] ?? null) || $schema[$keyword] === []) {
+                continue;
+            }
+            // A union admits what any member does — and says nothing once one member says nothing.
+            $unionTypes = [];
+            foreach ($schema[$keyword] as $member) {
+                $memberTypes = self::openApiAssertedTypes($member);
+                if ($memberTypes === []) {
+                    $unionTypes = [];
+
+                    break;
+                }
+                $unionTypes = [...$unionTypes, ...$memberTypes];
+            }
+            $asserted[] = array_values(array_unique($unionTypes));
+        }
+        foreach ($asserted as $memberTypes) {
             if ($memberTypes !== []) {
                 $types = $types === null ? $memberTypes : array_values(array_intersect($types, $memberTypes));
             }

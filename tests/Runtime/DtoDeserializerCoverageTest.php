@@ -830,6 +830,29 @@ final class DtoDeserializerCoverageTest extends TestCase
         $this->assertSame('ok', $dto->name);
     }
 
+    /**
+     * A branch that is a union itself names what ITS branches name — an inline object, a `$ref`
+     * class — where it used to name nothing: an `allOf` member spelled `{oneOf: [object, integer]}`
+     * never let a JSON object in, and one spelled `{oneOf: [string, integer]}` did not keep it out.
+     */
+    public function testANestedUnionBranchNamesTheTypesOfItsBranches(): void
+    {
+        $declared = new ReflectionMethod($this->deserializer, 'declaredBranchTypes');
+        $associative = new ReflectionMethod($this->deserializer, 'allowsAssociativeArray');
+        $object = ['type' => 'object', 'required' => ['gibbon']];
+        $scarlet = ['x-php-instanceof' => self::class];
+
+        $this->assertSame(['object', 'class'], $declared->invoke($this->deserializer, ['oneOf' => [$object, $scarlet]]));
+        $this->assertSame(['class', 'array'], $declared->invoke($this->deserializer, ['anyOf' => [['oneOf' => [$scarlet]], ['type' => 'array']]]));
+        // A branch naming no type admits anything: the union names nothing.
+        $this->assertSame([], $declared->invoke($this->deserializer, ['oneOf' => [$object, ['minLength' => 1]]]));
+
+        $this->assertTrue($associative->invoke($this->deserializer, ['allOf' => [['oneOf' => [$object, ['type' => 'integer']]]]]));
+        $this->assertFalse($associative->invoke($this->deserializer, ['allOf' => [['oneOf' => [['type' => 'string'], ['type' => 'integer']]], ['type' => 'object']]]));
+        // Unchanged: a nested union beside a list member.
+        $this->assertTrue($associative->invoke($this->deserializer, ['oneOf' => [['oneOf' => [$object, $scarlet]], ['type' => 'array']]]));
+    }
+
     public function testIntStringInRangeBoundaries(): void
     {
         $inRange = new ReflectionMethod($this->deserializer, 'intStringInRange');

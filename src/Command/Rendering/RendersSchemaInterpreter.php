@@ -46,6 +46,14 @@ trait RendersSchemaInterpreter
     private array $interpreterPropertyTypes = [];
 
     /**
+     * The RFC 3339 shape of a `format: date-time` string, as the interpreter checks it before its
+     * patterns: an offset (`Z`, `z`, `+HH:MM` of a time of day) after an optional fraction, or one of
+     * the two offset-less spellings every mode agrees on (`T` without a fraction, a space). yii3 also
+     * checks a plain property's raw string against it.
+     */
+    private const string RFC3339_DATE_TIME_PATTERN = '/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}((\.\d+)?(Z|z|[+-]([01]\d|2[0-3]):[0-5]\d))?| \d{2}:\d{2}:\d{2})$/D';
+
+    /**
      * Every `format` the emitted interpreter can actually check, as the match arm that checks it and
      * the helpers that arm needs. A format absent from this map — or present with a `true` arm — is
      * one no mode enforces, which is what `openApiInterpreterChecksFormat()` reports.
@@ -116,6 +124,11 @@ trait RendersSchemaInterpreter
      *                                           Yii3 does not — a union of classes is held as the decoded
      *                                           array there, and its native rules read the keys the payload
      *                                           view does not hold (a `required` name no property declares).
+     * @param bool $readsRawJsonShapes whether the caller can hand the interpreter its payload with every
+     *                                 JSON object of the raw body a `\stdClass`. Laravel can, when the raw
+     *                                 body arrives: a PHP array is then the JSON array it was, and no
+     *                                 `type: object`. The caller says per run, through
+     *                                 `self::$openApiJsonShapesKnown`, whether it did.
      * @return array{consts: string, methods: string}
      */
     private function renderInterpreterBlock(
@@ -127,6 +140,7 @@ trait RendersSchemaInterpreter
         array $recursiveSchemas = [],
         bool $ownsPayloadView = false,
         bool $judgesUnionsAroundNestedDtos = true,
+        bool $readsRawJsonShapes = false,
     ): array {
         if ($constraints === []) {
             return ['consts' => '', 'methods' => ''];
@@ -159,6 +173,7 @@ trait RendersSchemaInterpreter
             // date-time the interpreter meets as a string — a list of lists, a union held as decoded —
             // is judged as leniently as that parser judges the property next to it.
             readsDateTimeLeniently: $payloadIsHydratedObject && !$ownsPayloadView,
+            readsRawJsonShapes: $readsRawJsonShapes,
         );
 
         // The emitted helpers name every class they use in full — `\BackedEnum`, `\stdClass` — and the
@@ -216,6 +231,7 @@ PHP,
         bool $resolvesRecursiveRefs = false,
         bool $judgesUnionsAroundNestedDtos = true,
         bool $readsDateTimeLeniently = false,
+        bool $readsRawJsonShapes = false,
     ): string {
         $hasConst = $this->schemaUsesKeyword($constraints, 'const');
         $hasType = $this->schemaUsesKeyword($constraints, 'type');
@@ -555,14 +571,17 @@ PHP;
                     $phpProperty = $discriminatorPhpProperty ?? $discriminatorProperty;
                     // The DTO keeps its state private: read the discriminator from the payload it
                     // reports, keyed by the OpenAPI name, and fall back to a public property for a
-                    // hand-written object.
+                    // hand-written object. get_object_vars() lists only what this scope may read:
+                    // property_exists() also answers for a private property of another DTO, and
+                    // reading that one is an Error.
                     $discriminatorPayload = $this->normalizeOpenApiStructuralValue($value);
                     $discriminatorCarrier = is_array($discriminatorPayload) ? $discriminatorPayload : [];
-                    if (!array_key_exists($discriminatorProperty, $discriminatorCarrier) && !property_exists($value, $phpProperty)) {
+                    $readableProperties = get_object_vars($value);
+                    if (!array_key_exists($discriminatorProperty, $discriminatorCarrier) && !array_key_exists($phpProperty, $readableProperties)) {
                         $errors[] = sprintf('%s discriminator property %s is required', $path, $discriminatorProperty);
                     } else {
                         $discriminatorValue = $discriminatorCarrier[$discriminatorProperty]
-                            ?? (property_exists($value, $phpProperty) ? $value->{$phpProperty} : null);
+                            ?? $readableProperties[$phpProperty] ?? null;
                         // A variant whose discriminator is a one-value `enum` holds it as its enum case.
                         if ($discriminatorValue instanceof \BackedEnum) {
                             $discriminatorValue = $discriminatorValue->value;
@@ -645,6 +664,25 @@ PHP
 PHP
                 : '';
             $undecidedInit = $usesCheckedByClass ? "\n            \$undecidedBranches = 0;" : '';
+            // Symfony: a class branch carrying its schema written out (`x-php-raw-object`) judges the raw
+            // object the serializer left it against that schema, as `anyOf` does — "is that class"
+            // refused every decoded object, the valid ones included. A built object is still judged by
+            // its class alone.
+            $oneOfRawObject = $this->schemaUsesKeyword($constraints, 'x-php-raw-object')
+                ? <<<'PHP'
+ elseif (
+                        is_array($branch['x-php-raw-object'] ?? null)
+                        && ((is_array($value) && ($value === [] || !array_is_list($value))) || $value instanceof \stdClass)
+                    ) {
+                        $errorsForBranch = $this->validateOpenApiNode($value, $branch['x-php-raw-object'], $path, $depth + 1);
+                        if ($errorsForBranch === []) {
+                            $matchingBranches++;
+                        } else {
+                            $branchErrors = [...$branchErrors, ...$errorsForBranch];
+                        }
+                    }
+PHP
+                : '';
             $noMatchCondition = $usesCheckedByClass ? '$matchingBranches === 0 && $undecidedBranches === 0' : '$matchingBranches === 0';
             $sections[] = <<<PHP
         if (is_array(\$schema['oneOf'] ?? null)) {
@@ -660,7 +698,7 @@ PHP
                     // `{\$ref: X, nullable: true}`: X or null.
                     if ((is_object(\$value) && \$value instanceof \$branchFqcn) || (\$value === null && (\$branch['nullable'] ?? false) === true)) {
                         \$matchingBranches++;
-                    }
+                    }{$oneOfRawObject}
                     continue;
                 }
 
@@ -1354,8 +1392,39 @@ PHP
             // class cannot be told from it and is not judged — the runtime validator's rule. No array
             // is an enum case, and a non-empty list is no object: `[""]` matched `anyOf: [$ref
             // EnumClass, {type: array, items: {minLength: 1}}]` through the class branch.
-            $anyOfClassBranch = $this->schemaUsesKeyword($constraints, 'x-php-instanceof')
+            // Symfony: a class held beside `array` (`array|Pet`) carries its schema written out
+            // (`x-php-raw-object`): the serializer falls back to the array when it cannot build the class,
+            // and such a raw object is judged against that schema instead of passed.
+            $anyOfClassBranch = $this->schemaUsesKeyword($constraints, 'x-php-raw-object')
                 ? <<<'PHP'
+                if (is_string($branchClass = $branch['x-php-instanceof'] ?? null) && $branchClass !== '') {
+                    $branchFqcn = __NAMESPACE__ . '\\' . ltrim($branchClass, '\\');
+                    $rawObject = (is_array($value) && ($value === [] || !array_is_list($value))) || $value instanceof \stdClass;
+                    $nullBranch = $value === null && ($branch['nullable'] ?? false) === true;
+                    if ((is_object($value) && $value instanceof $branchFqcn) || $nullBranch) {
+                        $anyOfMatched = true;
+                        break;
+                    }
+                    if ($rawObject && !enum_exists($branchFqcn)) {
+                        if (!is_array($branch['x-php-raw-object'] ?? null)) {
+                            $anyOfMatched = true;
+                            break;
+                        }
+                        $errorsForBranch = $this->validateOpenApiNode($value, $branch['x-php-raw-object'], $path, $depth + 1);
+                        if ($errorsForBranch === []) {
+                            $anyOfMatched = true;
+                            break;
+                        }
+                        $anyOfErrors = [...$anyOfErrors, ...$errorsForBranch];
+                    }
+                    continue;
+                }
+
+PHP
+                : '';
+            $anyOfClassBranch = $anyOfClassBranch !== '' || !$this->schemaUsesKeyword($constraints, 'x-php-instanceof')
+                ? $anyOfClassBranch
+                : <<<'PHP'
                 if (is_string($branchClass = $branch['x-php-instanceof'] ?? null) && $branchClass !== '') {
                     $branchFqcn = __NAMESPACE__ . '\\' . ltrim($branchClass, '\\');
                     $rawObject = (is_array($value) && ($value === [] || !array_is_list($value))) || $value instanceof \stdClass;
@@ -1367,8 +1436,7 @@ PHP
                     continue;
                 }
 
-PHP
-                : '';
+PHP;
             $anyOfCheckedByClass = $this->schemaUsesKeyword($constraints, 'x-php-checked-by-class')
                 ? <<<'PHP'
                 if (($branch['x-php-checked-by-class'] ?? false) === true) {
@@ -1627,6 +1695,19 @@ PHP
 PHP;
         }
 
+        if ($readsRawJsonShapes) {
+            // Emitted whenever the caller asked for it, so the caller can set it without knowing which
+            // keyword blocks the schema needed.
+            $sections[] = <<<'PHP'
+
+    /**
+     * Whether the payload being judged holds every JSON object of the raw body as a `\stdClass`: a PHP
+     * array is then a JSON array, and no `type: object`. Set by `withValidator()` on every run.
+     */
+    private static bool $openApiJsonShapesKnown = false;
+PHP;
+        }
+
         if ($needsTypeMatcher) {
             $typeTests = [
                 // A JSON `42.0` is an integer per JSON Schema 2020-12 §6.1.1 — a number with a zero
@@ -1638,8 +1719,11 @@ PHP;
                 'array' => 'is_array($value) && array_is_list($value)',
                 // A map is a PHP array by the time a constraint runs, and a dense-integer-key map is
                 // indistinguishable from a list, so any array satisfies `object` here. Only the runtime
-                // deserializer sees the raw JSON and can refuse an array for a `type: object` property.
-                'object' => 'is_array($value) || is_object($value)',
+                // deserializer sees the raw JSON and can refuse an array for a `type: object` property —
+                // and Laravel, once it has put every JSON object of the raw body back as a `\stdClass`.
+                'object' => $readsRawJsonShapes
+                    ? 'is_object($value) || (is_array($value) && !self::$openApiJsonShapesKnown)'
+                    : 'is_array($value) || is_object($value)',
                 'null' => '$value === null',
             ];
             $typeArms = '';
@@ -1715,8 +1799,10 @@ PHP;
     }
 
     /**
-     * The types a schema admits through its own `type` and every `allOf` member's: an object branch
-     * spelled `allOf: [{type: object}]` is one as much as `type: object` is. Empty when nothing says.
+     * The types a schema admits through its own `type`, every `allOf` member's, and a nested `oneOf` /
+     * `anyOf` whose members all say: an object branch spelled `allOf: [{type: object}]` or
+     * `oneOf: [{type: object, required: [a]}, {type: object}]` is one as much as `type: object` is.
+     * Empty when nothing says.
      *
      * @return array<array-key, mixed>
      */
@@ -1726,8 +1812,28 @@ PHP;
             return [];
         }
         $types = is_string($schema['type'] ?? null) ? [$schema['type']] : (is_array($schema['type'] ?? null) ? $schema['type'] : null);
+        $asserted = [];
         foreach (is_array($schema['allOf'] ?? null) ? $schema['allOf'] : [] as $member) {
-            $memberTypes = self::openApiAssertedTypes($member);
+            $asserted[] = self::openApiAssertedTypes($member);
+        }
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            if (!is_array($schema[$keyword] ?? null) || $schema[$keyword] === []) {
+                continue;
+            }
+            // A union admits what any member does — and says nothing once one member says nothing.
+            $unionTypes = [];
+            foreach ($schema[$keyword] as $member) {
+                $memberTypes = self::openApiAssertedTypes($member);
+                if ($memberTypes === []) {
+                    $unionTypes = [];
+
+                    break;
+                }
+                $unionTypes = [...$unionTypes, ...$memberTypes];
+            }
+            $asserted[] = array_values(array_unique($unionTypes));
+        }
+        foreach ($asserted as $memberTypes) {
             if ($memberTypes !== []) {
                 $types = $types === null ? $memberTypes : array_values(array_intersect($types, $memberTypes));
             }
@@ -2769,7 +2875,9 @@ PHP : <<<'PHP'
         // and the patterns below alone let all four through. An RFC 3339 offset (`Z`, `z`, `+HH:MM` of a
         // time of day) after an optional fraction, or one of the two offset-less spellings every mode
         // agrees on (`T` without a fraction, a space).
-        if (preg_match('/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}((\.\d+)?(Z|z|[+-]([01]\d|2[0-3]):[0-5]\d))?| \d{2}:\d{2}:\d{2})$/D', $value) !== 1) {
+        if (preg_match(
+PHP . $this->phpStringLiteral(self::RFC3339_DATE_TIME_PATTERN) . <<<'PHP'
+, $value) !== 1) {
             return false;
         }
         // The four shapes every mode agrees on, and a WARNING check per shape. `createFromFormat()`
@@ -3552,7 +3660,18 @@ PHP;
                             allowScalarKeywords: true,
                             belowContainer: $belowContainer,
                         );
-                        if ($nested !== []) {
+                        // Symfony: an object branch whose `allOf` was left to the class it hydrates into is
+                        // that class's to judge as a whole: `{type: object, allOf: [{required: [hyena]}]}`
+                        // kept only `type: object`, matched every object, and a `oneOf` refused each value of
+                        // the other branch as matching twice. Judged like the same branch without the `type`.
+                        // A scalar branch has no class: its `allOf` is judged where it is kept.
+                        $allOfLeftToClass = $key !== 'allOf'
+                            && $this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY
+                            && ($branch['type'] ?? null) === 'object'
+                            && is_array($branch['allOf'] ?? null)
+                            && $branch['allOf'] !== []
+                            && !array_key_exists('allOf', $nested);
+                        if ($nested !== [] && !$allOfLeftToClass) {
                             $branches[] = $nested;
                         } elseif ($key !== 'allOf') {
                             // Filtered to nothing, a `oneOf`/`anyOf` branch is still an alternative: the
@@ -3658,6 +3777,7 @@ PHP;
                     $filtered[$key] = $value;
                     break;
                 case 'x-php-instanceof':
+                case 'x-php-raw-object':
                 case 'x-php-checked-by-class':
                 case 'x-discriminator-property':
                 case 'x-discriminator-php-property':

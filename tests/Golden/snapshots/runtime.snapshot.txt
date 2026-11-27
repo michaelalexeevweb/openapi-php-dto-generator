@@ -1,4 +1,4 @@
-# runtime mode — 80 files, 23830 lines
+# runtime mode — 80 files, 23839 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -21894,6 +21894,9 @@ final class UnionUnderContainer implements GeneratedDtoInterface, Stringable
     private bool $chainInQuery = false;
     private bool $chainInHeader = false;
     private bool $chainInCookie = false;
+    /**
+     * @var ?array<ChainMiddle>
+     */
     private ?array $chainAllOf;
     private bool $chainAllOfInRequest = false;
     private bool $chainAllOfInPath = false;
@@ -21912,6 +21915,9 @@ final class UnionUnderContainer implements GeneratedDtoInterface, Stringable
     private bool $listOfUnionsInHeader = false;
     private bool $listOfUnionsInCookie = false;
 
+    /**
+     * @param ?array<ChainMiddle> $chainAllOf
+     */
     public function __construct(
         private readonly TreeNode $tree,
         array|UnsetValue|null $chain = UnsetValue::UNSET,
@@ -21977,6 +21983,9 @@ final class UnionUnderContainer implements GeneratedDtoInterface, Stringable
         }
     }
 
+    /**
+     * @return ?array<ChainMiddle>
+     */
     public function getChainAllOf(): ?array
     {
         return $this->chainAllOf;
@@ -22012,7 +22021,7 @@ final class UnionUnderContainer implements GeneratedDtoInterface, Stringable
         return $this->chainAllOfInRequest;
     }
 
-    public function addItemToChainAllOf(mixed $item): void
+    public function addItemToChainAllOf(ChainMiddle $item): void
     {
         if ($this->chainAllOf === null) {
             $this->chainAllOf = [];
@@ -22202,7 +22211,7 @@ final class UnionUnderContainer implements GeneratedDtoInterface, Stringable
                 'writeOnly' => false,
                 'readOnly' => false,
                 'isParameter' => false,
-                'arrayItemType' => '',
+                'arrayItemType' => '?array<ChainMiddle>',
             ],
         ];
         $map['tree'] = [
@@ -22262,7 +22271,7 @@ final class UnionUnderContainer implements GeneratedDtoInterface, Stringable
     {
         $constraints = [];
         $constraints['chain'] = ['type' => 'array', 'items' => ['oneOf' => [['type' => 'object', 'required' => ['links'], 'properties' => ['links' => ['type' => 'array', 'items' => ['type' => 'object', 'required' => ['code'], 'properties' => ['code' => ['type' => 'string', 'minLength' => 3], 'tags' => ['type' => 'array', 'items' => ['type' => 'object', 'required' => ['label'], 'properties' => ['label' => ['type' => 'string', 'minLength' => 2]]]]]]]]]]]];
-        $constraints['chainAllOf'] = ['type' => 'array', 'items' => ['allOf' => [['type' => 'object', 'required' => ['links'], 'properties' => ['links' => ['type' => 'array', 'items' => ['type' => 'object', 'required' => ['code'], 'properties' => ['code' => ['type' => 'string', 'minLength' => 3], 'tags' => ['type' => 'array', 'items' => ['type' => 'object', 'required' => ['label'], 'properties' => ['label' => ['type' => 'string', 'minLength' => 2]]]]]]]]]]]];
+        $constraints['chainAllOf'] = ['type' => 'array'];
         $constraints['listOfUnions'] = ['type' => 'array', 'items' => ['anyOf' => [['type' => 'object', 'required' => ['id', 'name'], 'properties' => ['id' => ['type' => 'integer'], 'name' => ['type' => 'string']]], ['type' => 'string', 'minLength' => 2]]]];
 
         return $constraints;

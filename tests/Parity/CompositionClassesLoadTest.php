@@ -124,6 +124,26 @@ final class CompositionClassesLoadTest extends TestCase
             ]]]],
         ]];
 
+        // A list, a date and a union component of free-form objects: symfony typed the docblock
+        // `array|DateTimeImmutable|array<string, mixed>|Olive` and its native type kept both `array`s.
+        yield 'list, date and an object union component' => ['list, date and an object union component', [
+            // Each member requires a name it does not declare, so symfony holds the value decoded.
+            'Olive' => ['anyOf' => [
+                ['type' => 'object', 'properties' => ['okapi' => ['type' => 'integer', 'multipleOf' => 5]], 'required' => ['stoat', 'okapi']],
+                [
+                    'type' => 'object',
+                    'properties' => ['ocelot' => ['type' => 'string']],
+                    'required' => ['gecko', 'egret'],
+                    'additionalProperties' => ['type' => 'string', 'format' => 'uuid'],
+                ],
+            ]],
+            'Probe' => ['type' => 'object', 'properties' => ['plover' => ['oneOf' => [
+                ['type' => 'array', 'minItems' => 2, 'maxItems' => 2],
+                ['type' => 'string', 'format' => 'date'],
+                ['$ref' => '#/components/schemas/Olive'],
+            ]]]],
+        ]];
+
         // A union member that extends a component: the component is a parent, so it cannot be emitted
         // `final` — `Class PetAnyOf2 cannot extend final class Base`. The parents were listed before the
         // union members were registered, so a member's `allOf` was never counted.

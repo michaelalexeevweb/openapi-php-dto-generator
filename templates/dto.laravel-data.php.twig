@@ -108,12 +108,16 @@ abstract class {{ className }} extends {{ morphBase.dataBase }} implements {{ mo
      * `from()` with the discriminator checked first. laravel-data picks the member class before it
      * validates anything, so an unknown or missing value was `CannotCreateAbstractClass` — a 500 — where
      * the same union nested in another class answers 422. Checked here, it is a 422 on
-     * `{{ morphBase.propertyName|php_doc }}` like any other invalid field.
+     * `{{ morphBase.propertyName|php_doc }}` like any other invalid field. Only through the base: a member
+     * is a class of its own as well, and called on it (`Member::from()`) the union's tag is no rule of
+     * its schema.
      */
     public static function from(mixed ...$payloads): static
     {
-        foreach ($payloads as $payload) {
-            self::assertKnownMember($payload);
+        if (static::class === self::class) {
+            foreach ($payloads as $payload) {
+                self::assertKnownMember($payload);
+            }
         }
 
         return parent::from(...$payloads);
@@ -124,7 +128,9 @@ abstract class {{ className }} extends {{ morphBase.dataBase }} implements {{ mo
      */
     public static function validateAndCreate({{ morphBase.guard.arrayableRef }}|array $payload): static
     {
-        self::assertKnownMember($payload);
+        if (static::class === self::class) {
+            self::assertKnownMember($payload);
+        }
 
         return parent::validateAndCreate($payload);
     }
@@ -339,9 +345,9 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
 {% endif %}
 {% if temporalUnionCast.uncastLiteral is not null %}
      *
-     * A property typed a union of classes is not cast at all: the constructor builds the member the
-     * value matches. The pipe built the FIRST class from every value, and that class's own casts threw
-     * on the other member's fields.
+     * A property typed a union of classes, or one class beside a plain `array`, is not cast at all:
+     * the constructor builds the member the value matches. The pipe built the FIRST class from every
+     * value, and that class's own casts threw on the other member's fields.
 {% endif %}
      */
     public static function pipeline(): {{ temporalUnionCast.pipelineRef }}
@@ -651,7 +657,11 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
             /** @var array<string, mixed> $payload */
             $payload = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
 {% if readsEmptyContainers %}
-            $payload = self::withRawEmptyObjects($payload, $rawBody);
+            $payload = self::withRawJsonObjects($payload, $rawBody);
+{% if readsRawJsonShapes|default(false) %}
+            // Every JSON object is a `\stdClass` now: a PHP array left in the payload is a JSON array.
+            self::$openApiJsonShapesKnown = $rawBody !== null;
+{% endif %}
 {% endif %}
 
             foreach (self::OPENAPI_VALIDATION_CONSTRAINTS['fields'] as $property => $schema) {
@@ -682,9 +692,21 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
             $payload = array_diff_key($payload, array_flip($aliases));
 
 {% endif %}
+{% if readsRawJsonShapes|default(false) %}
+            // The body is a JSON object: with the shapes known, a PHP array is no object any more.
+            $root = self::$openApiJsonShapesKnown ? (object)$payload : $payload;
+            foreach (self::validateOpenApiNode($root, self::OPENAPI_VALIDATION_CONSTRAINTS['object'], 'payload', 0) as $error) {
+{% else %}
             foreach (self::validateOpenApiNode($payload, self::OPENAPI_VALIDATION_CONSTRAINTS['object'], 'payload', 0) as $error) {
+{% endif %}
                 $validator->errors()->add(self::openApiObjectErrorKey($error), str_ends_with($error, '.') ? $error : $error . '.');
             }
+{% endif %}
+{% if readsRawJsonShapes|default(false) %}
+
+            // Hydration asks the interpreter too (which class a union value builds), over the decoded
+            // arrays: there a PHP array is an object again.
+            self::$openApiJsonShapesKnown = false;
 {% endif %}
 {% endif %}
 {% if checksScalarPaths %}
@@ -731,27 +753,27 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
 {% if readsEmptyContainers %}
 
     /**
-     * The payload with every EMPTY JSON object of the raw body a `\stdClass` again. Decoded, `{}` is the
-     * empty PHP array `[]` is, so the interpreter matched `{}` against the `array` member of a union;
-     * as an object it can only be the object.
+     * The payload with every JSON object of the raw body a `\stdClass` again. Decoded, `{}` is the empty
+     * PHP array `[]` is and `{"0": "a"}` the list `["a"]`, so the interpreter matched an object against the
+     * `array` member of a union, and took a JSON array for a `type: object`. Put back, each object is the
+     * object the client sent, and a PHP array left in the payload is a JSON array.
      *
      * @param array<array-key, mixed> $data
      * @return array<array-key, mixed>
      */
-    private static function withRawEmptyObjects(array $data, mixed $raw): array
+    private static function withRawJsonObjects(array $data, mixed $raw): array
     {
         if (!$raw instanceof {{ stdClassRef }} && !is_array($raw)) {
             return $data;
         }
 
         foreach (is_array($raw) ? $raw : get_object_vars($raw) as $key => $member) {
-            if (!array_key_exists($key, $data)) {
+            if (!array_key_exists($key, $data) || !is_array($data[$key])) {
                 continue;
             }
-            if ($member instanceof {{ stdClassRef }} && get_object_vars($member) === [] && $data[$key] === []) {
-                $data[$key] = new {{ stdClassRef }}();
-            } elseif (is_array($data[$key])) {
-                $data[$key] = self::withRawEmptyObjects($data[$key], $member);
+            $data[$key] = self::withRawJsonObjects($data[$key], $member);
+            if ($member instanceof {{ stdClassRef }}) {
+                $data[$key] = (object)$data[$key];
             }
         }
 
@@ -1029,6 +1051,17 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
             return;
         }
 
+{% if readsRawJsonShapes|default(false) %}
+        // Every JSON object of the raw body reached the interpreter as a `\stdClass`: an array refused for
+        // `object` is the JSON array it was, and is reported the way the raw shape check reports one.
+        $leaf = $segments === [] ? $value : ($node[$segments[array_key_last($segments)]] ?? null);
+        if ($claim === 'must be of type object' && is_array($leaf)) {
+            $validator->errors()->add($path, sprintf('%s expects object, got array.', $path));
+
+            return;
+        }
+
+{% endif %}
         $rule = match ($claim) {
             'is required' => 'present',
             'must be of type integer' => 'integer',

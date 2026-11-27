@@ -62,6 +62,12 @@ final class SchemaGrammar
     private const float FORMAT_ITEM_CHANCE = 0.15;
 
     /**
+     * How many unions were drawn: each union node carries its number as `unionId`, so the renderer can
+     * say which of them it spelled as a component ({@see SchemaRenderer::placed()}). It draws nothing.
+     */
+    private int $unionCount = 0;
+
+    /**
      * `$pairs` decides, on a stream of its own, whether a union is drawn as one of two OBJECT members: a
      * seed that draws none keeps the very document it drew before unions of objects were fuzzed.
      * `$variety` does the same for the productions added after (a union or discriminated union as a union
@@ -100,6 +106,10 @@ final class SchemaGrammar
                 : $this->unionNode(depth: $depth, excludedGroups: $excludedGroups),
             'discriminated' => $this->discriminatedNode($depth),
         };
+
+        if ($node['t'] === 'union') {
+            $node['unionId'] = ++$this->unionCount;
+        }
 
         $nullableAllowed = $allowNullable && $kind !== 'null' && !($kind === 'discriminated' && !$this->openApi31);
         $node['nullable'] = $nullableAllowed && $this->random->chance(0.25);

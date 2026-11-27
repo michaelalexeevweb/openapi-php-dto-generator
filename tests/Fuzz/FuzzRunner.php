@@ -82,7 +82,7 @@ final class FuzzRunner
 
     private const string ROW_ARRAY_FOR_OBJECT = 'support matrix: "a JSON array for a `type: object` property"';
 
-    private const string ROW_EMPTY_CONTAINER = 'support matrix: "an EMPTY JSON container: `[]` for an object, `{}` for a list or for the object member of a union beside an `array` member"';
+    private const string ROW_EMPTY_CONTAINER = 'support matrix: "an EMPTY JSON container: `[]` for an object, `{}` for a list or for the object member of a union beside an `array` member, `[]` for the list member of a union beside an object member"';
 
     private const string ROW_SCALAR_FOR_CLASS = 'support matrix: "a scalar for a property typed as a generated class"';
 
@@ -833,9 +833,10 @@ final class FuzzRunner
         if (!is_array($schema) || $depth > 8) {
             return null;
         }
-        if (is_string($schema['$ref'] ?? null)) {
-            $schema = $schemas[substr($schema['$ref'], strlen('#/components/schemas/'))] ?? [];
-            if (!is_array($schema)) {
+        // Follow a chain of component aliases to its end: a cycle, or a hop to no schema, matches no row.
+        for ($hops = 0; is_string($schema['$ref'] ?? null); $hops++) {
+            $schema = $schemas[substr($schema['$ref'], strlen('#/components/schemas/'))] ?? null;
+            if (!is_array($schema) || $hops >= 16) {
                 return null;
             }
         }
@@ -1209,9 +1210,13 @@ final class FuzzRunner
         if (!is_array($schema) || $depth > 16) {
             return false;
         }
-        // An enum member is no class an object is built into: sorted in with the classes, one whose name
-        // sorts first matched no object member and the pair went untagged.
-        $classes = array_values(array_filter($classes, static fn(string $class): bool => !enum_exists($class)));
+        // An enum member, or a built-in class such as the `DateTimeImmutable` of a `format: date-time`
+        // member, is no class an object of the pair is built into: sorted in with the classes, one whose
+        // name sorts first matched no object member and the pair went untagged (seeds 22009, 32007).
+        $classes = array_values(array_filter(
+            array: $classes,
+            callback: static fn(string $class): bool => !enum_exists($class) && class_exists($class) && !(new ReflectionClass($class))->isInternal(),
+        ));
         if ($value instanceof stdClass && $classes !== []) {
             $members = self::objectMembers(schema: $schema, schemas: $schemas, depth: 0);
             $class = $classes[0];
@@ -1291,7 +1296,8 @@ final class FuzzRunner
     }
 
     /**
-     * The object-shaped members of the `anyOf` / `oneOf` the schema is, behind `$ref` hops.
+     * The object-shaped members of the `anyOf` / `oneOf` the schema is, behind `$ref` hops. A bare
+     * nested union is read as its members, as the generator flattens it into the PHP union.
      *
      * @param array<string, mixed> $schemas
      * @return array<int, array<string, mixed>>
@@ -1304,8 +1310,8 @@ final class FuzzRunner
                 continue;
             }
             $members = array_values(array_filter(
-                array: $schema[$keyword],
-                callback: static fn(mixed $member): bool => is_array($member) && self::isObjectShaped(schema: $member, schemas: $schemas, depth: 0),
+                array: self::flattenedMembers(members: $schema[$keyword], depth: 0),
+                callback: static fn(array $member): bool => self::isObjectShaped(schema: $member, schemas: $schemas, depth: 0),
             ));
             if (count($members) >= 2) {
                 return $members;
@@ -1313,6 +1319,37 @@ final class FuzzRunner
         }
 
         return [];
+    }
+
+    /**
+     * The members of a union with every bare nested `anyOf` / `oneOf` — no `$ref`, `type`, `properties`,
+     * `allOf` or `discriminator` of its own — replaced by its members, recursively. A nested union with
+     * a discriminator stays one member: the generator does not flatten it either.
+     *
+     * @param array<mixed> $members
+     * @return array<int, array<string, mixed>>
+     */
+    private static function flattenedMembers(array $members, int $depth): array
+    {
+        $flattened = [];
+        foreach ($members as $member) {
+            if (!is_array($member)) {
+                continue;
+            }
+            $nested = is_array($member['anyOf'] ?? null) ? $member['anyOf'] : ($member['oneOf'] ?? null);
+            $bare = is_array($nested) && $depth < 8;
+            foreach (['$ref', 'type', 'properties', 'allOf', 'discriminator'] as $keyword) {
+                $bare = $bare && !array_key_exists($keyword, $member);
+            }
+            if ($bare && !(array_key_exists('anyOf', $member) && array_key_exists('oneOf', $member))) {
+                $flattened = [...$flattened, ...self::flattenedMembers(members: $nested, depth: $depth + 1)];
+
+                continue;
+            }
+            $flattened[] = $member;
+        }
+
+        return $flattened;
     }
 
     /**

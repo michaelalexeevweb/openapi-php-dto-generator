@@ -13,7 +13,6 @@ use JsonException;
 use JsonSerializable;
 use OpenapiPhpDtoGenerator\Contract\DtoDeserializerInterface;
 use OpenapiPhpDtoGenerator\Contract\DtoValidatorInterface;
-use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Contract\JsonShapeAwareValidatorInterface;
 use PhpToken;
 use ReflectionClass;
@@ -2303,7 +2302,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
      *
      * @param array<array-key, mixed> $unionConstraints
      */
-    private function missingUndeclaredRequiredName(string $typeName, array $unionConstraints, mixed $rawValue): ?string
+    private function missingUndeclaredRequiredName(string $typeName, array $unionConstraints, mixed $rawValue, int $depth = 0): ?string
     {
         $fields = $rawValue instanceof stdClass ? get_object_vars($rawValue) : $rawValue;
         if (!is_array($fields)) {
@@ -2312,6 +2311,18 @@ final class DtoDeserializer implements DtoDeserializerInterface
         foreach (['oneOf', 'anyOf'] as $keyword) {
             foreach (is_array($unionConstraints[$keyword] ?? null) ? $unionConstraints[$keyword] : [] as $branch) {
                 $branchClass = is_array($branch) ? ($branch['x-php-instanceof'] ?? null) : null;
+                // The member may stand in a union nested in this one (`unionMembersFromConstraints()`).
+                if (is_array($branch) && $branchClass === null && $depth < self::MAX_UNION_BRANCH_DEPTH) {
+                    $nestedName = $this->missingUndeclaredRequiredName(
+                        typeName: $typeName,
+                        unionConstraints: $branch,
+                        rawValue: $rawValue,
+                        depth: $depth + 1,
+                    );
+                    if ($nestedName !== null) {
+                        return $nestedName;
+                    }
+                }
                 if (!is_string($branchClass) || ltrim($branchClass, '\\') !== ltrim($typeName, '\\')) {
                     continue;
                 }
@@ -2415,12 +2426,39 @@ final class DtoDeserializer implements DtoDeserializerInterface
         if (!interface_exists($typeName)) {
             return null;
         }
-        $branches = is_array($constraints['oneOf'] ?? null) ? $constraints['oneOf'] : ($constraints['anyOf'] ?? null);
+        $keyword = is_array($constraints['oneOf'] ?? null) ? 'oneOf' : 'anyOf';
+        $branches = is_array($constraints[$keyword] ?? null) ? $constraints[$keyword] : [];
         $members = [];
-        foreach (is_array($branches) ? $branches : [] as $branch) {
-            $member = is_array($branch) ? ($branch['x-php-instanceof'] ?? null) : null;
-            if (is_string($member) && is_subclass_of($member, $typeName)) {
-                $members[] = $member;
+        foreach ($branches as $index => $branch) {
+            if (!is_array($branch)) {
+                continue;
+            }
+            $member = $branch['x-php-instanceof'] ?? null;
+            if (is_string($member)) {
+                if (is_subclass_of($member, $typeName)) {
+                    $members[] = $member;
+                }
+
+                continue;
+            }
+            // A branch that is itself a union — `oneOf: [{anyOf: [is Amber, is Teal]}, is Scarlet]` —
+            // holds members too. Read only where no direct member stood beside it, Amber and Teal were
+            // never tried once Scarlet was found: a payload only they accept was refused, and one Scarlet
+            // accepted as well was built as Scarlet, the rest dropped. Its members count as ONE branch
+            // when it is an `anyOf` (the `x-php-union-members` the generator writes for the same union
+            // on a property); a nested `oneOf` keeps them apart, two of them matching being a refusal.
+            $nested = $depth < self::MAX_UNION_BRANCH_DEPTH
+                ? $this->unionMembersFromConstraints(typeName: $typeName, constraints: $branch, depth: $depth + 1)
+                : null;
+            if ($nested === null) {
+                continue;
+            }
+            $members = [...$members, ...$nested['members']];
+            if (!$nested['exactlyOne'] && count($nested['members']) > 1 && !array_key_exists('x-php-union-members', $branch)) {
+                $constraints[$keyword][$index]['x-php-union-members'] = array_map(
+                    callback: static fn(string $nestedMember): string => ltrim($nestedMember, '\\'),
+                    array: $nested['members'],
+                );
             }
         }
         if ($members !== []) {
@@ -2429,12 +2467,10 @@ final class DtoDeserializer implements DtoDeserializerInterface
         if ($depth >= self::MAX_UNION_BRANCH_DEPTH) {
             return null;
         }
-        foreach (['allOf', 'oneOf', 'anyOf'] as $keyword) {
-            foreach (is_array($constraints[$keyword] ?? null) ? $constraints[$keyword] : [] as $branch) {
-                $nested = is_array($branch) ? $this->unionMembersFromConstraints(typeName: $typeName, constraints: $branch, depth: $depth + 1) : null;
-                if ($nested !== null) {
-                    return $nested;
-                }
+        foreach (is_array($constraints['allOf'] ?? null) ? $constraints['allOf'] : [] as $branch) {
+            $nested = is_array($branch) ? $this->unionMembersFromConstraints(typeName: $typeName, constraints: $branch, depth: $depth + 1) : null;
+            if ($nested !== null) {
+                return $nested;
             }
         }
 
@@ -3867,24 +3903,10 @@ final class DtoDeserializer implements DtoDeserializerInterface
             ? 'a date in Y-m-d format or a valid date-time (e.g. 2026-03-10 or 2026-03-10T12:00:00+00:00)'
             : 'a valid date-time (e.g. 2026-03-10T12:00:00+00:00)';
 
-        // Reject structural mismatches before createFromFormat: it silently accepts trailing characters.
-        if (preg_match('/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/D', $value) !== 1) {
-            throw new RuntimeException(
-                message: $this->finalizeParamMessage("param \"{$paramPath}\" expects {$expected}, got \"{$value}\""),
-            );
-        }
-
-        // date-time: try known RFC3339/ISO8601 formats; rejects relative strings like "now", "+1 year".
-        foreach (GeneratedDtoInterface::DATE_TIME_FORMATS as $format) {
-            $dt = DateTimeImmutable::createFromFormat($format, $value);
-            // createFromFormat rolls overflowing components forward (e.g. Feb 30 → Mar 2) and
-            // only flags it via warnings — reject those so invalid calendar dates aren't
-            // silently accepted/mutated.
-            $errors = DateTimeImmutable::getLastErrors();
-            $hasWarnings = $errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0);
-            if ($dt !== false && !$hasWarnings) {
-                return $dt;
-            }
+        // One reader with the validator: a value is never taken here and refused there, or the reverse.
+        $parsed = DtoServiceSupport::parseDateTime($value);
+        if ($parsed !== null) {
+            return $parsed;
         }
 
         throw new RuntimeException(
@@ -4030,21 +4052,13 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
         $constraints = $this->resolveOpenApiConstraints($reflection);
         $fieldConstraints = $constraints[$paramName] ?? null;
-        if (is_array($fieldConstraints)) {
-            if (array_key_exists('nullable', $fieldConstraints)) {
-                return $fieldConstraints['nullable'] === true;
-            }
-            // OpenAPI 3.1: type: [string, null]
-            $typeConstraint = $fieldConstraints['type'] ?? null;
-            if ($typeConstraint === 'null' || (is_array($typeConstraint) && in_array('null', $typeConstraint, true))) {
-                return true;
-            }
-            // A `oneOf` / `anyOf` member that admits null — `{type: number, nullable: true}`, `{type: null}`
-            // — admits it for the union. An OPTIONAL property was read as "just optional" and its explicit
-            // null refused as `expects string, got null`, where the same union on a required one took it.
-            if ($this->aUnionMemberAdmitsNull($fieldConstraints)) {
-                return true;
-            }
+        // `nullable`, a `null` type (OpenAPI 3.1 `type: [string, null]`), or a `oneOf` / `anyOf` member
+        // that admits null — `{type: number, nullable: true}`, `{type: null}`. An OPTIONAL property was
+        // read as "just optional" and its explicit null refused as `expects string, got null`, where the
+        // same union on a required one took it.
+        $constraintsVerdict = is_array($fieldConstraints) ? DtoServiceSupport::constraintsAdmitNull($fieldConstraints) : null;
+        if ($constraintsVerdict !== null) {
+            return $constraintsVerdict;
         }
 
         $requiredMethodName = 'is' . ucfirst($paramName) . 'Required';
@@ -4056,33 +4070,6 @@ final class DtoDeserializer implements DtoDeserializerInterface
         // not required + PHP-nullable → just optional → null is NOT valid in JSON.
         return $this->invokeRequiredMethod($reflection, $requiredMethodName)
             ?? $phpAllowsNull;
-    }
-
-    /**
-     * Whether a member of the schema's `oneOf` / `anyOf` admits null: OpenAPI 3.0 `nullable: true`, or a
-     * `null` type of its own.
-     *
-     * @param array<array-key, mixed> $fieldConstraints
-     */
-    private function aUnionMemberAdmitsNull(array $fieldConstraints): bool
-    {
-        foreach (['oneOf', 'anyOf'] as $keyword) {
-            $members = $fieldConstraints[$keyword] ?? null;
-            if (!is_array($members)) {
-                continue;
-            }
-            foreach ($members as $member) {
-                if (!is_array($member)) {
-                    continue;
-                }
-                $type = $member['type'] ?? null;
-                if (($member['nullable'] ?? false) === true || $type === 'null' || (is_array($type) && in_array('null', $type, true))) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
     }
 
     /**
@@ -5054,6 +5041,23 @@ final class DtoDeserializer implements DtoDeserializerInterface
                     return $memberTypes;
                 }
             }
+            // A schema that is a union itself names what its branches name, the class of a `$ref`
+            // branch included. Read as naming nothing, `allOf: [{oneOf: [{type: object}, {type:
+            // integer}]}]` never saw its object member. A branch naming no type admits anything, so
+            // the union then names nothing either.
+            $unionTypes = [];
+            foreach (['oneOf', 'anyOf'] as $keyword) {
+                foreach (is_array($schema[$keyword] ?? null) ? $schema[$keyword] : [] as $branch) {
+                    $branchTypes = is_array($branch) ? $this->declaredBranchTypes($branch, $depth + 1) : [];
+                    if ($branchTypes === []) {
+                        return [];
+                    }
+                    $unionTypes = [...$unionTypes, ...$branchTypes];
+                }
+            }
+            if ($unionTypes !== []) {
+                return array_values(array_unique($unionTypes));
+            }
         }
 
         return [];
@@ -5104,7 +5108,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
      * lists, took `[1, 2]` for an object and wrote it back as `{"0":1,"1":2}`. The RAW value still
      * knows, because a body decoded here keeps every JSON object a `stdClass` (see
      * `$jsonShapesKnown`); a value handed over already decoded does not, and is left alone. Only
-     * `type` is read, walking `items`, `prefixItems`, `properties` and `additionalProperties`.
+     * `type` is read, walking `items`, `prefixItems`, `properties` and `additionalProperties`, and
+     * through composition: every `allOf` member applies, and a `oneOf`/`anyOf` refuses only when no
+     * branch takes the raw shape — see {@see compositionListsWhereObjectsBelong()}. Not read, an
+     * object below a union member (`oneOf: [{type: array, items: {type: object}}, {type: null}]`)
+     * took `[[1, 2]]` and wrote it back unchanged. A `$ref` arrives already inlined in the field
+     * constraints, so the walk needs no resolver.
      *
      * @param array<array-key, mixed> $constraints
      * @return list<string>
@@ -5115,11 +5124,91 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return [];
         }
 
-        if (is_array($value)) {
-            if (DtoServiceSupport::admitsObjectContainerOnly($constraints)) {
-                return [$this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'object', value: $value)];
-            }
+        if (is_array($value) && DtoServiceSupport::admitsObjectContainerOnly($constraints)) {
+            return [$this->expectsTypeMessage(paramPath: $paramPath, expectedType: 'object', value: $value)];
+        }
 
+        if (!is_array($value) && !$value instanceof stdClass) {
+            return [];
+        }
+
+        return array_values(array_unique([
+            ...$this->compositionListsWhereObjectsBelong(value: $value, constraints: $constraints, paramPath: $paramPath, depth: $depth),
+            ...$this->containerListsWhereObjectsBelong(value: $value, constraints: $constraints, paramPath: $paramPath, depth: $depth),
+        ]));
+    }
+
+    /**
+     * The composition half of {@see listsWhereObjectsBelong()}: an `allOf` member applies to the
+     * whole value, so each one's errors count. A `oneOf`/`anyOf` is satisfied by one branch: a
+     * branch that admits the raw container (a JSON array for a list, a JSON object for a
+     * `stdClass`; a branch naming no `type` admits both) and finds nothing wrong below it accepts
+     * the value — `[{type: array}, …]` or `[{type: array, items: {type: array}}, …]` takes `[[1, 2]]`.
+     * Only when every admitting branch finds a misplaced list are the first one's errors reported. A
+     * container no branch admits is left to the cast, which names the union mismatch itself.
+     *
+     * @param array<array-key, mixed>|stdClass $value
+     * @param array<array-key, mixed> $constraints
+     * @return list<string>
+     */
+    private function compositionListsWhereObjectsBelong(array|stdClass $value, array $constraints, string $paramPath, int $depth): array
+    {
+        $errors = [];
+        $allOf = $constraints['allOf'] ?? null;
+        if (is_array($allOf)) {
+            foreach ($allOf as $member) {
+                if (is_array($member)) {
+                    $errors = [
+                        ...$errors,
+                        ...$this->listsWhereObjectsBelong(value: $value, constraints: $member, paramPath: $paramPath, depth: $depth + 1),
+                    ];
+                }
+            }
+        }
+
+        $container = is_array($value) ? 'array' : 'object';
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            $branches = $constraints[$keyword] ?? null;
+            if (!is_array($branches)) {
+                continue;
+            }
+            $refusals = null;
+            foreach ($branches as $branch) {
+                if (!is_array($branch)) {
+                    continue;
+                }
+                $type = $branch['type'] ?? null;
+                $types = is_string($type) ? [$type] : (is_array($type) ? $type : null);
+                if ($types !== null && !in_array($container, $types, true)) {
+                    continue;
+                }
+                $branchErrors = $this->listsWhereObjectsBelong(value: $value, constraints: $branch, paramPath: $paramPath, depth: $depth + 1);
+                if ($branchErrors === []) {
+                    $refusals = null;
+
+                    break;
+                }
+                $refusals ??= $branchErrors;
+            }
+            if ($refusals !== null) {
+                $errors = [...$errors, ...$refusals];
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
+     * The structural half of {@see listsWhereObjectsBelong()}: the items of a list, the members of
+     * an object.
+     *
+     * @param array<array-key, mixed>|stdClass $value
+     * @param array<array-key, mixed> $constraints
+     * @return list<string>
+     */
+    private function containerListsWhereObjectsBelong(array|stdClass $value, array $constraints, string $paramPath, int $depth): array
+    {
+        if (is_array($value)) {
             $items = $constraints['items'] ?? null;
             $prefixItems = $constraints['prefixItems'] ?? null;
             if (!is_array($items) && !is_array($prefixItems)) {
@@ -5138,10 +5227,6 @@ final class DtoDeserializer implements DtoDeserializerInterface
             }
 
             return $errors;
-        }
-
-        if (!$value instanceof stdClass) {
-            return [];
         }
 
         $properties = $constraints['properties'] ?? null;

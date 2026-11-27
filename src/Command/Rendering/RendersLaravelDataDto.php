@@ -114,7 +114,11 @@ trait RendersLaravelDataDto
                 // base's type: a member typing its one-value `enum` tag as its own enum got the raw
                 // string from the payload and died in the constructor, a 500 on every valid payload.
                 // Its rule still holds the value to the member's tag.
-                $param['declaredType'] = $this->laravelDataMorphDiscriminatorType($morphBase, $namespace);
+                $param['declaredType'] = $this->laravelDataMorphDiscriminatorType(
+                    baseClass: $morphBase,
+                    namespace: $namespace,
+                    useStatements: $useStatements,
+                );
                 $param['parameterType'] = $param['declaredType'];
                 $parentArguments[] = $param['name'];
             }
@@ -258,12 +262,20 @@ trait RendersLaravelDataDto
         // Beside a date (`DateTimeImmutable|Olive|Teal`) the date list above already keeps every
         // non-string away from the cast, and the string a date arrives as still needs it: left out
         // of the cast altogether, the raw string reached the constructor, a `TypeError` 500.
+        // ONE class beside a plain `array` (`array|Heron`) is built by the constructor too, and only
+        // from the object the class accepts: the pipe built Heron from every object, so `{"yak": 1,
+        // "egret": "x"}` the free-form member takes died on Heron's `int $egret`, and `{"yak": 1,
+        // "llama": 3}` came back as Heron's `{"llama": "3"}`.
         $uncastUnionNames = [];
         foreach ($properties as $property) {
             if (in_array($property['name'], $temporalUnionNames, true)) {
                 continue;
             }
-            if ($this->laravelUndiscriminatedUnionClasses($property) !== [] || $this->laravelInlineDiscriminator($property) !== null) {
+            if (
+                $this->laravelUndiscriminatedUnionClasses($property) !== []
+                || $this->laravelInlineDiscriminator($property) !== null
+                || ($this->unionHasArrayMember($property['type']) && $this->laravelDataUnionClassToBuild($property['type']) !== null)
+            ) {
                 $uncastUnionNames[] = $property['name'];
             }
         }
@@ -307,14 +319,15 @@ trait RendersLaravelDataDto
 
         $interpreterConstraints = $this->laravelInterpreterConstraints($properties, $className);
         $recursiveSchemas = array_filter($this->laravelRecursiveFolds, static fn(mixed $fold): bool => $fold !== []);
-        $interpreter = $this->renderLaravelInterpreterBlock(
-            constraints: $interpreterConstraints,
-            recursiveSchemas: $recursiveSchemas,
-        );
         $readsEmptyContainers = $this->laravelReadsEmptyContainers(
             className: $className,
             interpreterConstraints: $interpreterConstraints,
             recursiveSchemas: $recursiveSchemas,
+        );
+        $interpreter = $this->renderLaravelInterpreterBlock(
+            constraints: $interpreterConstraints,
+            recursiveSchemas: $recursiveSchemas,
+            readsRawBody: $readsEmptyContainers,
         );
         // A request body is an object, and only the raw body still says whether `[]` was sent for it.
         $rootIsObject = array_key_exists($className, $this->requestPayloadClasses)
@@ -394,6 +407,7 @@ trait RendersLaravelDataDto
             ...$nestedVars,
             'rootIsObject' => $rootIsObject,
             'readsEmptyContainers' => $readsEmptyContainers,
+            'readsRawJsonShapes' => $interpreter['readsRawJsonShapes'],
             'unionMembers' => null,
             'interfaceExtends' => [],
             'discriminatorProperty' => null,
@@ -448,7 +462,11 @@ trait RendersLaravelDataDto
             );
         }
 
-        $propertyType = $this->laravelDataMorphDiscriminatorType($className, $namespace);
+        $propertyType = $this->laravelDataMorphDiscriminatorType(
+            baseClass: $className,
+            namespace: $namespace,
+            useStatements: $useStatements,
+        );
         $enumTyped = false;
         foreach ($this->getSchemaProperties($className) as $baseProperty) {
             if ($baseProperty['openApiName'] !== $propertyName) {
@@ -574,17 +592,52 @@ trait RendersLaravelDataDto
      * the property — a discriminator the base types as an enum is that enum in every member, and
      * `parent::__construct()` handing it to a `string` was a TypeError — and `string` for a union base,
      * which declares no properties of its own.
+     *
+     * `|Optional` beside it where a member does not require the discriminator: the member is a class of
+     * its own too, and used on its own (`wolf: {$ref: Kit}`, or as the root class) it may come without
+     * the tag. Its constructor takes `string|Optional $kind = new Optional()` and forwards it, and a
+     * plain `string` in the base was a TypeError — a 500 for a payload the member's own schema accepts.
+     * Through the base the tag is still required: `from()` checks it before a member is chosen.
+     *
+     * @param array<int, string> $useStatements
      */
-    private function laravelDataMorphDiscriminatorType(string $baseClass, string $namespace): string
+    private function laravelDataMorphDiscriminatorType(string $baseClass, string $namespace, array &$useStatements): string
     {
         $propertyName = $this->discriminatorSchemas[$baseClass]['propertyName'] ?? null;
+        $type = 'string';
         foreach ($this->getSchemaProperties($baseClass) as $baseProperty) {
             if ($baseProperty['openApiName'] === $propertyName) {
-                return $this->resolveLaravelDataParam($baseProperty, $namespace)['declaredType'];
+                $param = $this->resolveLaravelDataParam($baseProperty, $namespace);
+                if ($param['tracksPresence']) {
+                    // Already `…|Optional`, and imported with the base's own properties.
+                    return $param['declaredType'];
+                }
+                $type = $param['declaredType'];
+                break;
+            }
+        }
+        if ($type === self::LARAVEL_DATA_UNTYPED || !$this->laravelDataMorphMemberMayOmitDiscriminator($baseClass)) {
+            return $type;
+        }
+
+        return $type . '|' . $this->libraryClassRef('Spatie\LaravelData\Optional', $namespace, $useStatements);
+    }
+
+    /**
+     * Whether a member of the morph base declares the discriminator without requiring it.
+     */
+    private function laravelDataMorphMemberMayOmitDiscriminator(string $baseClass): bool
+    {
+        $propertyName = $this->discriminatorSchemas[$baseClass]['propertyName'] ?? null;
+        foreach (array_unique(array_values($this->discriminatorSchemas[$baseClass]['mapping'] ?? [])) as $memberClass) {
+            foreach ($this->getSchemaProperties($memberClass) as $memberProperty) {
+                if ($memberProperty['openApiName'] === $propertyName && !$this->propertyIsRequiredOnInput($memberProperty)) {
+                    return true;
+                }
             }
         }
 
-        return 'string';
+        return false;
     }
 
     /**

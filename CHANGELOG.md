@@ -3,6 +3,73 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.163 — 2026-11-27
+
+- fuzz rounds 17–26: 89 fixes
+- fresh fuzz runs: 0–3 findings
+- nested discriminator crash fixed
+- runtime date-time: one lenient reader
+- annotated $ref members kept
+- union with sibling keywords enforced
+- JSON list refused as object
+- nested oneOf built DTO judged right
+
+Ten fuzz rounds on the improved harness: 66 root causes, 89 fixes, each with a test that failed before, and
+the framework limits they met documented. Fresh runs on new seeds went from 18 findings to 5, 8, 6, 1, 11, 4,
+4, 15, 2, 0, 3 and 2 on 96 seeds each — the last three only in rare nested-union shapes.
+
+**Regenerate after upgrading, in every mode.**
+
+Rounds 20–26:
+
+- every mode: a union member written as `{$ref, title / description}` keeps the reference (a nullable target
+  took null, discriminated unions with annotated members broke, laravel crashed); `allOf: [{$ref X,
+  description}]` is X;
+- every mode: `allOf: [union, {maxProperties | minimum | …}]` and a union component with an asserting
+  keyword beside it are that union plus the keyword — they were an empty class that dropped the data;
+  `allOf: [$ref U]` with U a union of objects no longer renders a class extending an interface;
+- every mode: a scalar member of a nested `oneOf` spelled as `$ref` with an `enum` or bounds beside it is a
+  scalar member — a union of it and classes refused every scalar (laravel crashed); a discriminator whose tag
+  property is untyped no longer crashes on reading another member's private property (it was a 500 in
+  symfony);
+- every mode: a JSON list sent where an object member of a nested union belongs is refused (it passed as a
+  map); runtime refuses it below a union's list or map member too;
+- runtime: a built DTO of one `oneOf` member is judged against its sibling with the sibling's property rules,
+  so a payload only one member accepts is no longer refused as matching both; an enum `$ref` property of an
+  object member held as decoded data is checked; a raw object class branch admits null only where declared;
+- symfony: a branch `$ref` to a pure alias component, a union of classes below `allOf`, and an enum beside a
+  `$ref` inside a held union are checked;
+- laravel, laravel-data: a discriminator base composed with `allOf` links its mapping targets; `allOf`
+  members that are unions are kept; an object inside a nested union beside a list is written back as an
+  object;
+- yii3: a nullable union of an enum and a date no longer crashes on an object payload; a numeric member
+  nested beside a date checks `minimum`, `maximum` and `multipleOf`; a union interface keeps its key-count
+  rules.
+
+Rounds 17–19:
+
+Date-time (runtime): the deserializer (a typed `DateTimeImmutable` property) and `DtoValidator` (a value held
+as decoded data) now read `format: date-time` with one reader, `DtoServiceSupport::parseDateTime()`, so a value
+is no longer accepted in one place and refused in the other. The reading stays lenient where clients rely on
+it: a space separator and a missing offset are accepted (2.15.161 had refused them in `DtoValidator` only); a
+lowercase `t` / `z` is accepted (RFC 3339 §5.6); an offset out of range (`+25:00`, `+02:60`) or without its
+colon is refused. A strict RFC 3339 reading is left for 3.0.
+
+- every mode: a union component member `{allOf: [$ref X], nullable: true}` keeps X — the union lost it, and
+  runtime refused objects as "Unsupported type"; a one-member `allOf` with annotation siblings around a list
+  item or a union is that member; date alias chains are followed;
+- runtime: a union component whose branch is itself a nested `anyOf` / `oneOf` builds that branch's members,
+  and a payload two members accept under `oneOf` is refused again (it was built as one and a key dropped);
+- symfony: `format: date` beside a class member is read strictly; `allOf: [$ref U]` and list items
+  `allOf: [$ref U]` with U a union are checked (they were not checked at all); a list component whose items are
+  a wrapped union checks them;
+- laravel, laravel-data: a union component with a nested union branch is built as the member the payload
+  matches (it was a 500); date-time on a plain property uses the same reader as inside a union, so a
+  lowercase `z`, `-00:00` and fractions of any length are accepted;
+- yii3: a non-object item of a list of DTOs is refused (it was dropped silently); RFC 3339 offsets are checked
+  (`+0200`, `+25:00`, `EST` were accepted); a timestamp union checks its numeric branch's `multipleOf` and
+  3.0 exclusive bounds.
+
 ## 2.15.162 — 2026-11-26
 
 - fuzz round sixteen: 27 fixes

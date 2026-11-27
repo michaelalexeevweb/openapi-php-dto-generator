@@ -62,9 +62,12 @@ final readonly class FuzzSpec
         $cases = [];
         foreach ($random->sample(SchemaGrammar::PROPERTY_NAMES, $propertyCount) as $name) {
             $node = $grammar->node(depth: 1);
+            $schema = $renderer->render($node);
+            // Whether a union is a component is known once rendered; the draws at one are tagged by it.
+            $node = $renderer->placed($node);
             $cases[$name] = [
                 'node' => $node,
-                'schema' => $renderer->render($node),
+                'schema' => $schema,
                 'valid' => $instances->validInstance($node),
                 'mutations' => $instances->mutations($node),
             ];

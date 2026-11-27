@@ -43,6 +43,13 @@ trait RendersSymfonyDto
     private ?array $symfonyClassesReadByACallback = null;
 
     /**
+     * Cache for `symfonyClassesUnderADateContext()`, computed once per run like the one above.
+     *
+     * @var array<string, true>|null
+     */
+    private ?array $symfonyClassesUnderADateContext = null;
+
+    /**
      * `readOnly`/`writeOnly` can only be enforced in Symfony mode through serialization groups, and
      * groups are all-or-nothing per class: as soon as ANY attribute of a class carries a group, the
      * normalizer drops every attribute that carries none. So a document containing a single
@@ -117,7 +124,7 @@ trait RendersSymfonyDto
                 || (
                     !$this->symfonyUnionHasFreeFormObjectMember(schema: $schema, sourceFile: $this->getSchemaSourceFile($className))
                     && !$this->symfonyListBesideUnskippableClasses($property['type'])
-                    && !$this->symfonyUnionNestsDiscriminatedUnion($schema)
+                    && !$this->symfonyUnionNestsDiscriminatedUnion(schema: $schema, sourceFile: $this->getSchemaSourceFile($className))
                 )
             ) {
                 continue;
@@ -183,10 +190,21 @@ trait RendersSymfonyDto
      * `#[MapRequestPayload]`, so `Square` was never tried and a valid object was refused. Held as the
      * decoded array, the callback judges it against the member its tag names.
      *
+     * A `$ref` to a union component written out where it is used (`Pet: {anyOf: [{anyOf: […],
+     * discriminator: …}, {type: integer}]}`) is that union: read only inline, `crane: $ref Pet` was typed
+     * `Cobalt|Mauve|int` and refused a valid `Mauve` for Cobalt's `kind` enum.
+     *
      * @param array<mixed> $schema
+     * @param string|null $sourceFile the document the schema is written in
      */
-    private function symfonyUnionNestsDiscriminatedUnion(array $schema): bool
+    private function symfonyUnionNestsDiscriminatedUnion(array $schema, int $depth = 0, ?string $sourceFile = null): bool
     {
+        $ref = $schema['$ref'] ?? null;
+        if (is_string($ref) && $depth < 8) {
+            $aliased = $this->scalarAliasDefinition($ref, $sourceFile);
+
+            return $aliased !== null && $this->symfonyUnionNestsDiscriminatedUnion(schema: $aliased, depth: $depth + 1, sourceFile: $sourceFile);
+        }
         foreach (['oneOf', 'anyOf'] as $keyword) {
             foreach (is_array($schema[$keyword] ?? null) ? $schema[$keyword] : [] as $branch) {
                 if (
@@ -485,6 +503,9 @@ trait RendersSymfonyDto
             if ($this->isInlineObjectVariant($branch) && ($branch['nullable'] ?? false) !== true) {
                 continue;
             }
+            if ($this->symfonyAllOfBranchIsAnObject(branch: $branch, sourceClass: $sourceClass)) {
+                continue;
+            }
             if (
                 $depth < 8
                 && !array_key_exists('type', $branch)
@@ -498,6 +519,51 @@ trait RendersSymfonyDto
         }
 
         return true;
+    }
+
+    /**
+     * Whether a union branch written as an `allOf` — a `$ref` with siblings arrives as one — is a member
+     * class of its own (`collectUnionTypes()`) whose value is never null: one of its parts is typed
+     * `object` without `null`, or is a `$ref` to an object component that does not admit null. Counted
+     * as something else, the union was held as `mixed` instead of the decoded object.
+     *
+     * @param array<mixed> $branch
+     */
+    private function symfonyAllOfBranchIsAnObject(array $branch, string $sourceClass): bool
+    {
+        if (
+            !is_array($branch['allOf'] ?? null)
+            || ($branch['nullable'] ?? false) === true
+            || !$this->isObjectUnionMemberOfItsOwn($branch, $sourceClass)
+        ) {
+            return false;
+        }
+        foreach ($branch['allOf'] as $part) {
+            if (!is_array($part) || ($part['nullable'] ?? false) === true) {
+                continue;
+            }
+            $type = $part['type'] ?? null;
+            if ($type === 'object' || (is_array($type) && in_array('object', $type, true) && !in_array('null', $type, true))) {
+                return true;
+            }
+            $ref = $part['$ref'] ?? null;
+            if (!is_string($ref)) {
+                continue;
+            }
+            $target = $this->schemaRefToClassName(ref: $ref, currentSourceFile: $this->getSchemaSourceFile($sourceClass));
+            $definition = $this->dtoSchemas[$target] ?? null;
+            if (
+                is_array($definition)
+                && !array_key_exists($target, $this->enumSchemas)
+                && !$this->isScalarAliasSchema($definition)
+                && !$this->rendersAsUnion($definition)
+                && !$this->componentAdmitsNull($definition)
+            ) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -656,7 +722,11 @@ trait RendersSymfonyDto
         $params = [];
         $needsGroups = false;
         foreach ($properties as $property) {
-            $param = $this->resolveSymfonyParam($property, $namespace);
+            $param = $this->resolveSymfonyParam(
+                property: $property,
+                namespace: $namespace,
+                underADateContext: array_key_exists($className, $this->symfonyClassesUnderADateContext()),
+            );
             foreach ($param['attributes'] as $attribute) {
                 if (str_contains($attribute, 'Groups(')) {
                     $needsGroups = true;
@@ -843,6 +913,7 @@ trait RendersSymfonyDto
     private function resetSymfonyReachabilityCache(): void
     {
         $this->symfonyClassesReadByACallback = null;
+        $this->symfonyClassesUnderADateContext = null;
     }
 
     /**
@@ -940,13 +1011,23 @@ trait RendersSymfonyDto
      * it was checked by nothing: `{allOf: [$ref Base, …], anyOf: [{required: [a]}, {required: [b]}]}`
      * accepted `{}`. The callback carries it, as it already carries a `oneOf` there.
      *
+     * A class-level `oneOf` with a `$ref` branch is replaced by its spelled-out form as well: the callback
+     * judges the class's own payload, which is never an instance of a branch class, so "is a Cat"
+     * matched no branch and every payload of `{allOf: […], oneOf: [$ref Cat, $ref Dog]}` was refused.
+     *
      * @param array<string, mixed> $filtered
      * @param array<string, mixed> $extracted
      * @return array<string, mixed>
      */
     private function symfonyWithClassLevelAnyOf(array $filtered, string $className, array $extracted): array
     {
-        $anyOf = $this->classLevelUnionsBesideAllOf(className: $className, extracted: $extracted)['anyOf'] ?? null;
+        $unions = $this->classLevelUnionsBesideAllOf(className: $className, extracted: $extracted);
+        $oneOf = $unions['oneOf'] ?? null;
+        $schemaOneOf = $this->dtoSchemas[$className]['oneOf'] ?? null;
+        if (is_array($oneOf) && is_array($schemaOneOf) && $this->unionHasReferenceBranch($schemaOneOf)) {
+            $filtered = [...$filtered, ...$this->filterInterpreterConstraints(constraints: ['oneOf' => $oneOf], allowScalarKeywords: true)];
+        }
+        $anyOf = $unions['anyOf'] ?? null;
         if (!is_array($anyOf)) {
             return $filtered;
         }
@@ -974,11 +1055,143 @@ trait RendersSymfonyDto
                     classSchema: $this->classSchemaWithInlineAllOfMerged(schemaDefinition: $schemaDefinition, className: $className),
                     className: $className,
                 );
+                $rawObjectSchemas = $this->symfonyRawObjectSchemasOfHeldClasses(classSchema: $classSchema, className: $className);
                 $this->constraintUnmaterializedProperties = $mixedProperties;
 
-                return $this->extractValidationConstraints($this->symfonyWithDiscriminatedUnionPropertiesSpelledOut($classSchema));
+                return $this->symfonyWithRawObjectSchemasAttached(
+                    constraints: $this->extractValidationConstraints($this->symfonyWithDiscriminatedUnionPropertiesSpelledOut($classSchema)),
+                    rawObjectSchemas: $rawObjectSchemas,
+                );
             },
         );
+    }
+
+    /**
+     * The written-out schema of each generated class a property holds beside `array` (`array|Pet`), per
+     * property and class. The serializer falls back to the array member when it cannot build the class
+     * — an unknown or missing tag, `[]`, a key the class refuses — and the branch "is that class" let
+     * that raw object through unjudged: `{"tern": {"kind": null}}` and `{"tern": []}` passed `anyOf:
+     * [{type: array, minItems: 1}, $ref Pet]`. The interpreter judges such a value against this schema
+     * (`x-php-raw-object`), as the runtime validator judges a raw object against the class's metadata.
+     *
+     * @param array<string, mixed> $classSchema
+     * @return array<string, array<string, array<string, mixed>>>
+     */
+    private function symfonyRawObjectSchemasOfHeldClasses(array $classSchema, string $className): array
+    {
+        if (!is_array($classSchema['properties'] ?? null)) {
+            return [];
+        }
+        $rendered = $this->symfonyWithFreeFormObjectUnionsHeldAsArray(
+            className: $className,
+            properties: $this->symfonyWithUnionListsTyped($className, $this->getSchemaProperties($className)),
+        );
+        $schemas = [];
+        foreach ($rendered as $property) {
+            $typeMembers = array_map($this->shortClassName(...), explode('|', ltrim($property['type'], '?')));
+            $propertySchema = $classSchema['properties'][$property['openApiName']] ?? null;
+            if (!in_array('array', $typeMembers, true) || !is_array($propertySchema)) {
+                continue;
+            }
+            foreach ($this->symfonyUnionBranchReferences($propertySchema) as $ref) {
+                $referenced = $this->schemaRefToClassName(ref: $ref, currentSourceFile: $this->getSchemaSourceFile($className));
+                if (!in_array($referenced, $typeMembers, true) || !array_key_exists($referenced, $this->dtoSchemas)) {
+                    continue;
+                }
+                // The raw object is no class, so none judges the `allOf` it is built from: below a container.
+                $schemas[$property['openApiName']][$referenced] = $this->filterInterpreterConstraints(
+                    constraints: $this->extractValidationConstraints($this->symfonyRawContainerInlined(['$ref' => $ref])),
+                    allowScalarKeywords: true,
+                    belowContainer: true,
+                );
+            }
+        }
+
+        return $schemas;
+    }
+
+    /**
+     * The `$ref`s that stand as branches of a property's `oneOf` / `anyOf`, through `allOf` parts and
+     * nested unions.
+     *
+     * @param array<mixed> $schema
+     * @return list<string>
+     */
+    private function symfonyUnionBranchReferences(array $schema, int $depth = 0): array
+    {
+        if ($depth >= 8) {
+            return [];
+        }
+        $refs = [];
+        foreach (['oneOf', 'anyOf', 'allOf'] as $keyword) {
+            foreach (is_array($schema[$keyword] ?? null) ? $schema[$keyword] : [] as $branch) {
+                if (!is_array($branch)) {
+                    continue;
+                }
+                $ref = $this->splitBranchReference($branch)[0];
+                if ($ref !== null && $keyword !== 'allOf') {
+                    $refs[] = $ref;
+
+                    continue;
+                }
+                $refs = [...$refs, ...$this->symfonyUnionBranchReferences($branch, $depth + 1)];
+            }
+        }
+
+        return $refs;
+    }
+
+    /**
+     * The extracted class constraints with each property's "is that class" union branch carrying the
+     * class written out, see `symfonyRawObjectSchemasOfHeldClasses()`.
+     *
+     * @param array<string, mixed> $constraints
+     * @param array<string, array<string, array<string, mixed>>> $rawObjectSchemas
+     * @return array<string, mixed>
+     */
+    private function symfonyWithRawObjectSchemasAttached(array $constraints, array $rawObjectSchemas): array
+    {
+        if ($rawObjectSchemas === [] || !is_array($constraints['properties'] ?? null)) {
+            return $constraints;
+        }
+        $properties = [];
+        foreach ($constraints['properties'] as $name => $propertyConstraints) {
+            $schemas = $rawObjectSchemas[(string)$name] ?? [];
+            $properties[$name] = is_array($propertyConstraints) && $schemas !== []
+                ? $this->symfonyClassBranchesWithRawObjectSchema(schema: $propertyConstraints, rawObjectSchemas: $schemas)
+                : $propertyConstraints;
+        }
+
+        return ['properties' => $properties] + $constraints;
+    }
+
+    /**
+     * @param array<mixed> $schema
+     * @param array<string, array<string, mixed>> $rawObjectSchemas
+     * @return array<mixed>
+     */
+    private function symfonyClassBranchesWithRawObjectSchema(array $schema, array $rawObjectSchemas, int $depth = 0): array
+    {
+        if ($depth >= 8) {
+            return $schema;
+        }
+        $branchClass = $schema['x-php-instanceof'] ?? null;
+        if (is_string($branchClass) && array_key_exists($branchClass, $rawObjectSchemas)) {
+            $schema['x-php-raw-object'] = $rawObjectSchemas[$branchClass];
+        }
+        foreach (['oneOf', 'anyOf', 'allOf'] as $keyword) {
+            foreach (is_array($schema[$keyword] ?? null) ? $schema[$keyword] : [] as $index => $branch) {
+                if (is_array($branch)) {
+                    $schema[$keyword][$index] = $this->symfonyClassBranchesWithRawObjectSchema(
+                        schema: $branch,
+                        rawObjectSchemas: $rawObjectSchemas,
+                        depth: $depth + 1,
+                    );
+                }
+            }
+        }
+
+        return $schema;
     }
 
     /**
@@ -1205,14 +1418,17 @@ trait RendersSymfonyDto
      * A property `$ref` to a union component with a container branch (`Amber: {oneOf: [{type: object,
      * additionalProperties: …}, {type: null}]}`), followed through bare aliases, written out in place,
      * so its container branches are judged as the inline union's are — and one with an object held as
-     * the decoded array. Anything else comes back as is.
+     * the decoded array, or a discriminated union as a member. Anything else comes back as is.
+     *
+     * `{allOf: [$ref Crim]}` is the same reference: left wrapped, the class branch of a union typed
+     * `?array` stayed "is an Ivory", which every raw object passed.
      *
      * @param array<string, mixed> $propertySchema
      * @return array<string, mixed>
      */
     private function symfonyContainerUnionReferenceInlined(array $propertySchema): array
     {
-        $ref = $propertySchema['$ref'] ?? null;
+        $ref = $this->referenceOrSingleRefAllOf($propertySchema);
         $visited = [];
         $definition = null;
         while (is_string($ref) && !in_array($ref, $visited, true)) {
@@ -1232,12 +1448,16 @@ trait RendersSymfonyDto
                     || (is_array($branch) && ($this->isContainerBranch($branch) || $this->isDecodedObjectBranch($branch)));
             }
         }
-        if (!$hasContainerBranch) {
+        // A discriminated union member holds the value as the decoded array too
+        // (`symfonyUnionNestsDiscriminatedUnion()`), and the members its tag names judge that array.
+        if (!$hasContainerBranch && !$this->symfonyUnionNestsDiscriminatedUnion($definition)) {
             return $propertySchema;
         }
+        // The wrapper goes with the reference it held; an `allOf` beside a bare `$ref` stays.
+        $referenceKeyword = array_key_exists('$ref', $propertySchema) ? '$ref' : 'allOf';
         $own = [];
         foreach ($propertySchema as $keyword => $value) {
-            if ($keyword !== '$ref') {
+            if ($keyword !== $referenceKeyword) {
                 $own[$keyword] = $value;
             }
         }
@@ -1272,6 +1492,34 @@ trait RendersSymfonyDto
         }
 
         return ['anyOf' => [['type' => 'null'], $rest]];
+    }
+
+    /**
+     * A union branch naming a union component of classes (`Shape: {oneOf: [$ref Square, $ref Circle]}`,
+     * with a discriminator or without): "is a Shape" for the member the serializer built, and the
+     * members written out (`x-php-raw-object`) for the decoded array it leaves where it builds none — a
+     * property no PHP type spells (`anyOf: [{$ref: Shape}, {not: {type: object}}]` is `mixed`). Judged
+     * as the bare class, that raw object passed `anyOf` unchecked and failed every `oneOf`. A plain class
+     * needs none of this: below a `mixed` property its reference is written out already.
+     *
+     * @return array<string, mixed>
+     */
+    private function symfonyUnionComponentBranch(string $ref, string $interface): array
+    {
+        $members = $this->symfonyRawContainerInlined(['$ref' => $ref]);
+        if (array_key_exists('$ref', $members)) {
+            return ['x-php-instanceof' => $interface];
+        }
+
+        return [
+            'x-php-instanceof' => $interface,
+            // Nothing is built from a raw value, so no class judges an `allOf` in it: below a container.
+            'x-php-raw-object' => $this->filterInterpreterConstraints(
+                constraints: $this->extractValidationConstraints($members),
+                allowScalarKeywords: true,
+                belowContainer: true,
+            ),
+        ];
     }
 
     /**
@@ -1377,7 +1625,7 @@ trait RendersSymfonyDto
             if (is_array($branch) && array_keys($branch) === ['type'] && $branch['type'] === 'null') {
                 continue;
             }
-            $member = is_array($branch) && array_keys($branch) === ['$ref'] && is_string($branch['$ref'])
+            $member = $this->isAnnotatedReference($branch)
                 ? $this->schemaRefToClassName($branch['$ref'])
                 : null;
             if ($member === null || !array_key_exists($member, $this->dtoSchemas)) {
@@ -1859,7 +2107,7 @@ PHP;
      *     temporalDefault: ?string,
      * }
      */
-    private function resolveSymfonyParam(array $property, string $namespace): array
+    private function resolveSymfonyParam(array $property, string $namespace, bool $underADateContext = false): array
     {
         $phpType = $property['type'];
         $docType = null;
@@ -1868,10 +2116,11 @@ PHP;
             $docType = $this->formatDocblockTypeForNamespace($phpType, $namespace);
             // A list beside other members (`array<Shape>|int`, see `symfonyWithUnionListsTyped()`)
             // keeps them natively; a list alone is `array`, its nullability the schema's below.
-            $nativeMembers = array_map(
+            // Unique: `array|…|array<string, mixed>` folds to one `array`, which PHP refuses to name twice.
+            $nativeMembers = array_values(array_unique(array_map(
                 callback: static fn(string $member): string => str_contains($member, '<') ? 'array' : $member,
                 array: $this->topLevelTypeMembers(ltrim($phpType, '?')),
-            );
+            )));
             $phpType = count($nativeMembers) > 1
                 ? $this->formatPhpTypeForNamespace(implode('|', $nativeMembers), $namespace)
                 : 'array';
@@ -2061,6 +2310,9 @@ PHP;
                 skipNullValues: $schemaNullable || ($phpType === 'mixed' && !$this->symfonyUntypedValueRefusesNull($property)) ? false : ($declaredNullable ? true : null),
                 temporalFormatter: $this->symfonyTemporalFormatter($property),
                 strictDate: $this->symfonyDateParsedStrictly($property),
+                freeDate: $underADateContext
+                    && !$this->symfonyDateParsedStrictly($property)
+                    && str_contains($property['type'], 'DateTimeImmutable'),
                 refuseExtraAttributes: $this->unionClassBesideScalars($property['type']) !== null
                     && $this->unionHasArrayMember($property['type']),
             ),
@@ -2225,6 +2477,7 @@ PHP;
         ?bool $skipNullValues,
         ?string $temporalFormatter,
         bool $strictDate,
+        bool $freeDate,
         bool $refuseExtraAttributes,
     ): ?string {
         $entries = [];
@@ -2241,6 +2494,11 @@ PHP;
         $denormalizationEntries = [];
         if ($strictDate) {
             $denormalizationEntries[] = "\\Symfony\\Component\\Serializer\\Normalizer\\DateTimeNormalizer::FORMAT_KEY => '!Y-m-d'";
+        }
+        // Under a parent's strict date context a date-time is read freely again: no pattern is PHP's
+        // own parser, as everywhere else in this mode.
+        if ($freeDate) {
+            $denormalizationEntries[] = '\Symfony\Component\Serializer\Normalizer\DateTimeNormalizer::FORMAT_KEY => null';
         }
         if ($refuseExtraAttributes) {
             $denormalizationEntries[] = '\Symfony\Component\Serializer\Normalizer\AbstractNormalizer::ALLOW_EXTRA_ATTRIBUTES => false';
@@ -2300,10 +2558,10 @@ PHP;
 
     /**
      * Whether a `format: date` property is read with its one pattern (see `symfonyContextAttribute()`).
-     * Beside a generated class (`DateTimeImmutable|Shade`) it is not: the context reaches the class's
-     * own properties too, and would read a date-time there as a date. Beside a plain `array` or a backed
-     * enum it is: neither holds a date the context could reach, and without it `+1 day` and `@0` passed
-     * `DateTimeImmutable|array` and `Level|DateTimeImmutable`.
+     * Beside a plain `array`, a backed enum or a generated class it is: without it `+1 day`, `now` and
+     * `@0` passed `DateTimeImmutable|array`, `Level|DateTimeImmutable` and `DateTimeImmutable|Shade`.
+     * The context reaches the class's own properties too, so every class reachable from such a
+     * property hands its other temporal properties the free parse back (`symfonyClassesUnderADateContext()`).
      *
      * @param SchemaProperty $property
      */
@@ -2320,12 +2578,65 @@ PHP;
                 $this->shortClassName($member) !== 'DateTimeImmutable'
                 && !in_array($member, ['int', 'float', 'string', 'bool', 'true', 'false', 'array'], true)
                 && !array_key_exists($this->shortClassName($member), $this->enumSchemas)
+                && !array_key_exists($this->shortClassName($member), $this->dtoSchemas)
             ) {
                 return false;
             }
         }
 
         return true;
+    }
+
+    /**
+     * The generated classes a strict `format: date` context can reach: every class reachable — through
+     * its properties, or a union interface through its members — from a date property held beside a
+     * generated class (`DateTimeImmutable|Shade`, see `symfonyDateParsedStrictly()`). The serializer
+     * hands a property's denormalization context down to what it builds, so a `date-time` there would
+     * be read as `!Y-m-d`; their temporal properties reset the pattern (`symfonyContextAttribute()`).
+     *
+     * @return array<string, true>
+     */
+    private function symfonyClassesUnderADateContext(): array
+    {
+        if ($this->symfonyClassesUnderADateContext !== null) {
+            return $this->symfonyClassesUnderADateContext;
+        }
+        $reached = [];
+        foreach (array_keys($this->dtoSchemas) as $className) {
+            foreach ($this->getSchemaProperties($className) as $property) {
+                if (
+                    !$this->symfonyDateParsedStrictly($property)
+                    || $this->symfonyPropertyIsTemporalScalar($property)
+                    || $this->propertyHasTemporalItems($property)
+                ) {
+                    continue;
+                }
+                foreach ($this->generatedClassNamesInType($property['type']) as $referenced) {
+                    $this->symfonyCollectReachableClasses(className: $referenced, reached: $reached);
+                }
+            }
+        }
+
+        return $this->symfonyClassesUnderADateContext = $reached;
+    }
+
+    /**
+     * @param array<string, true> $reached
+     */
+    private function symfonyCollectReachableClasses(string $className, array &$reached): void
+    {
+        if (array_key_exists($className, $reached) || !array_key_exists($className, $this->dtoSchemas)) {
+            return;
+        }
+        $reached[$className] = true;
+        foreach ([...$this->unionMembersOf($className), ...$this->symfonyUnionRefMembers($className)] as $member) {
+            $this->symfonyCollectReachableClasses(className: $member, reached: $reached);
+        }
+        foreach ($this->getSchemaProperties($className) as $property) {
+            foreach ($this->generatedClassNamesInType($property['type']) as $referenced) {
+                $this->symfonyCollectReachableClasses(className: $referenced, reached: $reached);
+            }
+        }
     }
 
     /**
@@ -2818,6 +3129,15 @@ PHP;
                 $itemExpressions = ['new Assert\NotNull()', ...$itemExpressions];
             }
             $expressions[] = 'new Assert\All([' . implode(', ', $itemExpressions) . '])';
+        }
+        // A list branch of null items — `anyOf: [{type: array, items: {type: 'null'}}, {type: integer}]`.
+        // `null` has no `Assert\Type` spelling, so the branch stayed "a list" and `[7]` matched it.
+        if (
+            ($schema['type'] ?? null) === 'array'
+            && is_array($items)
+            && in_array($items['type'] ?? null, ['null', ['null']], true)
+        ) {
+            $expressions[] = 'new Assert\All([new Assert\IsNull()])';
         }
 
         return $expressions;
