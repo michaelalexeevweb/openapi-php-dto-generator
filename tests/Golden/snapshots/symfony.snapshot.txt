@@ -1,4 +1,4 @@
-# symfony mode — 77 files, 14004 lines
+# symfony mode — 77 files, 14043 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -5169,6 +5169,27 @@ final class ChainLink
 
         return $dto;
     }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['code'] = $this->code;
+        if ($this->tagsProvided) {
+            $payload['tags'] = $this->tags;
+        }
+
+        return $payload;
+    }
 }
 
 ===== ChainMiddle.php =====
@@ -5272,6 +5293,24 @@ final class ChainTag
     public function getLabel(): string
     {
         return $this->label;
+    }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['label'] = $this->label;
+
+        return $payload;
     }
 }
 
@@ -11350,7 +11389,7 @@ final class TestPostRequest
     private function validateOpenApiApplicatorsAroundDto(mixed $value, array $schema, string $path, int $depth): array
     {
         $applicators = [];
-        foreach (['oneOf', 'anyOf', 'x-discriminator-property', 'x-discriminator-php-property', 'x-discriminator-map'] as $keyword) {
+        foreach (['oneOf', 'anyOf', 'x-discriminator-property', 'x-discriminator-php-property', 'x-discriminator-map', 'x-discriminator-branches'] as $keyword) {
             if (array_key_exists($keyword, $schema)) {
                 $applicators[$keyword] = $schema[$keyword];
             }
@@ -12054,7 +12093,7 @@ final class TreeNode
     private function validateOpenApiApplicatorsAroundDto(mixed $value, array $schema, string $path, int $depth): array
     {
         $applicators = [];
-        foreach (['oneOf', 'anyOf', 'x-discriminator-property', 'x-discriminator-php-property', 'x-discriminator-map'] as $keyword) {
+        foreach (['oneOf', 'anyOf', 'x-discriminator-property', 'x-discriminator-php-property', 'x-discriminator-map', 'x-discriminator-branches'] as $keyword) {
             if (array_key_exists($keyword, $schema)) {
                 $applicators[$keyword] = $schema[$keyword];
             }
@@ -12898,7 +12937,7 @@ final class UnionUnderContainer
     private function validateOpenApiApplicatorsAroundDto(mixed $value, array $schema, string $path, int $depth): array
     {
         $applicators = [];
-        foreach (['oneOf', 'anyOf', 'x-discriminator-property', 'x-discriminator-php-property', 'x-discriminator-map'] as $keyword) {
+        foreach (['oneOf', 'anyOf', 'x-discriminator-property', 'x-discriminator-php-property', 'x-discriminator-map', 'x-discriminator-branches'] as $keyword) {
             if (array_key_exists($keyword, $schema)) {
                 $applicators[$keyword] = $schema[$keyword];
             }
@@ -13939,7 +13978,7 @@ final class User
     private function validateOpenApiApplicatorsAroundDto(mixed $value, array $schema, string $path, int $depth): array
     {
         $applicators = [];
-        foreach (['oneOf', 'anyOf', 'x-discriminator-property', 'x-discriminator-php-property', 'x-discriminator-map'] as $keyword) {
+        foreach (['oneOf', 'anyOf', 'x-discriminator-property', 'x-discriminator-php-property', 'x-discriminator-map', 'x-discriminator-branches'] as $keyword) {
             if (array_key_exists($keyword, $schema)) {
                 $applicators[$keyword] = $schema[$keyword];
             }

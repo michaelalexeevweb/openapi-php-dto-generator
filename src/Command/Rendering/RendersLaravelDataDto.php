@@ -120,6 +120,16 @@ trait RendersLaravelDataDto
                     useStatements: $useStatements,
                 );
                 $param['parameterType'] = $param['declaredType'];
+                // The default follows the type: an untyped tag (`kind: {}`) the member does not require
+                // defaulted to `null`, which its own `mixed` takes and the base's `string|Optional`
+                // does not — a deprecation on every load and a TypeError on `new Circle(radius: 3)`.
+                if ($param['defaultExpression'] === 'null' && $param['declaredType'] !== self::LARAVEL_DATA_UNTYPED) {
+                    // Already imported by the type above wherever it names `Optional`.
+                    $optionalRef = $this->libraryClassRef('Spatie\LaravelData\Optional', $namespace, $useStatements);
+                    if (in_array($optionalRef, explode('|', $param['declaredType']), true)) {
+                        $param['defaultExpression'] = sprintf('new %s()', $optionalRef);
+                    }
+                }
                 $parentArguments[] = $param['name'];
             }
             $params[] = $param;

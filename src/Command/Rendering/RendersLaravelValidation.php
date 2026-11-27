@@ -1457,6 +1457,13 @@ trait RendersLaravelValidation
         // only name which declared key is required. Carried nowhere, the root accepted `{}`.
         $objectLevel = [...$objectLevel, ...$this->classLevelUnionsBesideAllOf(className: $className, extracted: $extracted)];
 
+        // The object-wide keywords of what the class is built from with `allOf`: one entry per branch,
+        // never merged, so two parents that both carry a `not` keep both.
+        $branchParts = $this->laravelAllOfBranchObjectLevel(className: $className, visitedClasses: [$className]);
+        if ($branchParts !== []) {
+            $objectLevel['allOf'] = $branchParts;
+        }
+
         // A `required` name the class does not declare. The rule map holds the declared properties
         // only, so such a name reached no rule at any level: `{}` passed a root that requires `zed`,
         // and `{"tail": "x"}` a nested class that requires `ear`. The raw payload still has the key.
@@ -1483,6 +1490,116 @@ trait RendersLaravelValidation
         }
 
         return $objectLevel;
+    }
+
+    /**
+     * The object-wide keywords of each `allOf` branch of a class — a `$ref`'d parent's `not`, `anyOf`,
+     * `if`/`then`, `minProperties`, `dependentRequired`, … — one entry per branch, down the whole chain
+     * (`A allOf $ref B`, `B allOf $ref C`).
+     *
+     * A class built from `allOf` is flattened here: it declares the parent's properties and `required`
+     * itself, but the parent's object-wide keywords were carried nowhere. The parent used directly
+     * refused `{"size": 7}` against `not: {properties: {size: {minimum: 5}}, required: [size]}`, and
+     * the child, which `allOf` binds to the same `not`, accepted it — at any depth and at the root.
+     *
+     * `properties` and `required` stay out: the rule map already holds them, and repeating them here
+     * would report one violation twice. A parent's `anyOf` / `oneOf` naming classes is taken only where
+     * it judges that parent as a whole (`classLevelUnionsBesideAllOf()`): a discriminator base's
+     * `oneOf: [$ref Cat, $ref Dog]` describes its variants, not a check every variant must pass.
+     *
+     * @param list<string> $visitedClasses the chain walked so far, so a cycle ends
+     * @return list<array<string, mixed>>
+     */
+    private function laravelAllOfBranchObjectLevel(string $className, array $visitedClasses): array
+    {
+        $allOf = $this->dtoSchemas[$className]['allOf'] ?? null;
+        if (!is_array($allOf)) {
+            return [];
+        }
+
+        $parts = [];
+        foreach ($allOf as $branch) {
+            if (!is_array($branch)) {
+                continue;
+            }
+            $ref = $branch['$ref'] ?? null;
+            if (!is_string($ref)) {
+                $part = $this->laravelBranchObjectKeywords(sourceClass: $className, branch: $branch);
+                if ($part !== []) {
+                    $parts[] = $part;
+                }
+                continue;
+            }
+
+            $parentClass = $this->schemaRefToClassName(ref: $ref, currentSourceFile: $this->getSchemaSourceFile($className));
+            $parentSchema = $this->dtoSchemas[$parentClass] ?? null;
+            if (in_array($parentClass, $visitedClasses, true) || !is_array($parentSchema)) {
+                continue;
+            }
+            $part = $this->laravelBranchObjectKeywords(sourceClass: $parentClass, branch: $parentSchema);
+            if ($part !== []) {
+                $parts[] = $part;
+            }
+            $parts = [
+                ...$parts,
+                ...$this->laravelAllOfBranchObjectLevel(className: $parentClass, visitedClasses: [...$visitedClasses, $parentClass]),
+            ];
+        }
+
+        return $parts;
+    }
+
+    /**
+     * The object-wide keywords one `allOf` branch asserts, extracted with its `$ref`s spelled out.
+     *
+     * @param array<mixed> $branch
+     * @return array<string, mixed>
+     */
+    private function laravelBranchObjectKeywords(string $sourceClass, array $branch): array
+    {
+        // Only the object-wide keywords are extracted: the properties are the rule map's, and the
+        // branch's own `allOf` is walked as a chain by the caller.
+        $objectWide = [];
+        foreach ([...self::LARAVEL_OBJECT_LEVEL_KEYWORDS, 'anyOf', 'oneOf'] as $keyword) {
+            if (!array_key_exists($keyword, $branch)) {
+                continue;
+            }
+            $unionNamesClasses = in_array($keyword, ['anyOf', 'oneOf'], true)
+                && (!is_array($branch[$keyword]) || $this->unionHasReferenceBranch($branch[$keyword]));
+            if (!$unionNamesClasses) {
+                $objectWide[$keyword] = $branch[$keyword];
+            }
+        }
+
+        $extracted = $objectWide === [] ? [] : $this->withConstraintSourceOf(
+            className: $sourceClass,
+            extraction: fn(): array => $this->extractValidationConstraints(
+                $this->inlineNestedContainerValidation(schema: $objectWide, belowMaterialization: true),
+            ),
+        );
+        $part = [];
+        foreach ([...self::LARAVEL_OBJECT_LEVEL_KEYWORDS, 'anyOf', 'oneOf'] as $keyword) {
+            if (array_key_exists($keyword, $extracted)) {
+                $part[$keyword] = $extracted[$keyword];
+            }
+        }
+
+        // A union of classes beside the parent's own `allOf` does judge the parent as a whole.
+        $parentSchema = $this->dtoSchemas[$sourceClass] ?? [];
+        if ($parentSchema !== $branch || !is_array($parentSchema['allOf'] ?? null) || $parentSchema['allOf'] === []) {
+            return $part;
+        }
+        foreach (['anyOf', 'oneOf'] as $keyword) {
+            if (is_array($branch[$keyword] ?? null) && $this->unionHasReferenceBranch($branch[$keyword])) {
+                $part[$keyword] = $this->classLevelUnionWithReferencesInlined(
+                    className: $sourceClass,
+                    keyword: $keyword,
+                    branches: $branch[$keyword],
+                );
+            }
+        }
+
+        return $part;
     }
 
     /**

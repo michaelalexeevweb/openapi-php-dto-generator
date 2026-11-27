@@ -51,6 +51,9 @@ final class FuzzRunner
 
     private const array COMPOSITION_KEYWORDS = ['allOf', 'anyOf', 'oneOf'];
 
+    /** What may stand beside a one-member `allOf` for it to be read as its member. */
+    private const array ALL_OF_WRAPPER_KEYWORDS = ['allOf', 'nullable', 'description', 'title', 'example', 'examples', 'deprecated', 'readOnly', 'writeOnly', 'externalDocs'];
+
     private const array LIST_KEYWORDS = ['enum', 'required', 'type', 'allOf', 'anyOf', 'oneOf', 'prefixItems'];
 
     /**
@@ -1269,7 +1272,8 @@ final class FuzzRunner
     }
 
     /**
-     * The schema behind `$ref` hops and a one-object-member `anyOf` / `oneOf` (a nullable wrapper).
+     * The schema behind `$ref` hops, a bare one-member `allOf` and a one-object-member `anyOf` /
+     * `oneOf` (a nullable wrapper).
      *
      * @param array<string, mixed> $schemas
      * @return array<string, mixed>
@@ -1282,6 +1286,14 @@ final class FuzzRunner
         if (is_string($schema['$ref'] ?? null) && !array_key_exists('properties', $schema)) {
             return self::resolved(schema: $schemas[substr($schema['$ref'], strlen('#/components/schemas/'))] ?? null, schemas: $schemas, depth: $depth + 1);
         }
+        if (self::isBareAllOfWrapper($schema)) {
+            $member = self::resolved(schema: $schema['allOf'][0], schemas: $schemas, depth: $depth + 1);
+            if (($schema['nullable'] ?? false) === true && $member !== []) {
+                $member['nullable'] = true;
+            }
+
+            return $member;
+        }
         foreach (['anyOf', 'oneOf'] as $keyword) {
             $members = array_values(array_filter(
                 array: is_array($schema[$keyword] ?? null) ? $schema[$keyword] : [],
@@ -1293,6 +1305,26 @@ final class FuzzRunner
         }
 
         return $schema;
+    }
+
+    /**
+     * A one-member `allOf` with nothing beside it but `nullable` and annotations: the generator reads it
+     * as its member, the way it reads a bare `$ref`.
+     *
+     * @param array<mixed> $schema
+     */
+    private static function isBareAllOfWrapper(array $schema): bool
+    {
+        if (!is_array($schema['allOf'] ?? null) || count($schema['allOf']) !== 1 || !array_key_exists(0, $schema['allOf'])) {
+            return false;
+        }
+        foreach (array_keys($schema) as $keyword) {
+            if (!in_array($keyword, self::ALL_OF_WRAPPER_KEYWORDS, true) && !str_starts_with((string)$keyword, 'x-')) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

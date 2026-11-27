@@ -3,6 +3,39 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.164 — 2026-11-27
+
+- discriminated union keeps allOf parent
+- fuzz rounds 27–28: 19 fixes
+- laravel untagged union: 500 now 422
+- symfony union under raw containers checked
+- runtime raw object type rules
+
+**Regenerate after upgrading, in every mode.**
+
+- runtime: a member of a discriminated `oneOf` that extends a parent through `allOf: [$ref Parent, …]` lost
+  that parent — it was written as `extends <Union>`, so code typed with the parent (a covariant return, an
+  `instanceof`) broke with a fatal error at class load. When every class member shares one `allOf` parent,
+  the union's abstract class now extends it (`Parent ← Union ← Member`); when they do not, each member keeps
+  its own parent and a property typed with the union is spelled as the member classes, picked by the tag. A
+  member that lives in another document (`--ref`) is written exactly as its own run writes it, and mapping
+  entries that point into another document are resolved;
+- symfony: a `$ref` to a discriminated union below a container held as the decoded array (tuple tail, a
+  `prefixItems` slot, a list of lists or maps, a map of tuples) is checked; an inline discriminated union
+  that is a branch of an outer union has its tag checked (yii3 too); a discriminated union on a property of
+  a `{$ref, properties}` holder that is a union branch, list item or map value builds the member its tag
+  names; keywords beside `allOf: [$ref X]` on a built class, and branch rules that reach into a nested
+  class's property, are enforced (yii3 too);
+- laravel / laravel-data: an object without the tag in a discriminated union is a 422 at the tag, not a 500
+  from `fromValidated()`; an untyped optional morph tag defaults to `Optional`; a class flattened from
+  `allOf: [$ref Parent]` carries the parent's object-wide keywords;
+- runtime: a discriminated `oneOf` nested as a branch of an outer `oneOf` routes by its tag; a class branch
+  judged against a raw object checks the rules its property types own (enum, nested class, list of classes);
+  `not` beside a generated class is judged with the class's property rules.
+
+Known limit: `deserialize($request, Union::class)` straight into a discriminated union's abstract class is
+not supported; reach it through a property or a list item.
+
 ## 2.15.163 — 2026-11-27
 
 - fuzz rounds 17–26: 89 fixes

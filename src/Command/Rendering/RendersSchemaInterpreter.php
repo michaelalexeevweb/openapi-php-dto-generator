@@ -100,6 +100,14 @@ trait RendersSchemaInterpreter
     private const array OPENAPI_NUMERIC_FORMATS = ['int32', 'int64', 'uint32', 'uint64'];
 
     /**
+     * Marks a subschema written AROUND a built class rather than by it — the keywords beside
+     * `allOf: [$ref Coral]` on a property held as Coral, and everything below them. Coral never heard
+     * of those, so the interpreter judges them against its payload view instead of skipping the value
+     * as "a nested DTO that checks itself".
+     */
+    private const string AROUND_NESTED_DTO_MARKER = 'x-php-around-dto';
+
+    /**
      * @param array<string, mixed> $constraints
      * @param array<string, string> $phpToOpenApiNameMap PHP name -> OpenAPI name mapping
      * @param array<string, string> $providedFlags PHP name -> presence flag property, optional properties only
@@ -343,6 +351,11 @@ PHP,
         // `allOf` beside the properties is not around the class but part of it — the class checks it
         // itself, and judging it here too reported every violation twice.
         $needsNestedDtoApplicators = $judgesUnionsAroundNestedDtos && $needsGeneratedDtoSkip && ($hasOneOf || $hasAnyOf);
+        // A subschema written AROUND the built class — the keywords beside `allOf: [$ref Coral]` — is no
+        // part of the class's own check: the value is judged against it like any other, through its
+        // payload view. Skipped, `required`, `minProperties`, `not`, `if` and every union beside the
+        // reference went unchecked wherever the class carried an interpreter of its own.
+        $judgesAroundNestedDtos = $needsGeneratedDtoSkip && $this->schemaUsesKeyword($constraints, self::AROUND_NESTED_DTO_MARKER);
         // The guard at each of the four places a nested value is walked into, emitted only when such a
         // value can be a DTO at all.
         $skipNestedDto = static function (
@@ -354,10 +367,19 @@ PHP,
         ) use (
             $needsGeneratedDtoSkip,
             $needsNestedDtoApplicators,
+            $judgesAroundNestedDtos,
         ): string {
             if (!$needsGeneratedDtoSkip) {
                 return '';
             }
+            $notAround = $judgesAroundNestedDtos
+                ? sprintf(
+                    " && !(is_array(%s) && array_key_exists('%s', %s))",
+                    $schemaAccessor,
+                    self::AROUND_NESTED_DTO_MARKER,
+                    $schemaAccessor,
+                )
+                : '';
             $applicators = $needsNestedDtoApplicators
                 ? sprintf(
                     "%s    \$errors = [...\$errors, ...\$this->validateOpenApiApplicatorsAroundDto(%s, %s, %s, \$depth + 1)];\n",
@@ -369,9 +391,10 @@ PHP,
                 : '';
 
             return sprintf(
-                "%sif (\$this->isGeneratedOpenApiDtoObject(%s)) {\n%s%s%s    continue;\n%s}\n",
+                "%sif (\$this->isGeneratedOpenApiDtoObject(%s)%s) {\n%s%s%s    continue;\n%s}\n",
                 $indent,
                 $accessor,
+                $notAround,
                 $applicators,
                 $extraBeforeContinue,
                 $indent,
@@ -552,6 +575,47 @@ PHP;
 PHP;
         }
 
+        // A member held as the decoded value — an inline union nested in an outer one, whose classes
+        // nothing builds — has no class to ask: the tag is read from its keys, a missing or unknown one
+        // is refused, and the member it names must be the branch that matched (`x-discriminator-branches`,
+        // the branch index per tag). Under `anyOf` that branch is judged on its own.
+        $decodedDiscriminatorCheck = $this->schemaUsesKeyword($constraints, 'x-discriminator-map')
+            ? <<<'PHP'
+ elseif (
+                    $discriminatorProperty !== null
+                    && $discriminatorMap !== null
+                    && ((is_array($value) && !array_is_list($value)) || $value instanceof \stdClass)
+                ) {
+                    $discriminatorCarrier = (array)$value;
+                    if (!array_key_exists($discriminatorProperty, $discriminatorCarrier)) {
+                        $errors[] = sprintf('%s discriminator property %s is required', $path, $discriminatorProperty);
+                    } else {
+                        $discriminatorValue = $discriminatorCarrier[$discriminatorProperty];
+                        $mapKey = is_scalar($discriminatorValue) ? (string)$discriminatorValue : null;
+                        $memberBranch = $mapKey !== null && is_array($schema['x-discriminator-branches'] ?? null)
+                            ? ($schema['x-discriminator-branches'][$mapKey] ?? null)
+                            : null;
+                        if ($mapKey === null || !array_key_exists($mapKey, $discriminatorMap)) {
+                            $errors[] = sprintf(
+                                '%s discriminator %s must be one of: %s',
+                                $path,
+                                $discriminatorProperty,
+                                implode(', ', array_keys($discriminatorMap)),
+                            );
+                        } elseif (is_int($memberBranch)) {
+                            $memberSchema = $schema['anyOf'][$memberBranch] ?? null;
+                            $memberMatched = $matchedBranchIndex !== null
+                                ? $matchedBranchIndex === $memberBranch
+                                : !is_array($memberSchema) || $this->validateOpenApiNode($value, $memberSchema, $path, $depth + 1) === [];
+                            if (!$memberMatched) {
+                                $errors[] = sprintf('%s discriminator %s must match concrete class', $path, $discriminatorProperty);
+                            }
+                        }
+                    }
+                }
+PHP
+            : '';
+
         // The discriminator picks the variant, whichever keyword lists them: a value of one variant
         // carrying another's tag — or a tag the mapping does not name — is refused. Under `oneOf` once
         // the union itself has matched; under `anyOf` on its own, since the branches of a property-level
@@ -567,7 +631,7 @@ PHP;
                     ? $schema['x-discriminator-map']
                     : null;
 
-                if ($discriminatorProperty !== null && $discriminatorMap !== null && is_object($value)) {
+                if ($discriminatorProperty !== null && $discriminatorMap !== null && is_object($value)__DECODED_OBJECT_GUARD__) {
                     $phpProperty = $discriminatorPhpProperty ?? $discriminatorProperty;
                     // The DTO keeps its state private: read the discriminator from the payload it
                     // reports, keyed by the OpenAPI name, and fall back to a public property for a
@@ -602,7 +666,13 @@ PHP;
                         }
                     }
                 }
-PHP;
+PHP . $decodedDiscriminatorCheck;
+        // A decoded object (`stdClass`) has no class either: it goes to the decoded check, not `instanceof`.
+        $discriminatorCheck = str_replace(
+            search: '__DECODED_OBJECT_GUARD__',
+            replace: $decodedDiscriminatorCheck !== '' ? ' && !$value instanceof \stdClass' : '',
+            subject: $discriminatorCheck,
+        );
 
         if ($hasOneOf) {
             // Mirror the runtime validator: a branch whose declared type cannot match is skipped
@@ -664,6 +734,41 @@ PHP
 PHP
                 : '';
             $undecidedInit = $usesCheckedByClass ? "\n            \$undecidedBranches = 0;" : '';
+            // The decoded-value discriminator check asks WHICH branch matched, not only how many.
+            $tracksMatchedBranch = $decodedDiscriminatorCheck !== '';
+            $matchedBranchInit = $tracksMatchedBranch ? "\n            \$matchedBranchIndex = null;" : '';
+            $branchLoopKey = $tracksMatchedBranch ? '$branchIndex => ' : '';
+            $recordMatchedBranch = $tracksMatchedBranch ? "\n                        \$matchedBranchIndex = \$branchIndex;" : '';
+            $recordMatchedBranchInNodePath = $tracksMatchedBranch ? "\n                    \$matchedBranchIndex = \$branchIndex;" : '';
+            // A decoded object whose tag names a member branch is judged against THAT member only: members
+            // that overlap apart from the tag both fit it, and counting both refused every valid payload
+            // as matching more than one branch, where the discriminated union is one match.
+            $decodedRouteInit = $tracksMatchedBranch
+                ? <<<'PHP'
+
+            $routedBranchIndex = null;
+            if (
+                is_array($schema['x-discriminator-branches'] ?? null)
+                && is_string($schema['x-discriminator-property'] ?? null)
+                && ((is_array($value) && !array_is_list($value)) || $value instanceof \stdClass)
+            ) {
+                $routedTag = ((array)$value)[$schema['x-discriminator-property']] ?? null;
+                $routedBranchIndex = is_scalar($routedTag) ? ($schema['x-discriminator-branches'][(string)$routedTag] ?? null) : null;
+            }
+PHP
+                : '';
+            $decodedRouteSkip = $tracksMatchedBranch
+                ? <<<'PHP'
+                if (
+                    is_int($routedBranchIndex)
+                    && $branchIndex !== $routedBranchIndex
+                    && in_array($branchIndex, $schema['x-discriminator-branches'], true)
+                ) {
+                    continue;
+                }
+
+PHP
+                : '';
             // Symfony: a class branch carrying its schema written out (`x-php-raw-object`) judges the raw
             // object the serializer left it against that schema, as `anyOf` does — "is that class"
             // refused every decoded object, the valid ones included. A built object is still judged by
@@ -677,6 +782,10 @@ PHP
                         $errorsForBranch = $this->validateOpenApiNode($value, $branch['x-php-raw-object'], $path, $depth + 1);
                         if ($errorsForBranch === []) {
                             $matchingBranches++;
+PHP
+                . $recordMatchedBranch
+                . <<<'PHP'
+
                         } else {
                             $branchErrors = [...$branchErrors, ...$errorsForBranch];
                         }
@@ -686,18 +795,18 @@ PHP
             $noMatchCondition = $usesCheckedByClass ? '$matchingBranches === 0 && $undecidedBranches === 0' : '$matchingBranches === 0';
             $sections[] = <<<PHP
         if (is_array(\$schema['oneOf'] ?? null)) {
-            \$matchingBranches = 0;{$temporalMatchInit}{$nullableInit}{$undecidedInit}
+            \$matchingBranches = 0;{$temporalMatchInit}{$nullableInit}{$undecidedInit}{$matchedBranchInit}{$decodedRouteInit}
             \$branchErrors = [];
-            foreach (\$schema['oneOf'] as \$branch) {
+            foreach (\$schema['oneOf'] as {$branchLoopKey}\$branch) {
                 if (!is_array(\$branch)) {
                     continue;
                 }
 
-{$oneOfCheckedByClass}                if (is_string(\$branchClass = \$branch['x-php-instanceof'] ?? null) && \$branchClass !== '') {
+{$decodedRouteSkip}{$oneOfCheckedByClass}                if (is_string(\$branchClass = \$branch['x-php-instanceof'] ?? null) && \$branchClass !== '') {
                     \$branchFqcn = __NAMESPACE__ . '\\\\' . ltrim(\$branchClass, '\\\\');
                     // `{\$ref: X, nullable: true}`: X or null.
                     if ((is_object(\$value) && \$value instanceof \$branchFqcn) || (\$value === null && (\$branch['nullable'] ?? false) === true)) {
-                        \$matchingBranches++;
+                        \$matchingBranches++;{$recordMatchedBranch}
                     }{$oneOfRawObject}
                     continue;
                 }
@@ -706,7 +815,7 @@ PHP
                 // useful than "does not match any oneOf branch".
                 \$errorsForBranch = \$this->validateOpenApiNode(\$value, \$branch, \$path, \$depth + 1);
                 if (\$errorsForBranch === []) {
-{$temporalMatchCount}                    \$matchingBranches++;
+{$temporalMatchCount}                    \$matchingBranches++;{$recordMatchedBranchInNodePath}
                     continue;
                 }
 
@@ -1479,8 +1588,10 @@ PHP;
 
         if ($this->discriminatorStandsWithoutOneOf($constraints)) {
             $standaloneDiscriminatorCheck = (string)preg_replace('/^    /m', '', $discriminatorCheck);
+            // No `oneOf` here, so no branch is known to have matched: the decoded check judges the member itself.
+            $standaloneMatchedBranchInit = $decodedDiscriminatorCheck !== '' ? "\n            \$matchedBranchIndex = null;" : '';
             $sections[] = <<<PHP
-        if (!is_array(\$schema['oneOf'] ?? null)) {
+        if (!is_array(\$schema['oneOf'] ?? null)) {{$standaloneMatchedBranchInit}
 {$standaloneDiscriminatorCheck}
         }
 PHP;
@@ -2023,7 +2134,7 @@ PHP;
     private function validateOpenApiApplicatorsAroundDto(mixed $value, array $schema, string $path, int $depth): array
     {
         $applicators = [];
-        foreach (['oneOf', 'anyOf', 'x-discriminator-property', 'x-discriminator-php-property', 'x-discriminator-map'] as $keyword) {
+        foreach (['oneOf', 'anyOf', 'x-discriminator-property', 'x-discriminator-php-property', 'x-discriminator-map', 'x-discriminator-branches'] as $keyword) {
             if (array_key_exists($keyword, $schema)) {
                 $applicators[$keyword] = $schema[$keyword];
             }
@@ -3471,9 +3582,18 @@ PHP;
      * under them, so an `allOf` there has no nested DTO to check it and is the callback's, exactly as
      * it is below a container.
      *
+     * `$aroundNestedDtoProperties` names the class properties held as a built class whose schema
+     * references that class with keywords beside the reference (`propertiesBesideTheirReferencedClass()`):
+     * no attribute and no class checks those, so they are kept whole and marked for the interpreter.
+     * `$requiredCheckedOnInput` names, per such property, the `required` names the mode checks on the
+     * raw input already (yii3's `yii3UndeclaredRequiredRule()`): the interpreter leaves them out
+     * (`withoutRequiredNames()`).
+     *
      * @param array<string, mixed> $constraints
      * @param array<string, true> $forceScalarOnProperties
      * @param array<string, true> $unmaterializedProperties
+     * @param array<string, true> $aroundNestedDtoProperties
+     * @param array<string, list<string>> $requiredCheckedOnInput property name => required names
      * @return array<string, mixed>
      */
     private function filterInterpreterConstraints(
@@ -3483,6 +3603,8 @@ PHP;
         bool $isPropertySchema = false,
         bool $belowContainer = false,
         array $unmaterializedProperties = [],
+        array $aroundNestedDtoProperties = [],
+        array $requiredCheckedOnInput = [],
     ): array {
         $constraints = $this->foldScalarAllOfConstraints($constraints);
         $filtered = [];
@@ -3500,6 +3622,19 @@ PHP;
                         // dropped and the property went unchecked.
                         if (is_bool($schema) && is_string($name)) {
                             $filtered[$key][$name] = $schema;
+
+                            continue;
+                        }
+                        if (is_string($name) && is_array($schema) && array_key_exists($name, $aroundNestedDtoProperties)) {
+                            $aroundSchema = $this->filterInterpreterConstraints(
+                                constraints: $schema,
+                                allowScalarKeywords: true,
+                                isPropertySchema: true,
+                            );
+                            $filtered[$key][$name] = $this->markedAroundANestedDto($this->withoutRequiredNames(
+                                schema: $aroundSchema,
+                                names: $requiredCheckedOnInput[$name] ?? [],
+                            ));
 
                             continue;
                         }
@@ -3782,6 +3917,7 @@ PHP;
                 case 'x-discriminator-property':
                 case 'x-discriminator-php-property':
                 case 'x-discriminator-map':
+                case 'x-discriminator-branches':
                     $filtered[$key] = $value;
                     break;
             }
@@ -3839,6 +3975,111 @@ PHP;
         }
 
         return $filtered;
+    }
+
+    /**
+     * The properties held as a built class whose schema REFERENCES that very class and says more beside
+     * the reference: `{allOf: [$ref Coral], required: [bee]}` or `{$ref: Coral, not: {…}}`, typed Coral.
+     * What stands beside the reference is the use site's — Coral checks its own schema and never heard
+     * of it — so the interpreter judges it against Coral's payload view. A property whose class was
+     * written FROM its schema (an inline object, an `allOf` with an inline part) is not one: that class
+     * owns every keyword there. Nor is a reference to a union, whose branches are its own.
+     *
+     * @param array<string, mixed> $classSchema the class schema the constraints are extracted from
+     * @param array<int, SchemaProperty> $properties the class's properties, typed as rendered
+     * @return array<string, true>
+     */
+    private function propertiesBesideTheirReferencedClass(array $classSchema, array $properties, string $className): array
+    {
+        $rawProperties = is_array($classSchema['properties'] ?? null) ? $classSchema['properties'] : [];
+        $around = [];
+        foreach ($properties as $property) {
+            $rawSchema = $rawProperties[$property['openApiName']] ?? null;
+            $ref = is_array($rawSchema) ? $this->referenceOrSingleRefAllOf($rawSchema) : null;
+            if ($ref === null) {
+                continue;
+            }
+            $referenced = $this->schemaRefToClassName(ref: $ref, currentSourceFile: $this->getSchemaSourceFile($className));
+            // A union is no built class: its member is, and the union's own branches are what the
+            // enclosing schema judges it by already (`validateOpenApiApplicatorsAroundDto()`).
+            if (
+                array_key_exists($referenced, $this->dtoSchemas)
+                && !$this->rendersAsUnionInterface($referenced)
+                && $this->shortClassName(ltrim($property['type'], '?')) === $referenced
+            ) {
+                $around[$property['openApiName']] = true;
+            }
+        }
+
+        return $around;
+    }
+
+    /**
+     * The use-site schema around a built class without the `required` names the mode checks on the
+     * raw input already. Those are the names the class does not declare: its payload view
+     * (`toOpenApiValidationPayload()`) holds only declared properties, so such a name always looked
+     * absent there — `{allOf: [$ref Shape], required: [paw]}`, Shape without `paw`, refused every
+     * payload that sent it.
+     *
+     * @param array<string, mixed> $schema
+     * @param list<string> $names
+     * @return array<string, mixed>
+     */
+    private function withoutRequiredNames(array $schema, array $names): array
+    {
+        if ($names === [] || !is_array($schema['required'] ?? null)) {
+            return $schema;
+        }
+        $required = array_values(array_filter(
+            $schema['required'],
+            static fn(mixed $name): bool => !in_array($name, $names, true),
+        ));
+        $kept = [];
+        foreach ($schema as $keyword => $value) {
+            if ($keyword !== 'required') {
+                $kept[$keyword] = $value;
+            }
+        }
+
+        return $required === [] ? $kept : [...$kept, 'required' => $required];
+    }
+
+    /**
+     * A use-site schema marked, with every subschema below it, as written around a built class (see
+     * `AROUND_NESTED_DTO_MARKER`): a branch that reaches into a nested class — `oneOf: [{properties:
+     * {walrus: {properties: {crane: {minimum: 5}}}}}]`, `walrus` a built Fox — is the use site's too, and
+     * Fox's own check knows nothing of `crane`'s bound there. A use-site schema holding nothing but its
+     * `type` says nothing the built object can fail, so it stays as it was.
+     *
+     * @param array<mixed> $schema
+     * @return array<mixed>
+     */
+    private function markedAroundANestedDto(array $schema, int $depth = 0): array
+    {
+        if ($schema === [] || $depth >= 64 || ($depth === 0 && array_diff(array_keys($schema), ['type', 'nullable']) === [])) {
+            return $schema;
+        }
+        $marked = [];
+        foreach ($schema as $keyword => $value) {
+            if (!is_array($value)) {
+                $marked[$keyword] = $value;
+
+                continue;
+            }
+            $marked[$keyword] = match (true) {
+                in_array($keyword, ['properties', 'patternProperties', 'dependentSchemas', 'prefixItems', 'oneOf', 'anyOf', 'allOf'], true) => array_map(
+                    fn(mixed $child): mixed => is_array($child) ? $this->markedAroundANestedDto(schema: $child, depth: $depth + 1) : $child,
+                    $value,
+                ),
+                in_array($keyword, ['items', 'additionalProperties', 'unevaluatedProperties', 'unevaluatedItems', 'contains', 'not', 'if', 'then', 'else'], true) => $this->markedAroundANestedDto(
+                    schema: $value,
+                    depth: $depth + 1,
+                ),
+                default => $value,
+            };
+        }
+
+        return [...$marked, self::AROUND_NESTED_DTO_MARKER => true];
     }
 
     /**

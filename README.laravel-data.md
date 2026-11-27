@@ -213,6 +213,12 @@ run first. The base overrides `from()` and `validateAndCreate()` to check the di
 framework's validator (`required`, `in:` the mapped values) and then hands over to laravel-data: a 422
 on `kind`, `The selected kind is invalid.` Before 2.15.96 only the nested case was a 422.
 
+Below the root — a property, a list item, an `allOf` wrapper — an object without the tag is refused at
+the tag (`owl.kind`) as well, even where no member requires it: the tag picks the class to build, and
+until 2.15.164 such an object passed validation when exactly one member took it and then died as
+`CannotCreateAbstractClass`. A member whose tag is untyped (`kind: {}`) and not required takes the
+base's `…|Optional` type and its `new Optional()` default.
+
 A member cannot belong to more than one discriminated-union morph base: PHP permits only one parent
 class. Such a schema now fails generation with the member and both bases named, before existing
 output is replaced. Give each union its own member schema instead of sharing one across morph bases.

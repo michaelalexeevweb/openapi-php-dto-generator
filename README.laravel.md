@@ -122,7 +122,9 @@ A property typed with it holds the variant its discriminator names, and every fi
 checked — the fields of THAT variant only, also for a `oneOf` of `$ref`s with a discriminator written on
 the property itself (`Circle|Square`), which is built as the variant too. A request body typed with it gets a `ShapeFormRequest` that reads the discriminator and takes
 the rules, the schema checks and the DTO from that variant; an unknown or missing value is a 422 on the
-discriminator itself:
+discriminator itself. The same holds below the root — a property, a list item, an `allOf` wrapper: an
+object without the tag is refused at the tag (`owl.kind`) even where no member requires it, since the
+tag is what picks the class to build:
 
 ```php
 public function store(ShapeFormRequest $request)

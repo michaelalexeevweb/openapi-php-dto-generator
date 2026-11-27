@@ -341,36 +341,77 @@ trait RendersSymfonyDto
     }
 
     /**
-     * Whether a list or map holds, at any depth, an undiscriminated union component of classes.
+     * Whether a list or map holds, at any depth, an undiscriminated union component of classes — or a
+     * DISCRIMINATED one where the serializer builds nothing.
+     *
+     * A discriminated union component is built through the discriminator map one container down
+     * (`array<Shape>`), and that object checks itself. Below a container held as the decoded array it
+     * is not: the item of a list of lists or of a map of lists is typed `mixed`, a tuple is a bare
+     * `?array` (its `prefixItems` slots and the `items` tail beside them alike), so the value stays the
+     * decoded JSON and no #[Assert\Valid] reaches it. Left for the class, the reference extracted to
+     * nothing there, and `{"newt": [1, {"vole": "g"}]}` — no tag, a wrong-typed field, a bare string —
+     * was accepted. Such a property is written out like the undiscriminated one: members and tag check.
      *
      * @param array<mixed> $schema
+     * @param bool $unbuilt whether nothing is built at `$schema` itself already
      */
-    private function symfonyContainerHoldsUndiscriminatedUnion(array $schema, string $className, int $depth = 0): bool
+    private function symfonyContainerHoldsUndiscriminatedUnion(array $schema, string $className, int $depth = 0, bool $unbuilt = false): bool
     {
         if ($depth >= 8) {
             return false;
         }
+        $positions = [];
         foreach (['items', 'additionalProperties'] as $containerKey) {
-            $inner = $schema[$containerKey] ?? null;
-            if (!is_array($inner)) {
-                continue;
+            if (is_array($schema[$containerKey] ?? null)) {
+                // One container down the serializer builds the item; past that, and in a tuple tail, it
+                // builds nothing.
+                $positions[] = [
+                    $schema[$containerKey],
+                    $unbuilt || $depth >= 1 || ($containerKey === 'items' && array_key_exists('prefixItems', $schema)),
+                ];
             }
-            $ref = $inner['$ref'] ?? null;
-            if (
-                is_string($ref)
-                && $this->isUnhydratableUnionClass($this->schemaRefToClassName(ref: $ref, currentSourceFile: $this->getSchemaSourceFile($className)))
-            ) {
-                return true;
+        }
+        foreach (is_array($schema['prefixItems'] ?? null) ? $schema['prefixItems'] : [] as $slot) {
+            if (is_array($slot)) {
+                $positions[] = [$slot, true];
             }
+        }
+        foreach ($positions as [$inner, $innerUnbuilt]) {
             if (
-                $this->symfonyUnionComponentBranchUnbuilt(union: $inner, className: $className)
-                || $this->symfonyContainerHoldsUndiscriminatedUnion(schema: $inner, className: $className, depth: $depth + 1)
+                $this->symfonyNamesUnbuiltUnionComponent(schema: $inner, className: $className, unbuilt: $innerUnbuilt)
+                || $this->symfonyUnionComponentBranchUnbuilt(union: $inner, className: $className)
+                || $this->symfonyContainerHoldsUndiscriminatedUnion(schema: $inner, className: $className, depth: $depth + 1, unbuilt: $innerUnbuilt)
             ) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * Whether a list item, map value or tuple slot names a union component nothing builds: an
+     * undiscriminated one anywhere, a discriminated one where `$unbuilt` (see
+     * `symfonyContainerHoldsUndiscriminatedUnion()`).
+     *
+     * @param array<mixed> $schema
+     */
+    private function symfonyNamesUnbuiltUnionComponent(array $schema, string $className, bool $unbuilt): bool
+    {
+        $ref = $schema['$ref'] ?? null;
+        if (!is_string($ref)) {
+            return false;
+        }
+        $refClass = $this->schemaRefToClassName(ref: $ref, currentSourceFile: $this->getSchemaSourceFile($className));
+        if ($this->isUnhydratableUnionClass($refClass)) {
+            return true;
+        }
+        $definition = $this->dtoSchemas[$refClass] ?? null;
+
+        return $unbuilt
+            && array_key_exists($refClass, $this->discriminatorSchemas)
+            && is_array($definition)
+            && $this->rendersAsUnion($definition);
     }
 
     /**
@@ -754,6 +795,11 @@ trait RendersSymfonyDto
             // Nothing is built below a union held as the decoded value: the callback judges all of it.
             forceScalarOnProperties: $forceRootCallbackBounds + $heldDecoded,
             unmaterializedProperties: $this->mixedPropertyNames($properties) + $heldDecoded + $heldAsArray,
+            aroundNestedDtoProperties: $this->propertiesBesideTheirReferencedClass(
+                classSchema: $this->classSchemaWithInlineAllOfMerged(schemaDefinition: $schemaDefinition, className: $className),
+                properties: $properties,
+                className: $className,
+            ),
         );
         $validationConstraints = $this->symfonyWithClassLevelAnyOf(
             filtered: $validationConstraints,
@@ -941,20 +987,29 @@ trait RendersSymfonyDto
         }
 
         $reachable = [];
+        $readers = [];
         foreach (array_keys($this->dtoSchemas) as $className) {
             // No callback in the reader means it reads nobody.
-            if ($this->symfonyCallbackConstraintsFor($className) === []) {
-                continue;
+            if ($this->symfonyCallbackConstraintsFor($className) !== []) {
+                $readers[] = $className;
             }
-
-            foreach ($this->getSchemaProperties($className) as $property) {
+        }
+        // A class a callback reads is walked INTO as well: a branch beside it can reach a property of a
+        // class it holds — `oneOf: [{properties: {walrus: {properties: {crane: {minimum: 5}}}}}]` beside
+        // `allOf: [$ref Coral]` reads Coral's Fox — and a class without a payload view showed nothing
+        // there (its properties are private), so `crane` looked absent and every such branch matched.
+        while ($readers !== []) {
+            $reader = array_shift($readers);
+            foreach ($this->getSchemaProperties($reader) as $property) {
                 foreach ($this->generatedClassNamesInType($property['type']) as $referenced) {
-                    $reachable[$referenced] = true;
                     // A property typed as a union interface holds one of its members at runtime. The
                     // interface map is filled while the classes are written, after this runs, so the
                     // members are also read straight off the union's `$ref` branches.
-                    foreach ([...$this->unionMembersOf($referenced), ...$this->symfonyUnionRefMembers($referenced)] as $member) {
-                        $reachable[$member] = true;
+                    foreach ([$referenced, ...$this->unionMembersOf($referenced), ...$this->symfonyUnionRefMembers($referenced)] as $member) {
+                        if (!array_key_exists($member, $reachable)) {
+                            $reachable[$member] = true;
+                            $readers[] = $member;
+                        }
                     }
                 }
             }
@@ -999,6 +1054,11 @@ trait RendersSymfonyDto
                 allowScalarKeywords: false,
                 forceScalarOnProperties: $forceRootCallbackBounds,
                 unmaterializedProperties: $mixedProperties + $heldAsArray,
+                aroundNestedDtoProperties: $this->propertiesBesideTheirReferencedClass(
+                    classSchema: $this->classSchemaWithInlineAllOfMerged(schemaDefinition: $schemaDefinition, className: $className),
+                    properties: $this->getSchemaProperties($className),
+                    className: $className,
+                ),
             ),
             className: $className,
             extracted: $extracted,

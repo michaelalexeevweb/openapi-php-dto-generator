@@ -29,7 +29,6 @@ use UnitEnum;
 use WeakMap;
 
 use function array_diff_key;
-use function array_fill_keys;
 use function array_filter;
 use function array_is_list;
 use function array_key_exists;
@@ -1196,7 +1195,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
     {
         $sent = array_diff_key($bodyData, $requestFieldNames);
         if ($sent !== []) {
-            DtoServiceSupport::rememberUndeclaredKeysSent($dto, array_fill_keys(array_keys($sent), true));
+            DtoServiceSupport::rememberUndeclaredKeysSent($dto, $sent);
         }
 
         return $dto;
@@ -2508,24 +2507,113 @@ final class DtoDeserializer implements DtoDeserializerInterface
      */
     private function discriminatedUnionMember(array $typeNames, mixed $value, mixed $constraints): array
     {
-        $map = is_array($constraints) ? ($constraints['x-discriminator-map'] ?? null) : null;
-        $property = is_array($constraints) ? ($constraints['x-discriminator-property'] ?? null) : null;
-        if (!is_array($map) || !is_string($property)) {
+        if (!is_array($constraints)) {
             return $typeNames;
+        }
+        $routed = self::memberTheTagNames(typeNames: $typeNames, value: $value, level: $constraints);
+        if ($routed !== null) {
+            return [$routed];
+        }
+
+        return $this->withNestedDiscriminatorsRouted(typeNames: $typeNames, value: $value, constraints: $constraints, depth: 0);
+    }
+
+    /**
+     * A discriminated union one branch down — `oneOf: [{type: string}, {oneOf: [$ref Ochre, $ref Teal],
+     * discriminator: …}]` — routes the same way among ITS members only: the tag picks one of them, and
+     * the others of that branch are not tried, while the members beside the branch still are. Read only
+     * at the top, the overlapping members of the branch both accepted a tagged object, and the outer
+     * `oneOf` refused it as two matches although the discriminated branch is one.
+     *
+     * @param array<int, string> $typeNames
+     * @param array<array-key, mixed> $constraints
+     * @return array<int, string>
+     */
+    private function withNestedDiscriminatorsRouted(array $typeNames, mixed $value, array $constraints, int $depth): array
+    {
+        if ($depth >= self::MAX_UNION_BRANCH_DEPTH) {
+            return $typeNames;
+        }
+        foreach (['oneOf', 'anyOf', 'allOf'] as $keyword) {
+            foreach (is_array($constraints[$keyword] ?? null) ? $constraints[$keyword] : [] as $branch) {
+                if (!is_array($branch)) {
+                    continue;
+                }
+                $routed = self::memberTheTagNames(typeNames: $typeNames, value: $value, level: $branch);
+                if ($routed === null) {
+                    $typeNames = $this->withNestedDiscriminatorsRouted(typeNames: $typeNames, value: $value, constraints: $branch, depth: $depth + 1);
+
+                    continue;
+                }
+                $others = array_values(array_filter(
+                    array: self::memberClassesOf(constraints: $branch, depth: 0),
+                    callback: static fn(string $member): bool => $member !== ltrim($routed, '\\'),
+                ));
+                $typeNames = array_values(array_filter(
+                    array: $typeNames,
+                    callback: static fn(string $typeName): bool => !in_array(ltrim($typeName, '\\'), $others, true),
+                ));
+            }
+        }
+
+        return $typeNames;
+    }
+
+    /**
+     * The type among `$typeNames` the discriminator declared on this level names for the value's tag,
+     * or null when the level declares none, the value carries no tag, or the tag names no such type.
+     *
+     * @param array<int, string> $typeNames
+     * @param array<array-key, mixed> $level
+     */
+    private static function memberTheTagNames(array $typeNames, mixed $value, array $level): ?string
+    {
+        $map = $level['x-discriminator-map'] ?? null;
+        $property = $level['x-discriminator-property'] ?? null;
+        if (!is_array($map) || !is_string($property)) {
+            return null;
         }
         $fields = $value instanceof stdClass ? get_object_vars($value) : $value;
         $tag = is_array($fields) ? ($fields[$property] ?? null) : null;
         $mapped = is_string($tag) || is_int($tag) ? ($map[$tag] ?? null) : null;
         if (!is_string($mapped) || $mapped === '') {
-            return $typeNames;
+            return null;
         }
         foreach ($typeNames as $typeName) {
             if (str_ends_with('\\' . $typeName, '\\' . ltrim($mapped, '\\'))) {
-                return [$typeName];
+                return $typeName;
             }
         }
 
-        return $typeNames;
+        return null;
+    }
+
+    /**
+     * Every class a union level names as "is that class", nested unions included, without a leading
+     * backslash.
+     *
+     * @param array<array-key, mixed> $constraints
+     * @return list<string>
+     */
+    private static function memberClassesOf(array $constraints, int $depth): array
+    {
+        $member = $constraints['x-php-instanceof'] ?? null;
+        if (is_string($member)) {
+            return [ltrim($member, '\\')];
+        }
+        if ($depth >= self::MAX_UNION_BRANCH_DEPTH) {
+            return [];
+        }
+        $members = [];
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            foreach (is_array($constraints[$keyword] ?? null) ? $constraints[$keyword] : [] as $branch) {
+                if (is_array($branch)) {
+                    $members = [...$members, ...self::memberClassesOf(constraints: $branch, depth: $depth + 1)];
+                }
+            }
+        }
+
+        return $members;
     }
 
     /**

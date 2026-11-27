@@ -829,6 +829,22 @@ final class FuzzHarnessTest extends TestCase
         $this->assertTrue($tagged($inline, '{"fox":{"tint":"ok"}}'), 'the inline member');
         $this->assertFalse($tagged($inline, '{"fox":{"shade":"x"}}'), 'Green');
 
+        // A one-member `allOf` around the union (nullable beside it) is read as the union, the way a bare
+        // `$ref` is: untagged, the row-166 boundary surfaced as a fresh wrong-refuse (seed 35048).
+        $wrapped = ['openapi' => '3.0.3', 'info' => ['title' => 'Fuzz', 'version' => '1.0.0'], 'components' => ['schemas' => [
+            'Probe' => ['type' => 'object', 'properties' => ['fox' => ['allOf' => [['$ref' => '#/components/schemas/Teal']], 'nullable' => true]]],
+            'Teal' => ['anyOf' => [
+                ['type' => 'object', 'properties' => ['raven' => ['type' => 'string'], 'badger' => ['type' => 'string']], 'required' => ['badger']],
+                ['type' => 'integer'],
+                ['type' => 'object', 'properties' => ['raven' => ['type' => 'string', 'enum' => ['amber', 'blue']]]],
+            ]],
+        ]]];
+        $this->assertTrue($tagged($wrapped, '{"fox":{"raven":"blue"}}'), 'the member that sorts last, behind allOf');
+        $this->assertFalse($tagged($wrapped, '{"fox":{"badger":"x"}}'), 'the member that sorts first, behind allOf');
+        $inlineWrapped = $wrapped;
+        $inlineWrapped['components']['schemas']['Probe']['properties']['fox'] = ['allOf' => [$wrapped['components']['schemas']['Teal']]];
+        $this->assertTrue($tagged($inlineWrapped, '{"fox":{"raven":"blue"}}'), 'an inline union behind allOf');
+
         $this->assertNotNull(KnownDivergences::explain(mode: GenerationMode::Symfony, category: 'wrong-refuse', kind: 'valid', tags: ['unionObjectPair', 'objectOfPair']));
         $this->assertNull(KnownDivergences::explain(mode: GenerationMode::Symfony, category: 'wrong-refuse', kind: 'valid', tags: ['unionObjectPair']));
         // An object both members of the pair accept: symfony builds one and drops the other's keys, so

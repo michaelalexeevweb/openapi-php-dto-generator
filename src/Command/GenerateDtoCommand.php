@@ -1443,8 +1443,12 @@ final class GenerateDtoCommand extends Command
     /**
      * The schema with each INLINE subschema an object can sit in — a `oneOf` / `anyOf` / `allOf` branch,
      * `items`, a `prefixItems` slot, an `additionalProperties` schema — passed through `$map` with the
-     * path segment it sits at (`oneOf0`, `items`, `prefixItems1`, `additionalProperties`). A `$ref` is
-     * left alone: the component it names is walked as a component.
+     * path segment it sits at (`oneOf0`, `items`, `prefixItems1`, `additionalProperties`). A bare `$ref`
+     * is left alone: the component it names is walked as a component. A `$ref` with `properties` beside
+     * it is mapped like an inline object — those properties are its own, as they are on a direct property
+     * (`{$ref: Base, properties: {…}}`), which the property walk already follows: as a union branch, a
+     * list item or a map value it was skipped, and a discriminated union on one of its properties was
+     * never hoisted — symfony built its first member.
      *
      * @param array<mixed> $schema
      * @param callable(array<mixed>, string): array<mixed> $map
@@ -1452,7 +1456,8 @@ final class GenerateDtoCommand extends Command
      */
     private function withInlineSubschemasMapped(array $schema, callable $map): array
     {
-        $inline = static fn(mixed $subschema): bool => is_array($subschema) && !array_key_exists('$ref', $subschema);
+        $inline = static fn(mixed $subschema): bool => is_array($subschema)
+            && (!array_key_exists('$ref', $subschema) || is_array($subschema['properties'] ?? null));
         foreach (['oneOf', 'anyOf', 'allOf', 'prefixItems'] as $listKey) {
             if (!is_array($schema[$listKey] ?? null)) {
                 continue;
@@ -5704,6 +5709,97 @@ final class GenerateDtoCommand extends Command
             );
     }
 
+    /**
+     * The class a schema's `allOf` would make its parent on its own — the rule `analyzeSchema()`
+     * applies before a discriminated union claims the member: the discriminator base among the refs,
+     * else the single ref. Null for a schema without `allOf`, or one whose refs are merged.
+     */
+    private function ownAllOfParent(string $className): ?string
+    {
+        $schema = $this->dtoSchemas[$className] ?? null;
+        if (!is_array($schema) || !is_array($schema['allOf'] ?? null)) {
+            return null;
+        }
+        $refClassNames = [];
+        foreach ($schema['allOf'] as $allOfItem) {
+            if (is_array($allOfItem) && is_string($allOfItem['$ref'] ?? null)) {
+                $refClassNames[] = $this->schemaRefToClassName(
+                    ref: $allOfItem['$ref'],
+                    currentSourceFile: $this->getSchemaSourceFile($className),
+                );
+            }
+        }
+
+        return $this->findDiscriminatorBaseAmongRefs($className, $refClassNames) ?? $this->singleRefParent($refClassNames);
+    }
+
+    /**
+     * Runtime: the parent class of a `oneOf` / `anyOf` discriminator base — the `allOf` parent every one
+     * of its members names, so `Tile <- AnyTile <- StarTile` keeps each member an instance of both.
+     *
+     * The members extend the abstract base, and a class has one parent: an `allOf: [$ref Tile, …]` member
+     * was emitted `extends AnyTile`, its `Tile` dropped, and code that typed with `Tile` broke at load.
+     * Null when the members name no common parent (each keeps its own then, and is no member class of
+     * the base — {@see memberExtendsUnionBase()}), or in a flattened mode, where no parent is kept.
+     */
+    private function unionBaseParent(string $baseClass): ?string
+    {
+        if ($this->attributeMode !== self::ATTRIBUTE_MODE_RUNTIME || !$this->isOneOfDiscriminatorBase($baseClass)) {
+            return null;
+        }
+        $parents = [];
+        foreach ($this->discriminatorSchemas[$baseClass]['mapping'] as $memberClass) {
+            $parents[(string)$this->ownAllOfParent($memberClass)] = true;
+        }
+        $parent = count($parents) === 1 ? array_key_first($parents) : '';
+        // A parent that is a discriminator base itself declares a discriminator of its own, which the
+        // base's would shadow for every member: the members keep that parent instead.
+        if ($parent === '' || !array_key_exists($parent, $this->dtoSchemas) || array_key_exists($parent, $this->discriminatorSchemas)) {
+            return null;
+        }
+        // The base may not sit above its own parent: `AnyTile extends Tile extends AnyTile` is a cycle.
+        $ancestor = $parent;
+        for ($guard = 0; $ancestor !== null && $guard < 32; $guard++) {
+            if ($ancestor === $baseClass) {
+                return null;
+            }
+            $ancestor = $this->ownAllOfParent($ancestor);
+        }
+
+        return $parent;
+    }
+
+    /**
+     * Whether a mapping target of a `oneOf` / `anyOf` discriminator base is emitted `extends` that base.
+     *
+     * Runtime keeps a member out when linking it would change the parent it has on its own:
+     * - its `allOf` parent is not the base's own parent ({@see unionBaseParent()}), so extending the base
+     *   would drop it;
+     * - it is a class of another document written where that document's own run writes it too (a
+     *   `--ref` placement): that run knows nothing of this union, and the two runs must agree on it.
+     * Such a member keeps its parent; a property typed with the base is spelled as the union of its
+     * members and dispatched by the tag ({@see inlineSharedMemberUnionRef()}), as for a member two
+     * unions share.
+     */
+    private function memberExtendsUnionBase(string $memberClass, string $baseClass): bool
+    {
+        if ($this->discriminatorBaseForMember($memberClass) !== $baseClass || !$this->isOneOfDiscriminatorBase($baseClass)) {
+            return false;
+        }
+        if ($this->attributeMode !== self::ATTRIBUTE_MODE_RUNTIME) {
+            return true;
+        }
+        if (
+            $this->getSchemaSourceFile($memberClass) !== $this->getSchemaSourceFile($baseClass)
+            && $this->isGeneratedIntoASharedPlace($memberClass)
+        ) {
+            return false;
+        }
+        $ownParent = $this->ownAllOfParent($memberClass);
+
+        return $ownParent === null || $ownParent === $this->unionBaseParent($baseClass);
+    }
+
     private function expandNestedSchemas(): void
     {
         $processed = [];
@@ -6188,10 +6284,14 @@ final class GenerateDtoCommand extends Command
             // `$ref` it would otherwise extend is merged like any other branch. Unlinked, runtime
             // refused its payload — "Discriminator mapping class Kit must extend or implement Hue" —
             // and a property typed with the base could not hold it.
+            // Runtime keeps the `$ref` parent: the base extends it when every member names it
+            // (`unionBaseParent()`), and a member with a parent of its own does not extend the base.
             $memberBase = $discriminatorParent === null ? $this->discriminatorBaseForMember($className) : null;
-            if ($memberBase !== null && $this->isOneOfDiscriminatorBase($memberBase)) {
+            if ($memberBase !== null && $this->memberExtendsUnionBase($className, $memberBase)) {
                 $extends = $memberBase;
             }
+            // The base's parent arrives through the base, like the parent branch itself.
+            $inheritedRef = $extends === null ? null : $this->unionBaseParent($extends);
 
             foreach ($schemaDefinition['allOf'] as $allOfItem) {
                 if (!is_array($allOfItem)) {
@@ -6206,7 +6306,7 @@ final class GenerateDtoCommand extends Command
 
                     // The parent branch is inherited (its properties arrive via getParentProperties);
                     // every other branch is merged as own properties.
-                    if ($refClassName === $extends) {
+                    if ($refClassName === $extends || $refClassName === $inheritedRef) {
                         continue;
                     }
 
@@ -6332,7 +6432,7 @@ final class GenerateDtoCommand extends Command
         // A plain-object schema that is a mapping target of a oneOf/anyOf discriminator base has no
         // allOf $ref linking it to the base, so link it here: it extends the abstract base.
         $memberBase = $this->discriminatorBaseForMember($className);
-        $memberExtends = ($memberBase !== null && $this->isOneOfDiscriminatorBase($memberBase)) ? $memberBase : null;
+        $memberExtends = ($memberBase !== null && $this->memberExtendsUnionBase($className, $memberBase)) ? $memberBase : null;
 
         return [
             'properties' => $this->extractProperties(schemaDefinition: $schemaDefinition, ownerClassName: $className),
@@ -6345,7 +6445,7 @@ final class GenerateDtoCommand extends Command
     /**
      * Metadata for a oneOf/anyOf discriminator base: an abstract class that carries the
      * discriminator methods (its members extend it). It has no union members and no shared
-     * properties of its own.
+     * properties of its own; in runtime it extends the parent all its members name (`unionBaseParent()`).
      *
      * @param array<string, mixed> $schemaDefinition
      * @return SchemaMetadata
@@ -6354,7 +6454,7 @@ final class GenerateDtoCommand extends Command
     {
         return [
             'properties' => $this->extractProperties($schemaDefinition, $className),
-            'extends' => null,
+            'extends' => $this->unionBaseParent($className),
             'unionTypes' => [],
             'discriminator' => $this->discriminatorSchemas[$className],
             'abstract' => true,
@@ -7689,6 +7789,9 @@ final class GenerateDtoCommand extends Command
             // vacuously satisfied, which would over-count oneOf (false "more than one") and
             // make anyOf always pass. In that case drop the whole keyword.
             $branchConstraints = [];
+            // The member each kept branch names, by its position among the kept branches: the inlined
+            // branch carries no class of its own, so the discriminator check finds the member by index.
+            $branchMembers = [];
             $hasUnvalidatableBranch = false;
             foreach ($variants as $variant) {
                 // The 3.0 null branch, `{nullable: true}` and nothing else, is what types the property
@@ -7749,6 +7852,10 @@ final class GenerateDtoCommand extends Command
                     $hasUnvalidatableBranch = true;
                     break;
                 }
+                $inlinedMember = $variant['x-php-inlined-member'] ?? null;
+                if ($branchRef !== null || is_string($inlinedMember)) {
+                    $branchMembers[count($branchConstraints)] = $branchRef !== null ? $this->schemaRefToClassName($branchRef) : $inlinedMember;
+                }
                 $branchConstraints[] = $extracted;
             }
 
@@ -7795,7 +7902,7 @@ final class GenerateDtoCommand extends Command
                             if (!is_string($ref)) {
                                 continue;
                             }
-                            $mappedClass = $this->schemaRefToClassName($ref);
+                            $mappedClass = $this->schemaRefToClassName($ref, $this->constraintSourceFile ?? $this->rootSpecFile);
                             if ($mappedClass === 'mixed') {
                                 continue;
                             }
@@ -7817,6 +7924,20 @@ final class GenerateDtoCommand extends Command
                             $constraints['x-discriminator-property'] = $propertyName;
                             $constraints['x-discriminator-php-property'] = $this->normalizePropertyName($propertyName);
                             $constraints['x-discriminator-map'] = $classMap;
+                            // symfony and yii3 judge a member held as the decoded array, not as its class:
+                            // the tag must name the branch that matched, found here by its position.
+                            if (in_array($this->attributeMode, [self::ATTRIBUTE_MODE_SYMFONY, self::ATTRIBUTE_MODE_YII3], true)) {
+                                $memberBranches = [];
+                                foreach ($classMap as $tag => $mappedClass) {
+                                    $branchIndex = array_search($mappedClass, $branchMembers, true);
+                                    if (is_int($branchIndex)) {
+                                        $memberBranches[$tag] = $branchIndex;
+                                    }
+                                }
+                                if ($memberBranches !== []) {
+                                    $constraints['x-discriminator-branches'] = $memberBranches;
+                                }
+                            }
                         }
                     }
                 }
@@ -8311,7 +8432,9 @@ final class GenerateDtoCommand extends Command
      * (`{"kind": "mail", "stamp": "s"}` beside a `Crate` that requires only `kind`) matched twice and
      * was refused in every mode, and one of the other member (`{"kind": "crate", "slats": "x"}`)
      * passed as a `Mail`: the tag was read only once exactly one branch had matched. A value without
-     * the tag is judged by the union as written. Anything else —
+     * the tag is refused at the tag, as the runtime and a root laravel-data union refuse it: until
+     * 2.15.164 it was judged by the union as written, passed when one member took it, and the
+     * hydration — which dispatches by the tag alone — then had no class to build. Anything else —
      * a member written inline, a mapping naming a schema the union does not list — comes back as it
      * was.
      *
@@ -8343,16 +8466,19 @@ final class GenerateDtoCommand extends Command
         if ($mapping === []) {
             return $schema;
         }
-        // A value without the tag is judged by the union as written, as before: a member that does
-        // not require the tag may still take it.
+        // An object must carry the tag, one of the mapped values — the discriminator is what picks the
+        // class that gets built, so a value without it is refused at the tag even where a member does
+        // not require it: the hydration has nothing to dispatch on. Asked of an object only: what else
+        // the value may be is the `type` below — a `nullable` written beside the whole (a container's
+        // null item) must not meet the tag.
         $allOf = [
             ...(is_array($schema['allOf'] ?? null) ? $schema['allOf'] : []),
             [
-                'if' => ['type' => 'object', 'required' => [$tag]],
-                'then' => ['properties' => [$tag => ['enum' => array_map('strval', array_keys($mapping)), 'x-php-inline-enum' => true]]],
-                // Asked of an object only: what else the value may be is the `type` below — a `nullable`
-                // written beside the whole (a container's null item) must not meet the members.
-                'else' => ['if' => ['type' => 'object'], 'then' => [$keywords[0] => array_map(static fn(string $ref): array => ['$ref' => $ref], $refs)]],
+                'if' => ['type' => 'object'],
+                'then' => [
+                    'required' => [$tag],
+                    'properties' => [$tag => ['enum' => array_map('strval', array_keys($mapping)), 'x-php-inline-enum' => true]],
+                ],
             ],
         ];
         foreach ($mapping as $value => $ref) {
@@ -8494,6 +8620,11 @@ final class GenerateDtoCommand extends Command
                     $refInlineBudget--;
                     unset($schema['$ref']);
                     $schema += $definition;
+                    // Symfony checks an inlined member of a discriminated union by the tag, which names
+                    // the member by its class: the branch keeps that name, as the extraction reads it.
+                    if ($this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY) {
+                        $schema['x-php-inlined-member'] = $this->schemaRefToClassName($ref);
+                    }
 
                     // What was just inlined is written in ITS document: a relative `$ref` inside
                     // `rows.yml#/…/Cell` is relative to `rows.yml`, not to the file that referred to
@@ -8854,9 +8985,11 @@ final class GenerateDtoCommand extends Command
         // variants. It has neither keyword at the top, so it was skipped as free-form and a list of lists
         // of them checked nothing below the inner list. Its branches are walked once it is inlined.
         //
-        // Not a union in Symfony mode: its serializer DOES build the variant objects at this depth,
-        // through the discriminator map, and an inlined branch matched against such an object reads its
-        // private state as missing, so a valid payload was refused. That mode keeps its old answer.
+        // Not a union in Symfony mode by default: where its serializer builds the variant objects —
+        // through the discriminator map — an inlined branch matched against such an object reads its
+        // private state as missing, so a valid payload was refused. Below a container held as the
+        // decoded array nothing is built, and there the Symfony emitter asks for the union written
+        // out (`constraintInlinesUnionComponents`, see `symfonyContainerHoldsUndiscriminatedUnion()`).
         $compositionKeys = $this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY && !$this->constraintInlinesUnionComponents
             ? ['allOf']
             : ['allOf', 'oneOf', 'anyOf'];
@@ -10172,8 +10305,9 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
-     * Runtime: a `$ref` to a discriminated `oneOf`/`anyOf` component one of whose members another
-     * discriminated union maps as well, spelled as that union inline.
+     * Runtime: a `$ref` to a discriminated `oneOf`/`anyOf` component one of whose members does not extend
+     * it, spelled as that union inline: a member another discriminated union maps as well, or one that
+     * keeps a parent of its own ({@see memberExtendsUnionBase()}).
      *
      * Such a member extends neither base — a class has one parent — so it is no instance of the
      * abstract class the reference names, and a property typed with that class could hold none of its
@@ -10199,7 +10333,7 @@ final class GenerateDtoCommand extends Command
         }
         $sharesAMember = false;
         foreach ($mapping as $memberClass) {
-            if ($this->discriminatorBaseForMember($memberClass) === null) {
+            if (!$this->memberExtendsUnionBase($memberClass, $baseClass)) {
                 $sharesAMember = true;
             }
         }
@@ -12945,6 +13079,18 @@ final class GenerateDtoCommand extends Command
         $schemaDefinition = $this->dtoSchemas[$className] ?? null;
         if ($schemaDefinition === null) {
             return [];
+        }
+
+        // A discriminated union that extends its members' common parent holds that parent's properties.
+        $unionParent = $this->unionBaseParent($className);
+        if ($unionParent !== null) {
+            return $this->dedupeCaseInsensitivePropertyNames(properties: $this->mergeRestatedProperties(
+                properties: [
+                    ...$this->getSchemaProperties($unionParent, $visiting),
+                    ...$this->extractProperties($schemaDefinition, $className),
+                ],
+                className: $className,
+            ));
         }
 
         // If schema has allOf with inheritance, collect parent properties first

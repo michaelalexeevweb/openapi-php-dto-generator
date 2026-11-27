@@ -113,14 +113,15 @@ final class DtoServiceSupport
     private static ?WeakMap $emptyJsonObjects = null;
 
     /**
-     * The body keys each built DTO was sent but declares no property for, by DTO.
+     * The body keys each built DTO was sent but declares no property for, with the values sent, by DTO.
      *
      * A `required` name the class does not declare (`{properties: {tail}, required: [ear]}`) has no
      * property to hold it, so the key is gone once the payload is built and a check of the built
      * object can never find it. The deserializer notes the keys it saw here; the validator's
-     * `required` asks them too. A WeakMap keyed by the DTO, as above.
+     * `required` asks them too, and a sibling union branch judging the built object sees their values.
+     * A WeakMap keyed by the DTO, as above.
      *
-     * @var WeakMap<object, array<array-key, true>>|null
+     * @var WeakMap<object, array<array-key, mixed>>|null
      */
     private static ?WeakMap $undeclaredKeysSent = null;
 
@@ -485,9 +486,9 @@ final class DtoServiceSupport
     }
 
     /**
-     * Notes the body keys `$dto` was sent beside its declared ones.
+     * Notes the body keys `$dto` was sent beside its declared ones, with their raw values.
      *
-     * @param array<array-key, true> $keys
+     * @param array<array-key, mixed> $keys
      */
     public static function rememberUndeclaredKeysSent(object $dto, array $keys): void
     {
@@ -499,9 +500,10 @@ final class DtoServiceSupport
     }
 
     /**
-     * The body keys `$dto` was sent beside its declared ones; empty for a DTO built by hand.
+     * The body keys `$dto` was sent beside its declared ones, with their raw values; empty for a DTO
+     * built by hand.
      *
-     * @return array<array-key, true>
+     * @return array<array-key, mixed>
      */
     public static function undeclaredKeysSentTo(object $dto): array
     {

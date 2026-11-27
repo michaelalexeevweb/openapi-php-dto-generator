@@ -304,6 +304,14 @@ trait RendersYii3Dto
                 ),
                 allowScalarKeywords: true,
                 unmaterializedProperties: $this->mixedPropertyNames($properties) + $this->yii3HeldDecodedPropertyNames($properties),
+                aroundNestedDtoProperties: $this->propertiesBesideTheirReferencedClass(
+                    classSchema: $this->yii3ClassSchemaWithInlineAllOfMerged($this->dtoSchemas[$className] ?? [], $className),
+                    properties: $properties,
+                    className: $className,
+                ),
+                // The built class's payload view holds only the names it declares; the others are
+                // checked on the raw input by `yii3UndeclaredRequiredRule()`.
+                requiredCheckedOnInput: $this->yii3RequiredCheckedOnInput($properties),
             ),
             properties: $properties,
         );
@@ -1492,6 +1500,31 @@ trait RendersYii3Dto
                 "noPropertyPathMessage: 'Property \"{path}\" is required in {property}.'",
             ],
         ];
+    }
+
+    /**
+     * Per property, the `required` names `yii3UndeclaredRequiredRule()` checks on the raw input — what
+     * the interpreter must not judge again against the built class's payload view, which never holds them.
+     *
+     * @param array<int, SchemaProperty> $properties
+     * @return array<string, list<string>>
+     */
+    private function yii3RequiredCheckedOnInput(array $properties): array
+    {
+        $checked = [];
+        foreach ($properties as $property) {
+            // A parameter gets no such rule (`yii3ValidationAttributes()`), so the interpreter keeps its names.
+            $isParameter = ($property['inQuery'] ?? false) === true
+                || ($property['inPath'] ?? false) === true
+                || ($property['inHeader'] ?? false) === true
+                || ($property['inCookie'] ?? false) === true;
+            $names = $isParameter ? [] : $this->yii3UndeclaredRequiredNames(ltrim($property['type'], '?'), $property['constraints'] ?? []);
+            if ($names !== []) {
+                $checked[$property['openApiName']] = $names;
+            }
+        }
+
+        return $checked;
     }
 
     /**

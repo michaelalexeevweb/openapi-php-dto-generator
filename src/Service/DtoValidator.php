@@ -11,7 +11,11 @@ use JsonException;
 use LogicException;
 use OpenapiPhpDtoGenerator\Contract\GeneratedDtoInterface;
 use OpenapiPhpDtoGenerator\Contract\JsonShapeAwareValidatorInterface;
+use OpenapiPhpDtoGenerator\Contract\UnsetValue;
 use ReflectionClass;
+use ReflectionNamedType;
+use ReflectionType;
+use ReflectionUnionType;
 use stdClass;
 use Symfony\Component\HttpFoundation\File\File;
 use TypeError;
@@ -29,6 +33,7 @@ use function array_unique;
 use function array_values;
 use function base64_decode;
 use function bin2hex;
+use function class_exists;
 use function count;
 use function ctype_xdigit;
 use function explode;
@@ -137,7 +142,7 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
     private ?array $listOfTheArrayMember = null;
 
     /**
-     * @var array<string, array{required: list<string>, nullable: list<string>, properties: array<string, array<string, mixed>>, object: array<string, mixed>}|null>
+     * @var array<string, array{required: list<string>, nullable: list<string>, properties: array<string, array<string, mixed>>, object: array<string, mixed>, classes: array<string, array{class: class-string, container: string|null}>}|null>
      */
     private array $rawObjectRulesCache = [];
 
@@ -480,7 +485,7 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
                     if (!is_array($branch) || ($nullAdmitted && $this->checksOnlyClasses($branch))) {
                         continue;
                     }
-                    array_push($errors, ...$this->validateConstraints($subject, $value, $branch, $depth + 1));
+                    array_push($errors, ...$this->validateConstraints($subject, $value, $branch, $depth + 1, propertyRulesOwnedByDto: $propertyRulesOwnedByDto));
                 }
             }
 
@@ -570,7 +575,9 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
 
             // not: value must NOT satisfy the given schema.
             if (array_key_exists('not', $constraints) && is_array($constraints['not'])) {
-                $notErrors = $this->validateConstraints($subject, $value, $constraints['not'], $depth + 1);
+                // Asked of the DTO's values too, as `if` is below: with its property rules left to the
+                // DTO, the emptied `not: {properties: …}` matched every object and refused them all.
+                $notErrors = $this->validateConstraints($subject, $value, $constraints['not'], $depth + 1, propertyRulesOwnedByDto: false);
                 // A branch that could not be checked to the end did not "fail to match": fail closed.
                 $errors = [...$errors, ...$this->incompleteVerdict($notErrors)];
                 if ($notErrors === []) {
@@ -697,7 +704,13 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
                 || array_key_exists('prefixItems', $constraints)
                 || array_key_exists('unevaluatedItems', $constraints))
         ) {
-            $errors = [...$errors, ...$this->validateArray(subject: $subject, value: $value, constraints: $constraints, depth: $depth)];
+            $errors = [...$errors, ...$this->validateArray(
+                subject: $subject,
+                value: $value,
+                constraints: $constraints,
+                depth: $depth,
+                propertyRulesOwnedByDto: $propertyRulesOwnedByDto,
+            )];
         }
 
         // The value gate comes FIRST, unlike the keyword probe it guards: the section can only do
@@ -744,6 +757,10 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
                     // The keys the DTO was sent but has no property for: a `required` name it does
                     // not declare is met by them, see `DtoServiceSupport::rememberUndeclaredKeysSent()`.
                     undeclaredKeysSent: $isGeneratedDto ? DtoServiceSupport::undeclaredKeysSentTo($value) : [],
+                    // A rule a union branch or a conditional lays on a NESTED DTO's property is no rule
+                    // that DTO owns either: stripped one level down as "the DTO's own", `oneOf: [{properties:
+                    // {walrus: {properties: {crane: {minimum: 5}}}}}]` checked nothing below `walrus`.
+                    propertyRulesOwnedByDto: $propertyRulesOwnedByDto,
                 )];
             }
         }
@@ -927,16 +944,33 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
             // `required: [walrus]` alone was left of `{walrus: $ref Coral}`, so a built `{walrus: 7,
             // crane: "c"}` of the other member matched it too and `oneOf` refused a valid payload. The
             // key-counting rules the DTO's class owns stay dropped, as everywhere: the class counted
-            // them against the raw body, the built object holds its declared keys alone.
-            $branchErrors = $value instanceof GeneratedDtoInterface && !$value instanceof BackedEnum
-                ? $this->validateConstraints(
+            // them against the raw body, the built object holds its declared keys alone — unless the
+            // body sent keys the class declares none for: then the branch is asked of the object that
+            // was SENT, the built one's values with the undeclared ones beside them, and nothing is
+            // dropped. Judged on the declared keys alone, `{"lemur": "x"}` built as an open `Amber`
+            // matched the integer map beside it too, and `oneOf` refused it twice. A branch naming a
+            // class for the value itself is asked of the built object still: the sent one is raw, and
+            // a raw object leaves every class undecided.
+            $sentObject = $this->namesAClassForTheValue($branch) ? null : $this->sentObjectOf($value);
+            if ($sentObject !== null) {
+                $branchErrors = $this->validateConstraints(
+                    subject: $subject,
+                    value: $sentObject,
+                    constraints: $branch,
+                    depth: $depth + 1,
+                    propertyRulesOwnedByDto: false,
+                );
+            } elseif ($value instanceof GeneratedDtoInterface && !$value instanceof BackedEnum) {
+                $branchErrors = $this->validateConstraints(
                     subject: $subject,
                     value: $value,
                     constraints: $this->withObjectRulesOwnedByTheDto(dto: $value, constraints: $branch),
                     depth: $depth + 1,
                     propertyRulesOwnedByDto: false,
-                )
-                : $this->validateConstraints($subject, $value, $branch, $depth + 1);
+                );
+            } else {
+                $branchErrors = $this->validateConstraints($subject, $value, $branch, $depth + 1);
+            }
             // `oneOf` counts matches, and a branch that could not be finished may have been one.
             if ($isOneOf && $this->incompleteVerdict($branchErrors) !== []) {
                 return $this->incompleteVerdict($branchErrors);
@@ -1044,6 +1078,64 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
     }
 
     /**
+     * Whether a schema names a generated class for the value it is applied to: at its root, or in a
+     * subschema applied to the same value (`allOf`, `anyOf`, `oneOf`, `not`, `if`, `then`, `else`).
+     *
+     * @param array<array-key, mixed> $schema
+     */
+    private function namesAClassForTheValue(array $schema, int $depth = 0): bool
+    {
+        if (array_key_exists('x-php-instanceof', $schema)) {
+            return true;
+        }
+        if ($depth >= self::MAX_VALIDATION_DEPTH) {
+            return true;
+        }
+        foreach (['allOf', 'anyOf', 'oneOf'] as $keyword) {
+            foreach (is_array($schema[$keyword] ?? null) ? $schema[$keyword] : [] as $subschema) {
+                if (is_array($subschema) && $this->namesAClassForTheValue(schema: $subschema, depth: $depth + 1)) {
+                    return true;
+                }
+            }
+        }
+        foreach (['not', 'if', 'then', 'else'] as $keyword) {
+            $subschema = $schema[$keyword] ?? null;
+            if (is_array($subschema) && $this->namesAClassForTheValue(schema: $subschema, depth: $depth + 1)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * A built DTO that was sent keys it declares no property for, as the object the body sent: its
+     * payload with those keys and their raw values beside it. Null for any other value, and for a DTO
+     * that kept every key it was sent.
+     */
+    private function sentObjectOf(mixed $value): ?stdClass
+    {
+        if (!$value instanceof GeneratedDtoInterface || $value instanceof BackedEnum) {
+            return null;
+        }
+        $undeclared = DtoServiceSupport::undeclaredKeysSentTo($value);
+        $payload = $undeclared === [] ? null : $this->generatedDtoPayload($value);
+        if ($payload === null) {
+            return null;
+        }
+        // Two loops, not a spread: a spread renumbers the integer keys a JSON object may carry.
+        $sent = new stdClass();
+        foreach ($payload as $key => $member) {
+            $sent->{$key} = $member;
+        }
+        foreach ($undeclared as $key => $member) {
+            $sent->{$key} = $member;
+        }
+
+        return $sent;
+    }
+
+    /**
      * Whether the branch names a generated object class and the value is a raw object nothing hydrated
      * into it: an object-shaped array or a `stdClass`. A backed enum is never undecided — no array is
      * one of its cases — and neither is a non-empty JSON list, which is no object.
@@ -1073,10 +1165,16 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
      * the class, `{"puffin": null}` against a `puffin: string` it requires was no refusal, and a union
      * holding the raw object took it.
      *
+     * A property whose PHP type is a generated class — alone, as the items of a list or the values of a
+     * map — is judged the same way, one level down: the constraints say nothing about it, its class does.
+     *
      * @return list<string>
      */
     private function rawObjectRefusalsOfClass(string $subject, mixed $value, string $className, int $depth): array
     {
+        if ($depth >= self::MAX_VALIDATION_DEPTH) {
+            return [];
+        }
         $payload = $this->objectPayloadForConstraints($value);
         $rules = $this->rawObjectRulesOf($className);
         if ($payload === null || $rules === null) {
@@ -1101,8 +1199,57 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
             constraints: [...$rules['object'], 'required' => $rules['required'], 'properties' => $properties],
             depth: $depth + 1,
         )];
+        foreach ($rules['classes'] as $wireName => $typed) {
+            $member = $payload[$wireName] ?? null;
+            if ($member === null) {
+                continue;
+            }
+            $memberSubject = sprintf('%s.%s', $subject, $wireName);
+            if ($typed['container'] === null) {
+                $members = [$memberSubject => $member];
+            } elseif (
+                ($typed['container'] === 'items' && is_array($member) && array_is_list($member))
+                || ($typed['container'] === 'additionalProperties' && (is_array($member) || $member instanceof stdClass))
+            ) {
+                // Any other shape is the constraints' `type` to refuse.
+                $members = [];
+                foreach ((array)$member as $key => $item) {
+                    $members[sprintf('%s[%s]', $memberSubject, $key)] = $item;
+                }
+            } else {
+                continue;
+            }
+            foreach ($members as $itemSubject => $item) {
+                $refusals = [...$refusals, ...$this->rawMemberRefusals(
+                    subject: $itemSubject,
+                    value: $item,
+                    className: $typed['class'],
+                    depth: $depth + 1,
+                )];
+            }
+        }
 
         return $this->incompleteVerdict($refusals) === [] ? array_values(array_unique($refusals)) : [];
+    }
+
+    /**
+     * A value a property typed with a generated class holds raw: an object that class's rules refuse, or
+     * no object at all. Null is left to the property's own nullability, and a class that cannot be judged
+     * from its metadata refuses nothing.
+     *
+     * @param class-string $className
+     * @return list<string>
+     */
+    private function rawMemberRefusals(string $subject, mixed $value, string $className, int $depth): array
+    {
+        if ($value === null || $this->rawObjectRulesOf($className) === null) {
+            return [];
+        }
+        if (!$this->isRawObjectFor(value: $value, className: $className)) {
+            return [sprintf('%s must be an object', $subject)];
+        }
+
+        return $this->rawObjectRefusalsOfClass(subject: $subject, value: $value, className: $className, depth: $depth);
     }
 
     /**
@@ -1110,7 +1257,7 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
      * class, read off its static metadata, or null when the class cannot be judged from them. See
      * {@see rawObjectRefusalsOfClass()}.
      *
-     * @return array{required: list<string>, nullable: list<string>, properties: array<string, array<string, mixed>>, object: array<string, mixed>}|null
+     * @return array{required: list<string>, nullable: list<string>, properties: array<string, array<string, mixed>>, object: array<string, mixed>, classes: array<string, array{class: class-string, container: string|null}>}|null
      */
     private function rawObjectRulesOf(string $className): ?array
     {
@@ -1127,14 +1274,17 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
 
         $defaults = [];
         $phpAllowsNull = [];
+        $phpClasses = [];
         foreach ($reflection->getConstructor()?->getParameters() ?? [] as $parameter) {
             $defaults[$parameter->getName()] = $parameter->isDefaultValueAvailable();
             $phpAllowsNull[$parameter->getName()] = $parameter->getType()?->allowsNull() ?? true;
+            $phpClasses[$parameter->getName()] = $this->soleTypeOf($parameter->getType());
         }
 
         $required = [];
         $nullable = [];
         $properties = [];
+        $classes = [];
         foreach ($className::getNormalizationMap() as $propertyName => $entry) {
             $metadata = $entry['metadata'];
             $wireName = $metadata['openApiName'] ?? null;
@@ -1143,6 +1293,19 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
             }
             $constraints = $metadata['constraints'] ?? [];
             $properties[$wireName] = is_array($constraints) ? $constraints : [];
+            // The rules the property's TYPE owns, which its constraints leave out: an `enum` moved into
+            // a backed enum, a nested class, a list or map of either. Left out, a raw object breaking
+            // them still "matched" the class, and a union beside it took the object or refused it twice.
+            [$typeName, $container] = $this->typeOwningRulesOf(
+                soleType: $phpClasses[$propertyName] ?? null,
+                arrayItemType: $metadata['arrayItemType'] ?? null,
+                declaringClass: $reflection,
+            );
+            if ($typeName !== null && is_subclass_of($typeName, BackedEnum::class)) {
+                $properties[$wireName] = $this->withEnumOf(rules: $properties[$wireName], enumClass: $typeName, container: $container);
+            } elseif ($typeName !== null && is_subclass_of($typeName, GeneratedDtoInterface::class)) {
+                $classes[$wireName] = ['class' => $typeName, 'container' => $container];
+            }
             // As the deserializer reads it: the constraints when they say, else a required property
             // whose PHP type admits null (the map's `nullable` where no constructor parameter is it).
             // A `readOnly` one is not the request's to send, and its null is left alone, as its absence is.
@@ -1183,7 +1346,88 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
             }
         }
 
-        return $this->rawObjectRulesCache[$className] = ['required' => $required, 'nullable' => $nullable, 'properties' => $properties, 'object' => $object];
+        return $this->rawObjectRulesCache[$className] = [
+            'required' => $required,
+            'nullable' => $nullable,
+            'properties' => $properties,
+            'object' => $object,
+            'classes' => $classes,
+        ];
+    }
+
+    /**
+     * The one class or `array` a constructor parameter's type names beside the `UnsetValue` sentinel and
+     * null, or null when it names none or more than one.
+     */
+    private function soleTypeOf(?ReflectionType $type): ?string
+    {
+        $named = match (true) {
+            $type instanceof ReflectionNamedType => [$type],
+            $type instanceof ReflectionUnionType => $type->getTypes(),
+            default => [],
+        };
+        $names = [];
+        foreach ($named as $member) {
+            $name = $member instanceof ReflectionNamedType ? $member->getName() : null;
+            if ($name === null || in_array($name, ['null', UnsetValue::class], true)) {
+                continue;
+            }
+            $names[] = $name;
+        }
+
+        return count($names) === 1 && ($names[0] === 'array' || class_exists($names[0])) ? $names[0] : null;
+    }
+
+    /**
+     * The class whose rules a property's type owns, and where it sits: `null` for the property itself,
+     * `items` for a list, `additionalProperties` for a map. A container's item class is read off the
+     * map's `arrayItemType` (`?array<Teal>`, `array<string, Teal>`), a short name resolved in the
+     * namespace of the class that declares it.
+     *
+     * @param ReflectionClass<object> $declaringClass
+     * @return array{class-string|null, string|null}
+     */
+    private function typeOwningRulesOf(?string $soleType, mixed $arrayItemType, ReflectionClass $declaringClass): array
+    {
+        if ($soleType !== 'array') {
+            return [$soleType !== null && class_exists($soleType) ? $soleType : null, null];
+        }
+        if (
+            !is_string($arrayItemType)
+            || preg_match('/^\??(?:array|list)<(?:(string|int)\s*,\s*)?(\\\?[A-Za-z_][A-Za-z0-9_\\\]*)>$/', $arrayItemType, $match) !== 1
+        ) {
+            return [null, null];
+        }
+        // A short name is the declaring file's own namespace; one it imported from elsewhere is not found
+        // there, and is left unjudged.
+        $itemType = str_contains($match[2], '\\') ? ltrim($match[2], '\\') : $declaringClass->getNamespaceName() . '\\' . $match[2];
+        if (!class_exists($itemType)) {
+            return [null, null];
+        }
+
+        return [$itemType, $match[1] === '' ? 'items' : 'additionalProperties'];
+    }
+
+    /**
+     * The rules with the cases of a backed enum as their `enum`: on the value itself, or on the items or
+     * values of the container the property is. A rule the document already gave is kept.
+     *
+     * @param array<string, mixed> $rules
+     * @param class-string<BackedEnum> $enumClass
+     * @return array<string, mixed>
+     */
+    private function withEnumOf(array $rules, string $enumClass, ?string $container): array
+    {
+        $cases = array_map(static fn(BackedEnum $case): int|string => $case->value, $enumClass::cases());
+        if ($container === null) {
+            return array_key_exists('enum', $rules) ? $rules : [...$rules, 'enum' => $cases];
+        }
+        $itemRules = $rules[$container] ?? [];
+        if (!is_array($itemRules) || array_key_exists('enum', $itemRules)) {
+            return $rules;
+        }
+
+        return [...$rules, $container => [...$itemRules, 'enum' => $cases]];
     }
 
     private function isRawObjectFor(mixed $value, string $className): bool
@@ -1835,11 +2079,17 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
     /**
      * @param array<array-key, mixed> $value
      * @param array<string, mixed> $constraints
-     * @param array<array-key, true> $undeclaredKeysSent keys a generated DTO was sent beside its properties
+     * @param array<array-key, mixed> $undeclaredKeysSent keys a generated DTO was sent beside its properties
      * @return array<string>
      */
-    private function validateObjectConstraints(string $subject, array $value, array $constraints, int $depth, array $undeclaredKeysSent = []): array
-    {
+    private function validateObjectConstraints(
+        string $subject,
+        array $value,
+        array $constraints,
+        int $depth,
+        array $undeclaredKeysSent = [],
+        bool $propertyRulesOwnedByDto = true,
+    ): array {
         $errors = [];
         $count = count($value);
 
@@ -1869,6 +2119,7 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
                         value: $value[$propName],
                         constraints: $propSchema,
                         depth: $depth + 1,
+                        propertyRulesOwnedByDto: $propertyRulesOwnedByDto,
                     ),
                 );
             }
@@ -1916,6 +2167,7 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
                         value: $itemValue,
                         constraints: $schema,
                         depth: $depth + 1,
+                        propertyRulesOwnedByDto: $propertyRulesOwnedByDto,
                     );
                     array_push($errors, ...$keyErrors);
                     if ($this->engineGaveUp($keyErrors)) {
@@ -1933,6 +2185,7 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
                     value: (string)$key,
                     constraints: $constraints['propertyNames'],
                     depth: $depth + 1,
+                    propertyRulesOwnedByDto: $propertyRulesOwnedByDto,
                 );
                 array_push($errors, ...$keyErrors);
                 if ($this->engineGaveUp($keyErrors)) {
@@ -1965,6 +2218,7 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
                     value: $itemValue,
                     constraints: $additionalProperties,
                     depth: $depth + 1,
+                    propertyRulesOwnedByDto: $propertyRulesOwnedByDto,
                 );
                 array_push($errors, ...$keyErrors);
                 if ($this->engineGaveUp($keyErrors)) {
@@ -1991,7 +2245,7 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
                 if (!is_string($ifProp) || !is_array($schema) || !array_key_exists($ifProp, $value)) {
                     continue;
                 }
-                array_push($errors, ...$this->validateConstraints($subject, $value, $schema, $depth + 1));
+                array_push($errors, ...$this->validateConstraints($subject, $value, $schema, $depth + 1, propertyRulesOwnedByDto: $propertyRulesOwnedByDto));
             }
         }
 
@@ -2015,6 +2269,7 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
                         value: $itemValue,
                         constraints: $unevaluated,
                         depth: $depth + 1,
+                        propertyRulesOwnedByDto: $propertyRulesOwnedByDto,
                     );
                     array_push($errors, ...$keyErrors);
                     if ($this->engineGaveUp($keyErrors)) {
@@ -2032,7 +2287,7 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
      * @param array<string, mixed> $constraints
      * @return array<string>
      */
-    private function validateArray(string $subject, array $value, array $constraints, int $depth): array
+    private function validateArray(string $subject, array $value, array $constraints, int $depth, bool $propertyRulesOwnedByDto = true): array
     {
         $errors = [];
         $count = count($value);
@@ -2120,6 +2375,7 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
                     constraints: $itemConstraints,
                     depth: $depth + 1,
                     hasComposition: $itemsHaveComposition,
+                    propertyRulesOwnedByDto: $propertyRulesOwnedByDto,
                 );
                 array_push($errors, ...$itemErrors);
                 if ($this->engineGaveUp($itemErrors)) {
@@ -2150,6 +2406,7 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
                     constraints: $containsSchema,
                     depth: $depth + 1,
                     hasComposition: $containsHasComposition,
+                    propertyRulesOwnedByDto: $propertyRulesOwnedByDto,
                 );
                 if ($itemErrors === []) {
                     $matchCount++;
@@ -2188,6 +2445,7 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
                         value: $value[$index],
                         constraints: $itemSchema,
                         depth: $depth + 1,
+                        propertyRulesOwnedByDto: $propertyRulesOwnedByDto,
                     ),
                 );
             }
@@ -2215,6 +2473,7 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
                         value: $itemValue,
                         constraints: $unevaluated,
                         depth: $depth + 1,
+                        propertyRulesOwnedByDto: $propertyRulesOwnedByDto,
                     );
                     array_push($errors, ...$itemErrors);
                     if ($this->engineGaveUp($itemErrors)) {
