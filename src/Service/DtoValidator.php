@@ -147,6 +147,14 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
     private array $rawObjectRulesCache = [];
 
     /**
+     * The rules each generated class holds for its own properties, by wire name — see
+     * {@see ownPropertyRulesOf()}.
+     *
+     * @var array<string, array<string, array<string, mixed>>>
+     */
+    private array $ownPropertyRulesCache = [];
+
+    /**
      * This validator for values whose JSON objects are still `stdClass`, so that an empty PHP array
      * can only have been `[]`: it no longer satisfies `type: object`, and an object keyword
      * (`required`, `minProperties`, …) leaves it alone, as JSON Schema says of any array. Where `type`
@@ -737,7 +745,7 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
             if ($objectValue !== null) {
                 $errors = [...$errors, ...$this->validateObjectConstraints(
                     subject: $subject,
-                    value: $objectValue,
+                    value: $isGeneratedDto ? $this->withUndeclaredKeysNamedBy(payload: $objectValue, dto: $value, constraints: $constraints) : $objectValue,
                     // `properties` is owned by the DTO itself: it validates its own fields against
                     // its own constraints, so re-checking them here would duplicate every message —
                     // but the declared NAMES must stay visible, see the helper. A PLAIN object owns
@@ -751,7 +759,7 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
                     // {minLength: 7}}}` accepted `"short"` — while `then: {required: [code]}`, which this
                     // helper leaves alone, was enforced all along.
                     constraints: $isGeneratedDto && $propertyRulesOwnedByDto
-                        ? $this->withObjectRulesOwnedByTheDto(dto: $value, constraints: $this->withPropertyRulesOwnedByTheDto($constraints))
+                        ? $this->withObjectRulesOwnedByTheDto(dto: $value, constraints: $this->withPropertyRulesOwnedByTheDto(dto: $value, constraints: $constraints))
                         : $constraints,
                     depth: $depth,
                     // The keys the DTO was sent but has no property for: a `required` name it does
@@ -1106,6 +1114,32 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
         }
 
         return false;
+    }
+
+    /**
+     * A generated DTO's payload, plus the keys it was sent but declares no property for that the
+     * use-site `properties` name — with their raw values. The class could not hold them, so a rule
+     * the use site lays on such a key (`allOf: [$ref: Coral], properties: {zeta: {minimum: 9}}`)
+     * had no value to judge and passed whatever was sent.
+     *
+     * @param array<string, mixed> $payload
+     * @param array<string, mixed> $constraints
+     * @return array<string, mixed>
+     */
+    private function withUndeclaredKeysNamedBy(array $payload, object $dto, array $constraints): array
+    {
+        $named = $constraints['properties'] ?? null;
+        if (!is_array($named)) {
+            return $payload;
+        }
+        foreach (DtoServiceSupport::undeclaredKeysSentTo($dto) as $key => $member) {
+            $key = (string)$key;
+            if (array_key_exists($key, $named) && !array_key_exists($key, $payload)) {
+                $payload[$key] = $member;
+            }
+        }
+
+        return $payload;
     }
 
     /**
@@ -3179,25 +3213,84 @@ final class DtoValidator implements JsonShapeAwareValidatorInterface
      * unevaluated — `{"known":"a"}` against `properties: {known}, unevaluatedProperties: false` was
      * rejected with `has unevaluated property "known"`.
      *
-     * Each declared property therefore keeps its key and loses its rules: the bookkeeping keywords
-     * still see the name, and validating a value against an empty schema produces nothing.
+     * Each declared property therefore keeps its key and loses the rules the CLASS holds for it: the
+     * bookkeeping keywords still see the name, and what the class judged already is not judged twice.
+     * A rule the class does not hold is a use-site rule and stays: `allOf: [$ref: Coral], properties:
+     * {bee: {minimum: 9}}` narrows Coral's `bee` where it is used, Coral has never heard of the bound,
+     * and stripping it as "the DTO's own" accepted `{"bee": 1}`. The same for a name the class does
+     * not declare at all.
      *
      * @param array<string, mixed> $constraints
      * @return array<string, mixed>
      */
-    private function withPropertyRulesOwnedByTheDto(array $constraints): array
+    private function withPropertyRulesOwnedByTheDto(object $dto, array $constraints): array
     {
         $properties = $constraints['properties'] ?? null;
         if (!is_array($properties)) {
             return $this->withoutKeyword($constraints, 'properties');
         }
 
-        $names = [];
-        foreach (array_keys($properties) as $propertyName) {
-            $names[(string)$propertyName] = [];
+        $own = $this->ownPropertyRulesOf($dto::class);
+        $kept = [];
+        foreach ($properties as $propertyName => $rules) {
+            $propertyName = (string)$propertyName;
+            $kept[$propertyName] = is_array($rules) ? $this->withoutRulesHeldBy(rules: $rules, own: $own[$propertyName] ?? null) : [];
         }
-        $constraints['properties'] = $names;
+        $constraints['properties'] = $kept;
 
         return $constraints;
+    }
+
+    /**
+     * The keywords of a use-site property schema the class does not hold itself with the same value.
+     * A class that does not declare the property holds nothing for it, so the whole schema stays.
+     *
+     * @param array<mixed> $rules
+     * @param array<string, mixed>|null $own
+     * @return array<mixed>
+     */
+    private function withoutRulesHeldBy(array $rules, ?array $own): array
+    {
+        if ($own === null) {
+            return $rules;
+        }
+
+        $kept = [];
+        foreach ($rules as $keyword => $value) {
+            // `type` is the PHP type's to judge, which the class declared; the `$ref`-resolved copy
+            // a union branch carries repeats it and adds nothing the hydrated value could break.
+            if ($keyword === 'type' || (array_key_exists((string)$keyword, $own) && $own[(string)$keyword] === $value)) {
+                continue;
+            }
+            $kept[$keyword] = $value;
+        }
+
+        return $kept;
+    }
+
+    /**
+     * The constraints a generated class holds for each of its body properties, keyed by wire name.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function ownPropertyRulesOf(string $className): array
+    {
+        if (array_key_exists($className, $this->ownPropertyRulesCache)) {
+            return $this->ownPropertyRulesCache[$className];
+        }
+        $own = [];
+        if (is_subclass_of($className, GeneratedDtoInterface::class)) {
+            foreach ($className::getNormalizationMap() as $entry) {
+                $metadata = $entry['metadata'];
+                $wireName = $metadata['openApiName'] ?? null;
+                if (!is_string($wireName)) {
+                    continue;
+                }
+                $constraints = $metadata['constraints'] ?? [];
+                $own[$wireName] = is_array($constraints) ? $constraints : [];
+            }
+        }
+
+        return $this->ownPropertyRulesCache[$className] = $own;
     }
 }

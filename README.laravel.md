@@ -414,8 +414,32 @@ around them is a few lines of your own code; these are the shapes that work.
 ### One request that is one of several variants, without a discriminator
 
 With a `discriminator` the generated FormRequest picks the variant (see
-[A body that is one of several variants](#a-body-that-is-one-of-several-variants)). Without one there
-is no rule for which variant is meant, so the choice is yours — typically the first whose rules pass:
+[A body that is one of several variants](#a-body-that-is-one-of-several-variants)). Without one, a body
+that IS a union of classes — a `$ref` to `Shape: {oneOf: [$ref Circle, $ref Square]}`, or the same
+`oneOf` / `anyOf` written inline in the request body, which is generated as the interface
+`<Path><Method>Request` — gets a `ShapeFormRequest` too (since 2.15.165). Nothing in the payload names
+the member, so it tries every member's own `rules()` and `withValidator()`, each on a validator of its
+own, and keeps:
+
+- for `oneOf`, the ONE member the payload passes; passing none, or more than one, is a 422 under
+  `payload`;
+- for `anyOf`, the first member in document order the payload passes; passing none is a 422.
+
+The rules, the schema checks and the DTO are then that member's:
+
+```php
+public function store(ShapeFormRequest $request)
+{
+    $shape = $request->toDto(); // Circle or Square, typed Shape
+}
+```
+
+A member reached through a nested union (`oneOf: [$ref Circle, {anyOf: [...]}]`) counts with that
+union's classes, so such a body takes the first member that passes, as `anyOf` does. A union with a
+member that is not a plain class — a discriminated union — gets no FormRequest, and the generator says
+so with a warning; a union of a class and a scalar has no class at all (see
+[What this mode does not do](#what-this-mode-does-not-do)) and is warned about too. There the choice is yours, typically the first variant whose rules
+pass:
 
 ```php
 foreach ([AddNote::class, AddTag::class] as $variant) {
@@ -522,6 +546,7 @@ use a FormRequest of your own with `authorize()` that delegates to the DTO's `ru
 | generating `authorize()` | policy is not in the document |
 | keeping the extra keys `additionalProperties: {schema}` admits | each is checked against the schema, but the DTO hydrates declared properties only, so a valid extra key is not in `toArray()` — [runtime](README.runtime.md) is the mode that keeps them |
 | a `spatie/laravel-data` class | that is the separate [laravel-data mode](README.laravel-data.md); this mode stays first-party |
+| a request body that is a union of a class and a value (`oneOf: [$ref Circle, {type: string}]`, a component or inline) | no class can stand for it — the union is a value, so only `Circle` is generated and there is no FormRequest. The generator warns about such a body; validate it with `Circle::rules()` and the value's own check yourself, or make the body an object schema |
 | a top-level array request body | `type: array` at the root of a body is a list, not a class: its ITEM gets a DTO, the list gets no FormRequest. Validate each item with that DTO's `rules()`, `withValidator()` and `fromValidated()` — the generator emits DTOs only, the framework does the rest |
 | one FormRequest per operation | the parameters and the body are separate DTOs, so an operation with both gets `<Operation>QueryParamsFormRequest` and `<Operation>RequestFormRequest`, and the action takes two arguments. The `QueryParams` class also carries the path parameters; its name is shared by every mode and stays until a major version |
 

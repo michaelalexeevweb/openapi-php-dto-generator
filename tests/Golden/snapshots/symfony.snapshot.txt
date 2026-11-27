@@ -1,4 +1,4 @@
-# symfony mode — 77 files, 14043 lines
+# symfony mode — 77 files, 15419 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -94,6 +94,17 @@ namespace GoldenCorpus;
  */
 interface Animal
 {
+    /**
+     * The members, in document order, to try a payload against — the serializer cannot build this
+     * interface. `oneOf`: exactly one must accept it; `anyOf`: the first that does is built.
+     */
+    public const array OPENAPI_UNION_MEMBERS = [
+        'oneOf' => [
+            Cat::class,
+            Dog::class,
+            AnimalOneOf3::class,
+        ],
+    ];
 }
 
 ===== Animal2.php =====
@@ -111,6 +122,18 @@ namespace GoldenCorpus;
  */
 interface Animal2
 {
+    /**
+     * The members, in document order, to try a payload against — the serializer cannot build this
+     * interface. `oneOf`: exactly one must accept it; `anyOf`: the first that does is built.
+     */
+    public const array OPENAPI_UNION_MEMBERS = [
+        'anyOf' => [
+            Cat::class,
+            Dog::class,
+            Dog2::class,
+            Animal2AnyOf4::class,
+        ],
+    ];
 }
 
 ===== Animal2AnyOf4.php =====
@@ -201,6 +224,24 @@ final class AnimalOneOf3 implements Animal
     {
         return $this->test;
     }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['test'] = $this->test;
+
+        return $payload;
+    }
 }
 
 ===== ApiTest2403.php =====
@@ -250,6 +291,24 @@ final class ApiTest2403
     ): self {
         return new self(message: $message);
     }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['message'] = $this->message;
+
+        return $payload;
+    }
 }
 
 ===== ApiTest2PatchRequest.php =====
@@ -297,6 +356,25 @@ final class ApiTest2PatchRequest
     public function getNamePatchTest2(): string
     {
         return $this->namePatchTest2;
+    }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['idPatchTest2'] = $this->idPatchTest2;
+        $payload['namePatchTest2'] = $this->namePatchTest2;
+
+        return $payload;
     }
 }
 
@@ -356,6 +434,26 @@ final class ApiTest2PostRequest
     {
         return $this->surnamePostTest2;
     }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['idPostTest2'] = $this->idPostTest2;
+        $payload['namePostTest2'] = $this->namePostTest2;
+        $payload['surnamePostTest2'] = $this->surnamePostTest2;
+
+        return $payload;
+    }
 }
 
 ===== ApiTest403.php =====
@@ -404,6 +502,24 @@ final class ApiTest403
         string $message = 'Access Denied.',
     ): self {
         return new self(message: $message);
+    }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['message'] = $this->message;
+
+        return $payload;
     }
 }
 
@@ -514,6 +630,29 @@ final class ApiTestCatsActionsGetQueryParams
 
         return $dto;
     }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        if ($this->pageProvided) {
+            $payload['page'] = $this->page;
+        }
+        if ($this->limitProvided) {
+            $payload['limit'] = $this->limit;
+        }
+
+        return $payload;
+    }
 }
 
 ===== ApiTestCatsActionsPostQueryParams.php =====
@@ -622,6 +761,29 @@ final class ApiTestCatsActionsPostQueryParams
         }
 
         return $dto;
+    }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        if ($this->pageProvided) {
+            $payload['page'] = $this->page;
+        }
+        if ($this->limitProvided) {
+            $payload['limit'] = $this->limit;
+        }
+
+        return $payload;
     }
 }
 
@@ -732,6 +894,29 @@ final class ApiTestDogsTagsGetQueryParams
 
         return $dto;
     }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        if ($this->pageProvided) {
+            $payload['page'] = $this->page;
+        }
+        if ($this->limitProvided) {
+            $payload['limit'] = $this->limit;
+        }
+
+        return $payload;
+    }
 }
 
 ===== ApiTestDogsTagsPatchQueryParams.php =====
@@ -841,6 +1026,29 @@ final class ApiTestDogsTagsPatchQueryParams
 
         return $dto;
     }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        if ($this->pageProvided) {
+            $payload['page'] = $this->page;
+        }
+        if ($this->limitProvided) {
+            $payload['limit'] = $this->limit;
+        }
+
+        return $payload;
+    }
 }
 
 ===== ApiTestFilePostRequest.php =====
@@ -880,6 +1088,24 @@ final class ApiTestFilePostRequest
     {
         return $this->file;
     }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['file'] = $this->file;
+
+        return $payload;
+    }
 }
 
 ===== ApiTestJobs200.php =====
@@ -917,6 +1143,24 @@ final class ApiTestJobs200
     public function getAccepted(): bool
     {
         return $this->accepted;
+    }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['accepted'] = $this->accepted;
+
+        return $payload;
     }
 }
 
@@ -956,6 +1200,24 @@ final class ApiTestJobs404
     {
         return $this->reason;
     }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['reason'] = $this->reason;
+
+        return $payload;
+    }
 }
 
 ===== ApiTestJobsDefault.php =====
@@ -994,6 +1256,24 @@ final class ApiTestJobsDefault
     {
         return $this->message;
     }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['message'] = $this->message;
+
+        return $payload;
+    }
 }
 
 ===== ApiTestJobsPostRequest.php =====
@@ -1031,6 +1311,24 @@ final class ApiTestJobsPostRequest
     public function getCallbackUrl(): string
     {
         return $this->callbackUrl;
+    }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['callbackUrl'] = $this->callbackUrl;
+
+        return $payload;
     }
 }
 
@@ -1071,6 +1369,24 @@ final class ApiTestLegacy200
     public function getOk(): bool
     {
         return $this->ok;
+    }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['ok'] = $this->ok;
+
+        return $payload;
     }
 }
 
@@ -1148,6 +1464,26 @@ final class ApiTestLegacyPostQueryParams
 
         return $dto;
     }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        if ($this->legacyFlagProvided) {
+            $payload['legacyFlag'] = $this->legacyFlag;
+        }
+
+        return $payload;
+    }
 }
 
 ===== ApiTestLegacyPostRequest.php =====
@@ -1188,6 +1524,24 @@ final class ApiTestLegacyPostRequest
     {
         return $this->payload;
     }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['payload'] = $this->payload;
+
+        return $payload;
+    }
 }
 
 ===== ApiTestRepresentations200.php =====
@@ -1225,6 +1579,24 @@ final class ApiTestRepresentations200
     public function getOk(): bool
     {
         return $this->ok;
+    }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['ok'] = $this->ok;
+
+        return $payload;
     }
 }
 
@@ -1264,6 +1636,24 @@ final class ApiTestRepresentations200Csv
     {
         return $this->row;
     }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['row'] = $this->row;
+
+        return $payload;
+    }
 }
 
 ===== ApiTestRepresentationsPostRequest.php =====
@@ -1301,6 +1691,24 @@ final class ApiTestRepresentationsPostRequest
     public function getPayload(): string
     {
         return $this->payload;
+    }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['payload'] = $this->payload;
+
+        return $payload;
     }
 }
 
@@ -1340,6 +1748,24 @@ final class ApiTestRepresentationsPostRequestForm
     {
         return $this->field;
     }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['field'] = $this->field;
+
+        return $payload;
+    }
 }
 
 ===== ApiTestRepresentationsPostRequestXml.php =====
@@ -1378,6 +1804,24 @@ final class ApiTestRepresentationsPostRequestXml
     {
         return $this->element;
     }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['element'] = $this->element;
+
+        return $payload;
+    }
 }
 
 ===== ApiTestSerializationGetQueryParams.php =====
@@ -1387,6 +1831,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use ArrayObject;
 use DateTimeInterface;
 use OverflowException;
 use Symfony\Component\Serializer\Attribute\Context;
@@ -1435,6 +1880,11 @@ use const FILTER_VALIDATE_INT;
  */
 final class ApiTestSerializationGetQueryParams
 {
+    /** Property => where an empty array of its wire form is a JSON object, and the date formatter of its values. */
+    private const array OPENAPI_WIRE_SHAPES = [
+        'nested' => ['object', null],
+    ];
+
     private const array OPENAPI_VALIDATION_CONSTRAINTS = [
         'properties' => [
             'exploded' => [
@@ -1546,7 +1996,11 @@ final class ApiTestSerializationGetQueryParams
      * @var ?array<string, string>
      */
     #[Groups(['read', 'write'])]
-    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
+    #[Context(normalizationContext: [
+        AbstractObjectNormalizer::SKIP_NULL_VALUES => true,
+        AbstractObjectNormalizer::CALLBACKS => ['nested' => [self::class, 'writeOpenApiObjects']],
+        AbstractObjectNormalizer::PRESERVE_EMPTY_OBJECTS => true,
+    ])]
     private ?array $nested = null;
 
     #[Ignore]
@@ -1921,6 +2375,41 @@ final class ApiTestSerializationGetQueryParams
         }
 
         return $value === '' ? [] : explode($delimiter, $value);
+    }
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * The serializer calls it through the property's #[Context] callback, and keeps the empty array
+     * object it returns under `PRESERVE_EMPTY_OBJECTS`; a value of a date map is formatted first.
+     */
+    public static function writeOpenApiObjects(mixed $value, object $object, string $attribute): mixed
+    {
+        [$shape, $formatter] = self::OPENAPI_WIRE_SHAPES[$attribute] ?? ['', null];
+        if ($formatter !== null) {
+            $value = self::{$formatter}($value);
+        }
+
+        return $shape === '' ? $value : self::openApiEmptyObjects($value, $shape);
+    }
+
+    /**
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new ArrayObject() : $value;
     }
 
     #[Assert\Callback]
@@ -2383,6 +2872,26 @@ final class ApiTestSharedPathGetQueryParams
 
         return $dto;
     }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        if ($this->cursorProvided) {
+            $payload['cursor'] = $this->cursor;
+        }
+
+        return $payload;
+    }
 }
 
 ===== ApiTestTenantsDeleteQueryParams.php =====
@@ -2488,6 +2997,29 @@ final class ApiTestTenantsDeleteQueryParams
         }
 
         return $dto;
+    }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        if ($this->regionProvided) {
+            $payload['region'] = $this->region;
+        }
+        if ($this->tenantProvided) {
+            $payload['tenant'] = $this->tenant;
+        }
+
+        return $payload;
     }
 }
 
@@ -2627,6 +3159,32 @@ final class ApiTestTenantsGetQueryParams
 
         return $dto;
     }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        if ($this->regionProvided) {
+            $payload['region'] = $this->region;
+        }
+        if ($this->tenantProvided) {
+            $payload['tenant'] = $this->tenant;
+        }
+        if ($this->verboseProvided) {
+            $payload['verbose'] = $this->verbose;
+        }
+
+        return $payload;
+    }
 }
 
 ===== ApplicatorRefs.php =====
@@ -2636,6 +3194,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use ArrayObject;
 use OverflowException;
 use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
@@ -2647,6 +3206,7 @@ use Symfony\Component\Validator\Context\ExecutionContextInterface;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
+use function array_map;
 use function count;
 use function floor;
 use function get_object_vars;
@@ -2677,6 +3237,11 @@ use function substr;
  */
 final class ApplicatorRefs
 {
+    /** Property => where an empty array of its wire form is a JSON object, and the date formatter of its values. */
+    private const array OPENAPI_WIRE_SHAPES = [
+        'mustContain' => ['list<object>', null],
+    ];
+
     private const array OPENAPI_VALIDATION_CONSTRAINTS = [
         'properties' => [
             'mustContain' => [
@@ -2856,6 +3421,10 @@ final class ApplicatorRefs
      */
     #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [
+        AbstractObjectNormalizer::CALLBACKS => ['mustContain' => [self::class, 'writeOpenApiObjects']],
+        AbstractObjectNormalizer::PRESERVE_EMPTY_OBJECTS => true,
+    ])]
     private readonly array $mustContain;
 
     #[Assert\Type('list')]
@@ -3311,6 +3880,41 @@ final class ApplicatorRefs
         }
 
         return $dto;
+    }
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * The serializer calls it through the property's #[Context] callback, and keeps the empty array
+     * object it returns under `PRESERVE_EMPTY_OBJECTS`; a value of a date map is formatted first.
+     */
+    public static function writeOpenApiObjects(mixed $value, object $object, string $attribute): mixed
+    {
+        [$shape, $formatter] = self::OPENAPI_WIRE_SHAPES[$attribute] ?? ['', null];
+        if ($formatter !== null) {
+            $value = self::{$formatter}($value);
+        }
+
+        return $shape === '' ? $value : self::openApiEmptyObjects($value, $shape);
+    }
+
+    /**
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new ArrayObject() : $value;
     }
 
     #[Assert\Callback]
@@ -4930,6 +5534,31 @@ final class AwkwardNames
 
         return $dto;
     }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['plain'] = $this->plain;
+        $payload['it\'s'] = $this->itS;
+        if ($this->backSlashProvided) {
+            $payload['back\\slash'] = $this->backSlash;
+        }
+        if ($this->bothSProvided) {
+            $payload['both\\\'s'] = $this->bothS;
+        }
+
+        return $payload;
+    }
 }
 
 ===== CallbackJobDonePostRequest.php =====
@@ -4967,6 +5596,24 @@ final class CallbackJobDonePostRequest
     public function getState(): string
     {
         return $this->state;
+    }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['state'] = $this->state;
+
+        return $payload;
     }
 }
 
@@ -5006,6 +5653,24 @@ final class CallbackJobFailedPostRequest
     {
         return $this->failure;
     }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['failure'] = $this->failure;
+
+        return $payload;
+    }
 }
 
 ===== Cat.php =====
@@ -5029,6 +5694,9 @@ use Symfony\Component\Serializer\Attribute\Groups;
  */
 final class Cat implements Animal, Animal2
 {
+    /** Declared by more than one union this class belongs to; its own keeps it from inheriting both. */
+    public const array OPENAPI_UNION_MEMBERS = [];
+
     #[Groups(['read', 'write'])]
     private readonly string $name;
 
@@ -5080,11 +5748,18 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use ArrayObject;
 use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\Ignore;
 use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
+
+use function array_map;
+use function is_array;
+use function str_starts_with;
+use function strpos;
+use function substr;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -5098,6 +5773,11 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class ChainLink
 {
+    /** Property => where an empty array of its wire form is a JSON object, and the date formatter of its values. */
+    private const array OPENAPI_WIRE_SHAPES = [
+        'tags' => ['list<object>', null],
+    ];
+
     #[Assert\Length(min: 3)]
     #[Groups(['read', 'write'])]
     private readonly string $code;
@@ -5108,7 +5788,11 @@ final class ChainLink
     #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     #[Assert\Valid]
-    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
+    #[Context(normalizationContext: [
+        AbstractObjectNormalizer::SKIP_NULL_VALUES => true,
+        AbstractObjectNormalizer::CALLBACKS => ['tags' => [self::class, 'writeOpenApiObjects']],
+        AbstractObjectNormalizer::PRESERVE_EMPTY_OBJECTS => true,
+    ])]
     private ?array $tags = null;
 
     #[Ignore]
@@ -5171,6 +5855,41 @@ final class ChainLink
     }
 
     /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * The serializer calls it through the property's #[Context] callback, and keeps the empty array
+     * object it returns under `PRESERVE_EMPTY_OBJECTS`; a value of a date map is formatted first.
+     */
+    public static function writeOpenApiObjects(mixed $value, object $object, string $attribute): mixed
+    {
+        [$shape, $formatter] = self::OPENAPI_WIRE_SHAPES[$attribute] ?? ['', null];
+        if ($formatter !== null) {
+            $value = self::{$formatter}($value);
+        }
+
+        return $shape === '' ? $value : self::openApiEmptyObjects($value, $shape);
+    }
+
+    /**
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new ArrayObject() : $value;
+    }
+
+    /**
      * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
      * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
      * one through here, because the properties themselves are private. For output, use the Symfony
@@ -5199,8 +5918,17 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use ArrayObject;
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
+
+use function array_map;
+use function is_array;
+use function str_starts_with;
+use function strpos;
+use function substr;
 
 /**
  * NOTE: This DTO is auto-generated from an OpenAPI schema.
@@ -5214,12 +5942,21 @@ use Symfony\Component\Validator\Constraints as Assert;
  */
 final class ChainMiddle
 {
+    /** Property => where an empty array of its wire form is a JSON object, and the date formatter of its values. */
+    private const array OPENAPI_WIRE_SHAPES = [
+        'links' => ['list<object>', null],
+    ];
+
     /**
      * @var array<ChainLink>
      */
     #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     #[Assert\Valid]
+    #[Context(normalizationContext: [
+        AbstractObjectNormalizer::CALLBACKS => ['links' => [self::class, 'writeOpenApiObjects']],
+        AbstractObjectNormalizer::PRESERVE_EMPTY_OBJECTS => true,
+    ])]
     private readonly array $links;
 
     /**
@@ -5237,6 +5974,41 @@ final class ChainMiddle
     public function getLinks(): array
     {
         return $this->links;
+    }
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * The serializer calls it through the property's #[Context] callback, and keeps the empty array
+     * object it returns under `PRESERVE_EMPTY_OBJECTS`; a value of a date map is formatted first.
+     */
+    public static function writeOpenApiObjects(mixed $value, object $object, string $attribute): mixed
+    {
+        [$shape, $formatter] = self::OPENAPI_WIRE_SHAPES[$attribute] ?? ['', null];
+        if ($formatter !== null) {
+            $value = self::{$formatter}($value);
+        }
+
+        return $shape === '' ? $value : self::openApiEmptyObjects($value, $shape);
+    }
+
+    /**
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new ArrayObject() : $value;
     }
 
     /**
@@ -5386,6 +6158,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use ArrayObject;
 use OverflowException;
 use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
@@ -5397,6 +6170,7 @@ use Symfony\Component\Validator\Context\ExecutionContextInterface;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
+use function array_map;
 use function floor;
 use function get_object_vars;
 use function in_array;
@@ -5427,6 +6201,12 @@ use function substr;
  */
 final class ContainerAliases
 {
+    /** Property => where an empty array of its wire form is a JSON object, and the date formatter of its values. */
+    private const array OPENAPI_WIRE_SHAPES = [
+        'listOfMaps' => ['list<object>', null],
+        'mapOfLists' => ['object', null],
+    ];
+
     private const array OPENAPI_VALIDATION_CONSTRAINTS = [
         'properties' => [
             'listOfLists' => [
@@ -5493,7 +6273,11 @@ final class ContainerAliases
      */
     #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
-    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
+    #[Context(normalizationContext: [
+        AbstractObjectNormalizer::SKIP_NULL_VALUES => true,
+        AbstractObjectNormalizer::CALLBACKS => ['listOfMaps' => [self::class, 'writeOpenApiObjects']],
+        AbstractObjectNormalizer::PRESERVE_EMPTY_OBJECTS => true,
+    ])]
     private ?array $listOfMaps = null;
 
     #[Ignore]
@@ -5503,7 +6287,11 @@ final class ContainerAliases
      * @var ?array<string, array<string>>
      */
     #[Groups(['read', 'write'])]
-    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
+    #[Context(normalizationContext: [
+        AbstractObjectNormalizer::SKIP_NULL_VALUES => true,
+        AbstractObjectNormalizer::CALLBACKS => ['mapOfLists' => [self::class, 'writeOpenApiObjects']],
+        AbstractObjectNormalizer::PRESERVE_EMPTY_OBJECTS => true,
+    ])]
     private ?array $mapOfLists = null;
 
     #[Ignore]
@@ -5645,6 +6433,41 @@ final class ContainerAliases
         }
 
         return $dto;
+    }
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * The serializer calls it through the property's #[Context] callback, and keeps the empty array
+     * object it returns under `PRESERVE_EMPTY_OBJECTS`; a value of a date map is formatted first.
+     */
+    public static function writeOpenApiObjects(mixed $value, object $object, string $attribute): mixed
+    {
+        [$shape, $formatter] = self::OPENAPI_WIRE_SHAPES[$attribute] ?? ['', null];
+        if ($formatter !== null) {
+            $value = self::{$formatter}($value);
+        }
+
+        return $shape === '' ? $value : self::openApiEmptyObjects($value, $shape);
+    }
+
+    /**
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new ArrayObject() : $value;
     }
 
     #[Assert\Callback]
@@ -5957,6 +6780,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use ArrayObject;
 use DateTimeImmutable;
 use DateTimeInterface;
 use OverflowException;
@@ -5998,6 +6822,13 @@ use function substr;
  */
 final class Containers
 {
+    /** Property => where an empty array of its wire form is a JSON object, and the date formatter of its values. */
+    private const array OPENAPI_WIRE_SHAPES = [
+        'datesByDay' => ['object', 'formatOpenApiDate'],
+        'shapes' => ['list<object>', null],
+        'tagsByKey' => ['object<object>', null],
+    ];
+
     private const array OPENAPI_VALIDATION_CONSTRAINTS = [
         'properties' => [
             'dates' => [
@@ -6064,7 +6895,8 @@ final class Containers
     #[Context(
         normalizationContext: [
             AbstractObjectNormalizer::SKIP_NULL_VALUES => true,
-            AbstractObjectNormalizer::CALLBACKS => ['datesByDay' => [self::class, 'formatOpenApiDate']],
+            AbstractObjectNormalizer::CALLBACKS => ['datesByDay' => [self::class, 'writeOpenApiObjects']],
+            AbstractObjectNormalizer::PRESERVE_EMPTY_OBJECTS => true,
         ],
         denormalizationContext: [
             DateTimeNormalizer::FORMAT_KEY => '!Y-m-d',
@@ -6096,6 +6928,10 @@ final class Containers
     #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     #[Assert\Valid]
+    #[Context(normalizationContext: [
+        AbstractObjectNormalizer::CALLBACKS => ['shapes' => [self::class, 'writeOpenApiObjects']],
+        AbstractObjectNormalizer::PRESERVE_EMPTY_OBJECTS => true,
+    ])]
     private readonly array $shapes;
 
     /**
@@ -6103,7 +6939,11 @@ final class Containers
      */
     #[Groups(['read', 'write'])]
     #[Assert\Valid]
-    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
+    #[Context(normalizationContext: [
+        AbstractObjectNormalizer::SKIP_NULL_VALUES => true,
+        AbstractObjectNormalizer::CALLBACKS => ['tagsByKey' => [self::class, 'writeOpenApiObjects']],
+        AbstractObjectNormalizer::PRESERVE_EMPTY_OBJECTS => true,
+    ])]
     private ?array $tagsByKey = null;
 
     #[Ignore]
@@ -6278,6 +7118,41 @@ final class Containers
         }
 
         return $value->format('u') === '000000' ? $value->format('c') : $value->format('Y-m-d\TH:i:s.uP');
+    }
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * The serializer calls it through the property's #[Context] callback, and keeps the empty array
+     * object it returns under `PRESERVE_EMPTY_OBJECTS`; a value of a date map is formatted first.
+     */
+    public static function writeOpenApiObjects(mixed $value, object $object, string $attribute): mixed
+    {
+        [$shape, $formatter] = self::OPENAPI_WIRE_SHAPES[$attribute] ?? ['', null];
+        if ($formatter !== null) {
+            $value = self::{$formatter}($value);
+        }
+
+        return $shape === '' ? $value : self::openApiEmptyObjects($value, $shape);
+    }
+
+    /**
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new ArrayObject() : $value;
     }
 
     #[Assert\Callback]
@@ -6979,6 +7854,26 @@ final class Discriminator1 implements Discriminator
     {
         return $this->id;
     }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['type'] = $this->type;
+        $payload['name'] = $this->name;
+        $payload['id'] = $this->id;
+
+        return $payload;
+    }
 }
 
 ===== Discriminator2.php =====
@@ -7053,6 +7948,27 @@ final class Discriminator2 implements Discriminator
     {
         return $this->nAme2;
     }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['type'] = $this->type;
+        $payload['name'] = $this->name;
+        $payload['id'] = $this->id;
+        $payload['NAme'] = $this->nAme2;
+
+        return $payload;
+    }
 }
 
 ===== DiscriminatorType.php =====
@@ -7095,6 +8011,9 @@ use Symfony\Component\Serializer\Attribute\Groups;
  */
 final class Dog implements Animal, Animal2
 {
+    /** Declared by more than one union this class belongs to; its own keeps it from inheriting both. */
+    public const array OPENAPI_UNION_MEMBERS = [];
+
     #[Groups(['read', 'write'])]
     private readonly string $name;
 
@@ -7259,6 +8178,26 @@ final class FileRequest
     {
         return $this->surname;
     }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['file'] = $this->file;
+        $payload['name'] = $this->name;
+        $payload['surname'] = $this->surname;
+
+        return $payload;
+    }
 }
 
 ===== ItemBounds.php =====
@@ -7268,6 +8207,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use ArrayObject;
 use OverflowException;
 use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
@@ -7279,6 +8219,7 @@ use Symfony\Component\Validator\Context\ExecutionContextInterface;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
+use function array_map;
 use function floor;
 use function get_object_vars;
 use function in_array;
@@ -7314,6 +8255,11 @@ use function substr;
  */
 final class ItemBounds
 {
+    /** Property => where an empty array of its wire form is a JSON object, and the date formatter of its values. */
+    private const array OPENAPI_WIRE_SHAPES = [
+        'scoresByKey' => ['object', null],
+    ];
+
     private const array OPENAPI_VALIDATION_CONSTRAINTS = [
         'properties' => [
             'scores' => [
@@ -7363,7 +8309,11 @@ final class ItemBounds
      * @var ?array<string, int>
      */
     #[Groups(['read', 'write'])]
-    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
+    #[Context(normalizationContext: [
+        AbstractObjectNormalizer::SKIP_NULL_VALUES => true,
+        AbstractObjectNormalizer::CALLBACKS => ['scoresByKey' => [self::class, 'writeOpenApiObjects']],
+        AbstractObjectNormalizer::PRESERVE_EMPTY_OBJECTS => true,
+    ])]
     private ?array $scoresByKey = null;
 
     #[Ignore]
@@ -7473,6 +8423,41 @@ final class ItemBounds
         }
 
         return $dto;
+    }
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * The serializer calls it through the property's #[Context] callback, and keeps the empty array
+     * object it returns under `PRESERVE_EMPTY_OBJECTS`; a value of a date map is formatted first.
+     */
+    public static function writeOpenApiObjects(mixed $value, object $object, string $attribute): mixed
+    {
+        [$shape, $formatter] = self::OPENAPI_WIRE_SHAPES[$attribute] ?? ['', null];
+        if ($formatter !== null) {
+            $value = self::{$formatter}($value);
+        }
+
+        return $shape === '' ? $value : self::openApiEmptyObjects($value, $shape);
+    }
+
+    /**
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new ArrayObject() : $value;
     }
 
     #[Assert\Callback]
@@ -7884,6 +8869,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use ArrayObject;
 use DateTimeImmutable;
 use OverflowException;
 use Symfony\Component\Serializer\Attribute\Context;
@@ -7933,6 +8919,14 @@ use function var_export;
  */
 final class NestedContainers
 {
+    /** Property => where an empty array of its wire form is a JSON object, and the date formatter of its values. */
+    private const array OPENAPI_WIRE_SHAPES = [
+        'rowsOfMaps' => ['list<object>', null],
+        'listsByKey' => ['object', null],
+        'mapsByKey' => ['object<object>', null],
+        'tagRows' => ['list<list<object>>', null],
+    ];
+
     private const array OPENAPI_VALIDATION_CONSTRAINTS = [
         'properties' => [
             'matrix' => [
@@ -8056,13 +9050,21 @@ final class NestedContainers
      */
     #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [
+        AbstractObjectNormalizer::CALLBACKS => ['rowsOfMaps' => [self::class, 'writeOpenApiObjects']],
+        AbstractObjectNormalizer::PRESERVE_EMPTY_OBJECTS => true,
+    ])]
     private readonly array $rowsOfMaps;
 
     /**
      * @var ?array<string, array<string>>
      */
     #[Groups(['read', 'write'])]
-    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
+    #[Context(normalizationContext: [
+        AbstractObjectNormalizer::SKIP_NULL_VALUES => true,
+        AbstractObjectNormalizer::CALLBACKS => ['listsByKey' => [self::class, 'writeOpenApiObjects']],
+        AbstractObjectNormalizer::PRESERVE_EMPTY_OBJECTS => true,
+    ])]
     private ?array $listsByKey = null;
 
     #[Ignore]
@@ -8072,7 +9074,11 @@ final class NestedContainers
      * @var ?array<string, array<string, int>>
      */
     #[Groups(['read', 'write'])]
-    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
+    #[Context(normalizationContext: [
+        AbstractObjectNormalizer::SKIP_NULL_VALUES => true,
+        AbstractObjectNormalizer::CALLBACKS => ['mapsByKey' => [self::class, 'writeOpenApiObjects']],
+        AbstractObjectNormalizer::PRESERVE_EMPTY_OBJECTS => true,
+    ])]
     private ?array $mapsByKey = null;
 
     #[Ignore]
@@ -8117,7 +9123,11 @@ final class NestedContainers
     #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     #[Assert\Valid]
-    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
+    #[Context(normalizationContext: [
+        AbstractObjectNormalizer::SKIP_NULL_VALUES => true,
+        AbstractObjectNormalizer::CALLBACKS => ['tagRows' => [self::class, 'writeOpenApiObjects']],
+        AbstractObjectNormalizer::PRESERVE_EMPTY_OBJECTS => true,
+    ])]
     private ?array $tagRows = null;
 
     #[Ignore]
@@ -8357,6 +9367,41 @@ final class NestedContainers
         }
 
         return $dto;
+    }
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * The serializer calls it through the property's #[Context] callback, and keeps the empty array
+     * object it returns under `PRESERVE_EMPTY_OBJECTS`; a value of a date map is formatted first.
+     */
+    public static function writeOpenApiObjects(mixed $value, object $object, string $attribute): mixed
+    {
+        [$shape, $formatter] = self::OPENAPI_WIRE_SHAPES[$attribute] ?? ['', null];
+        if ($formatter !== null) {
+            $value = self::{$formatter}($value);
+        }
+
+        return $shape === '' ? $value : self::openApiEmptyObjects($value, $shape);
+    }
+
+    /**
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new ArrayObject() : $value;
     }
 
     #[Assert\Callback]
@@ -8750,6 +9795,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use ArrayObject;
 use OverflowException;
 use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
@@ -8761,6 +9807,7 @@ use Symfony\Component\Validator\Context\ExecutionContextInterface;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
+use function array_map;
 use function floor;
 use function get_object_vars;
 use function in_array;
@@ -8791,6 +9838,12 @@ use function substr;
  */
 final class NullableContainerValues
 {
+    /** Property => where an empty array of its wire form is a JSON object, and the date formatter of its values. */
+    private const array OPENAPI_WIRE_SHAPES = [
+        'mapOfNullable' => ['object', null],
+        'mapOfNullable31' => ['object', null],
+    ];
+
     private const array OPENAPI_VALIDATION_CONSTRAINTS = [
         'properties' => [
             'listOfNullable' => [
@@ -8850,7 +9903,11 @@ final class NullableContainerValues
      * @var ?array<string, ?int>
      */
     #[Groups(['read', 'write'])]
-    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
+    #[Context(normalizationContext: [
+        AbstractObjectNormalizer::SKIP_NULL_VALUES => true,
+        AbstractObjectNormalizer::CALLBACKS => ['mapOfNullable' => [self::class, 'writeOpenApiObjects']],
+        AbstractObjectNormalizer::PRESERVE_EMPTY_OBJECTS => true,
+    ])]
     private ?array $mapOfNullable = null;
 
     #[Ignore]
@@ -8871,7 +9928,11 @@ final class NullableContainerValues
      * @var ?array<string, ?int>
      */
     #[Groups(['read', 'write'])]
-    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
+    #[Context(normalizationContext: [
+        AbstractObjectNormalizer::SKIP_NULL_VALUES => true,
+        AbstractObjectNormalizer::CALLBACKS => ['mapOfNullable31' => [self::class, 'writeOpenApiObjects']],
+        AbstractObjectNormalizer::PRESERVE_EMPTY_OBJECTS => true,
+    ])]
     private ?array $mapOfNullable31 = null;
 
     #[Ignore]
@@ -9002,6 +10063,41 @@ final class NullableContainerValues
         }
 
         return $dto;
+    }
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * The serializer calls it through the property's #[Context] callback, and keeps the empty array
+     * object it returns under `PRESERVE_EMPTY_OBJECTS`; a value of a date map is formatted first.
+     */
+    public static function writeOpenApiObjects(mixed $value, object $object, string $attribute): mixed
+    {
+        [$shape, $formatter] = self::OPENAPI_WIRE_SHAPES[$attribute] ?? ['', null];
+        if ($formatter !== null) {
+            $value = self::{$formatter}($value);
+        }
+
+        return $shape === '' ? $value : self::openApiEmptyObjects($value, $shape);
+    }
+
+    /**
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new ArrayObject() : $value;
     }
 
     #[Assert\Callback]
@@ -9845,6 +10941,24 @@ final class Pet
     {
         return $this->name;
     }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['name'] = $this->name;
+
+        return $payload;
+    }
 }
 
 ===== ReadOnlyFields.php =====
@@ -10017,6 +11131,33 @@ final class ReadOnlyFields
 
         return $value->format('u') === '000000' ? $value->format('c') : $value->format('Y-m-d\TH:i:s.uP');
     }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        if ($this->serverIdProvided) {
+            $payload['serverId'] = $this->serverId;
+        }
+        $payload['title'] = $this->title;
+        if ($this->writtenAtProvided) {
+            $payload['writtenAt'] = $this->writtenAt;
+        }
+        if ($this->secretProvided) {
+            $payload['secret'] = $this->secret;
+        }
+
+        return $payload;
+    }
 }
 
 ===== RetiredShape.php =====
@@ -10054,6 +11195,24 @@ final class RetiredShape
     public function getLegacyId(): int
     {
         return $this->legacyId;
+    }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['legacyId'] = $this->legacyId;
+
+        return $payload;
     }
 }
 
@@ -10241,6 +11400,24 @@ final class Test
     {
         return $this->id;
     }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['id'] = $this->id;
+
+        return $payload;
+    }
 }
 
 ===== Test2.php =====
@@ -10250,6 +11427,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use ArrayObject;
 use BackedEnum;
 use DateTimeInterface;
 use OverflowException;
@@ -10262,6 +11440,7 @@ use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
 use function array_is_list;
 use function array_key_exists;
+use function array_map;
 use function get_object_vars;
 use function in_array;
 use function is_array;
@@ -10286,6 +11465,11 @@ use function substr;
  */
 final class Test2
 {
+    /** Property => where an empty array of its wire form is a JSON object, and the date formatter of its values. */
+    private const array OPENAPI_WIRE_SHAPES = [
+        'tags' => ['list<object>', null],
+    ];
+
     private const array OPENAPI_VALIDATION_CONSTRAINTS = [
         'properties' => [
             'user' => [
@@ -10331,6 +11515,10 @@ final class Test2
     #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     #[Assert\Valid]
+    #[Context(normalizationContext: [
+        AbstractObjectNormalizer::CALLBACKS => ['tags' => [self::class, 'writeOpenApiObjects']],
+        AbstractObjectNormalizer::PRESERVE_EMPTY_OBJECTS => true,
+    ])]
     private readonly array $tags;
 
     #[Groups(['read', 'write'])]
@@ -10457,6 +11645,41 @@ final class Test2
         }
 
         return $dto;
+    }
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * The serializer calls it through the property's #[Context] callback, and keeps the empty array
+     * object it returns under `PRESERVE_EMPTY_OBJECTS`; a value of a date map is formatted first.
+     */
+    public static function writeOpenApiObjects(mixed $value, object $object, string $attribute): mixed
+    {
+        [$shape, $formatter] = self::OPENAPI_WIRE_SHAPES[$attribute] ?? ['', null];
+        if ($formatter !== null) {
+            $value = self::{$formatter}($value);
+        }
+
+        return $shape === '' ? $value : self::openApiEmptyObjects($value, $shape);
+    }
+
+    /**
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new ArrayObject() : $value;
     }
 
     #[Assert\Callback]
@@ -10842,6 +12065,26 @@ final class TestPatchRequest
     public function getSurname(): string
     {
         return $this->surname;
+    }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['id'] = $this->id;
+        $payload['name'] = $this->name;
+        $payload['surname'] = $this->surname;
+
+        return $payload;
     }
 }
 
@@ -11530,15 +12773,19 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use ArrayObject;
 use BackedEnum;
 use OverflowException;
+use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\Validator\Context\ExecutionContextInterface;
 
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
+use function array_map;
 use function array_pop;
 use function array_unique;
 use function array_values;
@@ -11575,6 +12822,11 @@ use function substr;
  */
 final class TreeNode
 {
+    /** Property => where an empty array of its wire form is a JSON object, and the date formatter of its values. */
+    private const array OPENAPI_WIRE_SHAPES = [
+        'children' => ['object', null],
+    ];
+
     private const array OPENAPI_VALIDATION_CONSTRAINTS = [
         'properties' => [
             'label' => [],
@@ -11702,6 +12954,10 @@ final class TreeNode
      * @var array<string, mixed>
      */
     #[Groups(['read', 'write'])]
+    #[Context(normalizationContext: [
+        AbstractObjectNormalizer::CALLBACKS => ['children' => [self::class, 'writeOpenApiObjects']],
+        AbstractObjectNormalizer::PRESERVE_EMPTY_OBJECTS => true,
+    ])]
     private readonly array $children;
 
     /**
@@ -11726,6 +12982,41 @@ final class TreeNode
     public function getChildren(): array
     {
         return $this->children;
+    }
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * The serializer calls it through the property's #[Context] callback, and keeps the empty array
+     * object it returns under `PRESERVE_EMPTY_OBJECTS`; a value of a date map is formatted first.
+     */
+    public static function writeOpenApiObjects(mixed $value, object $object, string $attribute): mixed
+    {
+        [$shape, $formatter] = self::OPENAPI_WIRE_SHAPES[$attribute] ?? ['', null];
+        if ($formatter !== null) {
+            $value = self::{$formatter}($value);
+        }
+
+        return $shape === '' ? $value : self::openApiEmptyObjects($value, $shape);
+    }
+
+    /**
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new ArrayObject() : $value;
     }
 
     #[Assert\Callback]
@@ -12200,6 +13491,7 @@ declare(strict_types=1);
 
 namespace GoldenCorpus;
 
+use ArrayObject;
 use BackedEnum;
 use OverflowException;
 use Symfony\Component\Serializer\Attribute\Context;
@@ -12213,6 +13505,7 @@ use function array_intersect;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
+use function array_map;
 use function array_pop;
 use function array_unique;
 use function array_values;
@@ -12249,6 +13542,11 @@ use function substr;
  */
 final class UnionUnderContainer
 {
+    /** Property => where an empty array of its wire form is a JSON object, and the date formatter of its values. */
+    private const array OPENAPI_WIRE_SHAPES = [
+        'chainAllOf' => ['list<object>', null],
+    ];
+
     private const array OPENAPI_VALIDATION_CONSTRAINTS = [
         'properties' => [
             'chain' => [
@@ -12353,7 +13651,11 @@ final class UnionUnderContainer
     #[Assert\Type('list')]
     #[Groups(['read', 'write'])]
     #[Assert\Valid]
-    #[Context(normalizationContext: [AbstractObjectNormalizer::SKIP_NULL_VALUES => true])]
+    #[Context(normalizationContext: [
+        AbstractObjectNormalizer::SKIP_NULL_VALUES => true,
+        AbstractObjectNormalizer::CALLBACKS => ['chainAllOf' => [self::class, 'writeOpenApiObjects']],
+        AbstractObjectNormalizer::PRESERVE_EMPTY_OBJECTS => true,
+    ])]
     private ?array $chainAllOf = null;
 
     #[Ignore]
@@ -12478,6 +13780,41 @@ final class UnionUnderContainer
         }
 
         return $dto;
+    }
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * The serializer calls it through the property's #[Context] callback, and keeps the empty array
+     * object it returns under `PRESERVE_EMPTY_OBJECTS`; a value of a date map is formatted first.
+     */
+    public static function writeOpenApiObjects(mixed $value, object $object, string $attribute): mixed
+    {
+        [$shape, $formatter] = self::OPENAPI_WIRE_SHAPES[$attribute] ?? ['', null];
+        if ($formatter !== null) {
+            $value = self::{$formatter}($value);
+        }
+
+        return $shape === '' ? $value : self::openApiEmptyObjects($value, $shape);
+    }
+
+    /**
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new ArrayObject() : $value;
     }
 
     #[Assert\Callback]
@@ -14147,6 +15484,27 @@ final class User2
 
         return $value instanceof DateTimeInterface ? $value->format('Y-m-d') : $value;
     }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['id'] = $this->id;
+        $payload['name'] = $this->name;
+        $payload['pet'] = $this->pet;
+        $payload['createdAt'] = $this->createdAt;
+
+        return $payload;
+    }
 }
 
 ===== User2Pet.php =====
@@ -14273,5 +15631,23 @@ final class WebhookOrderPlacedPostRequest
     public function getOrderId(): string
     {
         return $this->orderId;
+    }
+
+    /**
+     * This DTO as an OpenAPI-named payload: what it received, under the names the schema uses.
+     * Machinery for the generated validation, not an API to call — an enclosing DTO reads a nested
+     * one through here, because the properties themselves are private. For output, use the Symfony
+     * serializer.
+     *
+     * @internal
+     *
+     * @return array<string, mixed>
+     */
+    public function toOpenApiValidationPayload(): array
+    {
+        $payload = [];
+        $payload['orderId'] = $this->orderId;
+
+        return $payload;
     }
 }

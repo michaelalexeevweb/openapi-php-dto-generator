@@ -1,4 +1,4 @@
-# runtime mode — 80 files, 23839 lines
+# runtime mode — 80 files, 23852 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -97,6 +97,8 @@ namespace GoldenCorpus;
  */
 interface Animal
 {
+    /** The union as a property typed by it carries it — what `DtoDeserializer` builds a body that IS the union from. */
+    public const array OPENAPI_UNION_CONSTRAINTS = ['oneOf' => [['x-php-instanceof' => Cat::class], ['x-php-instanceof' => Dog::class], ['x-php-instanceof' => AnimalOneOf3::class]]];
 }
 
 ===== Animal2.php =====
@@ -114,6 +116,8 @@ namespace GoldenCorpus;
  */
 interface Animal2
 {
+    /** The union as a property typed by it carries it — what `DtoDeserializer` builds a body that IS the union from. */
+    public const array OPENAPI_UNION_CONSTRAINTS = ['anyOf' => [['x-php-instanceof' => Cat::class], ['x-php-instanceof' => Dog::class], ['x-php-instanceof' => Dog2::class], ['x-php-instanceof' => Animal2AnyOf4::class]]];
 }
 
 ===== Animal2AnyOf4.php =====
@@ -11699,6 +11703,9 @@ use function json_encode;
  */
 class Cat extends Pet implements Animal, Animal2, GeneratedDtoInterface, Stringable
 {
+    /** Declared by more than one union this class belongs to; its own keeps it from inheriting both. */
+    public const array OPENAPI_UNION_CONSTRAINTS = [];
+
     private bool $meowInRequest = false;
     private bool $meowInPath = false;
     private bool $meowInQuery = false;
@@ -15083,6 +15090,9 @@ use function json_encode;
  */
 class Dog extends Pet implements Animal, Animal2, GeneratedDtoInterface, Stringable
 {
+    /** Declared by more than one union this class belongs to; its own keeps it from inheriting both. */
+    public const array OPENAPI_UNION_CONSTRAINTS = [];
+
     private bool $barkInRequest = false;
     private bool $barkInPath = false;
     private bool $barkInQuery = false;
@@ -15294,6 +15304,9 @@ use function json_encode;
  */
 final class Dog2 extends Pet implements Animal2, GeneratedDtoInterface, Stringable
 {
+    /** Declared by more than one union this class belongs to; its own keeps it from inheriting both. */
+    public const array OPENAPI_UNION_CONSTRAINTS = [];
+
     private bool $barkInRequest = false;
     private bool $barkInPath = false;
     private bool $barkInQuery = false;

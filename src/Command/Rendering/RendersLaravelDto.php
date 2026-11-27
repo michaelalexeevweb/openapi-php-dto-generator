@@ -1253,6 +1253,15 @@ trait RendersLaravelDto
         if ($this->laravelHasVariantFormRequest($dtoClassName)) {
             return $this->renderLaravelVariantFormRequestClass($namespace, $dtoClassName);
         }
+        $unionBody = $this->laravelUnionBodyMembers($dtoClassName);
+        if ($unionBody !== null) {
+            return $this->renderLaravelUnionMembersFormRequestClass(
+                namespace: $namespace,
+                dtoClassName: $dtoClassName,
+                members: $unionBody['members'],
+                exactlyOne: $unionBody['exactlyOne'],
+            );
+        }
 
         $hasInterpreter = $this->laravelClassesWithInterpreter[$dtoClassName] ?? false;
 
@@ -1335,6 +1344,39 @@ trait RendersLaravelDto
     }
 
     /**
+     * A body that is an undiscriminated union of classes is an interface too, and nothing in the
+     * payload names the member: its FormRequest tries every member's rules and schema checks, and
+     * takes the member the `oneOf` / `anyOf` rule leaves.
+     *
+     * @param list<string> $members
+     */
+    private function renderLaravelUnionMembersFormRequestClass(string $namespace, string $dtoClassName, array $members, bool $exactlyOne): string
+    {
+        $imports = [];
+        $this->importLibraryClass(fqcn: 'Illuminate\Foundation\Http\FormRequest', namespace: $namespace, useStatements: $imports);
+        $this->importLibraryClass(fqcn: 'Illuminate\Validation\Validator', namespace: $namespace, useStatements: $imports);
+        $this->importLibraryClass(fqcn: 'LogicException', namespace: $namespace, useStatements: $imports);
+        $memberNames = [];
+        foreach ($members as $member) {
+            $this->appendImportForClass($imports, $member, $namespace, $dtoClassName . 'FormRequest');
+            $memberNames[] = $this->shortClassName($member);
+        }
+        $imports = array_values(array_unique($imports));
+        sort($imports);
+
+        return $this->renderPhpTemplate('formrequest.laravel-members.php.twig', [
+            'namespace' => $namespace,
+            'imports' => $imports,
+            'className' => $dtoClassName . 'FormRequest',
+            'dtoClassName' => $dtoClassName,
+            'members' => $memberNames,
+            'exactlyOne' => $exactlyOne,
+            'sourceEndpoint' => $this->endpointByClass[$dtoClassName] ?? null,
+            'sourceSpecLink' => $this->resolveSpecLink($dtoClassName),
+        ]);
+    }
+
+    /**
      * A FormRequest is emitted for the classes that describe an INCOMING payload — a request body or an
      * operation's parameters — and for nothing else: a response DTO or a shared component has no
      * request to validate.
@@ -1344,7 +1386,11 @@ trait RendersLaravelDto
         return $this->attributeMode === self::ATTRIBUTE_MODE_LARAVEL
             && $this->laravelFormRequest
             && array_key_exists($className, $this->requestPayloadClasses)
-            && (($this->laravelClassesWithInterpreter[$className] ?? null) !== null || $this->laravelHasVariantFormRequest($className));
+            && (
+                ($this->laravelClassesWithInterpreter[$className] ?? null) !== null
+                || $this->laravelHasVariantFormRequest($className)
+                || $this->laravelUnionBodyMembers($className) !== null
+            );
     }
 
     /**

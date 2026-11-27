@@ -64,6 +64,31 @@ trait RendersRuntimeDto
     }
 
     /**
+     * The constraints a property typed by this union interface carries — `oneOf` / `anyOf` of "is that
+     * class" — as PHP source, for `OPENAPI_UNION_CONSTRAINTS`: `DtoDeserializer::deserialize($request,
+     * Union::class)` has no owner to read them from, so a body that IS the union was "has no
+     * constructor". Null where the union is nested in another one, or a member is a union itself — the
+     * decision symfony and yii3 share for their `OPENAPI_UNION_MEMBERS` (`undiscriminatedUnionMemberList()`). A
+     * member of two unions redeclares the constant (`redeclaresUnionConstraints`), since a class
+     * inheriting it from two interfaces is a fatal error at load time.
+     *
+     * @param array<string> $unionTypes
+     */
+    private function runtimeUnionInterfaceConstraints(string $namespace, string $className, array $unionTypes): ?string
+    {
+        $memberList = $this->undiscriminatedUnionMemberList($className, $unionTypes);
+        if ($memberList === null) {
+            return null;
+        }
+        $branches = [];
+        foreach ($memberList['members'] as $member) {
+            $branches[] = sprintf("['x-php-instanceof' => %s::class]", $this->formatClassNameForNamespace($member, $namespace));
+        }
+
+        return sprintf("['%s' => [%s]]", $memberList['keyword'], implode(', ', $branches));
+    }
+
+    /**
      * Renders a DTO in runtime mode: the class implements `GeneratedDtoInterface` and carries the
      * metadata this library's validator / normalizer / deserializer consume.
      *
@@ -142,6 +167,11 @@ trait RendersRuntimeDto
                     ),
                 ),
                 'interfaceExtends' => $interfaceExtends,
+                'unionConstraints' => $this->runtimeUnionInterfaceConstraints(
+                    namespace: $namespace,
+                    className: $className,
+                    unionTypes: $unionTypes,
+                ),
                 'signature' => null,
                 'implementedInterfaces' => [],
                 'privateProperties' => [],
@@ -353,6 +383,11 @@ trait RendersRuntimeDto
             'sourceSpecLink' => $this->resolveSpecLink($className),
             'sourceRelated' => $this->relatedByClass[$className] ?? null,
             'unionMembers' => null,
+            // A member of two union interfaces — or of one, below a parent that may be a member of
+            // another — would inherit `OPENAPI_UNION_CONSTRAINTS` twice, a fatal error at load. Its own
+            // declaration overrides both; every interface keeps its own value.
+            'redeclaresUnionConstraints' => count($this->unionInterfacesByClass[$className] ?? []) > 1
+                || (($this->unionInterfacesByClass[$className] ?? []) !== [] && $extends !== null),
             'signature' => $signature,
             'implementedInterfaces' => $implementedInterfaces,
             'privateProperties' => $privateProperties,

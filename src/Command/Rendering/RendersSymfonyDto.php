@@ -35,15 +35,8 @@ trait RendersSymfonyDto
     private bool $serializationGroupsRequired = false;
 
     /**
-     * Cache for `symfonyClassesReadByACallback()` — computed once per run, after every schema is
+     * Cache for `symfonyClassesUnderADateContext()` — computed once per run, after every schema is
      * registered.
-     *
-     * @var array<string, true>|null
-     */
-    private ?array $symfonyClassesReadByACallback = null;
-
-    /**
-     * Cache for `symfonyClassesUnderADateContext()`, computed once per run like the one above.
      *
      * @var array<string, true>|null
      */
@@ -125,6 +118,7 @@ trait RendersSymfonyDto
                     !$this->symfonyUnionHasFreeFormObjectMember(schema: $schema, sourceFile: $this->getSchemaSourceFile($className))
                     && !$this->symfonyListBesideUnskippableClasses($property['type'])
                     && !$this->symfonyUnionNestsDiscriminatedUnion(schema: $schema, sourceFile: $this->getSchemaSourceFile($className))
+                    && !$this->symfonyUnionHasMemberWrittenElsewhere($schema)
                 )
             ) {
                 continue;
@@ -183,6 +177,42 @@ trait RendersSymfonyDto
     }
 
     /**
+     * Whether a reference names a discriminated union one of whose members is a class another document's
+     * own run writes (`memberIsWrittenByItsOwnDocument()`). Such a member implements no interface of this
+     * document, so the serializer could not put it into a property typed with the union: `{"pet":
+     * {"kind": "dog"}}` was a 500. The value is held as the decoded array, and the member its tag names
+     * judges it, as for a union nested in a union (`symfonyUnionNestsDiscriminatedUnion()`).
+     *
+     * @param array<mixed> $schema
+     */
+    private function symfonyUnionHasMemberWrittenElsewhere(array $schema): bool
+    {
+        $ref = $this->referenceOrSingleRefAllOf($schema);
+
+        return $ref !== null
+            && str_starts_with($ref, '#/components/schemas/')
+            && $this->symfonyUnionClassHasMemberWrittenElsewhere($this->schemaClassName(substr($ref, strlen('#/components/schemas/'))));
+    }
+
+    /**
+     * {@see symfonyUnionHasMemberWrittenElsewhere()} for the union's class: a list item or map value
+     * typed with it is held as the decoded array too, the class kept beside it for a DTO built by hand.
+     */
+    private function symfonyUnionClassHasMemberWrittenElsewhere(string $baseClass): bool
+    {
+        if (!$this->isOneOfDiscriminatorBase($baseClass)) {
+            return false;
+        }
+        foreach ($this->discriminatorSchemas[$baseClass]['mapping'] as $memberClass) {
+            if ($this->memberIsWrittenByItsOwnDocument($memberClass, $baseClass)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Whether a `oneOf` / `anyOf` has a member that is itself a discriminated union — `oneOf: [{oneOf:
      * [$ref Circle, $ref Square], discriminator: …}, {type: string}]`. The property is typed
      * `Circle|Square|string`, the `discriminator` having no interface to sit on, and the serializer tried
@@ -199,7 +229,9 @@ trait RendersSymfonyDto
      */
     private function symfonyUnionNestsDiscriminatedUnion(array $schema, int $depth = 0, ?string $sourceFile = null): bool
     {
-        $ref = $schema['$ref'] ?? null;
+        // `allOf: [$ref Pet]` is the same reference spelled longer: read only as `$ref`, the wrapped one
+        // was typed `Jade|Ivory` and refused a valid Jade for Ivory's `kind` enum.
+        $ref = $this->referenceOrSingleRefAllOf($schema);
         if (is_string($ref) && $depth < 8) {
             $aliased = $this->scalarAliasDefinition($ref, $sourceFile);
 
@@ -360,6 +392,20 @@ trait RendersSymfonyDto
         if ($depth >= 8) {
             return false;
         }
+        // A `$ref` to an array alias is that list here: its tuple tail and inner lists are the same
+        // unbuilt positions as when written inline (`{"pack": ["x", 5]}` passed for a tuple of Shapes).
+        $aliasRef = $this->referenceOrSingleRefAllOf($schema);
+        $alias = $aliasRef === null ? null : $this->arrayAliasDefinition($aliasRef);
+        if ($alias !== null) {
+            // Keywords beside the reference win over the alias's, as for the constraints.
+            $own = [];
+            foreach ($schema as $keyword => $value) {
+                if ($keyword !== '$ref' && $keyword !== 'allOf') {
+                    $own[$keyword] = $value;
+                }
+            }
+            $schema = $own + $alias;
+        }
         $positions = [];
         foreach (['items', 'additionalProperties'] as $containerKey) {
             if (is_array($schema[$containerKey] ?? null)) {
@@ -403,7 +449,7 @@ trait RendersSymfonyDto
             return false;
         }
         $refClass = $this->schemaRefToClassName(ref: $ref, currentSourceFile: $this->getSchemaSourceFile($className));
-        if ($this->isUnhydratableUnionClass($refClass)) {
+        if ($this->isUnhydratableUnionClass($refClass) || $this->symfonyUnionClassHasMemberWrittenElsewhere($refClass)) {
             return true;
         }
         $definition = $this->dtoSchemas[$refClass] ?? null;
@@ -461,7 +507,7 @@ trait RendersSymfonyDto
             pattern: '/\??\\\?[A-Za-z_][A-Za-z0-9_\\\]*/',
             callback: function (array $match) use (&$heldAsMixed): string {
                 $class = $this->shortClassName(ltrim($match[0], '?\\'));
-                if (!$this->isUnhydratableUnionClass($class)) {
+                if (!$this->isUnhydratableUnionClass($class) && !$this->symfonyUnionClassHasMemberWrittenElsewhere($class)) {
                     return $match[0];
                 }
                 if (!$this->symfonyUnionHoldsOnlyObjects($class)) {
@@ -806,7 +852,10 @@ trait RendersSymfonyDto
             className: $className,
             extracted: $extractedClassConstraints,
         );
-        $validationConstraints = $this->symfonyWithoutUncountableMinProperties($validationConstraints);
+        $validationConstraints = $this->symfonyWithAllOfParentObjectKeywords(
+            filtered: $this->symfonyWithoutUncountableMinProperties($validationConstraints),
+            className: $className,
+        );
 
         // Map php name -> openapi name for constraints matching
         $phpToOpenApiNameMap = [];
@@ -855,19 +904,11 @@ trait RendersSymfonyDto
         // A DTO without callback-validated keywords has no payload method of its own, yet an
         // enclosing DTO may still need to see it as a payload (`uniqueItems` over DTO items,
         // `const`, a subschema applied to the nested object). Its properties are private, so
-        // reading it from outside is impossible without this — hence the compact version. Emitted
-        // only for the classes some other DTO's callback can actually reach: everywhere else it
-        // would be a method nobody calls. A class from another file is the exception: several
-        // documents write the same file, and only some of them read it from a callback — so it
-        // always carries the method, or the last generation run decides what the others get.
-        if (
-            $validationParts['methods'] === ''
-            && $params !== []
-            && (
-                array_key_exists($className, $this->symfonyClassesReadByACallback())
-                || $this->isSymfonySharedClass($className)
-            )
-        ) {
+        // reading it from outside is impossible without this — hence the compact version. Every
+        // class with properties carries it: a class is read by documents other than its own (a
+        // `--ref`ed component file), so whether some callback reads it is not knowable from one run,
+        // and a file that depended on it changed with whichever run wrote it last.
+        if ($validationParts['methods'] === '' && $params !== []) {
             $validationParts['methods'] = $this->renderSymfonyStandalonePayloadMethod($params);
         }
         $cascade = $this->renderSymfonyScalarUnionCascade($properties);
@@ -905,9 +946,13 @@ trait RendersSymfonyDto
             }
         }
         $temporalFormatters = [];
+        $wireShapes = [];
         foreach ($params as $param) {
             if ($param['temporalFormatter'] !== null) {
                 $temporalFormatters[$param['temporalFormatter']] = $param['temporalFormatter'];
+            }
+            if ($param['wireShape'] !== null) {
+                $wireShapes[] = $param;
             }
         }
         $implementedInterfaces = [];
@@ -920,6 +965,7 @@ trait RendersSymfonyDto
                 && $this->isOneOfDiscriminatorBase($baseClass)
                 && in_array($className, $meta['mapping'], true)
                 && !in_array($baseClass, $unionInterfaces, true)
+                && !$this->memberIsWrittenByItsOwnDocument($className, $baseClass)
             ) {
                 $unionInterfaces[] = $baseClass;
             }
@@ -938,6 +984,7 @@ trait RendersSymfonyDto
             'className' => $className,
             'classDeprecated' => $this->deprecatedByClass[$className] ?? false,
             'implementedInterfaces' => $implementedInterfaces,
+            'redeclaresUnionMemberList' => $this->redeclaresUnionMemberList($className),
             'unionMembers' => null,
             'interfaceExtends' => [],
             'discriminatorMap' => null,
@@ -947,6 +994,7 @@ trait RendersSymfonyDto
             'extends' => null,
             'params' => $params,
             'temporalFormatters' => array_values($temporalFormatters),
+            'wireShapes' => $wireShapes,
             'queryReaders' => array_values($queryReaders),
             'queryListReaders' => array_values($queryListReaders),
             'factoryLocal' => $this->symfonyFactoryLocalName($params),
@@ -958,111 +1006,163 @@ trait RendersSymfonyDto
 
     private function resetSymfonyReachabilityCache(): void
     {
-        $this->symfonyClassesReadByACallback = null;
         $this->symfonyClassesUnderADateContext = null;
     }
 
     /**
-     * Whether the class comes from a file other than the document being generated — a `$ref`ed
-     * component file that other documents generate into the same place.
+     * The object-wide keywords of what the class is built from with `allOf` — a `$ref`'d parent's `not`,
+     * `anyOf` / `oneOf`, `if`/`then`/`else`, `minProperties`, `dependentRequired`, … — down the whole
+     * chain (`A allOf $ref B`, `B allOf $ref C`), one `allOf` entry per branch, never merged, so two
+     * parents that both carry a `not` keep both.
+     *
+     * Symfony writes the child as one flat class with the parent's properties merged in
+     * (`classSchemaWithInlineAllOfMerged()`), and nothing extends the parent, so its object-wide keywords
+     * were carried nowhere: `{"yak": {"size": 7}}` passed Square, built from `allOf: [$ref Circle]`,
+     * while Circle itself refused it against its `not`. The class's own inline branches are merged into
+     * its schema already and are not repeated here.
+     *
+     * @param array<string, mixed> $filtered
+     * @return array<string, mixed>
      */
-    private function isSymfonySharedClass(string $className): bool
+    private function symfonyWithAllOfParentObjectKeywords(array $filtered, string $className): array
     {
-        $sourceFile = $this->getSchemaSourceFile($className);
+        $parts = [];
+        foreach ($this->symfonyAllOfParentObjectKeywords(className: $className, visitedClasses: [$className], ownInlineBranches: false) as $part) {
+            // A parent's lower bound counts what the class declares, and the child may admit keys it
+            // does not: `symfonyWithoutUncountableMinProperties()` with the child's own permission.
+            $countable = $this->symfonyWithoutUncountableMinProperties([
+                ...$part,
+                ...array_intersect_key($filtered, ['additionalProperties' => true, 'patternProperties' => true]),
+            ]);
+            $filteredPart = $this->filterInterpreterConstraints(
+                constraints: array_intersect_key($countable, $part),
+                allowScalarKeywords: true,
+            );
+            if ($filteredPart !== []) {
+                $parts[] = $filteredPart;
+            }
+        }
+        if ($parts === []) {
+            return $filtered;
+        }
 
-        return $sourceFile !== null && $this->rootSpecFile !== null && $sourceFile !== $this->rootSpecFile;
+        return [...$filtered, 'allOf' => [...(is_array($filtered['allOf'] ?? null) ? $filtered['allOf'] : []), ...$parts]];
     }
 
     /**
-     * The generated classes that some OTHER class's `#[Assert\Callback]` can meet as a value —
-     * directly as a property, as an array item, or through the interface of a union it belongs to.
-     * Only those need a payload view of their own; for the rest it would be dead code.
+     * The object-wide keywords of each `allOf` branch a class inherits, extracted with their `$ref`s
+     * spelled out — see `symfonyWithAllOfParentObjectKeywords()`.
      *
-     * @return array<string, true>
+     * `properties` and `required` stay out: the class declares the parent's properties itself, and
+     * repeating them would report one violation twice. A parent's `anyOf` / `oneOf` naming classes is
+     * taken only where it judges that parent as a whole (beside its own `allOf`): a discriminator base's
+     * `oneOf: [$ref Cat, $ref Dog]` describes its variants, not a check every variant must pass.
+     * A parent's own `additionalProperties` / `patternProperties` makes its `minProperties` uncountable.
+     *
+     * @param list<string> $visitedClasses the chain walked so far, so a cycle ends
+     * @param bool $ownInlineBranches whether the class's inline branches are taken — false for the class
+     *                                the constraints are built for, whose schema has them merged in
+     * @return list<array<string, mixed>>
      */
-    private function symfonyClassesReadByACallback(): array
+    private function symfonyAllOfParentObjectKeywords(string $className, array $visitedClasses, bool $ownInlineBranches): array
     {
-        if ($this->symfonyClassesReadByACallback !== null) {
-            return $this->symfonyClassesReadByACallback;
+        $allOf = $this->dtoSchemas[$className]['allOf'] ?? null;
+        if (!is_array($allOf)) {
+            return [];
         }
 
-        $reachable = [];
-        $readers = [];
-        foreach (array_keys($this->dtoSchemas) as $className) {
-            // No callback in the reader means it reads nobody.
-            if ($this->symfonyCallbackConstraintsFor($className) !== []) {
-                $readers[] = $className;
+        $parts = [];
+        foreach ($allOf as $branch) {
+            if (!is_array($branch)) {
+                continue;
+            }
+            $ref = $branch['$ref'] ?? null;
+            if (!is_string($ref)) {
+                $part = $ownInlineBranches ? $this->symfonyBranchObjectKeywords(sourceClass: $className, branch: $branch) : [];
+                if ($part !== []) {
+                    $parts[] = $part;
+                }
+                continue;
+            }
+
+            $parentClass = $this->schemaRefToClassName(ref: $ref, currentSourceFile: $this->getSchemaSourceFile($className));
+            $parentSchema = $this->dtoSchemas[$parentClass] ?? null;
+            if (in_array($parentClass, $visitedClasses, true) || !is_array($parentSchema)) {
+                continue;
+            }
+            $part = $this->symfonyBranchObjectKeywords(sourceClass: $parentClass, branch: $parentSchema);
+            if ($part !== []) {
+                $parts[] = $part;
+            }
+            $parts = [
+                ...$parts,
+                ...$this->symfonyAllOfParentObjectKeywords(
+                    className: $parentClass,
+                    visitedClasses: [...$visitedClasses, $parentClass],
+                    ownInlineBranches: true,
+                ),
+            ];
+        }
+
+        return $parts;
+    }
+
+    /**
+     * The object-wide keywords one `allOf` branch asserts, extracted with its `$ref`s spelled out.
+     *
+     * @param array<mixed> $branch
+     * @return array<string, mixed>
+     */
+    private function symfonyBranchObjectKeywords(string $sourceClass, array $branch): array
+    {
+        $objectWide = [];
+        foreach ([...self::SYMFONY_INHERITED_OBJECT_KEYWORDS, 'anyOf', 'oneOf'] as $keyword) {
+            if (!array_key_exists($keyword, $branch)) {
+                continue;
+            }
+            $unionNamesClasses = in_array($keyword, ['anyOf', 'oneOf'], true)
+                && (!is_array($branch[$keyword]) || $this->unionHasReferenceBranch($branch[$keyword]));
+            if (!$unionNamesClasses) {
+                $objectWide[$keyword] = $branch[$keyword];
             }
         }
-        // A class a callback reads is walked INTO as well: a branch beside it can reach a property of a
-        // class it holds — `oneOf: [{properties: {walrus: {properties: {crane: {minimum: 5}}}}}]` beside
-        // `allOf: [$ref Coral]` reads Coral's Fox — and a class without a payload view showed nothing
-        // there (its properties are private), so `crane` looked absent and every such branch matched.
-        while ($readers !== []) {
-            $reader = array_shift($readers);
-            foreach ($this->getSchemaProperties($reader) as $property) {
-                foreach ($this->generatedClassNamesInType($property['type']) as $referenced) {
-                    // A property typed as a union interface holds one of its members at runtime. The
-                    // interface map is filled while the classes are written, after this runs, so the
-                    // members are also read straight off the union's `$ref` branches.
-                    foreach ([$referenced, ...$this->unionMembersOf($referenced), ...$this->symfonyUnionRefMembers($referenced)] as $member) {
-                        if (!array_key_exists($member, $reachable)) {
-                            $reachable[$member] = true;
-                            $readers[] = $member;
-                        }
-                    }
+
+        $extracted = $objectWide === [] ? [] : $this->withConstraintSourceOf(
+            className: $sourceClass,
+            extraction: fn(): array => $this->extractValidationConstraints(
+                $this->inlineNestedContainerValidation(schema: $objectWide, belowMaterialization: true),
+            ),
+        );
+        $part = [];
+        foreach ([...self::SYMFONY_INHERITED_OBJECT_KEYWORDS, 'anyOf', 'oneOf'] as $keyword) {
+            if (array_key_exists($keyword, $extracted)) {
+                $part[$keyword] = $extracted[$keyword];
+            }
+        }
+
+        // A union of classes beside the parent's own `allOf` does judge the parent as a whole.
+        $parentSchema = $this->dtoSchemas[$sourceClass] ?? [];
+        if ($parentSchema === $branch && is_array($parentSchema['allOf'] ?? null) && $parentSchema['allOf'] !== []) {
+            foreach (['anyOf', 'oneOf'] as $keyword) {
+                if (is_array($branch[$keyword] ?? null) && $this->unionHasReferenceBranch($branch[$keyword])) {
+                    $part[$keyword] = $this->classLevelUnionWithReferencesInlined(
+                        className: $sourceClass,
+                        keyword: $keyword,
+                        branches: $branch[$keyword],
+                    );
                 }
             }
         }
 
-        return $this->symfonyClassesReadByACallback = $reachable;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function symfonyCallbackConstraintsFor(string $className): array
-    {
-        $schemaDefinition = $this->dtoSchemas[$className] ?? [];
-
-        // Mirror the renderer: a bound that the PHP type cannot enforce forces a callback even
-        // when nothing else would, and those are exactly the classes that read a nested DTO.
-        $forceRootCallbackBounds = [];
-        foreach ($this->getSchemaProperties($className) as $property) {
-            if ($this->shouldForceRootCallbackForProperty($property)) {
-                $forceRootCallbackBounds[$property['openApiName']] = true;
-            }
+        // The keys the document gives a schema of their own are dropped by the serializer, so a lower
+        // bound beside them cannot be counted.
+        $additional = $branch['additionalProperties'] ?? null;
+        $patterns = $branch['patternProperties'] ?? null;
+        if (array_key_exists('minProperties', $part) && (is_array($additional) || $additional === true || (is_array($patterns) && $patterns !== []))) {
+            $part = array_diff_key($part, ['minProperties' => true]);
         }
-        $mixedProperties = $this->mixedPropertyNames($this->getSchemaProperties($className));
-        $heldAsArray = $this->symfonyFreeFormObjectUnionsHeldAsArray(
-            className: $className,
-            properties: $this->symfonyWithUnionListsTyped($className, $this->getSchemaProperties($className)),
-        );
 
-        // `false` is the default, and it is spelled out on purpose: it is the contrasting half of
-        // the argument below. Scalar keywords are OFF everywhere and ON for exactly these
-        // properties — dropping the `false` leaves the reader to guess what is being overridden.
-        $extracted = $this->symfonyExtractedClassConstraints(
-            className: $className,
-            schemaDefinition: $schemaDefinition,
-            mixedProperties: $mixedProperties,
-        );
-
-        return $this->symfonyWithoutUncountableMinProperties($this->symfonyWithClassLevelAnyOf(
-            filtered: $this->filterInterpreterConstraints(
-                constraints: $extracted,
-                allowScalarKeywords: false,
-                forceScalarOnProperties: $forceRootCallbackBounds,
-                unmaterializedProperties: $mixedProperties + $heldAsArray,
-                aroundNestedDtoProperties: $this->propertiesBesideTheirReferencedClass(
-                    classSchema: $this->classSchemaWithInlineAllOfMerged(schemaDefinition: $schemaDefinition, className: $className),
-                    properties: $this->getSchemaProperties($className),
-                    className: $className,
-                ),
-            ),
-            className: $className,
-            extracted: $extracted,
-        ));
+        return $part;
     }
 
     /**
@@ -1499,6 +1599,11 @@ trait RendersSymfonyDto
         if (!is_array($definition)) {
             return $propertySchema;
         }
+        // The definition is read RAW, so an alias inside it (`items: {$ref: Amber}`, `Amber: {$ref:
+        // Azure}`) still names the component that has no class and no schema of its own: the item was
+        // written out as nothing, and `[true]` passed a list of objects.
+        $redirected = $this->withRedirectedAliases($definition, $this->pureAliasRedirects);
+        $definition = is_array($redirected) ? $redirected : $definition;
         $hasContainerBranch = false;
         foreach (['oneOf', 'anyOf'] as $keyword) {
             foreach (is_array($definition[$keyword] ?? null) ? $definition[$keyword] : [] as $branch) {
@@ -1510,7 +1615,7 @@ trait RendersSymfonyDto
         }
         // A discriminated union member holds the value as the decoded array too
         // (`symfonyUnionNestsDiscriminatedUnion()`), and the members its tag names judge that array.
-        if (!$hasContainerBranch && !$this->symfonyUnionNestsDiscriminatedUnion($definition)) {
+        if (!$hasContainerBranch && !$this->symfonyUnionNestsDiscriminatedUnion($definition) && !$this->symfonyUnionHasMemberWrittenElsewhere($propertySchema)) {
             return $propertySchema;
         }
         // The wrapper goes with the reference it held; an `allOf` beside a bare `$ref` stays.
@@ -2032,6 +2137,11 @@ PHP;
             );
         }
 
+        // The serializer cannot build an interface with no `#[DiscriminatorMap]`, so a body that IS the
+        // union is a 500 under `#[MapRequestPayload]`; the members it names are what an application
+        // tries the payload against itself (README.symfony, "A body that is a union without a discriminator").
+        $memberList = $discriminator === null ? $this->undiscriminatedUnionMemberList($className, $unionTypes) : null;
+
         $imports = array_values(array_unique($imports));
         sort($imports);
 
@@ -2039,6 +2149,13 @@ PHP;
             'namespace' => $namespace,
             'imports' => $imports,
             'className' => $className,
+            'unionMemberList' => $memberList === null ? null : [
+                'keyword' => $memberList['keyword'],
+                'members' => array_map(
+                    callback: fn(string $member): string => $this->formatClassNameForNamespace($member, $namespace),
+                    array: $memberList['members'],
+                ),
+            ],
             'sourceEndpoint' => $this->endpointByClass[$className] ?? null,
             'sourceSpecLink' => $this->resolveSpecLink($className),
             'sourceRelated' => $this->relatedByClass[$className] ?? null,
@@ -2092,6 +2209,25 @@ PHP;
         // yii3 shares the interface lookup, but keeps the base a class of its own.
         return $this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY && $this->isAllOfDiscriminatorBase($className);
     }
+
+    /**
+     * The object-wide keywords a class built from `allOf: [$ref Parent]` inherits from the parent — see
+     * `symfonyAllOfParentObjectKeywords()`.
+     *
+     * @var array<int, string>
+     */
+    private const array SYMFONY_INHERITED_OBJECT_KEYWORDS = [
+        'minProperties',
+        'maxProperties',
+        'dependentRequired',
+        'dependentSchemas',
+        'propertyNames',
+        'patternProperties',
+        'not',
+        'if',
+        'then',
+        'else',
+    ];
 
     /**
      * Keywords that grant permission rather than assert anything. They survive the filter so the
@@ -2154,6 +2290,7 @@ PHP;
      *     factoryDefault: string,
      *     factoryDocType: ?string,
      *     temporalFormatter: ?string,
+     *     wireShape: ?string,
      *     inputType: string,
      *     nullRefusedByCallback: bool,
      *     constructorType: string,
@@ -2323,6 +2460,13 @@ PHP;
             }
         }
 
+        // A map is a PHP array to the serializer, and the empty one encodes as `[]`: `{"widths": {}}` came
+        // back `{"widths": []}`. A property held as a generated class is the serializer's own object, and
+        // `PRESERVE_EMPTY_OBJECTS` is the caller's choice there (README.support-matrix).
+        $wireShape = array_key_exists($this->shortClassName(ltrim($property['type'], '?')), $this->dtoSchemas)
+            ? null
+            : $this->emptyObjectWireShape(type: $property['type'], constraints: $property['constraints'] ?? []);
+
         return [
             'declaredType' => $declaredType,
             'docType' => $docType !== null ? $this->composePhpTypeHint($docType, $declaredNullable) : null,
@@ -2339,6 +2483,7 @@ PHP;
             // DateTimeNormalizer has one fixed pattern and can express neither, so the property hands
             // the serializer a callback of the DTO's own through #[Context].
             'temporalFormatter' => $this->symfonyTemporalFormatter($property),
+            'wireShape' => $wireShape,
             'temporalDefault' => $temporalDefault,
             'inputType' => $required ? $declaredType : $inputType,
             'nullRefusedByCallback' => $nullRefusedByCallback,
@@ -2369,6 +2514,7 @@ PHP;
                 name: $property['name'],
                 skipNullValues: $schemaNullable || ($phpType === 'mixed' && !$this->symfonyUntypedValueRefusesNull($property)) ? false : ($declaredNullable ? true : null),
                 temporalFormatter: $this->symfonyTemporalFormatter($property),
+                writesEmptyObjects: $wireShape !== null,
                 strictDate: $this->symfonyDateParsedStrictly($property),
                 freeDate: $underADateContext
                     && !$this->symfonyDateParsedStrictly($property)
@@ -2536,6 +2682,7 @@ PHP;
         string $name,
         ?bool $skipNullValues,
         ?string $temporalFormatter,
+        bool $writesEmptyObjects,
         bool $strictDate,
         bool $freeDate,
         bool $refuseExtraAttributes,
@@ -2544,12 +2691,18 @@ PHP;
         if ($skipNullValues !== null) {
             $entries[] = '\Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer::SKIP_NULL_VALUES => ' . ($skipNullValues ? 'true' : 'false');
         }
-        if ($temporalFormatter !== null) {
+        // One callback per property: a map's own writes its values through the date formatter as well.
+        $callback = $writesEmptyObjects ? 'writeOpenApiObjects' : $temporalFormatter;
+        if ($callback !== null) {
             $entries[] = sprintf(
                 '\Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer::CALLBACKS => [%s => [self::class, %s]]',
                 var_export($name, true),
-                var_export($temporalFormatter, true),
+                var_export($callback, true),
             );
+        }
+        if ($writesEmptyObjects) {
+            // The callback hands back an empty `ArrayObject`, which the serializer keeps only with this set.
+            $entries[] = '\Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer::PRESERVE_EMPTY_OBJECTS => true';
         }
         $denormalizationEntries = [];
         if ($strictDate) {
@@ -2568,7 +2721,7 @@ PHP;
         if ($entries === [] && $denormalization === null) {
             return null;
         }
-        if ($temporalFormatter === null && $denormalization === null) {
+        if ($callback === null && $denormalization === null) {
             return '#[\Symfony\Component\Serializer\Attribute\Context(normalizationContext: [' . implode(', ', $entries) . '])]';
         }
 

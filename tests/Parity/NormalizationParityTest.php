@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Tests\Parity;
 
+use ArrayObject;
 use BackedEnum;
 use Error;
 use Illuminate\Http\Request as LaravelRequest;
@@ -489,6 +490,19 @@ final class NormalizationParityTest extends TestCase
                     ],
                 ],
             ],
+            // An object with properties of its own whose `anyOf` arms only narrow a property is ONE object,
+            // the arms a check on it. Read as a union, laravel and laravel-data built the arm class that
+            // matched first and wrote back `{"tag": "a"}` — `size` lost.
+            'object beside an anyOf of property fragments keeps every key' => [
+                'schema' => self::object(['owl' => ['$ref' => '#/components/schemas/Oval']]),
+                'extra' => ['Oval' => [
+                    ...self::object(['size' => ['type' => 'integer']]),
+                    'anyOf' => [['properties' => ['size' => ['maximum' => 3]]], ['properties' => ['tag' => ['type' => 'string']]]],
+                ]],
+                'json' => '{"owl":{"size":7,"tag":"a"}}',
+                'runtime' => ['owl' => ['size' => 7, 'tag' => 'a']],
+                'symfony' => ['owl' => ['size' => 7, 'tag' => 'a']],
+            ],
             'untyped optional const present' => [
                 'schema' => self::object(['s' => ['type' => 'string'], 'pin' => ['const' => 'zed']], ['s']),
                 'json' => '{"s":"a","pin":"zed"}',
@@ -574,9 +588,8 @@ final class NormalizationParityTest extends TestCase
                     ],
                     'laravel-data' => [
                         'like' => 'symfony',
-                        'reason' => 'laravel-data keeps the PHP array for the same reason Symfony does: '
-                            . 'its normalizer has no notion of the wire shape, so an empty map encodes '
-                            . 'as [] rather than {}',
+                        'reason' => 'laravel-data keeps the PHP array for a map with keys, as Symfony '
+                            . 'does — the same JSON; only an empty map is written as {}',
                     ],
                 ],
             ],
@@ -587,18 +600,17 @@ final class NormalizationParityTest extends TestCase
                 'symfony' => ['map' => ['a' => 1, 'b' => 2]],
                 'reason' => 'runtime normalizes a map to stdClass so it always encodes as a JSON '
                     . 'object, Symfony keeps the PHP array — identical JSON while the map has keys, '
-                    . 'see the empty-map case for where it stops being identical',
+                    . 'and an empty one is written {} by both (the empty-map case)',
                 'diverges' => [
                     'yii3' => [
                         'like' => 'symfony',
-                        'reason' => 'a map is held as a PHP array, so the wire shape ({} versus []) '
-                            . 'is already gone — the same limit laravel-data declares',
+                        'reason' => 'a map with keys stays the PHP array it is held as, as in Symfony '
+                            . 'mode — the same JSON; only an empty map is written as {}',
                     ],
                     'laravel-data' => [
                         'like' => 'symfony',
-                        'reason' => 'laravel-data keeps the PHP array for the same reason Symfony does: '
-                            . 'its normalizer has no notion of the wire shape, so an empty map encodes '
-                            . 'as [] rather than {}',
+                        'reason' => 'laravel-data keeps the PHP array for a map with keys, as Symfony '
+                            . 'does — the same JSON; only an empty map is written as {}',
                     ],
                 ],
             ],
@@ -619,14 +631,13 @@ final class NormalizationParityTest extends TestCase
                 'diverges' => [
                     'yii3' => [
                         'like' => 'symfony',
-                        'reason' => 'a map is held as a PHP array, so the wire shape ({} versus []) '
-                            . 'is already gone — the same limit laravel-data declares',
+                        'reason' => 'a map with keys stays the PHP array it is held as, as in Symfony '
+                            . 'mode — the same JSON; only an empty map is written as {}',
                     ],
                     'laravel-data' => [
                         'like' => 'symfony',
-                        'reason' => 'laravel-data keeps the PHP array for the same reason Symfony does: '
-                            . 'its normalizer has no notion of the wire shape, so an empty map encodes '
-                            . 'as [] rather than {}',
+                        'reason' => 'laravel-data keeps the PHP array for a map with keys, as Symfony '
+                            . 'does — the same JSON; only an empty map is written as {}',
                     ],
                 ],
             ],
@@ -643,13 +654,13 @@ final class NormalizationParityTest extends TestCase
                 'diverges' => [
                     'yii3' => [
                         'like' => 'symfony',
-                        'reason' => 'a map is held as a PHP array, so the wire shape ({} versus []) '
-                            . 'is already gone — the same limit laravel-data declares',
+                        'reason' => 'a map with keys stays the PHP array it is held as, as in Symfony '
+                            . 'mode — the same JSON; only an empty map is written as {}',
                     ],
                     'laravel-data' => [
                         'expected' => ['es' => ['x' => ['#case' => 'a'], 'y' => ['#case' => 'b']]],
                         'reason' => 'laravel-data keeps the PHP array for the same reason Symfony does, '
-                            . 'so an empty map encodes as [] rather than {}; and it transforms container '
+                            . 'for a map with keys; and it transforms container '
                             . 'items only behind `data.features.cast_and_transform_iterables`, which '
                             . 'ships off, so the values stay the cases the constructor picked — '
                             . 'json_encode writes their backing values',
@@ -680,14 +691,13 @@ final class NormalizationParityTest extends TestCase
                     ],
                     'yii3' => [
                         'like' => 'symfony',
-                        'reason' => 'a map is held as a PHP array, so the wire shape ({} versus []) '
-                            . 'is already gone — the same limit laravel-data declares',
+                        'reason' => 'a map with keys stays the PHP array it is held as, as in Symfony '
+                            . 'mode — the same JSON; only an empty map is written as {}',
                     ],
                     'laravel-data' => [
                         'like' => 'symfony',
-                        'reason' => 'laravel-data keeps the PHP array for the same reason Symfony does: '
-                            . 'its normalizer has no notion of the wire shape, so an empty map encodes '
-                            . 'as [] rather than {}',
+                        'reason' => 'laravel-data keeps the PHP array for a map with keys, as Symfony '
+                            . 'does — the same JSON; only an empty map is written as {}',
                     ],
                 ],
             ],
@@ -716,35 +726,73 @@ final class NormalizationParityTest extends TestCase
                         'like' => 'symfony',
                         'reason' => 'the data set is the PHP array the hydrator filled, and a JSON '
                             . 'object with dense numeric keys is indistinguishable from a list by the '
-                            . 'time this mode sees it — the same limit it declares for an empty map',
+                            . 'time this mode sees it, and only an EMPTY map is written as {}',
                     ],
                 ],
             ],
+            // The schema still knows an empty map is an object, so every mode writes `{}` for it: the
+            // runtime holds a stdClass, Laravel casts in `toArray()`, laravel-data in `transform()`,
+            // yii3 in `getData()`, and Symfony through the property's #[Context] callback (an empty
+            // `ArrayObject` under PRESERVE_EMPTY_OBJECTS). Each of the last three wrote `[]` before.
             'empty map' => [
                 'schema' => self::object(['map' => ['type' => 'object', 'additionalProperties' => ['type' => 'integer']]], ['map']),
                 'json' => '{"map":{}}',
                 'runtime' => ['map' => ['#object' => []]],
-                'symfony' => ['map' => []],
-                'reason' => 'the stdClass/array difference becomes visible on the wire: runtime '
-                    . 'encodes {} (an object, as the schema says), Symfony encodes [] (an array)',
+                'symfony' => ['map' => ['#object' => []]],
+            ],
+            // The empty map one level down, and in the containers around it: each mode writes `{}` from
+            // the schema of the class that holds it, so a map inside a nested object is that class's.
+            'empty map inside a nested object' => [
+                'schema' => self::object(['box' => ['$ref' => '#/components/schemas/Box']], ['box']),
+                'extra' => ['Box' => self::object(['widths' => ['type' => 'object', 'additionalProperties' => ['type' => 'integer']]], ['widths'])],
+                'json' => '{"box":{"widths":{}}}',
+                'runtime' => ['box' => ['widths' => ['#object' => []]]],
+                'symfony' => ['box' => ['widths' => ['#object' => []]]],
+            ],
+            'empty nullable map' => [
+                'schema' => self::object(['widths' => ['type' => ['object', 'null'], 'additionalProperties' => ['type' => 'integer']]], ['widths']),
+                'json' => '{"widths":{}}',
+                'runtime' => ['widths' => ['#object' => []]],
+                'symfony' => ['widths' => ['#object' => []]],
+            ],
+            'nullable map set to null' => [
+                'schema' => self::object(['widths' => ['type' => ['object', 'null'], 'additionalProperties' => ['type' => 'integer']]], ['widths']),
+                'json' => '{"widths":null}',
+                'runtime' => ['widths' => null],
+                'symfony' => ['widths' => null],
+            ],
+            'empty map of maps and an empty inner map' => [
+                'schema' => self::object([
+                    'grid' => ['type' => 'object', 'additionalProperties' => ['type' => 'object', 'additionalProperties' => ['type' => 'integer']]],
+                    'none' => ['type' => 'object', 'additionalProperties' => ['type' => 'object', 'additionalProperties' => ['type' => 'integer']]],
+                ], ['grid', 'none']),
+                'json' => '{"grid":{"row":{}},"none":{}}',
+                'runtime' => ['grid' => ['#object' => ['row' => ['#object' => []]]], 'none' => ['#object' => []]],
+                'symfony' => ['grid' => ['row' => ['#object' => []]], 'none' => ['#object' => []]],
+                'reason' => 'runtime casts every map to stdClass, a non-empty one too; Symfony writes `{}` '
+                    . 'for an empty map only — the same JSON',
                 'diverges' => [
-                    'laravel-data' => [
-                        'like' => 'symfony',
-                        'reason' => 'laravel-data keeps the PHP array for the same reason Symfony does: '
-                            . 'its normalizer has no notion of the wire shape, so an empty map encodes '
-                            . 'as [] rather than {}',
-                    ],
-                    'yii3' => [
-                        'like' => 'symfony',
-                        'reason' => 'the object holds a PHP array, and a JSON {} decodes to the same '
-                            . 'empty array as [], so the wire shape is gone before anything of ours '
-                            . 'sees it — the same limit laravel-data declares here',
-                    ],
+                    'yii3' => ['like' => 'symfony', 'reason' => 'an empty map is written as `{}`, a map with keys stays an array'],
+                    'laravel-data' => ['like' => 'symfony', 'reason' => 'an empty map is written as `{}`, a map with keys stays an array'],
                 ],
+            ],
+            'empty map of objects' => [
+                'schema' => self::object(['kids' => ['type' => 'object', 'additionalProperties' => ['$ref' => '#/components/schemas/Child']]], ['kids']),
+                'extra' => ['Child' => self::object(['id' => ['type' => 'integer']], ['id'])],
+                'json' => '{"kids":{}}',
+                'runtime' => ['kids' => ['#object' => []]],
+                'symfony' => ['kids' => ['#object' => []]],
+            ],
+            'empty map of dates' => [
+                'schema' => self::object(['on' => ['type' => 'object', 'additionalProperties' => ['type' => 'string', 'format' => 'date']]], ['on']),
+                'json' => '{"on":{}}',
+                'runtime' => ['on' => ['#object' => []]],
+                'symfony' => ['on' => ['#object' => []]],
             ],
             // Runtime used to fail this outright: the item type was read off the innermost generic,
             // so `{"maps":[{}]}` could not be deserialized at all, and an empty map inside a list
-            // encoded as `[]` while the same map at property level encoded as `{}`.
+            // encoded as `[]` while the same map at property level encoded as `{}`. The other modes
+            // write the empty item as `{}` as well, one level deeper than the map case above.
             'list of maps' => [
                 'schema' => self::object(
                     properties: ['maps' => ['type' => 'array', 'items' => ['type' => 'object', 'additionalProperties' => ['type' => 'integer']]]],
@@ -752,20 +800,20 @@ final class NormalizationParityTest extends TestCase
                 ),
                 'json' => '{"maps":[{},{"b":2}]}',
                 'runtime' => ['maps' => [['#object' => []], ['#object' => ['b' => 2]]]],
-                'symfony' => ['maps' => [[], ['b' => 2]]],
-                'reason' => 'the same stdClass-vs-array difference as the map cases, one level deeper: '
-                    . 'runtime casts every map — including one inside a list — so an empty item '
-                    . 'encodes as {}, Symfony leaves the PHP array and encodes []',
+                'symfony' => ['maps' => [['#object' => []], ['b' => 2]]],
+                'reason' => 'runtime casts every map to stdClass, a non-empty one too; Symfony writes `{}` '
+                    . 'for the empty item only and leaves a map with keys the PHP array it is — the '
+                    . 'same JSON',
                 'diverges' => [
                     'yii3' => [
                         'like' => 'symfony',
-                        'reason' => 'each map in the list is a PHP array, so an empty one encodes as '
-                            . '[] rather than {} — the map limit, once per element',
+                        'reason' => 'the same as Symfony: an empty map is written as `{}`, a map with keys '
+                            . 'stays the array it is held as',
                     ],
                     'laravel-data' => [
                         'like' => 'symfony',
-                        'reason' => 'laravel-data keeps the PHP array for the same reason Symfony does, '
-                            . 'inside a list too',
+                        'reason' => 'the same as Symfony: an empty map is written as `{}`, a map with keys '
+                            . 'stays the array it is held as',
                     ],
                 ],
             ],
@@ -819,8 +867,8 @@ final class NormalizationParityTest extends TestCase
                 'diverges' => [
                     'yii3' => [
                         'like' => 'symfony',
-                        'reason' => 'a map is held as a PHP array, so the wire shape ({} versus []) '
-                            . 'is already gone — the same limit laravel-data declares',
+                        'reason' => 'a map with keys stays the PHP array it is held as, as in Symfony '
+                            . 'mode — the same JSON; only an empty map is written as {}',
                     ],
                     'laravel-data' => [
                         'like' => 'symfony',
@@ -1337,7 +1385,8 @@ final class NormalizationParityTest extends TestCase
             return ['#case' => $value->value];
         }
 
-        if ($value instanceof stdClass) {
+        // Symfony mode writes an empty map as an `ArrayObject`, which its encoder keeps as `{}`.
+        if ($value instanceof stdClass || ($value instanceof ArrayObject && $value->count() === 0)) {
             return ['#object' => $this->canonicalize((array)$value)];
         }
 

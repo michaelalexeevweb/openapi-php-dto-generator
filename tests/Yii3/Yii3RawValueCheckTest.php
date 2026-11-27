@@ -190,6 +190,105 @@ final class Yii3RawValueCheckTest extends TestCase
     }
 
     /**
+     * A date that is not one is ONE mistake, so it is one message. The pattern and the parser both
+     * answer "must be a date", and the `Composite` holding them ran both: `"nonsense"` was reported
+     * twice — at the top and inside a nested object (README.yii3's nested recipe). The parser now
+     * runs only on what the pattern took, so a calendar date that does not exist (`2024-02-30`) is
+     * still refused, once, and a real one passes.
+     */
+    public function testAnInvalidDateIsReportedOnce(): void
+    {
+        $namespace = $this->generate([
+            'Booking' => [
+                'type' => 'object',
+                'properties' => [
+                    'startDate' => ['type' => 'string', 'format' => 'date'],
+                    'startsAt' => ['type' => 'string', 'format' => 'date-time'],
+                    'slot' => ['$ref' => '#/components/schemas/Slot'],
+                ],
+            ],
+            'Slot' => [
+                'type' => 'object',
+                'properties' => [
+                    'startDate' => ['type' => 'string', 'format' => 'date'],
+                    'startsAt' => ['type' => 'string', 'format' => 'date-time'],
+                ],
+            ],
+        ]);
+        $class = $namespace . '\Booking';
+
+        $cases = [
+            [['startDate' => 'nonsense'], ['startDate' => 'StartDate must be a date.']],
+            [['startDate' => '2024-02-30'], ['startDate' => 'StartDate must be a date.']],
+            [['startsAt' => 'nonsense'], ['startsAt' => 'StartsAt must be a date.']],
+            [['startsAt' => '2024-02-30T01:02:03Z'], ['startsAt' => 'StartsAt must be a date.']],
+            [['slot' => ['startDate' => 'nonsense']], ['slot.startDate' => 'StartDate must be a date.']],
+            [['slot' => ['startDate' => '2024-02-30']], ['slot.startDate' => 'StartDate must be a date.']],
+            [['slot' => ['startsAt' => 'nonsense']], ['slot.startsAt' => 'StartsAt must be a date.']],
+            [['startDate' => '2024-02-29', 'startsAt' => '2024-05-06T01:02:03Z', 'slot' => ['startDate' => '2024-02-29']], []],
+        ];
+        foreach ($cases as [$payload, $expected]) {
+            $result = (new Yii3Container())->hydrateValidated(class: $class, payload: $payload, nestedPaths: true);
+            $reported = [];
+            foreach ($result->getErrors() as $error) {
+                $reported[] = [implode('.', $error->getValuePath()) => $error->getMessage()];
+            }
+            $this->assertSame(
+                expected: array_map(static fn(string $path, string $message): array => [$path => $message], array_keys($expected), $expected),
+                actual: $reported,
+                message: (string)json_encode($payload),
+            );
+        }
+    }
+
+    /**
+     * An empty map is `{}` on the way out, as the schema says: the class holds the PHP array, and
+     * `{"widths":{}}` was written back `{"widths":[]}` — by `getData()` and by `json_encode()` — on its
+     * own, inside a nested object, as the value of a map, as the item of a list and as a nullable map.
+     * A map with keys is written as it was, and is still accepted again from what was written.
+     */
+    public function testAnEmptyMapIsWrittenAsAnObject(): void
+    {
+        $map = static fn(array $values): array => ['type' => 'object', 'additionalProperties' => $values];
+        $namespace = $this->generate([
+            'Crate' => [
+                'type' => 'object',
+                'required' => ['widths', 'grid', 'rows', 'box', 'maybe', 'shapes'],
+                'properties' => [
+                    'widths' => $map(['type' => 'integer']),
+                    'grid' => $map($map(['type' => 'integer'])),
+                    'rows' => ['type' => 'array', 'items' => $map(['type' => 'integer'])],
+                    'box' => ['$ref' => '#/components/schemas/Box'],
+                    'maybe' => ['type' => ['object', 'null'], 'additionalProperties' => ['type' => 'integer']],
+                    'shapes' => $map(['$ref' => '#/components/schemas/Box']),
+                ],
+            ],
+            'Box' => [
+                'type' => 'object',
+                'properties' => ['widths' => $map(['type' => 'integer'])],
+            ],
+        ]);
+        $class = $namespace . '\Crate';
+
+        foreach ([
+            '{"widths":{},"grid":{"row":{}},"rows":[{},{"a":1}],"box":{"widths":{}},"maybe":{},"shapes":{"c":{}}}',
+            '{"widths":{"a":1},"grid":{},"rows":[],"box":{"widths":{"b":2}},"maybe":null,"shapes":{}}',
+        ] as $json) {
+            $payload = json_decode($json, true);
+            $this->assertIsArray($payload);
+            $input = (new Yii3Container())->hydrateValidatedInput(class: $class, payload: $payload);
+            $this->assertSame([], $this->messages($this->verdictOf($input)), $json);
+
+            $this->assertSame(expected: $json, actual: (string)json_encode($input));
+            $this->assertSame(expected: $json, actual: (string)json_encode($input->getData()));
+
+            $written = json_decode((string)json_encode($input), true);
+            $again = (new Yii3Container())->hydrateValidatedInput(class: $class, payload: is_array($written) ? $written : []);
+            $this->assertSame([], $this->messages($this->verdictOf($again)), $json . ' re-sent');
+        }
+    }
+
+    /**
      * An optional property whose PHP type the hydrator cannot fill from the value — an enum given a
      * value it lacks, an object or an enum given null — is refused, not read as "not sent".
      */

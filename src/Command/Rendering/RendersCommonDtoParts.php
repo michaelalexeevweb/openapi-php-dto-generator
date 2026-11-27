@@ -47,6 +47,79 @@ trait RendersCommonDtoParts
     }
 
     /**
+     * What an undiscriminated union of plain classes names its members with — the keyword and the member
+     * classes in document order — so a body that IS the union can be tried member by member: runtime
+     * writes it as `OPENAPI_UNION_CONSTRAINTS`, symfony and yii3 as `OPENAPI_UNION_MEMBERS`, since their
+     * serializer and hydrator cannot build an interface. Null for a discriminated union (it has its
+     * mapping), a union nested in another one (its interface extends the outer one, which a member would
+     * then inherit the constant from twice), a member that is itself a union, and a branch that names no
+     * member class (`{type: "null"}`), which a member list would leave out.
+     *
+     * @param array<string> $unionTypes
+     * @return array{keyword: string, members: list<string>}|null
+     */
+    private function undiscriminatedUnionMemberList(string $className, array $unionTypes): ?array
+    {
+        $schema = $this->dtoSchemas[$className] ?? [];
+        $keyword = is_array($schema['oneOf'] ?? null) ? 'oneOf' : (is_array($schema['anyOf'] ?? null) ? 'anyOf' : null);
+        if (
+            $keyword === null
+            || $unionTypes === []
+            || count($schema[$keyword]) !== count($unionTypes)
+            || array_key_exists($className, $this->discriminatorSchemas)
+            || ($this->unionInterfacesByClass[$className] ?? []) !== []
+        ) {
+            return null;
+        }
+        foreach ($unionTypes as $member) {
+            $memberSchema = $this->dtoSchemas[$this->shortClassName($member)] ?? null;
+            if (
+                !is_array($memberSchema)
+                || array_key_exists('oneOf', $memberSchema)
+                || array_key_exists('anyOf', $memberSchema)
+            ) {
+                return null;
+            }
+        }
+
+        return ['keyword' => $keyword, 'members' => array_values($unionTypes)];
+    }
+
+    /**
+     * Whether a class is a member of two unions that both write `OPENAPI_UNION_MEMBERS`: inheriting the
+     * same constant from two interfaces is a fatal error at load, so the class declares its own, which
+     * overrides both while each interface keeps its value — as runtime does for `OPENAPI_UNION_CONSTRAINTS`.
+     */
+    private function redeclaresUnionMemberList(string $className): bool
+    {
+        $listing = 0;
+        foreach ($this->unionInterfacesByClass[$className] ?? [] as $interface) {
+            if ($this->undiscriminatedUnionMemberList($interface, $this->unionInterfaceMembers($interface)) !== null) {
+                $listing++;
+            }
+        }
+
+        return $listing > 1;
+    }
+
+    /**
+     * The classes that implement a union interface as its direct members, in the order they were linked.
+     *
+     * @return list<string>
+     */
+    private function unionInterfaceMembers(string $interface): array
+    {
+        $members = [];
+        foreach ($this->unionInterfacesByClass as $member => $interfaces) {
+            if (in_array($interface, $interfaces, true)) {
+                $members[] = $member;
+            }
+        }
+
+        return $members;
+    }
+
+    /**
      * Union interfaces this class implements: the oneOf/anyOf schemas listing it as a member, plus
      * any discriminated base it is mapped to (Symfony DTOs are flattened, so the base cannot be a
      * parent class).
@@ -1055,5 +1128,59 @@ trait RendersCommonDtoParts
         }
 
         return ['required' => $required, 'declared' => $declared];
+    }
+
+    /**
+     * Where an EMPTY array in a property's wire form is a JSON object, or null when it never is.
+     *
+     * A map (`additionalProperties`) is held as a PHP array, and the empty one is the same `[]` as an
+     * empty list: `{"widths": {}}` was written back `{"widths": []}` in symfony, laravel-data and yii3
+     * mode. The schema still knows, so it is named here and the mode's way out writes `{}`: `object`
+     * for a map or an object, `object<…>` for a map of values that are such themselves, `list<…>` for a
+     * list of them. A non-empty map stays the array it is — the JSON is the same, and code reading the
+     * array form keeps its keys.
+     *
+     * @param array<string, mixed> $constraints the property's schema, for a free-form `type: object`,
+     *                                          which is a bare `array` here
+     */
+    private function emptyObjectWireShape(string $type, array $constraints = []): ?string
+    {
+        $type = ltrim($type, '?\\');
+        if ($type === 'array') {
+            $schemaType = $constraints['type'] ?? null;
+
+            return $schemaType === 'object' || (is_array($schemaType) && in_array('object', $schemaType, true) && !in_array('array', $schemaType, true))
+                ? 'object'
+                : null;
+        }
+        if (str_starts_with($type, 'array<') && str_ends_with($type, '>')) {
+            $inner = substr($type, 6, -1);
+            $depth = 0;
+            $key = null;
+            $length = strlen($inner);
+            for ($position = 0; $position < $length && $key === null; $position++) {
+                $depth += match ($inner[$position]) {
+                    '<' => 1,
+                    '>' => -1,
+                    default => 0,
+                };
+                if ($inner[$position] === ',' && $depth === 0) {
+                    $key = trim(substr($inner, 0, $position));
+                    $inner = trim(substr($inner, $position + 1));
+                }
+            }
+            $itemShape = $this->emptyObjectWireShape($inner);
+            if ($key === 'string') {
+                return $itemShape === null ? 'object' : 'object<' . $itemShape . '>';
+            }
+
+            return $itemShape === null ? null : 'list<' . $itemShape . '>';
+        }
+
+        // A generated class — an object on the wire, held as itself or as the decoded array inside a
+        // container of them.
+        return !str_contains($type, '|') && array_key_exists($this->shortClassName($type), $this->dtoSchemas)
+            ? 'object'
+            : null;
     }
 }

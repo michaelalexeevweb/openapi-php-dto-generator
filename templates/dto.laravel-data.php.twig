@@ -391,12 +391,17 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
      * `{"2": …}` came out as a list. The renumbered keys keep their positions, and those follow the
      * properties in declaration order, skipping what was not written.
 {% else %}
-     * laravel-data's own transform, with an empty nested object written as one.
+     * laravel-data's own transform, with an empty nested object or map written as one.
 {% endif %}
-{% if emptyObjectWrite.writesNested|default(false) %}
+{% if emptyObjectWrite.nestedLiteral|default(null) is not null or emptyObjectWrite.itemsLiteral|default(null) is not null %}
      *
      * A nested `Data` with nothing set transforms to `[]`, which JSON writes as a list: `{"owl":{}}` came
      * back `{"owl":[]}`. Such a value — and such an item of a list or map of them — goes out as `{}`.
+{% endif %}
+{% if emptyObjectWrite.shapesLiteral|default(null) is not null %}
+     *
+     * A map is the PHP array it holds, so an empty one transformed to `[]` as well: `{"widths":{}}` came
+     * back `{"widths":[]}`. It goes out as `{}` — on its own, as a map value and as a list item.
 {% endif %}
      *
      * @return array<array-key, mixed>
@@ -445,9 +450,39 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
             }
         }
 {% endif %}
+{% if emptyObjectWrite.shapesLiteral|default(null) is not null %}
+        foreach ({{ emptyObjectWrite.shapesLiteral|raw }} as $wireName => $shape) {
+            if (array_key_exists($wireName, $restored)) {
+                $restored[$wireName] = self::openApiEmptyObjects($restored[$wireName], $shape);
+            }
+        }
+{% endif %}
 
         return $restored;
     }
+{% if emptyObjectWrite.shapesLiteral|default(null) is not null %}
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new {{ emptyObjectWrite.stdClassRef }}() : $value;
+    }
+{% endif %}
 {% endif %}
 {% if emptyObjectWrite.rootMayBeEmpty|default(false) %}
 

@@ -130,6 +130,16 @@ final class GenerateDtoCommand extends Command
     private array $referencedRequestBodies = [];
 
     /**
+     * Request bodies written at an operation that are no inline object and no inline union of references —
+     * a `$ref`, a value, a union of a class and a value — by the operation that declares them. A union of
+     * a class and a value among them gets no class in any mode, so nothing validates or builds it; see
+     * `warnAboutValueUnionBodies()`.
+     *
+     * @var list<array{operation: string, schema: array<mixed>}>
+     */
+    private array $valueRequestBodies = [];
+
+    /**
      * The root document's `components.schemas`, as written — what a body's local `$ref` is resolved
      * against when it is attributed. Kept because a root component that only points into another
      * file is never registered under its own name.
@@ -437,6 +447,15 @@ final class GenerateDtoCommand extends Command
      */
     private array $localSchemaReferences = [];
 
+    /**
+     * References into another document's components seen while resolving types, keyed by the class
+     * name they resolve to. Read once at the end by {@see assertEveryLocalReferenceResolved()}: such a
+     * class has to be written, not only registered.
+     *
+     * @var array<string, string>
+     */
+    private array $externalSchemaReferences = [];
+
     /** @var array<string, true> canonical external document and schema pointer */
     private array $registeredExternalSchemas = [];
 
@@ -582,6 +601,14 @@ final class GenerateDtoCommand extends Command
      * @var array<string, string>
      */
     private array $pureAliasClasses = [];
+
+    /**
+     * The same redirections with the `nullable` an alias on the way adds, as
+     * `withRedirectedAliases()` applies them — for a definition read RAW, before they were applied.
+     *
+     * @var array<string, array{ref: string, nullable: bool}>
+     */
+    private array $pureAliasRedirects = [];
 
     /**
      * The `$ref` union branches being spelled out right now, innermost last. Spelling one out extracts
@@ -2582,6 +2609,7 @@ final class GenerateDtoCommand extends Command
         $this->foldedClassNames = [];
         $this->foldedClassNameCount = -1;
         $this->localSchemaReferences = [];
+        $this->externalSchemaReferences = [];
         $this->registeredExternalSchemas = [];
         $this->rawSchemasByClass = [];
         $this->documentSelfUri = null;
@@ -2589,6 +2617,7 @@ final class GenerateDtoCommand extends Command
         $this->requestPayloadClasses = [];
         $this->requestBodyMediaTypes = [];
         $this->referencedRequestBodies = [];
+        $this->valueRequestBodies = [];
         $this->requestBodyComponents = [];
         $this->parameterPayloadClasses = [];
         $this->parentClasses = [];
@@ -2611,6 +2640,8 @@ final class GenerateDtoCommand extends Command
         $this->deprecatedByClass = [];
         $this->relatedByClass = [];
         $this->canonicalSourceFiles = [];
+        $this->pureAliasClasses = [];
+        $this->pureAliasRedirects = [];
         $this->referencesNormalized = false;
         $this->rootSpecFile = $rootSpecFile === null ? null : $this->canonicalSourceFile($rootSpecFile);
         $this->baseOutputDirectory = $outputDirectory;
@@ -2658,10 +2689,18 @@ final class GenerateDtoCommand extends Command
      */
     private function withNormalizedReferences(array $schema, ?string $sourceFile): array
     {
-        return $this->withNormalizedMemberProperties(
-            schema: $this->symfonyArrayComponentUnionItemsUnwrapped($schema),
-            sourceFile: $sourceFile,
-        );
+        // A reader that takes no file — `arrayAliasAllowsNull()` — resolves a reference into another
+        // document against the one being read, so the schema's own document is the one in effect.
+        $sourceFileBefore = $this->constraintSourceFile;
+        $this->constraintSourceFile = $sourceFile ?? $sourceFileBefore;
+        try {
+            return $this->withNormalizedMemberProperties(
+                schema: $this->symfonyArrayComponentUnionItemsUnwrapped($schema),
+                sourceFile: $sourceFile,
+            );
+        } finally {
+            $this->constraintSourceFile = $sourceFileBefore;
+        }
     }
 
     /**
@@ -3459,6 +3498,11 @@ final class GenerateDtoCommand extends Command
                 sourceFile: $this->getSchemaSourceFile($className),
             );
             $target = $this->pureAliasTarget($definition);
+            if ($target !== null && !str_starts_with($target, $prefix)) {
+                // An alias of another document's schema is an alias of the class that schema is
+                // registered as, read by its local pointer.
+                $target = $this->registeredComponentPointer(ref: $target, sourceFile: $this->getSchemaSourceFile($className));
+            }
             if ($target !== null && str_starts_with($target, $prefix)) {
                 $targets[$className] = [
                     'ref' => $target,
@@ -3497,10 +3541,71 @@ final class GenerateDtoCommand extends Command
         if ($resolved === []) {
             return;
         }
+        $this->pureAliasRedirects = $resolved;
 
         foreach ($this->dtoSchemas as $className => $schema) {
             $this->dtoSchemas[$className] = $this->withRedirectedAliases($schema, $resolved);
         }
+    }
+
+    /**
+     * A `$ref` into another document's components that names a MAP, an ARRAY ALIAS or an ALIAS of
+     * another component there is read by the local pointer its class is registered under — what a
+     * reference of the root document to such a component is, so it is typed and redirected the same
+     * way. A map component is typed as the map wherever a local reference names it; named across files,
+     * it stayed its class, which symfony and yii3 never checked the values of: `{"k": 1}` passed a map
+     * of strings. An alias (`Ring: {$ref: Circle}` in the other document) was typed as the class `Ring`,
+     * which is never written.
+     */
+    private function localizeExternalValueComponentReferences(): void
+    {
+        foreach ($this->dtoSchemas as $className => $schema) {
+            $this->constraintSourceFile = $this->getSchemaSourceFile($className);
+            try {
+                $this->dtoSchemas[$className] = $this->withExternalValueComponentsLocalized($schema);
+            } finally {
+                $this->constraintSourceFile = null;
+            }
+        }
+    }
+
+    private function withExternalValueComponentsLocalized(mixed $node): mixed
+    {
+        if (!is_array($node)) {
+            return $node;
+        }
+
+        $ref = $node['$ref'] ?? null;
+        $prefix = '#/components/schemas/';
+        if (is_string($ref) && !str_starts_with($ref, $prefix) && str_contains($ref, $prefix)) {
+            $pointer = $this->registeredComponentPointer($ref);
+            $definition = $pointer === null ? null : $this->localSchemaDefinitionForRef($pointer);
+            if (
+                $pointer !== null
+                && $definition !== null
+                && (
+                    $this->mapComponentDefinition($pointer) !== null
+                    || $this->arrayAliasDefinition($pointer) !== null
+                    || $this->pureAliasTarget($definition) !== null
+                )
+            ) {
+                $node['$ref'] = $pointer;
+            }
+        }
+
+        $localized = [];
+        foreach ($node as $key => $value) {
+            if (in_array($key, self::DATA_VALUED_KEYWORDS, true)) {
+                $localized[$key] = $value;
+            } elseif (in_array($key, ['properties', 'patternProperties', 'dependentSchemas', '$defs'], true) && is_array($value)) {
+                // Keyed by names, which may spell a data keyword: `properties: {default: {$ref: …}}`.
+                $localized[$key] = array_map($this->withExternalValueComponentsLocalized(...), $value);
+            } else {
+                $localized[$key] = $this->withExternalValueComponentsLocalized($value);
+            }
+        }
+
+        return $localized;
     }
 
     /**
@@ -3641,6 +3746,7 @@ final class GenerateDtoCommand extends Command
 
     private function finalizeGeneration(): int
     {
+        $this->localizeExternalValueComponentReferences();
         $this->redirectPureAliasReferences();
         $this->foldAllOfWrappedValueUnionComponents();
         $this->attributeReferencedRequestBodies();
@@ -3691,17 +3797,18 @@ final class GenerateDtoCommand extends Command
             // as a value (a property, an array item, a `$ref` target) it resolves to a map so the
             // payload survives — but the class itself is also how a response schema is named, so
             // deleting it would take away a type the application may reference.
+            // Everything read while this class is analysed and rendered resolves its references
+            // against the document that declares it — whether it is an alias at all included.
+            $this->constraintSourceFile = $this->getSchemaSourceFile($className);
             if (
                 array_key_exists($className, $this->pureAliasClasses)
                 || $this->isArrayAliasComponent($schemaDefinition)
                 || $this->isScalarAliasSchema($schemaDefinition)
             ) {
+                $this->constraintSourceFile = null;
                 continue;
             }
 
-            // Everything extracted while this class is analysed and rendered resolves its references
-            // against the document that declares it.
-            $this->constraintSourceFile = $this->getSchemaSourceFile($className);
             try {
                 $schemaMetadata = $this->analyzeSchema(className: $className, schemaDefinition: $schemaDefinition);
                 $this->warnAboutUnhydratableUnionProperties($className, $schemaMetadata['properties']);
@@ -3741,7 +3848,23 @@ final class GenerateDtoCommand extends Command
                 );
                 $generatedCount++;
             }
+
+            // laravel-data's counterpart for a body that is a union of classes, which it cannot build.
+            $resolverCode = $this->renderLaravelDataUnionResolverClass($namespace, $className);
+            if ($resolverCode !== null) {
+                $this->queueGeneratedClass(
+                    namespace: $namespace,
+                    className: $className . 'Resolver',
+                    filePath: rtrim($outputDirectory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $className . 'Resolver.php',
+                    content: $resolverCode,
+                    files: $pendingFiles,
+                    classes: $generatedClasses,
+                );
+                $generatedCount++;
+            }
+            $this->warnAboutUnionBodyWithoutEntryPoint($className);
         }
+        $this->warnAboutValueUnionBodies();
 
         foreach ($this->enumSchemas as $enumName => $enumDefinition) {
             $namespace = $this->enumNamespaces[$enumName] ?? $this->baseNamespace;
@@ -3824,7 +3947,7 @@ final class GenerateDtoCommand extends Command
                 continue;
             }
 
-            if ($this->isPureExternalSchemaAlias($schemaDefinition)) {
+            if ($this->namesExternalSchemaOfItsOwnName($schemaDefinition, $schemaName)) {
                 $externalRef = $schemaDefinition['$ref'];
                 if (is_string($externalRef)) {
                     $this->ensureSchemaRefRegistered(ref: $externalRef, currentSourceFile: $sourceFile);
@@ -3840,6 +3963,27 @@ final class GenerateDtoCommand extends Command
                 componentName: $schemaName,
             );
         }
+    }
+
+    /**
+     * A component that only names a schema of another document BY THAT SCHEMA'S OWN NAME — `Circle:
+     * {$ref: other.yaml#/components/schemas/Circle}` — re-exports it: the class of that name is the
+     * other document's, so the component registers nothing of its own. Under ANOTHER name (`LocalCircle:
+     * {$ref: …Circle}`) it is an alias, registered as one and redirected to its target by
+     * `redirectPureAliasReferences()`: skipped as well, the local name named no class at all and every
+     * reference to it stopped generation as unresolvable.
+     *
+     * @param array<string, mixed> $schemaDefinition
+     */
+    private function namesExternalSchemaOfItsOwnName(array $schemaDefinition, string $schemaName): bool
+    {
+        if (!$this->isPureExternalSchemaAlias($schemaDefinition)) {
+            return false;
+        }
+        $pointer = explode('#', (string)$schemaDefinition['$ref'], 2)[1] ?? '';
+        $targetName = $this->externalPointerSchemaName('#' . $pointer);
+
+        return $targetName === null || $this->schemaClassName($targetName) === $this->schemaClassName($schemaName);
     }
 
     /**
@@ -5414,7 +5558,7 @@ final class GenerateDtoCommand extends Command
         // Mark before walking children so local and cross-document cycles terminate.
         $this->registeredExternalSchemas[$reference] = true;
 
-        if ($this->isPureExternalSchemaAlias($definition)) {
+        if ($this->namesExternalSchemaOfItsOwnName($definition, $schemaName)) {
             $aliasRef = $definition['$ref'];
             if (is_string($aliasRef)) {
                 $this->ensureSchemaRefRegistered(ref: $aliasRef, currentSourceFile: $externalFile);
@@ -5786,18 +5930,27 @@ final class GenerateDtoCommand extends Command
         if ($this->discriminatorBaseForMember($memberClass) !== $baseClass || !$this->isOneOfDiscriminatorBase($baseClass)) {
             return false;
         }
+        if ($this->memberIsWrittenByItsOwnDocument($memberClass, $baseClass)) {
+            return false;
+        }
         if ($this->attributeMode !== self::ATTRIBUTE_MODE_RUNTIME) {
             return true;
-        }
-        if (
-            $this->getSchemaSourceFile($memberClass) !== $this->getSchemaSourceFile($baseClass)
-            && $this->isGeneratedIntoASharedPlace($memberClass)
-        ) {
-            return false;
         }
         $ownParent = $this->ownAllOfParent($memberClass);
 
         return $ownParent === null || $ownParent === $this->unionBaseParent($baseClass);
+    }
+
+    /**
+     * Whether a union member is a class of another document written where that document's own run
+     * writes it too (a `--ref` placement, the `common` convention). That run knows nothing of the union,
+     * so the member may not name it — no `extends`, no `implements` — or the two runs write two classes
+     * into one file, and whichever wins breaks the other's holders.
+     */
+    private function memberIsWrittenByItsOwnDocument(string $memberClass, string $baseClass): bool
+    {
+        return $this->getSchemaSourceFile($memberClass) !== $this->getSchemaSourceFile($baseClass)
+            && $this->isGeneratedIntoASharedPlace($memberClass);
     }
 
     private function expandNestedSchemas(): void
@@ -5813,7 +5966,13 @@ final class GenerateDtoCommand extends Command
             foreach ($unprocessed as $className) {
                 $processed[$className] = true;
                 $schemaDefinition = $this->dtoSchemas[$className];
-                $this->collectNestedFromSchema(ownerClassName: $className, schemaDefinition: $schemaDefinition);
+                // Its references resolve against the document that declares it, as when it is rendered.
+                $this->constraintSourceFile = $this->getSchemaSourceFile($className);
+                try {
+                    $this->collectNestedFromSchema(ownerClassName: $className, schemaDefinition: $schemaDefinition);
+                } finally {
+                    $this->constraintSourceFile = null;
+                }
             }
         }
     }
@@ -6035,7 +6194,7 @@ final class GenerateDtoCommand extends Command
                 return false;
             }
             foreach ($branches as $branch) {
-                if (!is_array($branch) || $branch === [] || array_diff(array_keys($branch), self::CLASS_LEVEL_UNION_ARM_KEYWORDS) !== []) {
+                if (!is_array($branch) || !$this->isClassLevelUnionArm($branch)) {
                     return false;
                 }
                 $arms++;
@@ -6043,6 +6202,57 @@ final class GenerateDtoCommand extends Command
         }
 
         return $arms > 0;
+    }
+
+    /**
+     * One arm `hasClassLevelUnionArmsOnly()` accepts: no `type`, no `$ref` — only requirements, or
+     * `properties` that narrow a key without shaping a class of their own
+     * (`{properties: {size: {maximum: 3}}}`). Such an arm is an assertion on the object the schema
+     * already is; read as a union member, it became a class of its own, the owner a union interface
+     * without its properties, and a requirement-only sibling arm was dropped from the union.
+     * An arm with `type: object` stays a union member — that is a class, not a fragment.
+     *
+     * @param array<mixed> $branch
+     */
+    private function isClassLevelUnionArm(array $branch): bool
+    {
+        if ($branch === []) {
+            return false;
+        }
+        foreach ($branch as $keyword => $value) {
+            if (in_array($keyword, self::CLASS_LEVEL_UNION_ARM_KEYWORDS, true)) {
+                continue;
+            }
+            if ($keyword !== 'properties' || !is_array($value) || $value === []) {
+                return false;
+            }
+            foreach ($value as $fragment) {
+                if (!is_array($fragment) || !$this->isPropertyConstraintFragment($fragment)) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * A property subschema inside a class-level arm that only constrains the value — a scalar `type`,
+     * bounds, `enum`, `const`, `pattern` — and names no class: no `$ref`, no object or array shape, no
+     * nested composition.
+     *
+     * @param array<mixed> $fragment
+     */
+    private function isPropertyConstraintFragment(array $fragment): bool
+    {
+        foreach (['$ref', 'properties', 'items', 'allOf', 'anyOf', 'oneOf', 'additionalProperties', 'patternProperties'] as $shaping) {
+            if (array_key_exists($shaping, $fragment)) {
+                return false;
+            }
+        }
+        $types = $fragment['type'] ?? [];
+
+        return !in_array('object', (array)$types, true) && !in_array('array', (array)$types, true);
     }
 
     /**
@@ -6384,7 +6594,7 @@ final class GenerateDtoCommand extends Command
         // Requirement-only arms beside the properties: a class, the arms checked at the class level.
         if ($this->hasClassLevelUnionArmsOnly($schemaDefinition)) {
             return [
-                'properties' => $this->extractProperties(schemaDefinition: $schemaDefinition, ownerClassName: $className),
+                'properties' => $this->classLevelUnionObjectProperties(schemaDefinition: $schemaDefinition, className: $className),
                 'extends' => null,
                 'unionTypes' => [],
                 'discriminator' => $this->discriminatorSchemas[$className] ?? null,
@@ -7667,6 +7877,10 @@ final class GenerateDtoCommand extends Command
 
         $propertySchema = $this->normalizeNullableBranchInAllOf($propertySchema);
         $propertySchema = $this->runtimeClassUnionSpelledOut($propertySchema);
+        // A discriminated union one of whose members does not extend it is checked — at every level, a
+        // list item and a map value as much as the property — as the same union written inline: the
+        // value is typed by its members, and the tag picks the member to build.
+        $propertySchema = $this->inlineSharedMemberUnionRef($propertySchema);
         if ($mayInline && !$this->constraintRootUnmaterialized) {
             $propertySchema = $this->runtimeUnionMapValueUnwrapped($propertySchema);
         }
@@ -7835,7 +8049,16 @@ final class GenerateDtoCommand extends Command
                 // Yii3 too: a union it cannot type is held raw (`string|int|float|bool|array`), and the
                 // branch class whose enum types took the members is never built — `{"newt": -10}`
                 // passed `enum: [-9]`.
-                if (in_array($this->attributeMode, [self::ATTRIBUTE_MODE_RUNTIME, self::ATTRIBUTE_MODE_YII3], true) && $branchRef === null) {
+                // An arm of a class-level union (`hasClassLevelUnionArmsOnly()`) in every mode: its
+                // `{properties: {kind: {enum: [phone]}}}` types nothing, and with the members dropped the
+                // arm extracted to nothing, which took the whole `oneOf` with it.
+                if (
+                    $branchRef === null
+                    && (
+                        in_array($this->attributeMode, [self::ATTRIBUTE_MODE_RUNTIME, self::ATTRIBUTE_MODE_YII3], true)
+                        || $this->hasClassLevelUnionArmsOnly($propertySchema)
+                    )
+                ) {
                     $besideRef = $this->withPropertyEnumsSpelledOut($besideRef);
                 }
                 $extracted = $this->extractValidationConstraints(propertySchema: $besideRef);
@@ -7854,7 +8077,7 @@ final class GenerateDtoCommand extends Command
                 }
                 $inlinedMember = $variant['x-php-inlined-member'] ?? null;
                 if ($branchRef !== null || is_string($inlinedMember)) {
-                    $branchMembers[count($branchConstraints)] = $branchRef !== null ? $this->schemaRefToClassName($branchRef) : $inlinedMember;
+                    $branchMembers[count($branchConstraints)] = $branchRef !== null ? $this->schemaRefToClassName($branchRef, $this->constraintSourceFile ?? $this->rootSpecFile) : $inlinedMember;
                 }
                 $branchConstraints[] = $extracted;
             }
@@ -8001,7 +8224,10 @@ final class GenerateDtoCommand extends Command
         // extracts to [], which the validator can't resolve. Forwarding it verbatim is unsafe
         // — most dangerously `if: {$ref}` would extract to a vacuously-true schema and apply
         // `then` to every value. Drop what becomes empty (same guard as oneOf/anyOf/allOf/not).
-        $constraints = $this->scrubUnvalidatableSubschemas($constraints);
+        $constraints = $this->scrubUnvalidatableSubschemas(
+            constraints: $constraints,
+            propertiesBesideReference: $this->hasReferenceBranch($propertySchema),
+        );
 
         if (($propertySchema['readOnly'] ?? false) === true) {
             $constraints['readOnly'] = true;
@@ -8623,7 +8849,7 @@ final class GenerateDtoCommand extends Command
                     // Symfony checks an inlined member of a discriminated union by the tag, which names
                     // the member by its class: the branch keeps that name, as the extraction reads it.
                     if ($this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY) {
-                        $schema['x-php-inlined-member'] = $this->schemaRefToClassName($ref);
+                        $schema['x-php-inlined-member'] = $this->schemaRefToClassName($ref, $this->constraintSourceFile ?? $this->rootSpecFile);
                     }
 
                     // What was just inlined is written in ITS document: a relative `$ref` inside
@@ -9130,6 +9356,26 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * Whether a schema holds a `$ref`, or an `allOf` branch that is one: its `properties` then narrow
+     * the referenced class at the use site rather than describe a class of their own.
+     *
+     * @param array<string, mixed> $schema
+     */
+    private function hasReferenceBranch(array $schema): bool
+    {
+        if (is_string($schema['$ref'] ?? null)) {
+            return true;
+        }
+        foreach (is_array($schema['allOf'] ?? null) ? $schema['allOf'] : [] as $branch) {
+            if (is_array($branch) && is_string($branch['$ref'] ?? null)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Recursively re-extracts subschema-bearing constraint keys so that $ref-only / otherwise
      * unvalidatable subschemas don't survive verbatim into the generated constraints (the
      * validator can't resolve $ref and would either silently skip or — for `if` — falsely match).
@@ -9137,7 +9383,7 @@ final class GenerateDtoCommand extends Command
      * @param array<string, mixed> $constraints
      * @return array<string, mixed>
      */
-    private function scrubUnvalidatableSubschemas(array $constraints): array
+    private function scrubUnvalidatableSubschemas(array $constraints, bool $propertiesBesideReference = false): array
     {
         // Single-subschema keys: drop the key entirely when it extracts to nothing.
         foreach (['items', 'contains', 'propertyNames', 'if', 'then', 'else', 'contentSchema'] as $key) {
@@ -9214,6 +9460,13 @@ final class GenerateDtoCommand extends Command
                     continue;
                 }
                 $extracted = $this->extractValidationConstraints($subSchema);
+                // A property's enum moved into a PHP enum only where its object became a class that
+                // declares it. Beside a reference the object is the referenced class, whose property
+                // never heard of the narrowing: `allOf: [$ref: Coral], properties: {bee: {enum: [3]}}`
+                // lost its members and accepted any `bee`. A hydrated enum compares by its value.
+                if ($propertiesBesideReference && $key === 'properties') {
+                    $extracted = $this->withItemEnumMembers($extracted, $subSchema);
+                }
                 if ($extracted !== []) {
                     $scrubbed[$name] = $extracted;
                 } elseif ($key !== 'dependentSchemas' && $judgesOtherKeys) {
@@ -9274,10 +9527,29 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * A property's type, its references read against the document that declares its owner: a class is
+     * typed while ANOTHER is rendered too (a value class of another document's map), and a reference
+     * into a third document is relative to the owner's, not to the class being written.
+     *
      * @param array<string, mixed> $propertySchema
      * @return array{0: string, 1: bool}
      */
     private function resolvePropertyType(array $propertySchema, string $ownerClassName, string $propertyName): array
+    {
+        $sourceFileBefore = $this->constraintSourceFile;
+        $this->constraintSourceFile = $this->getSchemaSourceFile($ownerClassName) ?? $sourceFileBefore;
+        try {
+            return $this->resolvePropertyTypeOfOwner($propertySchema, $ownerClassName, $propertyName);
+        } finally {
+            $this->constraintSourceFile = $sourceFileBefore;
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $propertySchema
+     * @return array{0: string, 1: bool}
+     */
+    private function resolvePropertyTypeOfOwner(array $propertySchema, string $ownerClassName, string $propertyName): array
     {
         $propertySchema = $this->normalizeNullableBranchInAllOf($propertySchema);
         $nullable = $this->schemaAllowsNull($propertySchema);
@@ -9609,6 +9881,11 @@ final class GenerateDtoCommand extends Command
                 );
                 if ($aliasItemType !== null) {
                     return ['array<' . $itemPrefix . $aliasItemType . '>', $nullable];
+                }
+
+                $memberUnion = $this->memberUnionOfRef($items['$ref']);
+                if ($memberUnion !== null) {
+                    return ['array<' . $this->composePhpTypeHint($memberUnion, $itemNullable) . '>', $nullable];
                 }
 
                 return [
@@ -10322,7 +10599,7 @@ final class GenerateDtoCommand extends Command
     private function inlineSharedMemberUnionRef(array $propertySchema): array
     {
         $ref = $propertySchema['$ref'] ?? null;
-        if ($this->attributeMode !== self::ATTRIBUTE_MODE_RUNTIME || !is_string($ref) || !str_starts_with($ref, '#/components/schemas/')) {
+        if (!in_array($this->attributeMode, [self::ATTRIBUTE_MODE_RUNTIME, self::ATTRIBUTE_MODE_LARAVEL, self::ATTRIBUTE_MODE_LARAVEL_DATA], true) || !is_string($ref) || !str_starts_with($ref, '#/components/schemas/')) {
             return $propertySchema;
         }
         $baseClass = $this->schemaClassName(substr($ref, strlen('#/components/schemas/')));
@@ -10348,6 +10625,27 @@ final class GenerateDtoCommand extends Command
         }
 
         return $inlined + $definition;
+    }
+
+    /**
+     * The members a `$ref` to a discriminated union stands for, as a PHP union (`Cat|Dog`), where one of
+     * them does not extend the union ({@see inlineSharedMemberUnionRef()}) — the type of a list item or a
+     * map value that names it. Typed with the union's class, the list held members that are no instance
+     * of it: runtime's `addItemToPets(new Cat())` was a `TypeError`, laravel's `fromValidated()` closure
+     * returning `Pet` one too. Null where the class holds them all.
+     *
+     * laravel-data keeps the base: it builds a list item by the class its docblock names, and the morph
+     * base picks the member by the tag there, extended or not; a union names no class it could build.
+     */
+    private function memberUnionOfRef(string $ref): ?string
+    {
+        if ($this->attributeMode === self::ATTRIBUTE_MODE_LARAVEL_DATA || array_key_exists('$ref', $this->inlineSharedMemberUnionRef(['$ref' => $ref]))) {
+            return null;
+        }
+        $baseClass = $this->schemaClassName(substr($ref, strlen('#/components/schemas/')));
+        $mapping = $this->discriminatorSchemas[$baseClass]['mapping'] ?? [];
+
+        return implode('|', array_values(array_unique($mapping)));
     }
 
     /**
@@ -11548,6 +11846,10 @@ final class GenerateDtoCommand extends Command
 
                 return $this->composeMapValueTypeHint($this->itemsLessListAsList($aliasValueType), $valueNullable);
             }
+            $memberUnion = $this->memberUnionOfRef($additionalProperties['$ref']);
+            if ($memberUnion !== null) {
+                return $this->composeMapValueTypeHint($memberUnion, $valueNullable);
+            }
         }
 
         // A value with fixed `properties` is a DTO and stays one: that IS hydrated at this depth, and
@@ -11905,8 +12207,9 @@ final class GenerateDtoCommand extends Command
     /**
      * If $ref points at a component schema whose top-level type is `array`, returns the aliased
      * array type (e.g. `array<Item>`) so a property referencing it is typed as a list rather
-     * than an empty generated class. Returns null for object schemas and external refs (which keep
-     * the class-name typing). Only local `#/components/schemas/...` aliases are redirected.
+     * than an empty generated class. Returns null for object schemas. A reference into another
+     * document is redirected only when it names an array alias there; its other kinds keep the
+     * class-name typing.
      *
      * `$inAContainer` is set where the alias is a list ITEM or map VALUE — see
      * `symfonyAliasInAContainerType()`.
@@ -11914,7 +12217,11 @@ final class GenerateDtoCommand extends Command
     private function resolveArrayAliasRefType(string $ref, string $ownerClassName, string $propertyName, bool $inAContainer = false): ?string
     {
         $prefix = '#/components/schemas/';
-        if (!str_starts_with($ref, $prefix)) {
+        $isLocal = str_starts_with($ref, $prefix);
+        // An array alias of another document is the list too; it is read by the pointer it is
+        // registered under. Its other kinds keep their class.
+        $ref = $this->registeredComponentPointer(ref: $ref, sourceFile: $this->getSchemaSourceFile($ownerClassName)) ?? '';
+        if ($ref === '' || (!$isLocal && $this->arrayAliasDefinition($ref) === null)) {
             return null;
         }
 
@@ -12090,7 +12397,8 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
-     * The `type: array` component a local `$ref` names, following references between components.
+     * The `type: array` component a `$ref` names — of this document or of another one (see
+     * `registeredComponentPointer()`) — following references between components.
      *
      * Two spellings were missed when only `type === 'array'` counted, and both lost far more than
      * their constraints: the component became an empty class, the property was typed with it, and
@@ -12105,10 +12413,12 @@ final class GenerateDtoCommand extends Command
     {
         $outer = [];
         $visited = [];
+        $sourceFile = null;
         while (!in_array($ref, $visited, true)) {
             $visited[] = $ref;
-            $definition = $this->localSchemaDefinitionForRef($ref);
-            if ($definition === null) {
+            $pointer = $this->registeredComponentPointer(ref: $ref, sourceFile: $sourceFile);
+            $definition = $pointer === null ? null : $this->localSchemaDefinitionForRef($pointer);
+            if ($pointer === null || $definition === null) {
                 return null;
             }
 
@@ -12117,12 +12427,51 @@ final class GenerateDtoCommand extends Command
                 return $this->isArrayAliasSchema($definition) ? $outer + $definition : null;
             }
 
-            unset($definition['$ref']);
-            $outer += $definition;
+            $outer += array_diff_key($definition, ['$ref' => true]);
+            // The next link is read against the document that declares this one.
+            $sourceFile = $this->getSchemaSourceFile($this->schemaClassName($this->componentNameInPointer($pointer)));
             $ref = $next;
         }
 
         return null;
+    }
+
+    /**
+     * The `#/components/schemas/…` pointer a `$ref` names its component by. A reference into ANOTHER
+     * document's components (`other.yaml#/components/schemas/Colours`) names the class that document's
+     * schema is registered as — class names are one namespace across the documents of a run — so it
+     * is registered here and read by its local pointer, as `scalarAliasDefinition()` reads one. Left to
+     * the local reading, an array alias of another document was typed as a class no run writes.
+     *
+     * `$sourceFile` is the document the reference is written in; by default the one being read, else
+     * the root document. Null when the reference names no component — or, read against such a default,
+     * names none from there: a reader that knows no file only asks what kind of schema a reference
+     * names, and a reference that is broken is reported where the documents are walked
+     * (`scanExternalSchemaRefs()`), against the right file.
+     */
+    private function registeredComponentPointer(string $ref, ?string $sourceFile = null): ?string
+    {
+        $prefix = '#/components/schemas/';
+        if (str_starts_with($ref, $prefix)) {
+            return $ref;
+        }
+
+        try {
+            $resolved = $this->resolveExternalSchemaPointer($ref, $sourceFile ?? $this->constraintSourceFile ?? $this->rootSpecFile);
+        } catch (RuntimeException $exception) {
+            if ($sourceFile !== null) {
+                throw $exception;
+            }
+
+            return null;
+        }
+        $schemaName = $resolved === null ? null : $this->externalPointerSchemaName($resolved[1]);
+        if ($resolved === null || $schemaName === null) {
+            return null;
+        }
+        $this->registerExternalSchema(externalFile: $resolved[0], schemaName: $schemaName);
+
+        return $resolved[1];
     }
 
     /**
@@ -12286,8 +12635,16 @@ final class GenerateDtoCommand extends Command
         }
 
         $this->registerExternalSchema(externalFile: $externalFile, schemaName: $schemaName);
+        $className = $this->schemaClassName($schemaName);
+        // An alias of another component there names the class its chain ends at — see
+        // `redirectPureAliasReferences()`; the alias itself is never written.
+        $aliasEnd = $this->pureAliasRedirects[$className]['ref'] ?? null;
+        if (is_string($aliasEnd)) {
+            return $this->schemaRefToClassName($aliasEnd);
+        }
+        $this->externalSchemaReferences[$className] ??= $ref;
 
-        return $this->schemaClassName($schemaName);
+        return $className;
     }
 
     /**
@@ -12319,6 +12676,21 @@ final class GenerateDtoCommand extends Command
             }
 
             $unresolved[] = sprintf('%s (would name class "%s")', $ref, $className);
+        }
+        // A schema of another document is registered as it is reached, so it is there — but an array
+        // alias is written as no class: one of another document was typed as one, and generation
+        // reported success. (A scalar alias is named here by readers that never write the name, and
+        // is inlined where a type is written — see `scalarAliasDefinition()`.)
+        foreach ($this->externalSchemaReferences as $className => $ref) {
+            $definition = $this->dtoSchemas[$className] ?? null;
+            if (
+                array_key_exists($className, $this->enumSchemas)
+                || (is_array($definition) && !$this->isArrayAliasComponent($definition))
+            ) {
+                continue;
+            }
+
+            $unresolved[] = sprintf('%s (would name class "%s", which is never written)', $ref, $className);
         }
 
         if ($unresolved === []) {
@@ -13162,7 +13534,31 @@ final class GenerateDtoCommand extends Command
             ));
         }
 
-        return $this->extractProperties($schemaDefinition, $className);
+        return $this->classLevelUnionObjectProperties(schemaDefinition: $schemaDefinition, className: $className);
+    }
+
+    /**
+     * The properties of a class that is no `allOf`: its own, and — when its `anyOf` / `oneOf` arms are
+     * class-level checks (`hasClassLevelUnionArmsOnly()`) — the keys only those arms name, untyped, as
+     * `unionBranchOnlyProperties()` adds them beside an `allOf`. Left out, `{properties: {size},
+     * anyOf: [{required: [size]}, {required: [tag]}]}` dropped `tag` on hydration and refused
+     * `{"tag": 1}` that its second arm accepts. A closed object (`additionalProperties: false`) admits
+     * no key it does not declare, so nothing is added there.
+     *
+     * @param array<string, mixed> $schemaDefinition
+     * @return array<int, SchemaProperty>
+     */
+    private function classLevelUnionObjectProperties(array $schemaDefinition, string $className): array
+    {
+        $declared = $this->extractProperties($schemaDefinition, $className);
+        if (!$this->hasClassLevelUnionArmsOnly($schemaDefinition) || ($schemaDefinition['additionalProperties'] ?? null) === false) {
+            return $declared;
+        }
+
+        return [
+            ...$declared,
+            ...$this->unionBranchOnlyProperties(schemaDefinition: $schemaDefinition, className: $className, declared: $declared),
+        ];
     }
 
     /**
@@ -13904,6 +14300,9 @@ final class GenerateDtoCommand extends Command
      * `$ref` to a component admitting null (`Teal: {anyOf: [$ref Maroon]}`, `Maroon: {type: array,
      * nullable: true}`), or the 3.0 `{$ref: Amber, nullable: true}`. Only the literal null branch was
      * read, so a property `$ref Teal` refused the null its member takes, in every mode but runtime.
+     * An inline branch that admits null counts too (`{type: object, nullable: true, …}`, the 3.1
+     * `type: [object, 'null']`), unless its `enum` / `const` leaves null out: a property `$ref Shape`
+     * to such a union was typed without null — a `TypeError` in laravel-data, a refusal elsewhere.
      *
      * @param array<mixed> $definition
      * @param list<string> $visited the references already followed, against a cycle
@@ -13928,10 +14327,33 @@ final class GenerateDtoCommand extends Command
                 ) {
                     return true;
                 }
+                if (
+                    is_array($branch)
+                    && !array_key_exists('$ref', $branch)
+                    && $this->branchValuesLeaveNullIn($branch)
+                    && $this->componentAdmitsNull($branch, $visited)
+                ) {
+                    return true;
+                }
             }
         }
 
         return false;
+    }
+
+    /**
+     * Whether an inline union branch's `enum` / `const`, if it has one, still lets null through — a
+     * `{type: string, nullable: true, enum: [alpha]}` branch matches no null, whatever `nullable` says.
+     *
+     * @param array<mixed> $branch
+     */
+    private function branchValuesLeaveNullIn(array $branch): bool
+    {
+        if (array_key_exists('const', $branch) && $branch['const'] !== null) {
+            return false;
+        }
+
+        return !is_array($branch['enum'] ?? null) || in_array(null, $branch['enum'], true);
     }
 
     /**
@@ -14145,6 +14567,160 @@ final class GenerateDtoCommand extends Command
                 );
             }
         }
+    }
+
+    /**
+     * Reports a request body that is an undiscriminated union with no entry point in this mode. Each mode
+     * reaches such a body through something the union interface names or comes with — runtime its
+     * `OPENAPI_UNION_CONSTRAINTS`, laravel `<Union>FormRequest`, laravel-data `<Union>Resolver`
+     * (`laravelUnionBodyMembers()`), symfony and yii3 the `OPENAPI_UNION_MEMBERS` an application tries
+     * the payload against itself — and none has it when a member is not a plain class (`oneOf: [$ref
+     * Circle, $ref Pet]`, `Pet` itself a discriminated union): the interface is all there is, and nothing
+     * validates or builds the payload.
+     *
+     * Symfony is told even with the member list: the serializer cannot build an interface, so under
+     * `#[MapRequestPayload]` every payload is a 500 until the application tries the members itself.
+     */
+    private function warnAboutUnionBodyWithoutEntryPoint(string $className): void
+    {
+        if (!array_key_exists($className, $this->requestPayloadClasses) || !$this->rendersAsUnionInterface($className)) {
+            return;
+        }
+
+        $hasMemberList = $this->undiscriminatedUnionMemberList($className, $this->unionInterfaceMembers($className)) !== null;
+        $missing = match ($this->attributeMode) {
+            self::ATTRIBUTE_MODE_LARAVEL => $this->laravelFormRequest && $this->laravelUnionBodyMembers($className) === null
+                ? $className . 'FormRequest'
+                : null,
+            self::ATTRIBUTE_MODE_LARAVEL_DATA => $this->laravelUnionBodyMembers($className) === null ? $className . 'Resolver' : null,
+            self::ATTRIBUTE_MODE_RUNTIME => $hasMemberList ? null : 'OPENAPI_UNION_CONSTRAINTS',
+            default => $hasMemberList ? null : 'OPENAPI_UNION_MEMBERS',
+        };
+
+        $warning = null;
+        if ($missing !== null) {
+            $warning = sprintf(
+                'The request body %s is an undiscriminated union whose members are not all plain classes: %s mode '
+                    . 'generates no entry point for it (no %s), so nothing validates or builds the payload. '
+                    . 'Add a discriminator, or make every member an object schema.',
+                $className,
+                $this->attributeMode,
+                $missing,
+            );
+        } elseif ($this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY) {
+            $warning = sprintf(
+                'The request body %s is an undiscriminated union: the Symfony serializer cannot build the '
+                    . 'interface, so #[MapRequestPayload] answers every payload with a 500. Try the members in '
+                    . '%s::OPENAPI_UNION_MEMBERS yourself (README.symfony.md), or add a discriminator.',
+                $className,
+                $className,
+            );
+        }
+        if ($warning !== null && !in_array($warning, $this->generationWarnings, true)) {
+            $this->generationWarnings[] = $warning;
+        }
+    }
+
+    /**
+     * Reports a request body that is a union of a class and a value — `oneOf: [$ref Circle, {type:
+     * string}]`, written in the body or as a component it `$ref`s. Such a union is a value alias: no
+     * class stands for it in any mode, so there is no FormRequest, resolver, input class or DTO to
+     * type-hint, and generation used to report success with only `Circle` written. A union of classes
+     * gets an interface instead (`warnAboutUnionBodyWithoutEntryPoint()`), and a plain value body — a
+     * string, a list — is not a union of a class and a value.
+     */
+    private function warnAboutValueUnionBodies(): void
+    {
+        $prefix = '#/components/schemas/';
+        foreach ($this->valueRequestBodies as $body) {
+            $schema = $body['schema'];
+            $component = null;
+            $bodyRef = $schema['$ref'] ?? null;
+            if (is_string($bodyRef)) {
+                if (!str_starts_with($bodyRef, $prefix)) {
+                    continue;
+                }
+                $component = $this->schemaClassName(substr($bodyRef, strlen($prefix)));
+                $schema = $this->dtoSchemas[$component] ?? null;
+                if (!is_array($schema) || !$this->isScalarAliasSchema($schema)) {
+                    continue;
+                }
+            }
+            $members = $this->valueUnionBodyMembers($schema);
+            if ($members === null) {
+                continue;
+            }
+
+            $entryPoint = match ($this->attributeMode) {
+                self::ATTRIBUTE_MODE_LARAVEL => $this->laravelFormRequest ? 'FormRequest' : null,
+                self::ATTRIBUTE_MODE_LARAVEL_DATA => 'Data class or resolver',
+                self::ATTRIBUTE_MODE_SYMFONY => 'payload class',
+                self::ATTRIBUTE_MODE_YII3 => 'input class',
+                default => 'DTO',
+            };
+            if ($entryPoint === null) {
+                continue;
+            }
+            $warning = sprintf(
+                'The request body of %s%s is a union of a class and a value (%s): %s mode generates no %s for it, '
+                    . 'so nothing validates or builds the payload%s. Make the body an object schema, or wrap the '
+                    . 'value in a property.',
+                $body['operation'],
+                $component === null ? '' : ' (' . $component . ')',
+                implode('|', $members),
+                $this->attributeMode,
+                $entryPoint,
+                $this->attributeMode === self::ATTRIBUTE_MODE_RUNTIME
+                    ? ' — DtoDeserializer::deserializeValue() over the decoded body with the PHP union type checks the member types only'
+                    : '',
+            );
+            if (!in_array($warning, $this->generationWarnings, true)) {
+                $this->generationWarnings[] = $warning;
+            }
+        }
+    }
+
+    /**
+     * The members of a `oneOf` / `anyOf` body that holds a class beside a value — the class names and the
+     * value types, in document order — or null for any other body.
+     *
+     * @param array<mixed> $schema
+     * @return list<string>|null
+     */
+    private function valueUnionBodyMembers(array $schema): ?array
+    {
+        $keywords = array_values(array_intersect(['oneOf', 'anyOf'], array_keys($schema)));
+        $branches = count($keywords) === 1 ? $schema[$keywords[0]] : null;
+        if (!is_array($branches) || $branches === []) {
+            return null;
+        }
+        $prefix = '#/components/schemas/';
+        $members = [];
+        $classes = 0;
+        foreach ($branches as $branch) {
+            if (!is_array($branch)) {
+                return null;
+            }
+            $ref = $branch['$ref'] ?? null;
+            if (is_string($ref) && str_starts_with($ref, $prefix)) {
+                $class = $this->schemaClassName(substr($ref, strlen($prefix)));
+                $target = $this->dtoSchemas[$class] ?? null;
+                if (is_array($target) && !$this->isScalarAliasSchema($target) && !$this->isArrayAliasComponent($target)) {
+                    $classes++;
+                }
+                $members[] = $class;
+                continue;
+            }
+            $type = $branch['type'] ?? null;
+            if ($type === 'object' && is_array($branch['properties'] ?? null) && $branch['properties'] !== []) {
+                $classes++;
+                $members[] = 'object';
+                continue;
+            }
+            $members[] = is_string($type) ? $type : (is_array($type) ? implode('|', array_map(strval(...), $type)) : 'value');
+        }
+
+        return $classes > 0 && $classes < count($branches) ? $members : null;
     }
 
     /**
@@ -14725,11 +15301,22 @@ final class GenerateDtoCommand extends Command
                     // all. Recording its media type under the spelled name put a form type on a class
                     // nobody generates and left the real one marked JSON-only — so it waits until
                     // the aliases are known.
+                    // An inline union of references is the exception: it names no class, yet it is the
+                    // class the body arrives as — an interface of its members, as the same union written
+                    // as a component is. Left out, nothing was generated for the operation at all, and
+                    // no mode had an entry point for the body. Its media type still goes to the members,
+                    // which are what a payload is built as.
+                    $isInlineUnion = !is_string($bodyRef) && $this->isInlineUnionOfReferences($schema);
+                    if (!$isInlineUnion && (is_string($bodyRef) || ($schema['type'] ?? null) !== 'object')) {
+                        $this->valueRequestBodies[] = ['operation' => strtoupper($method) . ' ' . $path, 'schema' => $schema];
+                    }
                     if (is_string($bodyRef) || ($schema['type'] ?? null) !== 'object') {
                         if (is_string($mediaType) && $mediaType !== '') {
                             $this->referencedRequestBodies[] = ['schema' => $schema, 'mediaType' => $mediaType, 'sourceFile' => $this->rootSpecFile];
                         }
-                        continue;
+                        if (!$isInlineUnion) {
+                            continue;
+                        }
                     }
 
                     $schema = $this->applyEncodingToBodySchema($schema, $mediaTypeObject['encoding'] ?? null);
@@ -14747,12 +15334,49 @@ final class GenerateDtoCommand extends Command
                     $inlineOwners[$schemaName] = $ownerKey;
                     $this->endpointByClass[$this->schemaClassName($schemaName)] = $ownerKey;
                     $this->requestPayloadClasses[$this->schemaClassName($schemaName)] = true;
-                    $this->recordRequestBodyMediaType(className: $this->schemaClassName($schemaName), mediaType: $mediaType);
+                    if (!$isInlineUnion) {
+                        $this->recordRequestBodyMediaType(className: $this->schemaClassName($schemaName), mediaType: $mediaType);
+                    }
                 }
             }
         }
 
         return $inlineSchemas;
+    }
+
+    /**
+     * An inline `oneOf` / `anyOf` of two or more references with no discriminator, beside nothing but
+     * annotations: the shape a component union of classes has, written in the body instead.
+     *
+     * @param array<array-key, mixed> $schema
+     */
+    private function isInlineUnionOfReferences(array $schema): bool
+    {
+        $keywords = array_values(array_intersect(array_keys($schema), ['oneOf', 'anyOf']));
+        if (count($keywords) !== 1) {
+            return false;
+        }
+        $branches = $schema[$keywords[0]];
+        if (!is_array($branches) || !array_is_list($branches) || count($branches) < 2) {
+            return false;
+        }
+        foreach ($branches as $branch) {
+            if (!$this->isAnnotatedReference($branch)) {
+                return false;
+            }
+        }
+        foreach (array_keys($schema) as $keyword) {
+            if (
+                $keyword !== $keywords[0]
+                && !in_array($keyword, self::ALIAS_ANNOTATION_KEYWORDS, true)
+                && !in_array($keyword, self::NON_ASSERTING_KEYWORDS, true)
+                && !str_starts_with((string)$keyword, 'x-')
+            ) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

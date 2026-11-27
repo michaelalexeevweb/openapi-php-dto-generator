@@ -1,4 +1,4 @@
-# laravel-data mode — 80 files, 24230 lines
+# laravel-data mode — 80 files, 24579 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -4334,6 +4334,9 @@ use function json_decode;
 use function json_encode;
 use function property_exists;
 use function sprintf;
+use function str_starts_with;
+use function strpos;
+use function substr;
 use function trim;
 
 /**
@@ -4459,10 +4462,13 @@ final class ApiTestSerializationGetQueryParams extends Data
     }
 
     /**
-     * laravel-data's own transform, with an empty nested object written as one.
+     * laravel-data's own transform, with an empty nested object or map written as one.
      *
      * A nested `Data` with nothing set transforms to `[]`, which JSON writes as a list: `{"owl":{}}` came
      * back `{"owl":[]}`. Such a value — and such an item of a list or map of them — goes out as `{}`.
+     *
+     * A map is the PHP array it holds, so an empty one transformed to `[]` as well: `{"widths":{}}` came
+     * back `{"widths":[]}`. It goes out as `{}` — on its own, as a map value and as a list item.
      *
      * @return array<array-key, mixed>
      */
@@ -4478,8 +4484,36 @@ final class ApiTestSerializationGetQueryParams extends Data
                 $restored[$wireName] = new stdClass();
             }
         }
+        foreach ([
+            'nested' => 'object',
+        ] as $wireName => $shape) {
+            if (array_key_exists($wireName, $restored)) {
+                $restored[$wireName] = self::openApiEmptyObjects($restored[$wireName], $shape);
+            }
+        }
 
         return $restored;
+    }
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new stdClass() : $value;
     }
 
     /**
@@ -5536,6 +5570,7 @@ use function sprintf;
 use function str_ends_with;
 use function str_starts_with;
 use function strlen;
+use function strpos;
 use function substr;
 use function trim;
 
@@ -5770,10 +5805,13 @@ final class ApplicatorRefs extends Data
     }
 
     /**
-     * laravel-data's own transform, with an empty nested object written as one.
+     * laravel-data's own transform, with an empty nested object or map written as one.
      *
      * A nested `Data` with nothing set transforms to `[]`, which JSON writes as a list: `{"owl":{}}` came
      * back `{"owl":[]}`. Such a value — and such an item of a list or map of them — goes out as `{}`.
+     *
+     * A map is the PHP array it holds, so an empty one transformed to `[]` as well: `{"widths":{}}` came
+     * back `{"widths":[]}`. It goes out as `{}` — on its own, as a map value and as a list item.
      *
      * @return array<array-key, mixed>
      */
@@ -5791,8 +5829,36 @@ final class ApplicatorRefs extends Data
                 $restored[$wireName] = new stdClass();
             }
         }
+        foreach ([
+            'mustContain' => 'list<object>',
+        ] as $wireName => $shape) {
+            if (array_key_exists($wireName, $restored)) {
+                $restored[$wireName] = self::openApiEmptyObjects($restored[$wireName], $shape);
+            }
+        }
 
         return $restored;
+    }
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new stdClass() : $value;
     }
 
     /**
@@ -8922,7 +8988,7 @@ final class ChainLink extends Data
     }
 
     /**
-     * laravel-data's own transform, with an empty nested object written as one.
+     * laravel-data's own transform, with an empty nested object or map written as one.
      *
      * A nested `Data` with nothing set transforms to `[]`, which JSON writes as a list: `{"owl":{}}` came
      * back `{"owl":[]}`. Such a value — and such an item of a list or map of them — goes out as `{}`.
@@ -9581,7 +9647,7 @@ final class ChainMiddle extends Data
     }
 
     /**
-     * laravel-data's own transform, with an empty nested object written as one.
+     * laravel-data's own transform, with an empty nested object or map written as one.
      *
      * A nested `Data` with nothing set transforms to `[]`, which JSON writes as a list: `{"owl":{}}` came
      * back `{"owl":[]}`. Such a value — and such an item of a list or map of them — goes out as `{}`.
@@ -10531,10 +10597,13 @@ use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
+use Spatie\LaravelData\Support\Transformation\TransformationContext;
+use Spatie\LaravelData\Support\Transformation\TransformationContextFactory;
 use stdClass;
 
 use function array_key_exists;
 use function array_keys;
+use function array_map;
 use function array_shift;
 use function explode;
 use function get_object_vars;
@@ -10549,6 +10618,9 @@ use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_replace;
+use function str_starts_with;
+use function strpos;
+use function substr;
 use function trim;
 
 /**
@@ -10583,6 +10655,52 @@ final class ContainerAliases extends Data
         public readonly array|Optional $mapOfLists = new Optional(),
         public readonly array|Optional $plain = new Optional(),
     ) {
+    }
+
+    /**
+     * laravel-data's own transform, with an empty nested object or map written as one.
+     *
+     * A map is the PHP array it holds, so an empty one transformed to `[]` as well: `{"widths":{}}` came
+     * back `{"widths":[]}`. It goes out as `{}` — on its own, as a map value and as a list item.
+     *
+     * @return array<array-key, mixed>
+     */
+    public function transform(
+        null|TransformationContextFactory|TransformationContext $transformationContext = null,
+    ): array {
+        /** @var array<array-key, mixed> $restored */
+        $restored = parent::transform($transformationContext);
+        foreach ([
+            'listOfMaps' => 'list<object>',
+            'mapOfLists' => 'object',
+        ] as $wireName => $shape) {
+            if (array_key_exists($wireName, $restored)) {
+                $restored[$wireName] = self::openApiEmptyObjects($restored[$wireName], $shape);
+            }
+        }
+
+        return $restored;
+    }
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new stdClass() : $value;
     }
 
     /**
@@ -11001,6 +11119,7 @@ use function str_ends_with;
 use function str_replace;
 use function str_starts_with;
 use function strlen;
+use function strpos;
 use function substr;
 use function trim;
 use function var_export;
@@ -11178,10 +11297,13 @@ final class Containers extends Data
     }
 
     /**
-     * laravel-data's own transform, with an empty nested object written as one.
+     * laravel-data's own transform, with an empty nested object or map written as one.
      *
      * A nested `Data` with nothing set transforms to `[]`, which JSON writes as a list: `{"owl":{}}` came
      * back `{"owl":[]}`. Such a value — and such an item of a list or map of them — goes out as `{}`.
+     *
+     * A map is the PHP array it holds, so an empty one transformed to `[]` as well: `{"widths":{}}` came
+     * back `{"widths":[]}`. It goes out as `{}` — on its own, as a map value and as a list item.
      *
      * @return array<array-key, mixed>
      */
@@ -11204,8 +11326,37 @@ final class Containers extends Data
                 }
             }
         }
+        foreach ([
+            'datesByDay' => 'object',
+            'tagsByKey' => 'object<object>',
+        ] as $wireName => $shape) {
+            if (array_key_exists($wireName, $restored)) {
+                $restored[$wireName] = self::openApiEmptyObjects($restored[$wireName], $shape);
+            }
+        }
 
         return $restored;
+    }
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new stdClass() : $value;
     }
 
     /**
@@ -13459,6 +13610,8 @@ use LogicException;
 use OverflowException;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
+use Spatie\LaravelData\Support\Transformation\TransformationContext;
+use Spatie\LaravelData\Support\Transformation\TransformationContextFactory;
 use stdClass;
 
 use function array_is_list;
@@ -13537,6 +13690,51 @@ final class ItemBounds extends Data
         public readonly array|Optional $scoresByKey = new Optional(),
         public readonly array|Optional $codes = new Optional(),
     ) {
+    }
+
+    /**
+     * laravel-data's own transform, with an empty nested object or map written as one.
+     *
+     * A map is the PHP array it holds, so an empty one transformed to `[]` as well: `{"widths":{}}` came
+     * back `{"widths":[]}`. It goes out as `{}` — on its own, as a map value and as a list item.
+     *
+     * @return array<array-key, mixed>
+     */
+    public function transform(
+        null|TransformationContextFactory|TransformationContext $transformationContext = null,
+    ): array {
+        /** @var array<array-key, mixed> $restored */
+        $restored = parent::transform($transformationContext);
+        foreach ([
+            'scoresByKey' => 'object',
+        ] as $wireName => $shape) {
+            if (array_key_exists($wireName, $restored)) {
+                $restored[$wireName] = self::openApiEmptyObjects($restored[$wireName], $shape);
+            }
+        }
+
+        return $restored;
+    }
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new stdClass() : $value;
     }
 
     /**
@@ -14163,6 +14361,8 @@ use LogicException;
 use OverflowException;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
+use Spatie\LaravelData\Support\Transformation\TransformationContext;
+use Spatie\LaravelData\Support\Transformation\TransformationContextFactory;
 use stdClass;
 
 use function array_is_list;
@@ -14197,6 +14397,7 @@ use function str_ends_with;
 use function str_replace;
 use function str_starts_with;
 use function strlen;
+use function strpos;
 use function substr;
 use function trim;
 use function var_export;
@@ -14269,6 +14470,54 @@ final class NestedContainers extends Data
         public readonly array|Optional $enumRows = new Optional(),
         public readonly array|Optional $tagRows = new Optional(),
     ) {
+    }
+
+    /**
+     * laravel-data's own transform, with an empty nested object or map written as one.
+     *
+     * A map is the PHP array it holds, so an empty one transformed to `[]` as well: `{"widths":{}}` came
+     * back `{"widths":[]}`. It goes out as `{}` — on its own, as a map value and as a list item.
+     *
+     * @return array<array-key, mixed>
+     */
+    public function transform(
+        null|TransformationContextFactory|TransformationContext $transformationContext = null,
+    ): array {
+        /** @var array<array-key, mixed> $restored */
+        $restored = parent::transform($transformationContext);
+        foreach ([
+            'rowsOfMaps' => 'list<object>',
+            'listsByKey' => 'object',
+            'mapsByKey' => 'object<object>',
+            'tagRows' => 'list<list<object>>',
+        ] as $wireName => $shape) {
+            if (array_key_exists($wireName, $restored)) {
+                $restored[$wireName] = self::openApiEmptyObjects($restored[$wireName], $shape);
+            }
+        }
+
+        return $restored;
+    }
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new stdClass() : $value;
     }
 
     /**
@@ -14905,10 +15154,13 @@ use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
+use Spatie\LaravelData\Support\Transformation\TransformationContext;
+use Spatie\LaravelData\Support\Transformation\TransformationContextFactory;
 use stdClass;
 
 use function array_key_exists;
 use function array_keys;
+use function array_map;
 use function array_shift;
 use function explode;
 use function get_object_vars;
@@ -14923,6 +15175,9 @@ use function preg_split;
 use function property_exists;
 use function sprintf;
 use function str_replace;
+use function str_starts_with;
+use function strpos;
+use function substr;
 use function trim;
 
 /**
@@ -14957,6 +15212,52 @@ final class NullableContainerValues extends Data
         public readonly array|Optional $listOfNullable31 = new Optional(),
         public readonly array|Optional $mapOfNullable31 = new Optional(),
     ) {
+    }
+
+    /**
+     * laravel-data's own transform, with an empty nested object or map written as one.
+     *
+     * A map is the PHP array it holds, so an empty one transformed to `[]` as well: `{"widths":{}}` came
+     * back `{"widths":[]}`. It goes out as `{}` — on its own, as a map value and as a list item.
+     *
+     * @return array<array-key, mixed>
+     */
+    public function transform(
+        null|TransformationContextFactory|TransformationContext $transformationContext = null,
+    ): array {
+        /** @var array<array-key, mixed> $restored */
+        $restored = parent::transform($transformationContext);
+        foreach ([
+            'mapOfNullable' => 'object',
+            'mapOfNullable31' => 'object',
+        ] as $wireName => $shape) {
+            if (array_key_exists($wireName, $restored)) {
+                $restored[$wireName] = self::openApiEmptyObjects($restored[$wireName], $shape);
+            }
+        }
+
+        return $restored;
+    }
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new stdClass() : $value;
     }
 
     /**
@@ -17687,7 +17988,7 @@ final class Test2 extends Data
     }
 
     /**
-     * laravel-data's own transform, with an empty nested object written as one.
+     * laravel-data's own transform, with an empty nested object or map written as one.
      *
      * A nested `Data` with nothing set transforms to `[]`, which JSON writes as a list: `{"owl":{}}` came
      * back `{"owl":[]}`. Such a value — and such an item of a list or map of them — goes out as `{}`.
@@ -19694,6 +19995,8 @@ use Illuminate\Validation\Validator;
 use LogicException;
 use OverflowException;
 use Spatie\LaravelData\Data;
+use Spatie\LaravelData\Support\Transformation\TransformationContext;
+use Spatie\LaravelData\Support\Transformation\TransformationContextFactory;
 use stdClass;
 
 use function array_column;
@@ -19730,6 +20033,7 @@ use function sprintf;
 use function str_ends_with;
 use function str_starts_with;
 use function strlen;
+use function strpos;
 use function substr;
 use function trim;
 
@@ -19954,6 +20258,51 @@ final class TreeNode extends Data
         public readonly string $label,
         public readonly array $children,
     ) {
+    }
+
+    /**
+     * laravel-data's own transform, with an empty nested object or map written as one.
+     *
+     * A map is the PHP array it holds, so an empty one transformed to `[]` as well: `{"widths":{}}` came
+     * back `{"widths":[]}`. It goes out as `{}` — on its own, as a map value and as a list item.
+     *
+     * @return array<array-key, mixed>
+     */
+    public function transform(
+        null|TransformationContextFactory|TransformationContext $transformationContext = null,
+    ): array {
+        /** @var array<array-key, mixed> $restored */
+        $restored = parent::transform($transformationContext);
+        foreach ([
+            'children' => 'object',
+        ] as $wireName => $shape) {
+            if (array_key_exists($wireName, $restored)) {
+                $restored[$wireName] = self::openApiEmptyObjects($restored[$wireName], $shape);
+            }
+        }
+
+        return $restored;
+    }
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new stdClass() : $value;
     }
 
     /**
@@ -21085,7 +21434,7 @@ final class UnionUnderContainer extends Data
     }
 
     /**
-     * laravel-data's own transform, with an empty nested object written as one.
+     * laravel-data's own transform, with an empty nested object or map written as one.
      *
      * A nested `Data` with nothing set transforms to `[]`, which JSON writes as a list: `{"owl":{}}` came
      * back `{"owl":[]}`. Such a value — and such an item of a list or map of them — goes out as `{}`.
@@ -22820,7 +23169,7 @@ final class User extends Data
     }
 
     /**
-     * laravel-data's own transform, with an empty nested object written as one.
+     * laravel-data's own transform, with an empty nested object or map written as one.
      *
      * A nested `Data` with nothing set transforms to `[]`, which JSON writes as a list: `{"owl":{}}` came
      * back `{"owl":[]}`. Such a value — and such an item of a list or map of them — goes out as `{}`.
@@ -23605,7 +23954,7 @@ final class User2 extends Data
     }
 
     /**
-     * laravel-data's own transform, with an empty nested object written as one.
+     * laravel-data's own transform, with an empty nested object or map written as one.
      *
      * A nested `Data` with nothing set transforms to `[]`, which JSON writes as a list: `{"owl":{}}` came
      * back `{"owl":[]}`. Such a value — and such an item of a list or map of them — goes out as `{}`.

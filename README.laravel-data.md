@@ -264,6 +264,32 @@ alongside `#[PropertyForMorph]`. The morph runs before there is an object, and l
 value up by the property name and by its input-mapped name, so both spellings have to be there.
 
 
+### A body that is a union without a discriminator
+
+A request body that IS a union of classes with no discriminator — a `$ref` to
+`Shape: {oneOf: [$ref Circle, $ref Square]}`, or the same `oneOf` / `anyOf` written inline in the
+request body, generated as the interface `<Path><Method>Request` — stays the interface the other modes
+emit: there is no tag for `morph()` to switch on, and laravel-data cannot build an interface. Since
+2.15.165 it comes with a `ShapeResolver` that is its entry point:
+
+```php
+$shape = ShapeResolver::from($request);              // Circle or Square, typed Shape
+$shape = ShapeResolver::validateAndCreate($payload); // the same for a plain array
+```
+
+It builds every member as its own `Data` — `Circle::from($request)`, which validates under the default
+`validation_strategy` — and keeps, for `oneOf`, the ONE member the payload passes (passing none, or more
+than one, is a `ValidationException` under `payload`), and for `anyOf` the first member in document
+order that it passes. With `validation_strategy` set to `disabled`, `from($request)` validates nothing and
+every member "passes": use `validateAndCreate()` there. A member reached through a nested union counts
+with that union's classes, so such a body takes the first member that passes, as `anyOf` does. A union
+with a member that is not a plain class — a discriminated union — gets no resolver, and the generator
+says so with a warning. A union of a class and a VALUE (`oneOf: [$ref Circle, {type: string}]`, a component
+or inline) is no interface at all: the union is a value, so only `Circle` is generated, with no `Data`
+class or resolver for the body. The generator warns about that body as well; validate it yourself
+(`Circle::validateAndCreate()` for an object, the value's own check otherwise), or make the body an object
+schema.
+
 ## Where it validates, and where it does not
 
 laravel-data's `validation_strategy` defaults to `OnlyRequests`. That is load-bearing:
@@ -345,9 +371,10 @@ All measured and pinned; the full table with reasons is in
   request to the holder;
 - checks the extra keys `additionalProperties: {schema}` admits but does not keep them: the `Data` class
   holds declared properties only, so a valid extra key is not in `toArray()`;
-- keeps the PHP array where runtime casts a map to `stdClass`, so an empty map encodes as `[]` rather
-  than `{}` — the same difference Symfony mode has, for the same reason. An empty generated OBJECT is
-  written `{}`: the class overrides `transform()` for a nested one (and a list or map of them), and
+- keeps the PHP array where runtime casts a map to `stdClass`; an EMPTY map is written `{}` by the
+  class's own `transform()` (on its own, inside a nested object, as a map value and as a list item), a
+  map with keys stays the array, so one keyed `"0"`, `"1"`, … encodes as a list. An empty generated
+  OBJECT is written `{}` too: the class overrides `transform()` for a nested one (and a list or map of them), and
   `toJson()` / `toResponse()` where the class itself may be empty. `json_encode($dto)` of an empty root
   still gives `[]` — laravel-data declares `jsonSerialize(): array`;
 - drops sub-second precision from a `format: date-time` **response** (its transformer takes one format

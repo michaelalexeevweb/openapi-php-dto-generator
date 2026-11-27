@@ -869,7 +869,8 @@ trait RendersLaravelDataDto
                 // A discriminator on a plain object schema already uses ordinary inheritance.
                 continue;
             }
-            if (in_array($className, array_values($discriminator['mapping']), true)) {
+            // A member another document's own run writes names no union of this one.
+            if (in_array($className, array_values($discriminator['mapping']), true) && !$this->memberIsWrittenByItsOwnDocument($className, $baseClass)) {
                 $bases[] = $baseClass;
             }
         }
@@ -881,6 +882,42 @@ trait RendersLaravelDataDto
         }
 
         return $bases[0] ?? null;
+    }
+
+    /**
+     * The entry point of a request body that is an undiscriminated union of classes: an interface,
+     * which laravel-data cannot build and has no `from()` to call. `<Union>Resolver::from($request)`
+     * builds every member as its own `Data` and keeps the one the `oneOf` / `anyOf` rule leaves. Null
+     * for any other class.
+     */
+    private function renderLaravelDataUnionResolverClass(string $namespace, string $unionClassName): ?string
+    {
+        $unionBody = $this->attributeMode === self::ATTRIBUTE_MODE_LARAVEL_DATA ? $this->laravelUnionBodyMembers($unionClassName) : null;
+        if ($unionBody === null) {
+            return null;
+        }
+        $imports = [];
+        $this->importLibraryClass(fqcn: 'Closure', namespace: $namespace, useStatements: $imports);
+        $this->importLibraryClass(fqcn: 'Illuminate\Http\Request', namespace: $namespace, useStatements: $imports);
+        $this->importLibraryClass(fqcn: 'Illuminate\Validation\ValidationException', namespace: $namespace, useStatements: $imports);
+        $memberNames = [];
+        foreach ($unionBody['members'] as $member) {
+            $this->appendImportForClass($imports, $member, $namespace, $unionClassName . 'Resolver');
+            $memberNames[] = $this->shortClassName($member);
+        }
+        $imports = array_values(array_unique($imports));
+        sort($imports);
+
+        return $this->renderPhpTemplate('resolver.laravel-data-union.php.twig', [
+            'namespace' => $namespace,
+            'imports' => $imports,
+            'className' => $unionClassName . 'Resolver',
+            'unionClassName' => $unionClassName,
+            'members' => $memberNames,
+            'exactlyOne' => $unionBody['exactlyOne'],
+            'sourceEndpoint' => $this->endpointByClass[$unionClassName] ?? null,
+            'sourceSpecLink' => $this->resolveSpecLink($unionClassName),
+        ]);
     }
 
     /**
@@ -1251,12 +1288,13 @@ trait RendersLaravelDataDto
      *
      * @param array<int, SchemaProperty> $properties
      * @param array<int, string> $useStatements
-     * @return array{writesNested: bool, nestedLiteral: string|null, itemsLiteral: string|null, rootMayBeEmpty: bool, stdClassRef: string, dataRef: string, jsonResponseRef: string|null}
+     * @return array{writesNested: bool, nestedLiteral: string|null, itemsLiteral: string|null, shapesLiteral: string|null, rootMayBeEmpty: bool, stdClassRef: string, dataRef: string, jsonResponseRef: string|null}
      */
     private function laravelDataEmptyObjectWrite(array $properties, string $namespace, array &$useStatements): array
     {
         $nested = [];
         $items = [];
+        $shapes = [];
         $rootMayBeEmpty = true;
         foreach ($properties as $property) {
             if (($property['writeOnly'] ?? null) === true) {
@@ -1273,17 +1311,27 @@ trait RendersLaravelDataDto
                 || $this->unionClassBesideScalars($property['type']) !== null
             ) {
                 $nested[$property['name']] = $property['openApiName'];
-            } elseif ($itemClass !== null && !$this->laravelIsEnumClass($itemClass)) {
+
+                continue;
+            }
+            if ($itemClass !== null && !$this->laravelIsEnumClass($itemClass)) {
                 $items[$property['name']] = $property['openApiName'];
+            }
+            // A map is held as a PHP array and transformed as one, so an empty map left as `[]`. A list of
+            // `Data` is the items loop's already.
+            $shape = $this->emptyObjectWireShape(type: $property['type'], constraints: $property['constraints'] ?? []);
+            if ($shape !== null && !($shape === 'list<object>' && array_key_exists($property['name'], $items))) {
+                $shapes[$property['openApiName']] = $shape;
             }
         }
 
-        $anyEmpty = $nested !== [] || $items !== [] || $rootMayBeEmpty;
+        $anyEmpty = $nested !== [] || $items !== [] || $shapes !== [] || $rootMayBeEmpty;
 
         return [
-            'writesNested' => $nested !== [] || $items !== [],
+            'writesNested' => $nested !== [] || $items !== [] || $shapes !== [],
             'nestedLiteral' => $nested === [] ? null : $this->renderPhpArrayLiteral($nested, 2),
             'itemsLiteral' => $items === [] ? null : $this->renderPhpArrayLiteral($items, 2),
+            'shapesLiteral' => $shapes === [] ? null : $this->renderPhpArrayLiteral($shapes, 2),
             'rootMayBeEmpty' => $rootMayBeEmpty,
             'stdClassRef' => $anyEmpty ? $this->libraryClassRef('stdClass', $namespace, $useStatements) : 'stdClass',
             'dataRef' => $nested !== [] || $items !== []

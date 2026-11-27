@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 namespace OpenapiPhpDtoGenerator\Tests\Parity;
 
+use Closure;
 use Composer\InstalledVersions;
+use Illuminate\Container\Container;
+use Illuminate\Contracts\Validation\Factory as FactoryContract;
+use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Request as LaravelRequest;
 use Illuminate\Translation\ArrayLoader;
 use Illuminate\Translation\Translator;
@@ -141,6 +145,16 @@ trait RunsPayloadsThroughModes
      */
     private function symfonyOutcome(string $fqcn, string $json, array $context = []): PayloadOutcome
     {
+        // A body that IS an undiscriminated union: the serializer cannot build the interface (a 500 under
+        // `#[MapRequestPayload]`), so the members are tried as README.symfony tells an application to.
+        $members = $this->unionMembersOutcome(
+            fqcn: $fqcn,
+            memberOutcome: fn(string $member): PayloadOutcome => $this->symfonyOutcome($member, $json, $context),
+        );
+        if ($members !== null) {
+            return $members;
+        }
+
         $classMetadataFactory = new ClassMetadataFactory(new AttributeLoader());
         $typeExtractor = new PropertyInfoExtractor([], [new PhpDocExtractor(), new ReflectionExtractor()]);
         $serializer = new Serializer(
@@ -206,6 +220,11 @@ trait RunsPayloadsThroughModes
      */
     private function laravelOutcome(string $fqcn, string $json): PayloadOutcome
     {
+        // A body that IS a union has no `rules()` of its own: the emitted FormRequest picks the member.
+        if (interface_exists($fqcn) && class_exists($fqcn . 'FormRequest')) {
+            return $this->laravelFormRequestOutcome($fqcn . 'FormRequest', $json);
+        }
+
         /** @var array<string, mixed>|null $payload */
         $payload = json_decode($json, true);
         if (!is_array($payload)) {
@@ -250,6 +269,49 @@ trait RunsPayloadsThroughModes
     }
 
     /**
+     * The emitted FormRequest, driven the way the framework's `validateResolved()` drives it: its
+     * `rules()` and `withValidator()` on a validator of its `validationData()`, then `toDto()`. The class
+     * extends the stub of `Illuminate\Foundation\Http\FormRequest` where laravel/framework is absent;
+     * the container is what the framework hands it, with only the validator factory bound.
+     *
+     * @param class-string $formRequest
+     */
+    private function laravelFormRequestOutcome(string $formRequest, string $json): PayloadOutcome
+    {
+        $factory = new Factory(new Translator(new ArrayLoader(), 'en'));
+        $container = new Container();
+        $container->instance(FactoryContract::class, $factory);
+        try {
+            $request = $formRequest::create(
+                uri: '/',
+                method: 'POST',
+                server: ['CONTENT_TYPE' => 'application/json'],
+                content: $json,
+            );
+            assert($request instanceof FormRequest);
+            $request->setContainer($container);
+            $validator = $factory->make($request->validationData(), $request->rules());
+            $request->withValidator($validator);
+            $fails = $validator->fails();
+        } catch (Throwable $crash) {
+            return PayloadOutcome::crashed(stage: 'validate', throwable: $crash, fromValidationEngine: true);
+        }
+        if ($fails) {
+            return PayloadOutcome::refused(stage: 'validate', detail: $validator->errors()->toJson());
+        }
+
+        try {
+            $request->setValidator($validator);
+            $dto = $request->toDto();
+            $encoded = json_encode($dto, JSON_THROW_ON_ERROR);
+        } catch (Throwable $crash) {
+            return PayloadOutcome::crashed(stage: 'hydrate', throwable: $crash);
+        }
+
+        return PayloadOutcome::accepted(dto: is_object($dto) ? $dto : null, encoded: $encoded);
+    }
+
+    /**
      * laravel-data mode goes through the package's own entry point, and through a REQUEST: its default
      * `validation_strategy` is `OnlyRequests`, so `from($array)` would hydrate without validating anything.
      * The request is also where the emitted interpreter finds the raw body it needs. The built Data is
@@ -263,7 +325,10 @@ trait RunsPayloadsThroughModes
             json: $json,
             work: static function (LaravelRequest $request) use ($fqcn): PayloadOutcome {
                 try {
-                    $dto = $fqcn::from($request);
+                    // A body that IS an undiscriminated union: an interface, built by its resolver.
+                    $dto = interface_exists($fqcn) && class_exists($fqcn . 'Resolver')
+                        ? call_user_func([$fqcn . 'Resolver', 'from'], $request)
+                        : $fqcn::from($request);
                 } catch (ValidationException $refusal) {
                     return PayloadOutcome::refused(
                         stage: 'validate',
@@ -304,6 +369,29 @@ trait RunsPayloadsThroughModes
             return PayloadOutcome::refused(stage: 'decode', detail: 'the body is not a JSON object');
         }
 
+        // A body that IS a discriminated union: the hydrator cannot build the interface, so the member
+        // is looked up as README.yii3 ("A body that is a union") tells an application to — the tag in
+        // `OPENAPI_DISCRIMINATOR_MAPPING`, a missing or unknown one a 4xx of the application's own.
+        if (interface_exists($fqcn) && defined($fqcn . '::OPENAPI_DISCRIMINATOR_MAPPING')) {
+            $mapping = constant($fqcn . '::OPENAPI_DISCRIMINATOR_MAPPING');
+            $tag = $payload[constant($fqcn . '::OPENAPI_DISCRIMINATOR')] ?? null;
+            $member = is_array($mapping) && (is_string($tag) || is_int($tag)) ? ($mapping[$tag] ?? null) : null;
+            if (!is_string($member)) {
+                return PayloadOutcome::refused(stage: 'resolve', detail: 'no member for the tag ' . json_encode($tag));
+            }
+            /** @var class-string $member */
+            $fqcn = $member;
+        }
+
+        // An undiscriminated one names its members instead, tried as README.yii3 tells an application to.
+        $members = $this->unionMembersOutcome(
+            fqcn: $fqcn,
+            memberOutcome: fn(string $member): PayloadOutcome => $this->yii3Outcome($member, $json),
+        );
+        if ($members !== null) {
+            return $members;
+        }
+
         try {
             $result = (new Yii3Container())->hydrateValidated($fqcn, $payload);
         } catch (Throwable $crash) {
@@ -320,6 +408,43 @@ trait RunsPayloadsThroughModes
     }
 
     /**
+     * The recipe README.symfony and README.yii3 give for a body that IS an undiscriminated union: try every
+     * member in the interface's `OPENAPI_UNION_MEMBERS`; `oneOf` takes the payload when exactly one member
+     * accepts it, `anyOf` builds the first that does. Null when the class names no members.
+     *
+     * @param Closure(class-string): PayloadOutcome $memberOutcome
+     */
+    private function unionMembersOutcome(string $fqcn, Closure $memberOutcome): ?PayloadOutcome
+    {
+        if (!interface_exists($fqcn) || !defined($fqcn . '::OPENAPI_UNION_MEMBERS')) {
+            return null;
+        }
+        $list = constant($fqcn . '::OPENAPI_UNION_MEMBERS');
+        if (!is_array($list) || $list === []) {
+            return null;
+        }
+        $keyword = (string)array_key_first($list);
+        $accepted = [];
+        foreach ((array)$list[$keyword] as $member) {
+            /** @var class-string $member */
+            $outcome = $memberOutcome($member);
+            if ($outcome->verdict === PayloadVerdict::Crashed) {
+                return $outcome;
+            }
+            if ($outcome->verdict === PayloadVerdict::Accepted) {
+                if ($keyword === 'anyOf') {
+                    return $outcome;
+                }
+                $accepted[] = $outcome;
+            }
+        }
+
+        return count($accepted) === 1
+            ? $accepted[0]
+            : PayloadOutcome::refused(stage: 'resolve', detail: count($accepted) . ' members of the ' . $keyword . ' accept the payload');
+    }
+
+    /**
      * @param array<string, mixed> $spec
      * @return class-string
      */
@@ -330,6 +455,11 @@ trait RunsPayloadsThroughModes
             mkdir($target, 0o755, true);
         }
 
+        // A request payload in laravel mode comes with a FormRequest, which extends a class of
+        // laravel/framework: the stub stands in for it where the framework is absent.
+        if ($mode === 'laravel' && !class_exists(FormRequest::class)) {
+            require_once dirname(__DIR__) . '/Laravel/Stub/form-request.php';
+        }
         if ($this->siblingDocuments === []) {
             (new GenerateDtoCommand())->generateFromArray($spec, $target, $namespace, $mode);
         } else {

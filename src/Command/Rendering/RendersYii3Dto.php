@@ -395,9 +395,15 @@ trait RendersYii3Dto
         // container-plus-type bugs in Laravel mode were found by READING a golden snapshot, and the
         // one that sat in this mode (a dead `#[ToDateTime]` on a container) was not.
         $temporalParams = [];
+        $shapedParams = [];
         foreach ($parameters as $parameter) {
             if ($parameter['temporalFormat'] !== null) {
                 $temporalParams[] = $parameter;
+            }
+            // A property held as a generated class writes `{}` for itself already (`openApiWireValue()`).
+            $heldAsClass = $this->isGeneratedDtoType(ltrim($parameter['propertyType'], '?'));
+            if ($parameter['wireShape'] !== null && !$heldAsClass) {
+                $shapedParams[] = $parameter;
             }
         }
 
@@ -421,9 +427,11 @@ trait RendersYii3Dto
             'classAttributes' => $classAttributes,
             'libAbstractInput' => $this->yii3Lib('AbstractInput'),
             'implements' => $implements,
+            'redeclaresUnionMemberList' => $this->redeclaresUnionMemberList($className),
             'params' => $parameters,
             'createVariable' => $createVariable,
             'temporalParams' => $temporalParams,
+            'shapedParams' => $shapedParams,
             'interpreterConstsBlock' => $interpreter['entered'] ? rtrim($interpreter['consts'], "\n") : '',
             'interpreterMethodsBlock' => $interpreter['entered'] ? rtrim($interpreter['methods'], "\n") : '',
             // The payload view is a BLOCK rather than markup in the template, because the interpreter
@@ -670,7 +678,7 @@ trait RendersYii3Dto
      *     getter: string, getterType: string, payloadValue: string, getterValue: string,
      *     getterDocType: string|null, default: string|null, createType: string, createValue: string,
      *     createDocType: string|null, createMarker: bool, createMarkerType: string|null,
-     *     providedGetter: string, writeOnly: bool, temporalFormat: string|null}
+     *     providedGetter: string, writeOnly: bool, temporalFormat: string|null, wireShape: string|null}
      */
     private function renderYii3Parameter(
         array $property,
@@ -1003,6 +1011,7 @@ trait RendersYii3Dto
             'providedGetter' => 'is' . ucfirst($property['name']) . 'Provided',
             'writeOnly' => ($property['writeOnly'] ?? false) === true || ($property['readOnly'] ?? false) === true,
             'temporalFormat' => $this->yii3TemporalFormat($property, $propertyType),
+            'wireShape' => $this->emptyObjectWireShape(type: $property['type'], constraints: $property['constraints'] ?? []),
         ];
     }
 
@@ -1726,7 +1735,8 @@ trait RendersYii3Dto
                 $alternatives[] = ['composite' => $this->yii3PatternThenRule(
                     pattern: self::YII3_STRICT_DATE_PATTERN,
                     message: $this->phpStringLiteral(sprintf('%s must be a date.', ucfirst($propertyName))),
-                    rule: $parsers[0],
+                    rule: $this->yii3Lib($dateRule, $fqcn),
+                    ruleArguments: [sprintf("format: 'php:%s'", self::YII3_TEMPORAL_WIRE_FORMATS[$temporalFormat][0])],
                     ruleImports: $ruleImports,
                 )];
 
@@ -1741,7 +1751,8 @@ trait RendersYii3Dto
                 $alternatives[] = ['composite' => $this->yii3PatternThenRule(
                     pattern: self::RFC3339_DATE_TIME_PATTERN,
                     message: $message,
-                    rule: sprintf('new %s([%s], message: %s)', $this->yii3Lib('AnyRule', $anyRuleFqcn), implode(', ', $parsers), $message),
+                    rule: $this->yii3Lib('AnyRule', $anyRuleFqcn),
+                    ruleArguments: ['[' . implode(', ', $parsers) . ']', 'message: ' . $message],
                     ruleImports: $ruleImports,
                 )];
 
@@ -1779,14 +1790,26 @@ trait RendersYii3Dto
     /**
      * The rules of a `Composite` that matches a raw string against `$pattern` before `$rule` runs on it.
      *
+     * `$rule` carries `skipOnError`: a `Composite` runs every rule it holds, and both answer with the
+     * same message, so `"nonsense"` for a date was reported twice. The parser runs only on a string the
+     * pattern took — `2024-02-30` is still refused, by the parser alone.
+     *
+     * @param array<int, string> $ruleArguments
      * @param array<int, string> $ruleImports
      */
-    private function yii3PatternThenRule(string $pattern, string $message, string $rule, array &$ruleImports): string
+    private function yii3PatternThenRule(string $pattern, string $message, string $rule, array $ruleArguments, array &$ruleImports): string
     {
         $regexFqcn = $this->yii3RuleClass('Regex');
         $ruleImports[] = $regexFqcn;
 
-        return sprintf('[new %s(%s, message: %s), %s]', $this->yii3Lib('Regex', $regexFqcn), $this->phpStringLiteral($pattern), $message, $rule);
+        return sprintf(
+            '[new %s(%s, message: %s), new %s(%s)]',
+            $this->yii3Lib('Regex', $regexFqcn),
+            $this->phpStringLiteral($pattern),
+            $message,
+            $rule,
+            implode(', ', [...$ruleArguments, 'skipOnError: true']),
+        );
     }
 
     /**
@@ -2304,6 +2327,12 @@ trait RendersYii3Dto
                 $mapping[$value] = $this->shortClassName($member);
             }
         }
+        // An undiscriminated union names its members instead, for the same caller to try them in turn; a
+        // member of two such unions redeclares the constant (`redeclaresUnionMemberList()`).
+        $memberList = $discriminator === null ? $this->undiscriminatedUnionMemberList($className, $unionTypes) : null;
+        foreach ($memberList['members'] ?? [] as $member) {
+            $this->appendImportForClass($imports, $member, $namespace, $className);
+        }
         // Every member is a data set, a rules provider and JSON-serializable, so the interface says so: code taking "any
         // generated object" by `DataSetInterface` refused a union-typed response, which is one of them.
         $extends = [];
@@ -2325,6 +2354,13 @@ trait RendersYii3Dto
             'interfaceExtends' => $extends,
             'interfaceGetters' => $interfaceGetters,
             'discriminatorMapping' => $mapping,
+            'unionMemberList' => $memberList === null ? null : [
+                'keyword' => $memberList['keyword'],
+                'members' => array_map(
+                    callback: fn(string $member): string => $this->shortClassName($member),
+                    array: $memberList['members'],
+                ),
+            ],
             'namespace' => $namespace,
             'className' => $className,
             'classDeprecated' => $this->deprecatedByClass[$className] ?? false,
@@ -3788,7 +3824,7 @@ PHP;
         }
         $memberSchemas = [];
         foreach ($mapping as $value => $memberRef) {
-            $memberSchemas[$value] = is_string($memberRef) ? $this->yii3MemberSchema($memberRef) : [];
+            $memberSchemas[$value] = is_string($memberRef) ? $this->yii3MemberSchema($memberRef, $this->getSchemaSourceFile($className)) : [];
         }
         // An object base that leaves `mapping` out has its variants named by the schemas that `allOf`
         // it; the document spells none of them, so the map the generator built is read instead.
@@ -3852,7 +3888,7 @@ PHP;
                         ? $this->referenceOrSingleRefAllOf($member)
                         : null;
                     $member = $memberRef !== null
-                        ? $this->yii3MemberSchema($memberRef)
+                        ? $this->yii3MemberSchema($memberRef, $this->getSchemaSourceFile($className))
                         : $this->inlineNestedContainerValidation(
                             schema: $this->yii3WithAllOfFragmentsMerged($this->yii3RefWithSiblingsAsAllOf($member), $className),
                             depth: 2,
@@ -3920,14 +3956,16 @@ PHP;
      *
      * @return array<string, mixed>
      */
-    private function yii3MemberSchema(string $ref): array
+    private function yii3MemberSchema(string $ref, ?string $sourceFile = null): array
     {
-        $prefix = '#/components/schemas/';
-        if (!str_starts_with($ref, $prefix)) {
+        // A member of another document (`ext.json#/components/schemas/Dog`) is read relative to the
+        // union's own document: read as nothing, its `then` was empty and the member went unchecked.
+        $className = $this->schemaRefToClassName($ref, $sourceFile ?? $this->rootSpecFile);
+        if (!array_key_exists($className, $this->dtoSchemas)) {
             return [];
         }
 
-        return $this->yii3MemberSchemaOfClass($this->schemaClassName(substr($ref, strlen($prefix))));
+        return $this->yii3MemberSchemaOfClass($className);
     }
 
     /**

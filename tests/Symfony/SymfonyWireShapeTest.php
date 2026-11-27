@@ -541,6 +541,57 @@ final class SymfonyWireShapeTest extends TestCase
     }
 
     /**
+     * An empty map is `{}` on the way out, as the schema says. The serializer normalizes the PHP array
+     * the DTO holds, and `{"widths":{}}` came back `{"widths":[]}` — on its own, inside a nested object,
+     * as the value of a map, as the item of a list and as a map of dates. A map with keys is written as
+     * it was, and a null map stays null.
+     */
+    public function testAnEmptyMapIsWrittenAsAnObject(): void
+    {
+        $target = $this->outputDirectory . '/WireEmptyMap';
+        $map = static fn(array $values): array => ['type' => 'object', 'additionalProperties' => $values];
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => [],
+            'components' => [
+                'schemas' => [
+                    'Crate' => [
+                        'type' => 'object',
+                        'required' => ['widths', 'grid', 'rows', 'box', 'maybe', 'shapes', 'days'],
+                        'properties' => [
+                            'widths' => $map(['type' => 'integer']),
+                            'grid' => $map($map(['type' => 'integer'])),
+                            'rows' => ['type' => 'array', 'items' => $map(['type' => 'integer'])],
+                            'box' => ['$ref' => '#/components/schemas/Box'],
+                            'maybe' => ['type' => ['object', 'null'], 'additionalProperties' => ['type' => 'integer']],
+                            'shapes' => $map(['$ref' => '#/components/schemas/Box']),
+                            'days' => $map(['type' => 'string', 'format' => 'date']),
+                        ],
+                    ],
+                    'Box' => [
+                        'type' => 'object',
+                        'required' => ['widths'],
+                        'properties' => ['widths' => $map(['type' => 'integer'])],
+                    ],
+                ],
+            ],
+        ];
+        (new GenerateDtoCommand())->generateFromArray($spec, $target, 'WireEmptyMap', 'symfony');
+        require_once $target . '/Box.php';
+        require_once $target . '/Crate.php';
+
+        foreach ([
+            '{"widths":{},"grid":{"row":{}},"rows":[{},{"a":1}],"box":{"widths":{}},"maybe":{},"shapes":{},"days":{}}',
+            '{"widths":{"a":1},"grid":{},"rows":[],"box":{"widths":{"b":2}},"maybe":null,"shapes":{"c":{"widths":{}}},"days":{"d":"2024-05-06"}}',
+        ] as $json) {
+            $crate = $this->serializer()->deserialize($json, \WireEmptyMap\Crate::class, 'json');
+
+            $this->assertSame(expected: $json, actual: $this->serializer()->serialize($crate, 'json'));
+        }
+    }
+
+    /**
      * Null comes in only where the schema allows it. A required nullable property still has to be
      * present — the serializer would pass null for a missing typed nullable argument — and an optional
      * one that may not be null refuses an explicit null and an empty query value alike.

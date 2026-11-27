@@ -567,32 +567,86 @@ A CONTAINER of dates is written item by item, and a map keeps its keys:
 Where the items are really dates and where they are strings differs by mode — see
 [Temporal container items](README.support-matrix.md#temporal-container-items) in the support matrix.
 
-## An empty map serializes as `[]`
+## An empty map serializes as `{}`
 
 A property declared `type: object` with `additionalProperties` becomes a PHP `array`, and PHP cannot
-tell an empty map from an empty list — so an empty one encodes as `[]` where the schema says an
-object:
+tell an empty map from an empty list — the serializer wrote an empty one as `[]` where the schema says
+an object. The property's `#[Context]` now carries a callback of the DTO's own (`writeOpenApiObjects()`)
+and `PRESERVE_EMPTY_OBJECTS`: an empty map is handed back as an empty `ArrayObject`, which the
+serializer keeps and the JSON encoder writes as `{}` — on its own, inside a nested object, as the value
+of a map and as the item of a list. Nothing for the caller to pass:
 
 ```json
 {"tags": {"a": 1}}   // identical in runtime and symfony mode
-{"tags": {}}         // symfony mode: {"tags": []}   runtime mode: {"tags": {}}
+{"tags": {}}         // identical too: {} in both
 ```
 
-Runtime mode casts maps to `stdClass` and emits `{}`. Symfony mode cannot: the serializer turns any
-object back into an array on the way out.
+A map with keys stays the PHP array it is (the JSON is the same), so `normalize()` gives an array for it
+and an empty `ArrayObject` for an empty one. Two differences from runtime mode remain: a map whose keys
+are `"0"`, `"1"`, … is a PHP list and encodes as one (runtime keeps the object), and an empty generated
+OBJECT still leaves as `[]` unless the call passes `PRESERVE_EMPTY_OBJECTS` (above).
 
-`PRESERVE_EMPTY_OBJECTS` does **not** fix this — it only applies to `ArrayObject`, and generated
-maps are plain arrays. Making it work would mean typing every map property as `ArrayObject`
-(`array_map()` and friends would then need `getArrayCopy()`) *and* requiring every caller to pass
-that context option. Not a trade this mode makes.
+## A body that is a union without a discriminator
 
-If a consumer validates your responses strictly, the options are: normalize that response through
-[runtime mode](README.runtime.md), or cast the known map keys yourself before encoding:
+A request body that IS an undiscriminated union of classes — `$ref: Shape`, `Shape: {oneOf: [$ref Circle,
+$ref Square]}`, or the same `oneOf` / `anyOf` written inline in the body — is an interface, and the
+serializer cannot build an interface without a `#[DiscriminatorMap]`: `#[MapRequestPayload] Shape`
+throws `NotNormalizableValueException` ("Could not denormalize object of type …Shape, no supporting
+normalizer found"), which `RequestPayloadValueResolver` does not catch — EVERY payload is a 500, valid
+ones included. The generator warns about such a body.
+
+The interface names its members, in document order, under the union's keyword:
 
 ```php
-$payload = $serializer->normalize($dto);
-$payload['tags'] = (object)$payload['tags'];
+interface Shape
+{
+    public const array OPENAPI_UNION_MEMBERS = [
+        'oneOf' => [
+            Circle::class,
+            Square::class,
+        ],
+    ];
+}
 ```
+
+so the application tries them itself — each through the serializer and the validator, exactly one
+accepting for `oneOf`, the first that does for `anyOf`:
+
+```php
+public function create(Request $request, SerializerInterface $serializer, ValidatorInterface $validator): Response
+{
+    $keyword = array_key_first(Shape::OPENAPI_UNION_MEMBERS);
+    $matches = [];
+    foreach (Shape::OPENAPI_UNION_MEMBERS[$keyword] as $member) {
+        try {
+            $shape = $serializer->deserialize($request->getContent(), $member, 'json', [
+                DenormalizerInterface::COLLECT_DENORMALIZATION_ERRORS => true,
+            ]);
+        } catch (PartialDenormalizationException | NotNormalizableValueException) {
+            continue;
+        }
+        if (count($validator->validate($shape)) === 0) {
+            $matches[] = $shape;
+            if ($keyword === 'anyOf') {
+                break;
+            }
+        }
+    }
+    if (count($matches) !== 1) {
+        // 422: no member, or more than one member of the oneOf, accepts the body
+    }
+    $shape = $matches[0];
+    // …
+}
+```
+
+The serializer keeps only the keys a member declares, so `{"radius": 1, "side": 2}` is accepted by both
+members, and a `oneOf` refuses it, as the document does for open objects. A member of two such unions redeclares the constant,
+which it would otherwise inherit from both interfaces — a fatal error at load. A union with a member
+that is not a plain class (a discriminated union, a nested union, `{type: "null"}`) has no member list
+and gets a generator warning instead; add a `discriminator` and the union becomes the interface with
+`#[DiscriminatorMap]` above. A union of a class and a VALUE (`oneOf: [$ref Circle, {type: string}]`)
+has no class at all — the generator warns about that body too.
 
 ## What runtime mode does that this mode does not
 
@@ -602,7 +656,6 @@ $payload['tags'] = (object)$payload['tags'];
 | **Parameter binding** | `matrix`, `label`, `deepObject`, `allowReserved` and multipart Encoding parts are not applied — Symfony parses the query string and the body its own way, before any DTO exists. What survives: a query list's `style` and `explode` (and a path list's, with `--symfony-path-params`) — see [above](#a-query-list-binds-in-the-form-its-style-names), a repeated key aside — and `allowEmptyValue: false`, as `#[Assert\NotBlank(allowNull: true)]` |
 | **readOnly / writeOnly** | advisory unless you pass serialization groups (above); runtime enforces them itself |
 | **`additionalProperties: false`** | near a no-op through the serializer, which drops unknown keys before validation |
-| **An empty map** | serializes as `[]`, not `{}` — see [above](#an-empty-map-serializes-as-) |
 | **A whole `type: number`** | serializes as `30000.0`, not `30000` — the serializer's `JsonEncode` defaults to `JSON_PRESERVE_ZERO_FRACTION`. Both are the same JSON number; a client or a snapshot comparing text sees a difference. It is an encoder option, out of a DTO's reach: pass `[JsonEncode::OPTIONS => 0]` (plus whatever flags you use) to `serialize()` to match runtime mode |
 | **`(string)$dto`, `toJson()`, `jsonSerialize()`** | not generated — the Symfony serializer is the way out. Code that leaned on them breaks loudly, but some only implicitly: `array_unique()` over DTOs compares them as strings, which is a fatal error without `__toString()`. Compare by the fields that make two items the same instead |
 

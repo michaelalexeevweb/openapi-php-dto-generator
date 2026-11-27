@@ -431,9 +431,12 @@ final class UnhydratableUnionParityTest extends TestCase
                 'type' => ['type' => 'string', 'enum' => ['email', 'phone']],
                 'value' => ['type' => 'string'],
             ],
+            // `type: object` makes each arm a class of its own, so Shape is a union of those classes.
+            // Without it the arms only narrow Shape's own properties, and Shape is one class checked
+            // by them (`ValidationParityTest::testAnObjectBesideAnAnyOfOfPropertyFragmentsIsOneClass`).
             $keyword => [
-                ['properties' => ['type' => ['type' => 'string', 'enum' => ['email']], 'value' => ['type' => 'string', 'format' => 'email']]],
-                ['properties' => ['type' => ['type' => 'string', 'enum' => ['phone']], 'value' => ['type' => 'string', 'pattern' => '^\+?[0-9]{7,15}$']]],
+                ['type' => 'object', 'properties' => ['type' => ['type' => 'string', 'enum' => ['email']], 'value' => ['type' => 'string', 'format' => 'email']]],
+                ['type' => 'object', 'properties' => ['type' => ['type' => 'string', 'enum' => ['phone']], 'value' => ['type' => 'string', 'pattern' => '^\+?[0-9]{7,15}$']]],
             ],
         ];
         $spec['components']['schemas']['Probe']['properties']['shape']['nullable'] = true;

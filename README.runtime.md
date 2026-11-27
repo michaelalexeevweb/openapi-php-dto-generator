@@ -79,6 +79,20 @@ $json    = $normalizer->toJson($dto);
 $errors = $normalizer->validate($dto);
 ```
 
+A body that IS a union takes the union's own name: `deserialize($request, Pet::class)` builds the member
+the discriminator names for a discriminated union's abstract class, and for a union interface matches
+the body against the members the interface lists in `OPENAPI_UNION_CONSTRAINTS` — exactly as a property
+typed by the union is built. An unknown tag or a payload no member takes is a refusal like any other.
+`deserializeCollection()` and `deserializeValue()` take the union the same way. A member of two such
+unions redeclares the constant, which it would otherwise inherit from both interfaces (a fatal error at
+load); each interface keeps its own. The constant is left out where the union is nested in another one
+or a member is not a plain class (`oneOf: [$ref Circle, $ref Pet]`, `Pet` itself a union): such an
+interface is reached through a property or a list item, and as a request body the generator warns that
+nothing builds it. A union of a class and a VALUE (`oneOf: [$ref Circle, {type: string}]`) gets no class
+at all — it is a value — so a body of it has nothing for `deserialize()` to build and is warned about
+too; `deserializeValue($decodedBody, Circle::class . '|string')` builds the class member by type, without
+the union's own keywords.
+
 Errors are thrown as a `RuntimeException` whose message aggregates every violation, each naming the
 OpenAPI rule that failed. The deserializer writes one per line — `param "tags".0 length must be at least
 3 characters.` — and `DtoNormalizer` prefixes `DTO validation failed: ` and separates them with commas,

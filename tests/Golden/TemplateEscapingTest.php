@@ -49,6 +49,7 @@ final class TemplateEscapingTest extends TestCase
         'dto.php.twig' => [
             'entry.value|raw' => 'object constraints as a PHP array literal from renderPhpLiteral()',
             'requestBodyMediaTypes|raw' => 'the media-type list as a PHP array literal from renderPhpLiteral()',
+            'unionConstraints|raw' => 'oneOf/anyOf of generated member class names, built by runtimeUnionInterfaceConstraints()',
         ],
         'dto.symfony.php.twig' => [
             'validationConstsBlock|raw' => 'the emitted interpreter constants (RendersSchemaInterpreter), literals via renderPhpLiteral()',
@@ -79,6 +80,7 @@ final class TemplateEscapingTest extends TestCase
             'temporalUnionCast.uncastLiteral|raw' => 'sanitized PHP property names as an array literal, each via phpStringLiteral()',
             'emptyObjectWrite.nestedLiteral|raw' => 'PHP property name => wire name as an array literal from renderPhpArrayLiteral()',
             'emptyObjectWrite.itemsLiteral|raw' => 'PHP property name => wire name as an array literal from renderPhpArrayLiteral()',
+            'emptyObjectWrite.shapesLiteral|raw' => 'wire name => empty-object shape as an array literal from renderPhpArrayLiteral()',
             'rule.rules|raw' => 'a Laravel rules array literal from laravelRulesLiteral(), strings via phpStringLiteral()',
             'interpreterMethodsBlock|raw' => 'the emitted interpreter methods (RendersSchemaInterpreter), fixed code around sanitized names',
         ],

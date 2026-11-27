@@ -8,6 +8,7 @@ use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
 use OpenapiPhpDtoGenerator\Service\DtoDeserializer;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
+use RuntimeException;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\HttpFoundation\Request;
 
@@ -109,6 +110,61 @@ final class DiscriminatedUnionParentTest extends TestCase
         $this->assertInstanceOf($namespace . '\MoonTile', $board->getTile());
         $this->assertInstanceOf($namespace . '\StarTile', $board->getTiles()[0]);
         $this->assertInstanceOf($namespace . '\MoonTile', $board->getTiles()[1]);
+    }
+
+    /**
+     * A member that keeps a parent of its own is no instance of the union's class, so a list item and a
+     * map value naming the union are typed by its members, as the property is: typed `array<AnyTile>`,
+     * `addItemToTiles(new MoonTile())` was a `TypeError` and the docblock promised what the list did not
+     * hold. The tag still picks the member to build.
+     */
+    public function testAListOfAUnionWhoseMembersKeepTheirParentsIsTypedByTheMembers(): void
+    {
+        $namespace = 'Tiles' . bin2hex(random_bytes(8));
+        $directory = $this->root . '/' . $namespace;
+        $board = $this->board();
+        $board['properties']['tileMap'] = ['type' => 'object', 'additionalProperties' => ['$ref' => '#/components/schemas/AnyTile']];
+        (new GenerateDtoCommand())->generateFromArray(
+            openApi: $this->document([
+                'Tile' => $this->tile(),
+                'Brick' => $this->tile(),
+                'StarTile' => $this->member(parentRef: '#/components/schemas/Tile', valueType: 'integer'),
+                'MoonTile' => $this->member(parentRef: '#/components/schemas/Brick', valueType: 'string'),
+                'AnyTile' => $this->union(['a:star' => '#/components/schemas/StarTile', 'a:moon' => '#/components/schemas/MoonTile']),
+                'Board' => $board,
+            ]),
+            outputDirectory: $directory,
+            namespace: $namespace,
+        );
+        $this->autoload(namespace: $namespace, directory: $directory);
+
+        $boardClass = $namespace . '\Board';
+        $this->assertSame(
+            expected: $namespace . '\StarTile|' . $namespace . '\MoonTile',
+            actual: (string)(new ReflectionMethod($boardClass, 'addItemToTiles'))->getParameters()[0]->getType(),
+        );
+        $this->assertStringContainsString('@return array<StarTile|MoonTile>', (string)(new ReflectionMethod($boardClass, 'getTiles'))->getDocComment());
+        $this->assertStringContainsString('array<string, StarTile|MoonTile>', (string)(new ReflectionMethod($boardClass, 'getTileMap'))->getDocComment());
+
+        $built = $this->deserialize(
+            class: $boardClass,
+            body: '{"tile":{"kind":"a:moon","value":"m"},"tiles":[{"kind":"a:star","value":1},{"kind":"a:moon","value":"n"}],"tileMap":{"x":{"kind":"a:moon","value":"o"}}}',
+        );
+        $this->assertInstanceOf($namespace . '\StarTile', $built->getTiles()[0]);
+        $this->assertInstanceOf($namespace . '\MoonTile', $built->getTiles()[1]);
+        $this->assertInstanceOf($namespace . '\MoonTile', $built->getTileMap()['x']);
+        $built->addItemToTiles(new ($namespace . '\MoonTile')(kind: 'a:moon', value: 'p'));
+        $this->assertCount(3, $built->getTiles());
+
+        // The tag picks the member: a star's integer value is no moon's string.
+        foreach (['{"tile":{"kind":"a:moon","value":"m"},"tiles":[{"kind":"a:star","value":"n"}]}', '{"tile":{"kind":"a:moon","value":"m"},"tiles":[{"kind":"a:sun","value":1}]}', '{"tile":{"kind":"a:moon","value":"m"},"tiles":[],"tileMap":{"x":{"kind":"a:star","value":"o"}}}'] as $refused) {
+            try {
+                $this->deserialize(class: $boardClass, body: $refused);
+                $this->fail('accepted ' . $refused);
+            } catch (RuntimeException) {
+                $this->addToAssertionCount(1);
+            }
+        }
     }
 
     /**

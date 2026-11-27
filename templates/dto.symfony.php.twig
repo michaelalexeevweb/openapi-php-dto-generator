@@ -53,8 +53,21 @@ interface {{ className }}
 {%- endif %}
 
 {
+{% if unionMemberList is defined and unionMemberList is not null %}
+    /**
+     * The members, in document order, to try a payload against — the serializer cannot build this
+     * interface. `oneOf`: exactly one must accept it; `anyOf`: the first that does is built.
+     */
+    public const array OPENAPI_UNION_MEMBERS = [
+        '{{ unionMemberList.keyword|php_string }}' => [
+{% for member in unionMemberList.members %}
+            {{ member }}::class,
+{% endfor %}
+        ],
+    ];
+{% endif %}
 {% for param in interfaceGetters|default([]) %}
-{% if not loop.first %}
+{% if not loop.first or (unionMemberList is defined and unionMemberList is not null) %}
 
 {% endif %}
 {% if param.docType is not null %}
@@ -70,6 +83,20 @@ interface {{ className }}
 final class {{ className }}{% if implementedInterfaces is defined and implementedInterfaces is not empty %} implements {{ implementedInterfaces|join(', ') }}{% endif %}
 
 {
+{% if redeclaresUnionMemberList|default(false) %}
+    /** Declared by more than one union this class belongs to; its own keeps it from inheriting both. */
+    public const array OPENAPI_UNION_MEMBERS = [];
+
+{% endif %}
+{% if wireShapes|default([]) is not empty %}
+    /** Property => where an empty array of its wire form is a JSON object, and the date formatter of its values. */
+    private const array OPENAPI_WIRE_SHAPES = [
+{% for param in wireShapes %}
+        '{{ param.name|php_string }}' => ['{{ param.wireShape|php_string }}', {{ param.temporalFormatter is not null ? "'" ~ param.temporalFormatter ~ "'" : 'null' }}],
+{% endfor %}
+    ];
+
+{% endif %}
 {% if validationConstsBlock is not empty %}
 {{ validationConstsBlock|raw }}
 
@@ -345,6 +372,43 @@ final class {{ className }}{% if implementedInterfaces is defined and implemente
         return $value->format('u') === '000000' ? $value->format('c') : $value->format('Y-m-d\TH:i:s.uP');
     }
 {% endif %}
+{% endif %}
+{% if wireShapes|default([]) is not empty %}
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * The serializer calls it through the property's #[Context] callback, and keeps the empty array
+     * object it returns under `PRESERVE_EMPTY_OBJECTS`; a value of a date map is formatted first.
+     */
+    public static function writeOpenApiObjects(mixed $value, object $object, string $attribute): mixed
+    {
+        [$shape, $formatter] = self::OPENAPI_WIRE_SHAPES[$attribute] ?? ['', null];
+        if ($formatter !== null) {
+            $value = self::{$formatter}($value);
+        }
+
+        return $shape === '' ? $value : self::openApiEmptyObjects($value, $shape);
+    }
+
+    /**
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new \ArrayObject() : $value;
+    }
 {% endif %}
 {% if validationMethodsBlock is not empty %}
 

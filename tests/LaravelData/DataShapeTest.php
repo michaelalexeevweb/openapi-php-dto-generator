@@ -158,6 +158,48 @@ final class DataShapeTest extends TestCase
     }
 
     /**
+     * An empty map is `{}` on the way out, as the schema says: laravel-data transforms it as the PHP
+     * array it holds, and `{"widths":{}}` came back `{"widths":[]}` — on its own, inside a nested object,
+     * as the value of a map and as the item of a list. A map with keys is written as it was.
+     */
+    public function testAnEmptyMapIsWrittenAsAnObject(): void
+    {
+        $namespace = $this->generate([
+            'Crate' => [
+                'type' => 'object',
+                'required' => ['widths', 'grid', 'rows', 'box', 'maybe', 'shapes'],
+                'properties' => [
+                    'widths' => ['type' => 'object', 'additionalProperties' => ['type' => 'integer']],
+                    'grid' => ['type' => 'object', 'additionalProperties' => ['type' => 'object', 'additionalProperties' => ['type' => 'integer']]],
+                    'rows' => ['type' => 'array', 'items' => ['type' => 'object', 'additionalProperties' => ['type' => 'integer']]],
+                    'box' => ['$ref' => '#/components/schemas/Box'],
+                    'maybe' => ['type' => 'object', 'nullable' => true, 'additionalProperties' => ['type' => 'integer']],
+                    'shapes' => ['type' => 'object', 'additionalProperties' => ['$ref' => '#/components/schemas/Box']],
+                ],
+            ],
+            'Box' => [
+                'type' => 'object',
+                'properties' => ['widths' => ['type' => 'object', 'additionalProperties' => ['type' => 'integer']]],
+            ],
+        ]);
+        /** @var class-string $crate */
+        $crate = $namespace . '\Crate';
+
+        foreach ([
+            '{"widths":{},"grid":{"row":{}},"rows":[{},{"a":1}],"box":{"widths":{}},"maybe":{},"shapes":{}}',
+            '{"widths":{"a":1},"grid":{},"rows":[],"box":{"widths":{"b":2}},"maybe":null,"shapes":{"c":{"widths":{}}}}',
+        ] as $json) {
+            $built = LaravelDataContainer::withRequest(
+                json: $json,
+                work: static fn(Request $request): object => $crate::from($request),
+            );
+
+            $this->assertSame(expected: $json, actual: $built->toJson());
+            $this->assertSame(expected: $json, actual: (string)json_encode($built->toArray()));
+        }
+    }
+
+    /**
      * A property named `2` keeps that name on the way out. laravel-data `array_merge()`s the transformed
      * array with the class's additional data, which renumbers an integer key: `{"2":"view","4":"edit"}`
      * came out `["view","edit"]` — in a nested object and in a list too.

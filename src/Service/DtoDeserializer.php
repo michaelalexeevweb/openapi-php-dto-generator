@@ -111,6 +111,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
     private const int MAX_UNION_BRANCH_DEPTH = 16;
 
     /**
+     * The type names of a docblock that are no class: a union of item types naming one of them is not a
+     * union of classes ({@see itemTypeFromDocComment()}).
+     */
+    private const array BUILTIN_DOC_TYPES = ['int', 'float', 'string', 'bool', 'array', 'list', 'mixed', 'object', 'iterable', 'callable', 'true', 'false', 'null', 'void', 'never', 'self', 'static'];
+
+    /**
      * The characters PHP's request parser turns into `_` in a top-level name, for `$_GET`, `$_POST`
      * and `$_COOKIE` alike: `page.size` arrives as `page_size`.
      */
@@ -316,6 +322,14 @@ final class DtoDeserializer implements DtoDeserializerInterface
     {
         $this->convertParametersToAttributes($request);
 
+        $reflection = self::$reflectionCache[$dtoClass] ??= new ReflectionClass($dtoClass);
+        if ($reflection->isInterface() || $reflection->isAbstract()) {
+            /** @var T $member */
+            $member = $this->deserializeUnionBody(request: $request, unionClass: $dtoClass);
+
+            return $member;
+        }
+
         // The raw query string is only needed by `allowReserved` parameters, which most documents
         // never declare — parsing it eagerly cost every request a second pass over the query string
         // (measured: +50% on a small DTO with a ten-parameter query). Hence a memoized provider:
@@ -347,6 +361,75 @@ final class DtoDeserializer implements DtoDeserializerInterface
         }
 
         return $dto;
+    }
+
+    /**
+     * A body that IS a union — a discriminated base's abstract class, or a union interface — built as
+     * the member the payload names, exactly as a property typed by the union is: the tag picks the
+     * member, or the members are matched one by one. Reflection-building the union itself was a PHP
+     * `Error` ("Cannot instantiate abstract class") or "has no constructor" for every payload. A union
+     * interface names its members in `OPENAPI_UNION_CONSTRAINTS`; one that cannot (a member of two
+     * unions) is refused as before.
+     *
+     * @param class-string $unionClass
+     */
+    private function deserializeUnionBody(Request $request, string $unionClass): object
+    {
+        $content = $request->getContent();
+        $contentType = (string)$request->headers->get('Content-Type', '');
+        if ($content !== '' && !$this->isJsonMediaType($contentType)) {
+            throw new RuntimeException("A body that is the union {$unionClass} must be application/json.");
+        }
+        $decoded = $content === '' ? new stdClass() : json_decode($content, false);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            throw new RuntimeException('Json is not valid: ' . json_last_error_msg());
+        }
+        if (!$decoded instanceof stdClass) {
+            throw new RuntimeException('JSON body must be an object, got ' . gettype($decoded));
+        }
+
+        $constraints = $this->unionInterfaceConstraintsOf($unionClass);
+        if ($constraints === [] && interface_exists($unionClass)) {
+            throw new RuntimeException("DTO {$unionClass} has no constructor.");
+        }
+
+        $outerShapesKnown = $this->jsonShapesKnown;
+        $this->jsonShapesKnown = true;
+        try {
+            $member = $this->castArrayItemValue(
+                itemValue: $decoded,
+                arrayItemType: $unionClass,
+                itemPath: 'body',
+                source: 'json',
+                itemConstraints: $constraints,
+            );
+        } catch (RuntimeException $e) {
+            throw new RuntimeException(implode("\n", array_unique(DtoServiceSupport::finalizeMessages(explode("\n", $e->getMessage()), 'param "'))), previous: $e);
+        } finally {
+            $this->jsonShapesKnown = $outerShapesKnown;
+        }
+        if (!is_object($member)) {
+            throw new RuntimeException("JSON body is not a {$unionClass}.");
+        }
+
+        return $member;
+    }
+
+    /**
+     * The constraints a union interface names its members in (`OPENAPI_UNION_CONSTRAINTS`), for a value
+     * typed by it with no owner to read them from — the body, or an item of a body that is a list.
+     * Empty for any other type.
+     *
+     * @return array<array-key, mixed>
+     */
+    private function unionInterfaceConstraintsOf(string $type): array
+    {
+        if (!interface_exists($type) || !defined($type . '::OPENAPI_UNION_CONSTRAINTS')) {
+            return [];
+        }
+        $constraints = constant($type . '::OPENAPI_UNION_CONSTRAINTS');
+
+        return is_array($constraints) ? $constraints : [];
     }
 
     /**
@@ -455,6 +538,8 @@ final class DtoDeserializer implements DtoDeserializerInterface
 
         $result = [];
         $errors = [];
+        // A list of a union interface's members: the interface names them, as an owner would.
+        $itemConstraints = $this->unionInterfaceConstraintsOf($itemType);
         // Decoded here, so an empty array in it is `[]` — see `$jsonShapesKnown`.
         $outerShapesKnown = $this->jsonShapesKnown;
         $this->jsonShapesKnown = true;
@@ -471,6 +556,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
                         source: 'json',
                         itemsNullable: $itemsNullable,
                         arrayItemTemporalFormat: $itemTemporalFormat,
+                        itemConstraints: $itemConstraints,
                     );
                 } catch (RuntimeException $e) {
                     foreach (explode("\n", $e->getMessage()) as $message) {
@@ -539,6 +625,7 @@ final class DtoDeserializer implements DtoDeserializerInterface
             source: 'json',
             itemsNullable: $nullable,
             arrayItemTemporalFormat: $temporalFormat,
+            itemConstraints: $this->unionInterfaceConstraintsOf($type),
         );
     }
 
@@ -3728,6 +3815,27 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return null;
         }
 
+        // A union of classes (`Cat|Dog`): the tag the item's constraints map picks the member to build,
+        // as it does for a property typed so; with no tag, each member is tried as the union says.
+        if (str_contains($arrayItemType, '|')) {
+            $members = explode('|', $arrayItemType);
+
+            return $this->castUnionValue(
+                paramName: $itemPath,
+                typeNames: $this->discriminatedUnionMember(typeNames: $members, value: $itemValue, constraints: $itemConstraints),
+                rawValue: $itemValue,
+                rawWasProvided: true,
+                rawSource: $source,
+                arrayItemType: null,
+                schemaAllowsNull: $itemsNullable,
+                dtoReflection: null,
+                openApiFormat: null,
+                allowsAssociativeArray: false,
+                exactlyOne: $this->unionMustMatchExactlyOne($itemConstraints),
+                unionConstraints: $itemConstraints,
+            );
+        }
+
         // Type kind resolved once per type (cached) instead of enum_exists()/class_exists()
         // per array element.
         $kind = $this->resolveTypeKind($arrayItemType);
@@ -4269,6 +4377,12 @@ final class DtoDeserializer implements DtoDeserializerInterface
      */
     private function qualifyDocTypeName(ReflectionClass $reflection, string $rawType): string
     {
+        if (str_contains($rawType, '|')) {
+            return implode(separator: '|', array: array_map(
+                callback: fn(string $member): string => $this->qualifyDocTypeName($reflection, $member),
+                array: explode('|', $rawType),
+            ));
+        }
         if (in_array($rawType, ['int', 'float', 'string', 'bool', 'array', 'list', 'container', 'mixed'], true)) {
             return $rawType;
         }
@@ -4393,9 +4507,28 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return 'container';
         }
 
-        return preg_match('/^\??([A-Za-z_\\\][A-Za-z0-9_\\\]*)$/D', $inner, $matches) === 1
-            ? $matches[1]
-            : null;
+        if (preg_match('/^\??([A-Za-z_\\\][A-Za-z0-9_\\\]*)$/D', $inner, $matches) === 1) {
+            return $matches[1];
+        }
+
+        // A union of classes — `array<Cat|Dog>`, the members of a discriminated union one of which does
+        // not extend it — comes back whole; the cast picks the member by the tag the item's constraints
+        // carry. A union naming a builtin is no item type the cast builds, and stays null.
+        // A `null` among them is the item's nullability, which the items schema states as well.
+        $members = array_values(array: array_filter(
+            array: explode('|', $inner),
+            callback: static fn(string $member): bool => strtolower($member) !== 'null',
+        ));
+        if (count($members) < 2) {
+            return null;
+        }
+        foreach ($members as $member) {
+            if (preg_match('/^[A-Za-z_\\\][A-Za-z0-9_\\\]*$/D', $member) !== 1 || in_array(strtolower($member), self::BUILTIN_DOC_TYPES, true)) {
+                return null;
+            }
+        }
+
+        return implode('|', $members);
     }
 
     /**

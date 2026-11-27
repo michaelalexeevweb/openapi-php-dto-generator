@@ -55,8 +55,21 @@ interface {{ className }} extends {{ interfaceExtends|join(', ') }}
 {% endfor %}
     ];
 {% endif %}
+{% if unionMemberList is not null %}
+    /**
+     * The members, in document order, to try a payload against — the hydrator cannot build this
+     * interface. `oneOf`: exactly one must accept it; `anyOf`: the first that does is built.
+     */
+    public const array OPENAPI_UNION_MEMBERS = [
+        '{{ unionMemberList.keyword|php_string }}' => [
+{% for member in unionMemberList.members %}
+            {{ member }}::class,
+{% endfor %}
+        ],
+    ];
+{% endif %}
 {% for getter in interfaceGetters %}
-{% if not loop.first or discriminatorMapping is not empty %}
+{% if not loop.first or discriminatorMapping is not empty or unionMemberList is not null %}
 
 {% endif %}
 {% if getter.docType is not null %}
@@ -95,6 +108,11 @@ use {{ import }};
 {% endfor %}
 final class {{ className }} extends {{ libAbstractInput }} implements {{ implements|join(', ') }}
 {
+{% if redeclaresUnionMemberList %}
+    /** Declared by more than one union this class belongs to; its own keeps it from inheriting both. */
+    public const array OPENAPI_UNION_MEMBERS = [];
+
+{% endif %}
     /** OpenAPI name => PHP property name. */
     private const array OPENAPI_PROPERTY_NAMES = [
 {% for param in params %}
@@ -114,6 +132,15 @@ final class {{ className }} extends {{ libAbstractInput }} implements {{ impleme
     private const array OPENAPI_TEMPORAL_FORMATS = [
 {% for param in temporalParams %}
         '{{ param.openApiName|php_string }}' => '{{ param.temporalFormat|php_string }}',
+{% endfor %}
+    ];
+
+{% endif %}
+{% if shapedParams is not empty %}
+    /** OpenAPI name => where an empty array of its wire form is a JSON object (`openApiEmptyObjects()`). */
+    private const array OPENAPI_WIRE_SHAPES = [
+{% for param in shapedParams %}
+        '{{ param.openApiName|php_string }}' => '{{ param.wireShape|php_string }}',
 {% endfor %}
     ];
 
@@ -286,10 +313,20 @@ final class {{ className }} extends {{ libAbstractInput }} implements {{ impleme
             unset($payload[$writeOnly]);
         }
 
-{% if temporalParams is not empty %}
+{% if temporalParams is not empty or shapedParams is not empty %}
         $wire = [];
         foreach ($payload as $name => $value) {
-            $wire[$name] = self::openApiWireValue($value, self::OPENAPI_TEMPORAL_FORMATS[$name] ?? null);
+{% if temporalParams is not empty %}
+            $value = self::openApiWireValue($value, self::OPENAPI_TEMPORAL_FORMATS[$name] ?? null);
+{% else %}
+            $value = self::openApiWireValue($value);
+{% endif %}
+{% if shapedParams is not empty %}
+            $shape = self::OPENAPI_WIRE_SHAPES[$name] ?? null;
+            $wire[$name] = $shape === null ? $value : self::openApiEmptyObjects($value, $shape);
+{% else %}
+            $wire[$name] = $value;
+{% endif %}
         }
 
         return $wire;
@@ -297,6 +334,29 @@ final class {{ className }} extends {{ libAbstractInput }} implements {{ impleme
         return array_map(self::openApiWireValue(...), $payload);
 {% endif %}
     }
+{% if shapedParams is not empty %}
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new {{ libStdClass }}() : $value;
+    }
+{% endif %}
 
     /**
      * The same wire form, for `json_encode()` — `{}` for an object with nothing to write, not `[]`.

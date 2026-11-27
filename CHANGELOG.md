@@ -3,6 +3,41 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.165 — 2026-11-28
+
+- fuzz rounds 29–31: 40 fixes
+- empty map written as {}
+- yii3 invalid date reported once
+- root union body deserialized
+- cross-file aliases resolved
+- union bodies warn without entry point
+
+**Regenerate after upgrading, in every mode.**
+
+- symfony, laravel-data, yii3: an EMPTY map (`type: object, additionalProperties: …`) is written as `{}`, not
+  `[]` — top level, nested, map of maps/objects/dates, list of maps; a map with keys is unchanged (laravel
+  already wrote `{}`). Behaviour change: Symfony `normalize()` gives an empty `ArrayObject` for an empty map,
+  yii3 `getData()` gives `stdClass` (as for an empty nested object);
+- yii3: a `format: date` / `date-time` value that fails the shape is reported once (the parser after the
+  pattern now has `skipOnError`); an impossible date that matches the shape is still refused once;
+- runtime: `deserialize($request, Union::class)` straight into a union component works (the 2.15.164 known
+  limit is lifted), yii3 builds a root discriminated union through its mapping; laravel / laravel-data get
+  an entry point for an undiscriminated union body (`<Union>FormRequest`, a laravel-data resolver); a union
+  body that still has none (a class-and-value union, symfony/yii3 undiscriminated) is reported by a warning
+  instead of a silent success;
+- every mode: a `$ref` to an array alias in another document, a local alias of a schema in another document
+  and external alias chains are resolved — they named a class that was never written (generation reported
+  success) or an empty class that dropped the data; a referenced class that is not written now fails;
+- every mode: an object with its own `properties` plus `anyOf`/`oneOf` arms that only narrow a property or
+  name a requirement is one class with an assertion, not a union of arm classes ("Unsupported type");
+  an `allOf` child of it keeps that assertion; a property that `$ref`s a union whose inline branch admits
+  null admits null;
+- runtime: `properties` beside `allOf: [$ref X]` are checked, list items / map values of a discriminated
+  union whose members keep their own parents are typed by the members; symfony: positions of an array alias
+  holding a union are checked, the payload view of a `--ref` shared class no longer depends on run order,
+  an `allOf` child inherits the parent's object keywords; laravel / laravel-data: class items inside a
+  union branch are typed; yii3: `not` / `dependentSchemas` beside a reference are asserted.
+
 ## 2.15.164 — 2026-11-27
 
 - discriminated union keeps allOf parent

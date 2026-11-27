@@ -456,7 +456,8 @@ final class UpdatePost extends AbstractInput implements DataSetInterface, RulesP
     public function getPropertyValue(string $property): mixed { … }
     public function getData(): ?array { … }
 
-    // `json_encode()` writes what `getData()` returns: dates and enums in wire form, `{}` when empty.
+    // `json_encode()` writes what `getData()` returns: dates and enums in wire form, `{}` when empty —
+    // the object itself, and a map (`additionalProperties`) in it, a map's value or a list's item too.
     public function jsonSerialize(): mixed { … }
 }
 ```
@@ -561,7 +562,7 @@ Natively expressed by `yiisoft/validator`:
 | `pattern` | `#[Regex]` |
 | `minItems` / `maxItems` | `#[Count(min:, max:)]` |
 | `format: email` / `uuid` / `uri` / `ipv4` / `ipv6` | `#[Email]`, `#[Uuid]`, `#[Url]`, `#[Ip]` |
-| `format: date` / `date-time` | `#[Date]` / `#[DateTime]`, plus stacked `#[ToDateTime]` for hydration and a raw `#[Validate]` against the same formats (`Date` after its digits, or the RFC 3339 shape and then `AnyRule` of `DateTime`s — "must be a date") |
+| `format: date` / `date-time` | `#[Date]` / `#[DateTime]`, plus stacked `#[ToDateTime]` for hydration and a raw `#[Validate]` against the same formats (`Date` after its digits, or the RFC 3339 shape and then `AnyRule` of `DateTime`s — "must be a date", once: the parser carries `skipOnError` and runs only on what the shape took) |
 | nested object | `#[Nested]` — argument-free; it cascades into the nested class's own attributes |
 | list of nested objects | `#[Each(new Nested())]` plus `#[Collection(…)]` for hydration |
 | `enum` | backed enums become the property TYPE, with a raw `#[Validate(new In([...]))]` of the cases (strict in a body); inline enums use JSON equality in the interpreter |
@@ -704,6 +705,47 @@ $input = $validatingHydrator->create($class, $body);
 
 The constants are emitted only where every member implements this one union interface: a class that
 inherits the same constant from two interfaces does not load.
+
+An UNDISCRIMINATED union of classes — `$ref: Shape`, `Shape: {oneOf: [$ref Circle, $ref Square]}`, or the
+same `oneOf` / `anyOf` written inline in the body — has no tag to look up, and the hydrator refuses the
+interface on every payload (`Class "…\Shape" not exist.`, a 500). The interface names its members, in
+document order, under the union's keyword, so the resolver tries each through the validating hydrator —
+exactly one valid for `oneOf`, the first valid for `anyOf`:
+
+```php
+interface Shape
+{
+    public const array OPENAPI_UNION_MEMBERS = [
+        'oneOf' => [
+            Circle::class,
+            Square::class,
+        ],
+    ];
+}
+
+$body = $request->getParsedBody();
+$keyword = array_key_first(Shape::OPENAPI_UNION_MEMBERS);
+$valid = [];
+foreach (Shape::OPENAPI_UNION_MEMBERS[$keyword] as $member) {
+    $input = $validatingHydrator->create($member, is_array($body) ? $body : []);
+    if ($input->getValidationResult()?->isValid() ?? true) {
+        $valid[] = $input;
+        if ($keyword === 'anyOf') {
+            break;
+        }
+    }
+}
+if (count($valid) !== 1) {
+    // 422: no member, or more than one member of the oneOf, accepts the body
+}
+$shape = $valid[0];
+```
+
+A member of two such unions redeclares `OPENAPI_UNION_MEMBERS` itself, which it would otherwise inherit
+from both interfaces — a fatal error at load; each interface keeps its own list. A union with a member that
+is not a plain class (a discriminated union, a nested union, `{type: "null"}`) gets no list, and the
+generator warns that the body has no entry point. A union of a class and a VALUE (`oneOf: [$ref Circle,
+{type: string}]`) has no class at all, and is warned about too.
 
 ## A body that is a list
 

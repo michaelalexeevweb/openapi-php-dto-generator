@@ -39,6 +39,10 @@ interface {{ className }} extends {{ interfaceExtends|join(', ') }}
 interface {{ className }}
 {% endif %}
 {
+{% if unionConstraints is defined and unionConstraints is not null %}
+    /** The union as a property typed by it carries it — what `DtoDeserializer` builds a body that IS the union from. */
+    public const array OPENAPI_UNION_CONSTRAINTS = {{ unionConstraints|raw }};
+{% endif %}
 }
 {% else %}
 /**
@@ -68,6 +72,11 @@ interface {{ className }}
 {% endif %}
 {{ classDecl }}
 {
+{% if redeclaresUnionConstraints|default(false) %}
+    /** Declared by more than one union this class belongs to; its own keeps it from inheriting both. */
+    public const array OPENAPI_UNION_CONSTRAINTS = [];
+
+{% endif %}
 {% for property in privateProperties %}
 {% if property.isArray %}
 {% set hasDocBody = property.description is not null or property.example is not null or property.constraintsLine is not null %}

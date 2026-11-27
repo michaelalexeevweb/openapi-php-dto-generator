@@ -1754,6 +1754,30 @@ trait RendersLaravelValidation
     }
 
     /**
+     * Whether the nested class behind `$property` itself requires every name of `$required` — in its
+     * own `required` or in an inline `allOf` part of its schema. Any other property owns no such list.
+     *
+     * @param SchemaProperty $property
+     * @param array<mixed> $required
+     */
+    private function laravelNestedClassRequires(array $property, array $required): bool
+    {
+        $nestedClass = $this->laravelDtoClass($property);
+        if ($nestedClass === null) {
+            return true;
+        }
+        $schema = $this->dtoSchemas[$nestedClass];
+        $own = is_array($schema['required'] ?? null) ? $schema['required'] : [];
+        foreach (is_array($schema['allOf'] ?? null) ? $schema['allOf'] : [] as $part) {
+            if (is_array($part) && is_array($part['required'] ?? null)) {
+                $own = [...$own, ...$part['required']];
+            }
+        }
+
+        return array_diff($required, $own) === [];
+    }
+
+    /**
      * Drops the keywords the emitted rules already enforce, so a payload that breaks one of them is
      * reported ONCE. Measured before doing it: a property that lands in the interpreter and also carries
      * a rule-expressible keyword produced two messages for one mistake — `validation.min.string` from
@@ -1796,7 +1820,13 @@ trait RendersLaravelValidation
         // [value]`, and `maxLength` on a sibling was never checked.
         $keysUnmaterialized = $property['type'] === 'mixed'
             || ($this->laravelDtoClass($property) === null && str_contains($property['type'], '|') && !str_contains($property['type'], '<'));
-        if (is_array($schema['required'] ?? null) && (!is_array($schema['properties'] ?? null) || $keysUnmaterialized)) {
+        // And a `required` list the nested class does not hold: beside `allOf: [$ref: Coral]` the object
+        // IS Coral, whose rules never heard of the use site's names, so `{required: [bee], properties:
+        // {bee: {minimum: 9}}}` there accepted `{}`.
+        if (
+            is_array($schema['required'] ?? null)
+            && (!is_array($schema['properties'] ?? null) || $keysUnmaterialized || !$this->laravelNestedClassRequires($property, $schema['required']))
+        ) {
             $consumed = array_values(array_filter(
                 array: $consumed,
                 callback: static fn(string $keyword): bool => $keyword !== 'required',
@@ -2180,7 +2210,7 @@ trait RendersLaravelValidation
                 continue;
             }
 
-            if (in_array($className, array_values($discriminator['mapping']), true)) {
+            if (in_array($className, array_values($discriminator['mapping']), true) && !$this->memberIsWrittenByItsOwnDocument($className, $baseClass)) {
                 $interfaces[] = $baseClass;
             }
         }
@@ -2318,7 +2348,12 @@ trait RendersLaravelValidation
                     className: $target,
                     insideRecursiveFold: $insideRecursiveFold,
                 )
-                : [...$schema, $this->laravelContainerValueKey($property) => ['x-openapi-recurse' => $target]];
+                : [...$schema, $this->laravelContainerValueKey($property) => $this->laravelFoldItemTyped(
+                    item: ['x-openapi-recurse' => $target],
+                    property: $property,
+                    className: $target,
+                    insideRecursiveFold: $insideRecursiveFold,
+                )];
         }
 
         $shared = $this->laravelSharedFold(
@@ -2341,10 +2376,15 @@ trait RendersLaravelValidation
                 );
             }
             $containerKey = $this->laravelContainerValueKey($property);
-            $marked = [
-                ...(is_array($schema[$containerKey] ?? null) ? $schema[$containerKey] : []),
-                'x-openapi-recurse' => $shared['key'],
-            ];
+            $marked = $this->laravelFoldItemTyped(
+                item: [
+                    ...(is_array($schema[$containerKey] ?? null) ? $schema[$containerKey] : []),
+                    'x-openapi-recurse' => $shared['key'],
+                ],
+                property: $property,
+                className: $target,
+                insideRecursiveFold: $insideRecursiveFold,
+            );
             // A null item of `array<?Shape>`: the fold of a discriminated union asserts `type: object`,
             // which refused the null the items admit. Let through the way `laravelWithNullableNestedMarker()`
             // lets a property's: `nullable` beside a typed fold, a null branch beside a bare union.
@@ -2386,11 +2426,43 @@ trait RendersLaravelValidation
         // is false for a populated map, so every keyword folded in from the value class was skipped
         // in silence.
         $containerKey = $this->laravelContainerValueKey($property);
-        $schema[$containerKey] = array_key_exists($containerKey, $schema) && is_array($schema[$containerKey])
-            ? $this->laravelMergedFold(local: $schema[$containerKey], nested: $nested)
-            : $nested;
+        $schema[$containerKey] = $this->laravelFoldItemTyped(
+            item: array_key_exists($containerKey, $schema) && is_array($schema[$containerKey])
+                ? $this->laravelMergedFold(local: $schema[$containerKey], nested: $nested)
+                : $nested,
+            property: $property,
+            className: $target,
+            insideRecursiveFold: $insideRecursiveFold,
+        );
 
         return $schema;
+    }
+
+    /**
+     * A list item or map value that is a generated object class, typed as one where no rule types it.
+     * Inside a fold — a spelled-out union branch, a recursive schema — no `field.*` rule asserts the
+     * item is an array, and the fold itself names no `type`: `{"pack": ["x"]}` matched a union branch
+     * whose items are Teal, the union counted it, and the hydrator's closure took a string — a TypeError,
+     * a 500. A null item passes where the items admit one. A union class pins nothing: its branches
+     * type the value.
+     *
+     * @param array<string, mixed> $item
+     * @param SchemaProperty $property
+     * @return array<string, mixed>
+     */
+    private function laravelFoldItemTyped(array $item, array $property, string $className, bool $insideRecursiveFold): array
+    {
+        $definition = $this->dtoSchemas[$className] ?? [];
+        $unionClass = array_key_exists('oneOf', $definition) || array_key_exists('anyOf', $definition);
+        if (!$insideRecursiveFold || array_key_exists('type', $item) || $unionClass) {
+            return $item;
+        }
+        $typed = [...$item, 'type' => 'object'];
+        if ($this->laravelItemsNullable($property)) {
+            $typed['nullable'] = true;
+        }
+
+        return $typed;
     }
 
     /**
@@ -2820,7 +2892,7 @@ trait RendersLaravelValidation
                 continue;
             }
             $ref = is_array($variant) ? ($variant['$ref'] ?? null) : null;
-            $class = is_string($ref) ? $this->schemaRefToClassName($ref) : 'mixed';
+            $class = is_string($ref) ? $this->schemaRefToClassName($ref, $this->constraintSourceFile ?? $this->rootSpecFile) : 'mixed';
             if (!is_array($branch) || !in_array($class, $classMap, true)) {
                 return null;
             }
@@ -3460,6 +3532,41 @@ trait RendersLaravelValidation
         $component = $this->laravelDtoClass($property);
 
         return $component === null ? [] : $this->laravelUnionComponentMembers($component);
+    }
+
+    /**
+     * The members a request body that IS an undiscriminated union of classes is tried against, in
+     * document order, and whether exactly one must match: `oneOf` written over the classes themselves.
+     * A member reached through a nested union counts with that union's classes, where "exactly one"
+     * would count them twice, so such a body takes the first match as `anyOf` does. Null for any other
+     * class — not a request payload, discriminated, or with a member that names no class.
+     *
+     * Both laravel modes give such a body its entry point from it: laravel a FormRequest, laravel-data
+     * a resolver class, since an interface has no `rules()` or `from()` to call.
+     *
+     * @return array{members: list<string>, exactlyOne: bool}|null
+     */
+    private function laravelUnionBodyMembers(string $className): ?array
+    {
+        if (!array_key_exists($className, $this->requestPayloadClasses) || !$this->rendersAsUnionInterface($className)) {
+            return null;
+        }
+        $members = $this->laravelUnionComponentMembers($className);
+        if ($members === []) {
+            return null;
+        }
+        $schema = $this->dtoSchemas[$className] ?? [];
+        $branches = $schema['oneOf'] ?? null;
+        $exactlyOne = false;
+        if (is_array($branches)) {
+            $classBranches = array_filter(
+                array: $branches,
+                callback: static fn(mixed $branch): bool => $branch !== ['type' => 'null'],
+            );
+            $exactlyOne = count($classBranches) === count($members);
+        }
+
+        return ['members' => $members, 'exactlyOne' => $exactlyOne];
     }
 
     /**

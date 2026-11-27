@@ -1,4 +1,4 @@
-# yii3 mode — 80 files, 37104 lines
+# yii3 mode — 80 files, 37562 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -101,6 +101,17 @@ use Yiisoft\Validator\RulesProviderInterface;
  */
 interface Animal extends DataSetInterface, RulesProviderInterface, JsonSerializable
 {
+    /**
+     * The members, in document order, to try a payload against — the hydrator cannot build this
+     * interface. `oneOf`: exactly one must accept it; `anyOf`: the first that does is built.
+     */
+    public const array OPENAPI_UNION_MEMBERS = [
+        'oneOf' => [
+            Cat::class,
+            Dog::class,
+            AnimalOneOf3::class,
+        ],
+    ];
 }
 
 ===== Animal2.php =====
@@ -122,6 +133,18 @@ use Yiisoft\Validator\RulesProviderInterface;
  */
 interface Animal2 extends DataSetInterface, RulesProviderInterface, JsonSerializable
 {
+    /**
+     * The members, in document order, to try a payload against — the hydrator cannot build this
+     * interface. `oneOf`: exactly one must accept it; `anyOf`: the first that does is built.
+     */
+    public const array OPENAPI_UNION_MEMBERS = [
+        'anyOf' => [
+            Cat::class,
+            Dog::class,
+            Dog2::class,
+            Animal2AnyOf4::class,
+        ],
+    ];
 }
 
 ===== Animal2AnyOf4.php =====
@@ -11734,6 +11757,11 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
     private const array OPENAPI_WRITE_ONLY = [
     ];
 
+    /** OpenAPI name => where an empty array of its wire form is a JSON object (`openApiEmptyObjects()`). */
+    private const array OPENAPI_WIRE_SHAPES = [
+        'nested' => 'object',
+    ];
+
     private const array OPENAPI_VALIDATION_CONSTRAINTS = [
         'type' => 'object',
         'required' => [],
@@ -12118,7 +12146,35 @@ final class ApiTestSerializationGetQueryParams extends AbstractInput implements 
             unset($payload[$writeOnly]);
         }
 
-        return array_map(self::openApiWireValue(...), $payload);
+        $wire = [];
+        foreach ($payload as $name => $value) {
+            $value = self::openApiWireValue($value);
+            $shape = self::OPENAPI_WIRE_SHAPES[$name] ?? null;
+            $wire[$name] = $shape === null ? $value : self::openApiEmptyObjects($value, $shape);
+        }
+
+        return $wire;
+    }
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new stdClass() : $value;
     }
 
     /**
@@ -12605,7 +12661,7 @@ final class ApiTestSerializationGetQueryParamsFilter extends AbstractInput imple
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
     #[Date(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()), new Composite([new Regex('/^\d{4}-\d{2}-\d{2}$/', message: 'Since must be a date.'), new Date(format: 'php:Y-m-d')], skipOnEmpty: new WhenNull(), skipOnError: true))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()), new Composite([new Regex('/^\d{4}-\d{2}-\d{2}$/', message: 'Since must be a date.'), new Date(format: 'php:Y-m-d', skipOnError: true)], skipOnEmpty: new WhenNull(), skipOnError: true))]
     #[ToDateTime(format: 'php:Y-m-d')]
     public readonly ?DateTimeImmutable $since;
 
@@ -12721,7 +12777,8 @@ final class ApiTestSerializationGetQueryParamsFilter extends AbstractInput imple
 
         $wire = [];
         foreach ($payload as $name => $value) {
-            $wire[$name] = self::openApiWireValue($value, self::OPENAPI_TEMPORAL_FORMATS[$name] ?? null);
+            $value = self::openApiWireValue($value, self::OPENAPI_TEMPORAL_FORMATS[$name] ?? null);
+            $wire[$name] = $value;
         }
 
         return $wire;
@@ -14566,6 +14623,11 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
     private const array OPENAPI_WRITE_ONLY = [
     ];
 
+    /** OpenAPI name => where an empty array of its wire form is a JSON object (`openApiEmptyObjects()`). */
+    private const array OPENAPI_WIRE_SHAPES = [
+        'mustContain' => 'list<object>',
+    ];
+
     private const array OPENAPI_VALIDATION_CONSTRAINTS = [
         'type' => 'object',
         'required' => [
@@ -15084,7 +15146,35 @@ final class ApplicatorRefs extends AbstractInput implements DataSetInterface, Ru
             unset($payload[$writeOnly]);
         }
 
-        return array_map(self::openApiWireValue(...), $payload);
+        $wire = [];
+        foreach ($payload as $name => $value) {
+            $value = self::openApiWireValue($value);
+            $shape = self::OPENAPI_WIRE_SHAPES[$name] ?? null;
+            $wire[$name] = $shape === null ? $value : self::openApiEmptyObjects($value, $shape);
+        }
+
+        return $wire;
+    }
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new stdClass() : $value;
     }
 
     /**
@@ -18553,6 +18643,9 @@ use const PREG_SPLIT_NO_EMPTY;
 #[Callback(method: 'validateOpenApiConstraints')]
 final class Cat extends AbstractInput implements Animal, Animal2, DataSetInterface, RulesProviderInterface, JsonSerializable
 {
+    /** Declared by more than one union this class belongs to; its own keeps it from inheriting both. */
+    public const array OPENAPI_UNION_MEMBERS = [];
+
     /** OpenAPI name => PHP property name. */
     private const array OPENAPI_PROPERTY_NAMES = [
         'name' => 'name',
@@ -18990,6 +19083,11 @@ final class ChainLink extends AbstractInput implements DataSetInterface, RulesPr
     private const array OPENAPI_WRITE_ONLY = [
     ];
 
+    /** OpenAPI name => where an empty array of its wire form is a JSON object (`openApiEmptyObjects()`). */
+    private const array OPENAPI_WIRE_SHAPES = [
+        'tags' => 'list<object>',
+    ];
+
     private const array OPENAPI_VALIDATION_CONSTRAINTS = [
         'type' => 'object',
         'required' => [
@@ -19136,7 +19234,35 @@ final class ChainLink extends AbstractInput implements DataSetInterface, RulesPr
             unset($payload[$writeOnly]);
         }
 
-        return array_map(self::openApiWireValue(...), $payload);
+        $wire = [];
+        foreach ($payload as $name => $value) {
+            $value = self::openApiWireValue($value);
+            $shape = self::OPENAPI_WIRE_SHAPES[$name] ?? null;
+            $wire[$name] = $shape === null ? $value : self::openApiEmptyObjects($value, $shape);
+        }
+
+        return $wire;
+    }
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new stdClass() : $value;
     }
 
     /**
@@ -19493,6 +19619,11 @@ final class ChainMiddle extends AbstractInput implements DataSetInterface, Rules
     private const array OPENAPI_WRITE_ONLY = [
     ];
 
+    /** OpenAPI name => where an empty array of its wire form is a JSON object (`openApiEmptyObjects()`). */
+    private const array OPENAPI_WIRE_SHAPES = [
+        'links' => 'list<object>',
+    ];
+
     private const array OPENAPI_VALIDATION_CONSTRAINTS = [
         'type' => 'object',
         'required' => [
@@ -19585,7 +19716,35 @@ final class ChainMiddle extends AbstractInput implements DataSetInterface, Rules
             unset($payload[$writeOnly]);
         }
 
-        return array_map(self::openApiWireValue(...), $payload);
+        $wire = [];
+        foreach ($payload as $name => $value) {
+            $value = self::openApiWireValue($value);
+            $shape = self::OPENAPI_WIRE_SHAPES[$name] ?? null;
+            $wire[$name] = $shape === null ? $value : self::openApiEmptyObjects($value, $shape);
+        }
+
+        return $wire;
+    }
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new stdClass() : $value;
     }
 
     /**
@@ -20779,6 +20938,12 @@ final class ContainerAliases extends AbstractInput implements DataSetInterface, 
     private const array OPENAPI_WRITE_ONLY = [
     ];
 
+    /** OpenAPI name => where an empty array of its wire form is a JSON object (`openApiEmptyObjects()`). */
+    private const array OPENAPI_WIRE_SHAPES = [
+        'listOfMaps' => 'list<object>',
+        'mapOfLists' => 'object',
+    ];
+
     private const array OPENAPI_VALIDATION_CONSTRAINTS = [
         'type' => 'object',
         'required' => [
@@ -20999,7 +21164,35 @@ final class ContainerAliases extends AbstractInput implements DataSetInterface, 
             unset($payload[$writeOnly]);
         }
 
-        return array_map(self::openApiWireValue(...), $payload);
+        $wire = [];
+        foreach ($payload as $name => $value) {
+            $value = self::openApiWireValue($value);
+            $shape = self::OPENAPI_WIRE_SHAPES[$name] ?? null;
+            $wire[$name] = $shape === null ? $value : self::openApiEmptyObjects($value, $shape);
+        }
+
+        return $wire;
+    }
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new stdClass() : $value;
     }
 
     /**
@@ -21463,6 +21656,13 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
         'timestamps' => 'date-time',
     ];
 
+    /** OpenAPI name => where an empty array of its wire form is a JSON object (`openApiEmptyObjects()`). */
+    private const array OPENAPI_WIRE_SHAPES = [
+        'datesByDay' => 'object',
+        'shapes' => 'list<object>',
+        'tagsByKey' => 'object<object>',
+    ];
+
     private const array OPENAPI_VALIDATION_CONSTRAINTS = [
         'type' => 'object',
         'required' => [
@@ -21772,10 +21972,33 @@ final class Containers extends AbstractInput implements DataSetInterface, RulesP
 
         $wire = [];
         foreach ($payload as $name => $value) {
-            $wire[$name] = self::openApiWireValue($value, self::OPENAPI_TEMPORAL_FORMATS[$name] ?? null);
+            $value = self::openApiWireValue($value, self::OPENAPI_TEMPORAL_FORMATS[$name] ?? null);
+            $shape = self::OPENAPI_WIRE_SHAPES[$name] ?? null;
+            $wire[$name] = $shape === null ? $value : self::openApiEmptyObjects($value, $shape);
         }
 
         return $wire;
+    }
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new stdClass() : $value;
     }
 
     /**
@@ -23777,6 +24000,9 @@ use const PREG_SPLIT_NO_EMPTY;
 #[Callback(method: 'validateOpenApiConstraints')]
 final class Dog extends AbstractInput implements Animal, Animal2, DataSetInterface, RulesProviderInterface, JsonSerializable
 {
+    /** Declared by more than one union this class belongs to; its own keeps it from inheriting both. */
+    public const array OPENAPI_UNION_MEMBERS = [];
+
     /** OpenAPI name => PHP property name. */
     private const array OPENAPI_PROPERTY_NAMES = [
         'name' => 'name',
@@ -25088,6 +25314,11 @@ final class ItemBounds extends AbstractInput implements DataSetInterface, RulesP
     private const array OPENAPI_WRITE_ONLY = [
     ];
 
+    /** OpenAPI name => where an empty array of its wire form is a JSON object (`openApiEmptyObjects()`). */
+    private const array OPENAPI_WIRE_SHAPES = [
+        'scoresByKey' => 'object',
+    ];
+
     private const array OPENAPI_VALIDATION_CONSTRAINTS = [
         'type' => 'object',
         'required' => [
@@ -25272,7 +25503,35 @@ final class ItemBounds extends AbstractInput implements DataSetInterface, RulesP
             unset($payload[$writeOnly]);
         }
 
-        return array_map(self::openApiWireValue(...), $payload);
+        $wire = [];
+        foreach ($payload as $name => $value) {
+            $value = self::openApiWireValue($value);
+            $shape = self::OPENAPI_WIRE_SHAPES[$name] ?? null;
+            $wire[$name] = $shape === null ? $value : self::openApiEmptyObjects($value, $shape);
+        }
+
+        return $wire;
+    }
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new stdClass() : $value;
     }
 
     /**
@@ -25831,6 +26090,14 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
     private const array OPENAPI_WRITE_ONLY = [
     ];
 
+    /** OpenAPI name => where an empty array of its wire form is a JSON object (`openApiEmptyObjects()`). */
+    private const array OPENAPI_WIRE_SHAPES = [
+        'rowsOfMaps' => 'list<object>',
+        'listsByKey' => 'object',
+        'mapsByKey' => 'object<object>',
+        'tagRows' => 'list<list<object>>',
+    ];
+
     private const array OPENAPI_VALIDATION_CONSTRAINTS = [
         'type' => 'object',
         'required' => [
@@ -26181,7 +26448,35 @@ final class NestedContainers extends AbstractInput implements DataSetInterface, 
             unset($payload[$writeOnly]);
         }
 
-        return array_map(self::openApiWireValue(...), $payload);
+        $wire = [];
+        foreach ($payload as $name => $value) {
+            $value = self::openApiWireValue($value);
+            $shape = self::OPENAPI_WIRE_SHAPES[$name] ?? null;
+            $wire[$name] = $shape === null ? $value : self::openApiEmptyObjects($value, $shape);
+        }
+
+        return $wire;
+    }
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new stdClass() : $value;
     }
 
     /**
@@ -26715,6 +27010,12 @@ final class NullableContainerValues extends AbstractInput implements DataSetInte
     private const array OPENAPI_WRITE_ONLY = [
     ];
 
+    /** OpenAPI name => where an empty array of its wire form is a JSON object (`openApiEmptyObjects()`). */
+    private const array OPENAPI_WIRE_SHAPES = [
+        'mapOfNullable' => 'object',
+        'mapOfNullable31' => 'object',
+    ];
+
     private const array OPENAPI_VALIDATION_CONSTRAINTS = [
         'type' => 'object',
         'required' => [
@@ -26928,7 +27229,35 @@ final class NullableContainerValues extends AbstractInput implements DataSetInte
             unset($payload[$writeOnly]);
         }
 
-        return array_map(self::openApiWireValue(...), $payload);
+        $wire = [];
+        foreach ($payload as $name => $value) {
+            $value = self::openApiWireValue($value);
+            $shape = self::OPENAPI_WIRE_SHAPES[$name] ?? null;
+            $wire[$name] = $shape === null ? $value : self::openApiEmptyObjects($value, $shape);
+        }
+
+        return $wire;
+    }
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new stdClass() : $value;
     }
 
     /**
@@ -28475,7 +28804,7 @@ final class ReadOnlyFields extends AbstractInput implements DataSetInterface, Ru
     public readonly string $title;
 
     #[DateTime(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenNull()), new Composite([new Regex('/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}((\.\d+)?(Z|z|[+-]([01]\d|2[0-3]):[0-5]\d))?| \d{2}:\d{2}:\d{2})$/D', message: 'WrittenAt must be a date.'), new AnyRule([new DateTime(format: 'php:Y-m-d\TH:i:sP'), new DateTime(format: 'php:Y-m-d\TH:i:s.up'), new DateTime(format: 'php:Y-m-d H:i:s'), new DateTime(format: 'php:Y-m-d\TH:i:s')], message: 'WrittenAt must be a date.')], skipOnEmpty: new WhenNull(), skipOnError: true))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenNull()), new Composite([new Regex('/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}((\.\d+)?(Z|z|[+-]([01]\d|2[0-3]):[0-5]\d))?| \d{2}:\d{2}:\d{2})$/D', message: 'WrittenAt must be a date.'), new AnyRule([new DateTime(format: 'php:Y-m-d\TH:i:sP'), new DateTime(format: 'php:Y-m-d\TH:i:s.up'), new DateTime(format: 'php:Y-m-d H:i:s'), new DateTime(format: 'php:Y-m-d\TH:i:s')], message: 'WrittenAt must be a date.', skipOnError: true)], skipOnEmpty: new WhenNull(), skipOnError: true))]
     #[ToDateTime(format: 'php:Y-m-d\TH:i:sP')]
     #[ToDateTime(format: 'php:Y-m-d\TH:i:s.up')]
     #[ToDateTime(format: 'php:Y-m-d H:i:s')]
@@ -28635,7 +28964,8 @@ final class ReadOnlyFields extends AbstractInput implements DataSetInterface, Ru
 
         $wire = [];
         foreach ($payload as $name => $value) {
-            $wire[$name] = self::openApiWireValue($value, self::OPENAPI_TEMPORAL_FORMATS[$name] ?? null);
+            $value = self::openApiWireValue($value, self::OPENAPI_TEMPORAL_FORMATS[$name] ?? null);
+            $wire[$name] = $value;
         }
 
         return $wire;
@@ -30698,6 +31028,11 @@ final class Test2 extends AbstractInput implements DataSetInterface, RulesProvid
     private const array OPENAPI_WRITE_ONLY = [
     ];
 
+    /** OpenAPI name => where an empty array of its wire form is a JSON object (`openApiEmptyObjects()`). */
+    private const array OPENAPI_WIRE_SHAPES = [
+        'tags' => 'list<object>',
+    ];
+
     private const array OPENAPI_VALIDATION_CONSTRAINTS = [
         'type' => 'object',
         'required' => [
@@ -30918,7 +31253,35 @@ final class Test2 extends AbstractInput implements DataSetInterface, RulesProvid
             unset($payload[$writeOnly]);
         }
 
-        return array_map(self::openApiWireValue(...), $payload);
+        $wire = [];
+        foreach ($payload as $name => $value) {
+            $value = self::openApiWireValue($value);
+            $shape = self::OPENAPI_WIRE_SHAPES[$name] ?? null;
+            $wire[$name] = $shape === null ? $value : self::openApiEmptyObjects($value, $shape);
+        }
+
+        return $wire;
+    }
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new stdClass() : $value;
     }
 
     /**
@@ -33040,6 +33403,11 @@ final class TreeNode extends AbstractInput implements DataSetInterface, RulesPro
     private const array OPENAPI_WRITE_ONLY = [
     ];
 
+    /** OpenAPI name => where an empty array of its wire form is a JSON object (`openApiEmptyObjects()`). */
+    private const array OPENAPI_WIRE_SHAPES = [
+        'children' => 'object',
+    ];
+
     private const array OPENAPI_VALIDATION_CONSTRAINTS = [
         'type' => 'object',
         'required' => [
@@ -33296,7 +33664,35 @@ final class TreeNode extends AbstractInput implements DataSetInterface, RulesPro
             unset($payload[$writeOnly]);
         }
 
-        return array_map(self::openApiWireValue(...), $payload);
+        $wire = [];
+        foreach ($payload as $name => $value) {
+            $value = self::openApiWireValue($value);
+            $shape = self::OPENAPI_WIRE_SHAPES[$name] ?? null;
+            $wire[$name] = $shape === null ? $value : self::openApiEmptyObjects($value, $shape);
+        }
+
+        return $wire;
+    }
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new stdClass() : $value;
     }
 
     /**
@@ -33881,6 +34277,11 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
     private const array OPENAPI_WRITE_ONLY = [
     ];
 
+    /** OpenAPI name => where an empty array of its wire form is a JSON object (`openApiEmptyObjects()`). */
+    private const array OPENAPI_WIRE_SHAPES = [
+        'chainAllOf' => 'list<object>',
+    ];
+
     private const array OPENAPI_VALIDATION_CONSTRAINTS = [
         'type' => 'object',
         'required' => [
@@ -34132,7 +34533,35 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
             unset($payload[$writeOnly]);
         }
 
-        return array_map(self::openApiWireValue(...), $payload);
+        $wire = [];
+        foreach ($payload as $name => $value) {
+            $value = self::openApiWireValue($value);
+            $shape = self::OPENAPI_WIRE_SHAPES[$name] ?? null;
+            $wire[$name] = $shape === null ? $value : self::openApiEmptyObjects($value, $shape);
+        }
+
+        return $wire;
+    }
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new stdClass() : $value;
     }
 
     /**
@@ -35399,6 +35828,11 @@ final class User extends AbstractInput implements DataSetInterface, RulesProvide
         'createdAt' => 'date-time',
     ];
 
+    /** OpenAPI name => where an empty array of its wire form is a JSON object (`openApiEmptyObjects()`). */
+    private const array OPENAPI_WIRE_SHAPES = [
+        'pet' => 'object',
+    ];
+
     private const array OPENAPI_VALIDATION_CONSTRAINTS = [
         'type' => 'object',
         'required' => [
@@ -35495,7 +35929,7 @@ final class User extends AbstractInput implements DataSetInterface, RulesProvide
     public readonly Animal2|array|null $pet;
 
     #[DateTime(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()), new Composite([new Regex('/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}((\.\d+)?(Z|z|[+-]([01]\d|2[0-3]):[0-5]\d))?| \d{2}:\d{2}:\d{2})$/D', message: 'CreatedAt must be a date.'), new AnyRule([new DateTime(format: 'php:Y-m-d\TH:i:sP'), new DateTime(format: 'php:Y-m-d\TH:i:s.up'), new DateTime(format: 'php:Y-m-d H:i:s'), new DateTime(format: 'php:Y-m-d\TH:i:s')], message: 'CreatedAt must be a date.')], skipOnEmpty: new WhenMissing(), skipOnError: true))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()), new Composite([new Regex('/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}((\.\d+)?(Z|z|[+-]([01]\d|2[0-3]):[0-5]\d))?| \d{2}:\d{2}:\d{2})$/D', message: 'CreatedAt must be a date.'), new AnyRule([new DateTime(format: 'php:Y-m-d\TH:i:sP'), new DateTime(format: 'php:Y-m-d\TH:i:s.up'), new DateTime(format: 'php:Y-m-d H:i:s'), new DateTime(format: 'php:Y-m-d\TH:i:s')], message: 'CreatedAt must be a date.', skipOnError: true)], skipOnEmpty: new WhenMissing(), skipOnError: true))]
     #[ToDateTime(format: 'php:Y-m-d\TH:i:sP')]
     #[ToDateTime(format: 'php:Y-m-d\TH:i:s.up')]
     #[ToDateTime(format: 'php:Y-m-d H:i:s')]
@@ -35597,10 +36031,33 @@ final class User extends AbstractInput implements DataSetInterface, RulesProvide
 
         $wire = [];
         foreach ($payload as $name => $value) {
-            $wire[$name] = self::openApiWireValue($value, self::OPENAPI_TEMPORAL_FORMATS[$name] ?? null);
+            $value = self::openApiWireValue($value, self::OPENAPI_TEMPORAL_FORMATS[$name] ?? null);
+            $shape = self::OPENAPI_WIRE_SHAPES[$name] ?? null;
+            $wire[$name] = $shape === null ? $value : self::openApiEmptyObjects($value, $shape);
         }
 
         return $wire;
+    }
+
+    /**
+     * A map, or an object held as an array, with nothing in it is `{}`, not the `[]` PHP spells it as.
+     * `$shape` is `object`, `object<…>` for a map of such values, or `list<…>` for a list of them.
+     */
+    private static function openApiEmptyObjects(mixed $value, string $shape): mixed
+    {
+        if (!is_array($value)) {
+            return $value;
+        }
+        $opening = strpos($shape, '<');
+        if ($opening !== false) {
+            $itemShape = substr($shape, $opening + 1, -1);
+            $value = array_map(
+                static fn(mixed $item): mixed => self::openApiEmptyObjects($item, $itemShape),
+                $value,
+            );
+        }
+
+        return $value === [] && !str_starts_with($shape, 'list') ? new stdClass() : $value;
     }
 
     /**
@@ -36090,7 +36547,7 @@ final class User2 extends AbstractInput implements DataSetInterface, RulesProvid
     public readonly ?User2Pet $pet;
 
     #[Date(skipOnEmpty: new WhenNull())]
-    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()), new Composite([new Regex('/^\d{4}-\d{2}-\d{2}$/', message: 'CreatedAt must be a date.'), new Date(format: 'php:Y-m-d')], skipOnEmpty: new WhenMissing(), skipOnError: true))]
+    #[Validate(new StringValue(skipOnEmpty: new WhenMissing()), new Composite([new Regex('/^\d{4}-\d{2}-\d{2}$/', message: 'CreatedAt must be a date.'), new Date(format: 'php:Y-m-d', skipOnError: true)], skipOnEmpty: new WhenMissing(), skipOnError: true))]
     #[ToDateTime(format: 'php:Y-m-d')]
     public readonly DateTimeImmutable $createdAt;
 
@@ -36186,7 +36643,8 @@ final class User2 extends AbstractInput implements DataSetInterface, RulesProvid
 
         $wire = [];
         foreach ($payload as $name => $value) {
-            $wire[$name] = self::openApiWireValue($value, self::OPENAPI_TEMPORAL_FORMATS[$name] ?? null);
+            $value = self::openApiWireValue($value, self::OPENAPI_TEMPORAL_FORMATS[$name] ?? null);
+            $wire[$name] = $value;
         }
 
         return $wire;

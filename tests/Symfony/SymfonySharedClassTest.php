@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace OpenapiPhpDtoGenerator\Tests\Symfony;
 
 use OpenapiPhpDtoGenerator\Command\GenerateDtoCommand;
+use OpenapiPhpDtoGenerator\Tests\GenerationMode;
+use OpenapiPhpDtoGenerator\Tests\Parity\PayloadVerdict;
+use OpenapiPhpDtoGenerator\Tests\Parity\RunsPayloadsThroughModes;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -14,6 +17,8 @@ use PHPUnit\Framework\TestCase;
  */
 final class SymfonySharedClassTest extends TestCase
 {
+    use RunsPayloadsThroughModes;
+
     private string $baseDirectory;
 
     protected function setUp(): void
@@ -70,6 +75,59 @@ final class SymfonySharedClassTest extends TestCase
 
         $this->assertStringContainsString('public function toOpenApiValidationPayload(): array', $written['reader']);
         $this->assertSame($written['reader'], $written['plain']);
+    }
+
+    /**
+     * The component document's OWN run writes the same class as a run that reaches it through `--ref`.
+     * It used to leave the payload view out, since nothing in its own document reads Pebble from a
+     * callback; run last, it took the method from under the reader's `uniqueItems`, which then saw
+     * every Pebble as `[]` and refused two distinct ones as duplicates.
+     */
+    public function testTheComponentDocumentsOwnRunWritesTheSameClass(): void
+    {
+        $namespace = 'SharedOwn' . bin2hex(random_bytes(6));
+        $commonDirectory = $this->baseDirectory . '/out/Common';
+        $generator = new GenerateDtoCommand();
+        $generator->setExternalRefMappings(
+            refDirectoryPairs: [$this->baseDirectory . '/common=' . $commonDirectory],
+            refNamespacePairs: [$this->baseDirectory . '/common=' . $namespace . '\Common'],
+        );
+        $generator->generateFromFile(
+            filePath: $this->baseDirectory . '/reader.json',
+            outputDirectory: $this->baseDirectory . '/out/Dto',
+            namespace: $namespace . '\Dto',
+            mode: 'symfony',
+        );
+        $viaRef = (string)file_get_contents($commonDirectory . '/Pebble.php');
+
+        (new GenerateDtoCommand())->generateFromFile(
+            filePath: $this->baseDirectory . '/common/stones.json',
+            outputDirectory: $commonDirectory,
+            namespace: $namespace . '\Common',
+            mode: 'symfony',
+        );
+        $this->assertSame($viaRef, (string)file_get_contents($commonDirectory . '/Pebble.php'));
+
+        spl_autoload_register(function (string $class) use ($namespace): void {
+            foreach (['Dto', 'Common'] as $part) {
+                $prefix = $namespace . '\\' . $part . '\\';
+                $file = $this->baseDirectory . '/out/' . $part . '/' . substr($class, strlen($prefix)) . '.php';
+                if (str_starts_with($class, $prefix) && is_file($file)) {
+                    require $file;
+                }
+            }
+        });
+        $verdicts = [];
+        foreach (['{"pebbles":[{"colour":"a"},{"colour":"b"}]}', '{"pebbles":[{"colour":"a"},{"colour":"a"}]}'] as $json) {
+            $verdicts[$json] = $this->payloadOutcome(GenerationMode::Symfony, $namespace . '\Dto\Basket', $json)->verdict;
+        }
+        $this->assertSame(
+            expected: [
+                '{"pebbles":[{"colour":"a"},{"colour":"b"}]}' => PayloadVerdict::Accepted,
+                '{"pebbles":[{"colour":"a"},{"colour":"a"}]}' => PayloadVerdict::Refused,
+            ],
+            actual: $verdicts,
+        );
     }
 
     /**
