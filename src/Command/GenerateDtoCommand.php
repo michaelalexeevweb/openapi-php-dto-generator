@@ -19,6 +19,7 @@ use OpenapiPhpDtoGenerator\Command\Rendering\RendersRuntimeDto;
 use OpenapiPhpDtoGenerator\Command\Rendering\RendersSchemaInterpreter;
 use OpenapiPhpDtoGenerator\Command\Rendering\RendersSymfonyDto;
 use OpenapiPhpDtoGenerator\Command\Rendering\RendersYii3Dto;
+use OpenapiPhpDtoGenerator\Schema\SchemaNormalizer;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use RuntimeException;
@@ -480,6 +481,9 @@ final class GenerateDtoCommand extends Command
 
     /** @var array<string, true> */
     public array $parentClasses = [];
+
+    /** The `openapi` version of the root document, for a referenced file that names none. */
+    private ?string $rootOpenApiVersion = null;
 
     /** @var array<string, array<int, string>> */
     public array $unionInterfacesByClass = [];
@@ -1216,7 +1220,8 @@ final class GenerateDtoCommand extends Command
         // Before the `$defs` fold: it rewrites pointers by their text, and an anchor or an `$id`
         // reference has to be resolved against the document as written.
         $data = (new SchemaResourceResolver())->resolve(document: $data, documentBase: $this->fileUri($realFilePath));
-        $data = $this->withNestedAllOfWrappersPeeled($this->hoistComponentSubschemas($this->foldJsonSchemaDefs($data)));
+        $this->rootOpenApiVersion = is_string($data['openapi'] ?? null) ? $data['openapi'] : null;
+        $data = $this->withNestedAllOfWrappersPeeled($this->normalizedDocument($this->hoistComponentSubschemas($this->foldJsonSchemaDefs($data))));
 
         $this->initializeGeneration(
             outputDirectory: $outputDirectory,
@@ -2037,6 +2042,20 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * The document in the canonical spelling of `SchemaNormalizer` — the same schema written one way
+     * whatever wrapper the document put around it — under the rules the generator already reads alike
+     * (`SchemaNormalizer::GENERATION_RULES`). A referenced file without an `openapi` field is read as the
+     * root document's version.
+     *
+     * @param array<array-key, mixed> $document
+     * @return array<array-key, mixed>
+     */
+    private function normalizedDocument(array $document): array
+    {
+        return (new SchemaNormalizer(SchemaNormalizer::GENERATION_RULES))->normalize(document: $document, assumedVersion: $this->rootOpenApiVersion);
+    }
+
+    /**
      * A document with every nested `allOf` wrapper peeled to one layer: `{allOf: [{allOf: [X],
      * nullable: true}]}` — the 3.0 idiom `{allOf: [X], nullable: true}` wrapped once more — is that idiom,
      * and the inner wrapper's annotations and `nullable` move out beside the outer `allOf`
@@ -2184,7 +2203,8 @@ final class GenerateDtoCommand extends Command
         $this->initializeGeneration(outputDirectory: $outputDirectory, namespace: $namespace, rootSpecFile: null);
         $this->readDocumentLevelFields($openApi);
         $openApi = (new SchemaResourceResolver())->resolve(document: $openApi, documentBase: SchemaResourceResolver::ARRAY_DOCUMENT_BASE);
-        $openApi = $this->withNestedAllOfWrappersPeeled($this->hoistComponentSubschemas($this->foldJsonSchemaDefs($openApi)));
+        $this->rootOpenApiVersion = is_string($openApi['openapi'] ?? null) ? $openApi['openapi'] : null;
+        $openApi = $this->withNestedAllOfWrappersPeeled($this->normalizedDocument($this->hoistComponentSubschemas($this->foldJsonSchemaDefs($openApi))));
         $openApi = $this->rewriteSchemaPointers(document: $openApi, sourceFile: null, isRootDocument: true);
         $schemas = $this->withComponentBodiesNormalized($this->extractSchemas($openApi));
         foreach ($this->extractInlineResponseSchemas($openApi) as $name => $schema) {
@@ -5464,7 +5484,7 @@ final class GenerateDtoCommand extends Command
         $data = (new SchemaResourceResolver())->resolve(document: $data, documentBase: $this->fileUri($filePath));
         // Fold this external document's own `$defs` into its components.schemas (and rewrite
         // its internal `#/$defs/` pointers) so cross-file `file#/$defs/X` references resolve.
-        $data = $this->withNestedAllOfWrappersPeeled($this->hoistComponentSubschemas($this->foldJsonSchemaDefs($data)));
+        $data = $this->withNestedAllOfWrappersPeeled($this->normalizedDocument($this->hoistComponentSubschemas($this->foldJsonSchemaDefs($data))));
         // Cached before its references are rewritten: a file they lead to may point back here, and
         // finds the components it declares.
         $this->externalDocuments[$filePath] = $data;

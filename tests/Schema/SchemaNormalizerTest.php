@@ -51,6 +51,12 @@ final class SchemaNormalizerTest extends TestCase
             ['$ref' => self::REF . 'Teal'],
             $teal,
         ];
+        yield 'one-member union of a reference is kept (a union, not a class, to the generator)' => [
+            '3.1.0',
+            ['type' => 'array', 'items' => ['oneOf' => [['$ref' => self::REF . 'Teal']]]],
+            ['type' => 'array', 'items' => ['oneOf' => [['$ref' => self::REF . 'Teal']]]],
+            $teal,
+        ];
         yield 'annotated wrapper around a reference is kept' => [
             '3.1.0',
             ['allOf' => [['$ref' => self::REF . 'Teal']], 'description' => 'Kept.'],
@@ -153,6 +159,24 @@ final class SchemaNormalizerTest extends TestCase
             ['type' => 'object', 'properties' => ['allOf' => ['allOf' => [['type' => 'string']]]]],
             ['type' => 'object', 'properties' => ['allOf' => ['type' => 'string']]],
         ];
+    }
+
+    public function testTheGenerationRulesFoldFragmentsAndFollowAliasesOnly(): void
+    {
+        $property = ['type' => 'object', 'properties' => [
+            'wrapped' => ['allOf' => [['type' => 'string']]],
+            'split' => ['allOf' => [['type' => 'string'], ['maxLength' => 3]]],
+            'aliased' => ['$ref' => self::REF . 'Alias'],
+            'nullPair' => ['oneOf' => [['type' => 'null'], ['type' => 'integer']]],
+        ]];
+        $components = ['Alias' => ['$ref' => self::REF . 'Teal'], 'Teal' => ['type' => 'object']];
+        $normalized = (new SchemaNormalizer(SchemaNormalizer::GENERATION_RULES))->normalize(self::document(openApi: '3.1.0', property: $property, components: $components));
+        $properties = $normalized['components']['schemas']['Probe']['properties']['shade']['properties'];
+
+        $this->assertSame(['allOf' => [['type' => 'string']]], $properties['wrapped']);
+        $this->assertSame(['type' => 'string', 'maxLength' => 3], $properties['split']);
+        $this->assertSame(['$ref' => self::REF . 'Teal'], $properties['aliased']);
+        $this->assertSame($property['properties']['nullPair'], $properties['nullPair']);
     }
 
     public function testAWrapperAtTheTopOfAComponentIsAClassOfItsOwn(): void

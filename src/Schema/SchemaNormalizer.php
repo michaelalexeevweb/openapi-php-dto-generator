@@ -16,14 +16,15 @@ namespace OpenapiPhpDtoGenerator\Schema;
  * name, an inheritance link, a discriminator match) — is left as written. The rules and what they must
  * not touch are listed in `.local/3.0-normalizer.md`.
  *
- * Applied bottom-up, each node to a fixpoint:
+ * Applied bottom-up, each node to a fixpoint. Generation runs {@see GENERATION_RULES} only:
  *
- * 1. `{allOf|oneOf|anyOf: [M]}` — one member — is M merged with its siblings, when the two sides do
- *    not disagree on a keyword and no keyword reads one on the other side (`additionalProperties`
- *    reads `properties`, a 3.0 boolean `exclusiveMinimum` reads `minimum`, …). A bare `$ref` member
- *    is the reference itself when nothing stands beside the wrapper. Kept: the wrapper around a `$ref`
- *    at the top of a component (that is inheritance or a union interface, a class of its own), beside a
- *    `discriminator`, and as a direct member of a discriminated union (the member is matched by its `$ref`);
+ * 1. `{allOf|oneOf|anyOf: [M]}` — one member — is M merged with its siblings when those only annotate
+ *    (or are a 3.0 `nullable`), the two sides do not disagree on a keyword and no keyword reads one on
+ *    the other side (`additionalProperties` reads `properties`, a 3.0 boolean `exclusiveMinimum` reads
+ *    `minimum`, …). A bare `$ref` member of an `allOf` is the reference itself when nothing stands beside
+ *    the wrapper. Kept: the wrapper around a `$ref` at the top of a component (inheritance or a union
+ *    interface, a class of its own), a one-member UNION of a `$ref` anywhere (held as a union, not as the
+ *    class), beside a `discriminator`, and as a direct member of a discriminated union (matched by `$ref`);
  * 2. `{allOf: [F1, …, Fn]}` whose fragments only say scalar things (`type`, `enum`, bounds, `format`)
  *    is one flat scalar schema — unless a 3.0 `nullable` fragment meets an `enum` / `const` without null
  *    or a second `type` (the fragment without `nullable` refuses null);
@@ -87,6 +88,43 @@ final class SchemaNormalizer
         '$dynamicAnchor', '$dynamicRef', '$defs', '$schema',
     ];
 
+    /** Rule 1: one-member compositions collapse. */
+    public const string RULE_SINGLE_MEMBER = 'singleMember';
+
+    /** Rule 2: scalar `allOf` fragments fold. */
+    public const string RULE_SCALAR_FRAGMENTS = 'scalarFragments';
+
+    /** Rule 3, the fold: a 3.1 null union of a plain schema is a `type` list. */
+    public const string RULE_NULL_UNION = 'nullUnion';
+
+    /** Rule 4, the reference half: 3.0 `{$ref, nullable}` is the `allOf` idiom. */
+    public const string RULE_NULLABLE_REFERENCE = 'nullableReference';
+
+    /** Rules 3 and 4, the spelling: null last, `anyOf` for a null pair, null listed in a 3.0 nullable `enum`. */
+    public const string RULE_NULL_SPELLING = 'nullSpelling';
+
+    /** Rule 5: alias chains followed. */
+    public const string RULE_ALIAS_CHAINS = 'aliasChains';
+
+    public const array ALL_RULES = [
+        self::RULE_SINGLE_MEMBER,
+        self::RULE_SCALAR_FRAGMENTS,
+        self::RULE_NULL_UNION,
+        self::RULE_NULLABLE_REFERENCE,
+        self::RULE_NULL_SPELLING,
+        self::RULE_ALIAS_CHAINS,
+    ];
+
+    /**
+     * The rules generation runs today. The others are sound, but the generator still reads their canonical
+     * spelling differently from the one they replace — see `.local/3.0-normalizer.md`, "Wiring": each is
+     * a spelling-dependent class plan or check to settle before the rule can run in front of it.
+     */
+    public const array GENERATION_RULES = [
+        self::RULE_SCALAR_FRAGMENTS,
+        self::RULE_ALIAS_CHAINS,
+    ];
+
     private const int MAX_ALIAS_HOPS = 32;
 
     private const string POSITION_COMPONENT = 'component';
@@ -106,6 +144,14 @@ final class SchemaNormalizer
 
     /** The document being shaped: '' for the root, else its file as a `$ref` spells it. */
     private string $currentFile = '';
+
+    /**
+     * @param list<string> $rules the rules applied, of {@see ALL_RULES}
+     */
+    public function __construct(
+        private readonly array $rules = self::ALL_RULES,
+    ) {
+    }
 
     /**
      * The document in its canonical spelling. `$externals` (file as a `$ref` spells it => document) lets
@@ -236,17 +282,22 @@ final class SchemaNormalizer
     private function canonical(array $schema, string $position): array
     {
         for ($round = 0; $round < 64; $round++) {
-            $next = $this->collapsedSingleMember(schema: $schema, position: $position)
-                ?? $this->foldedScalarFragments($schema)
-                ?? $this->foldedNullUnion($schema)
-                ?? $this->nullableReferenceWrapped(schema: $schema, position: $position);
+            $next = ($this->applies(self::RULE_SINGLE_MEMBER) ? $this->collapsedSingleMember(schema: $schema, position: $position) : null)
+                ?? ($this->applies(self::RULE_SCALAR_FRAGMENTS) ? $this->foldedScalarFragments($schema) : null)
+                ?? ($this->applies(self::RULE_NULL_UNION) ? $this->foldedNullUnion($schema) : null)
+                ?? ($this->applies(self::RULE_NULLABLE_REFERENCE) ? $this->nullableReferenceWrapped(schema: $schema, position: $position) : null);
             if ($next === null) {
                 break;
             }
             $schema = $next;
         }
 
-        return $this->withNullSpelledOnce($schema);
+        return $this->applies(self::RULE_NULL_SPELLING) ? $this->withNullSpelledOnce($schema) : $schema;
+    }
+
+    private function applies(string $rule): bool
+    {
+        return in_array($rule, $this->rules, true);
     }
 
     /**
@@ -270,12 +321,22 @@ final class SchemaNormalizer
             if (array_key_exists('$ref', $member)) {
                 // A bare wrapper around a reference is the reference — but at a component's top it is a
                 // class of its own (`allOf` = inheritance, a union = an interface), and a discriminated
-                // member is matched by its `$ref`.
-                if ($siblings !== [] || $position !== self::POSITION_OTHER) {
+                // member is matched by its `$ref`. A one-member UNION of a reference is kept anywhere:
+                // the generator holds it as a union (decoded, checked by the interpreter) where the bare
+                // reference is a class — collapsing it changes a property's PHP type, which is a 3.0
+                // decision of its own (`.local/3.0-normalizer.md`), not a spelling.
+                if ($siblings !== [] || $position !== self::POSITION_OTHER || $keyword !== 'allOf') {
                     return null;
                 }
 
                 return $member;
+            }
+
+            // Beside asserting siblings the wrapper stays: `{allOf: [{properties}], oneOf: [...]}` flattened
+            // to `{properties, oneOf}` is the same schema, but the generator writes it back without the
+            // properties (`.local/3.0-normalizer.md`, "Wiring").
+            if (!$this->onlyAnnotations($siblings)) {
+                return null;
             }
 
             return $this->merged(first: $member, second: $siblings);
@@ -462,7 +523,7 @@ final class SchemaNormalizer
                 continue;
             }
             if (!$namesKeys && $key === '$ref' && is_string($value)) {
-                $result[$key] = $discriminatedMember ? $value : $this->aliasEnd(ref: $value, file: $file, root: $root, externals: $externals);
+                $result[$key] = $discriminatedMember || !$this->applies(self::RULE_ALIAS_CHAINS) ? $value : $this->aliasEnd(ref: $value, file: $file, root: $root, externals: $externals);
 
                 continue;
             }
