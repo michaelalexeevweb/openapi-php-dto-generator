@@ -325,13 +325,13 @@ trait RendersRuntimeDto
         $constraintAssignments = $this->resolveConstraintAssignments(properties: $ownProperties, parentByName: $parentByName);
         // Schema-LEVEL keywords, as opposed to the per-property map above. Only the ones the
         // runtime deserializer can act on are carried, and only when the document sets them.
-        $objectConstraints = $this->resolveObjectConstraints($className);
+        $objectConstraints = $this->resolveObjectConstraints($className, $extends);
         // `parent::getObjectConstraints()` only where an ancestor declares it: a parent with no
         // schema-level keyword of its own emits no such method, and the call was a fatal.
         $parentHasObjectConstraints = false;
         $ancestor = $extends;
         for ($guard = 0; $ancestor !== null && !$parentHasObjectConstraints && $guard < 20; $guard++) {
-            $parentHasObjectConstraints = $this->resolveObjectConstraints($ancestor) !== [];
+            $parentHasObjectConstraints = $this->resolveObjectConstraints($ancestor, $this->allOfParentOf($ancestor)) !== [];
             $ancestor = $this->allOfParentOf($ancestor);
         }
         $fastHydrator = $this->resolveFastHydratorPlan($ownProperties, $constructorParams, $extends, $discriminator);
@@ -1224,6 +1224,12 @@ trait RendersRuntimeDto
     ];
 
     /**
+     * What may stand beside a one-member `allOf` for the class to be read as that member: annotations,
+     * and the `type` the member states anyway.
+     */
+    private const array RUNTIME_UNWRAP_ANNOTATIONS = ['type', 'title', 'description', 'deprecated', 'example', 'examples'];
+
+    /**
      * Schema-level keywords the runtime can enforce, emitted only when the document sets them.
      *
      * `additionalProperties: false` closes the object: a key the schema never declared makes the
@@ -1236,11 +1242,15 @@ trait RendersRuntimeDto
      * `RUNTIME_OBJECT_LEVEL_KEYWORDS` above, which is what a document states about the object as a
      * whole and no per-property rule can express.
      *
+     * A class spelled as an `allOf` carries what its branches say about the keys of the object too —
+     * see `allOfBranchKeyConstraints()`; a lone inline branch is read as the class itself.
+     *
+     * @param string|null $extends the class this one extends, whose own method it inherits
      * @return array<string, mixed>
      */
-    private function resolveObjectConstraints(string $className): array
+    private function resolveObjectConstraints(string $className, ?string $extends = null): array
     {
-        $schema = $this->dtoSchemas[$className] ?? [];
+        $schema = self::withLoneAllOfBranchUnwrapped($this->dtoSchemas[$className] ?? []);
         $extracted = $this->withConstraintSourceOf(
             className: $className,
             extraction: fn(): array => $this->extractValidationConstraints($schema),
@@ -1284,6 +1294,21 @@ trait RendersRuntimeDto
         // accepted `{}`.
         $objectConstraints = [...$objectConstraints, ...$this->classLevelUnionsBesideAllOf(className: $className, extracted: $extracted)];
 
+        // What the `allOf` branches say about the keys: `allOf: [{properties: {crane}, additionalProperties:
+        // false}, …]` emitted nothing here and the stray key was dropped unchecked. The evaluation slot
+        // carries the branches itself where `unevaluatedProperties` reads them. The parent the class
+        // extends brings its own; an `allOf` it already carries is kept in front, not overwritten.
+        $branchParts = $evaluation === [] ? $this->allOfBranchKeyConstraints(
+            schema: $schema,
+            className: $className,
+            objectKeywords: self::RUNTIME_OBJECT_LEVEL_KEYWORDS,
+            inheritedParent: $extends,
+        ) : [];
+        if ($branchParts !== []) {
+            $inherited = $extends === null ? [] : ($this->resolveObjectConstraints($extends, $this->allOfParentOf($extends))['allOf'] ?? []);
+            $objectConstraints['allOf'] = [...(is_array($inherited) ? array_values($inherited) : []), ...$branchParts];
+        }
+
         // A `required` name the class does not declare — the one exception to "`required` is not
         // here": no property carries a flag for it, so nothing else would ask. The deserializer asks
         // it of the raw body; a component's own list and the root's were checked by nothing, and
@@ -1326,6 +1351,43 @@ trait RendersRuntimeDto
 
         return $objectConstraints;
     }
+
+    /**
+     * A class schema that is nothing but a one-member `allOf` of an inline schema, beside annotations,
+     * read as that member — `{allOf: [{properties: {crane}, additionalProperties: false}]}` says what
+     * the member says. The closure and an `additionalProperties` schema then go through the class's own
+     * slots, so an extra key a schema admits is kept and written back as in the plain spelling.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<string, mixed>
+     */
+    private static function withLoneAllOfBranchUnwrapped(array $schema): array
+    {
+        $allOf = $schema['allOf'] ?? null;
+        if (!is_array($allOf) || count($allOf) !== 1) {
+            return $schema;
+        }
+        $member = $allOf[array_key_first($allOf)];
+        if (!is_array($member) || array_key_exists('$ref', $member)) {
+            return $schema;
+        }
+        $unwrapped = [];
+        foreach ($schema as $keyword => $value) {
+            if ($keyword === 'allOf') {
+                continue;
+            }
+            if (!in_array($keyword, self::RUNTIME_UNWRAP_ANNOTATIONS, true)) {
+                return $schema;
+            }
+            $unwrapped[$keyword] = $value;
+        }
+        foreach ($member as $keyword => $value) {
+            $unwrapped[(string)$keyword] = $value;
+        }
+
+        return self::withLoneAllOfBranchUnwrapped($unwrapped);
+    }
+
     /**
      * The fully qualified generated class a `{$ref: X}` names, when X is an object DTO the deserializer
      * can hydrate — not an enum, not a union interface, not a scalar alias — and whether null is

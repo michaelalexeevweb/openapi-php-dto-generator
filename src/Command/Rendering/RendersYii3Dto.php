@@ -3403,6 +3403,7 @@ PHP;
                 !is_array($propertySchema)
                 || (
                     !$this->yii3HoldsUnionClassAsArray($property['type'])
+                    && !$this->yii3HoldsUnionInterfaceAsArray($property['type'])
                     && !$this->yii3IsUnionOfClasses($property['type'])
                     && $property['type'] !== 'mixed'
                 )
@@ -3443,6 +3444,12 @@ PHP;
                     : $this->schemaRefToClassName(ref: $branchRef, currentSourceFile: $this->getSchemaSourceFile($className));
                 if ($branchRef !== null && is_array($this->dtoSchemas[$referencedClass]['allOf'] ?? null)) {
                     $branch = $this->yii3ResolvedRefSchema($branchRef, $className);
+                } elseif (is_array($branch)) {
+                    // A `$ref` to a union COMPONENT is that union, held as the same array: its members
+                    // were left as written, and a `{$ref: Teal, required: [marten]}` member went to a class
+                    // never built — `{}` passed both members' `required` (fuzz seed 44013).
+                    /** @var array<string, mixed> $branch */
+                    $branch = $this->yii3WithUnionComponentInlined($branch, $className);
                 }
                 if (!is_array($branch) || array_key_exists('$ref', $branch)) {
                     continue;
@@ -3620,6 +3627,19 @@ PHP;
     }
 
     /**
+     * Whether a union INTERFACE beside scalars (`Coral|bool`, emitted `Coral|bool|array`) is held as the
+     * decoded array: nothing builds an interface, so the object stays as sent, and its members are the
+     * interpreter's to check — a `{$ref: Teal, required: [marten]}` member was left to a class never
+     * built, and `{}` passed both members' `required` (fuzz seed 44013).
+     */
+    private function yii3HoldsUnionInterfaceAsArray(string $phpType): bool
+    {
+        $unionClass = $this->unionClassBesideScalars($phpType);
+
+        return $unionClass !== null && $this->yii3IsUnionInterface($unionClass);
+    }
+
+    /**
      * Whether a union's generated class member is never built and the property holds the decoded array
      * instead: beside an `array` member the hydrator keeps the array as sent, beside a `bool` one the
      * property is typed with `array` added for the same reason (`yii3UnionClassBesideBool()`).
@@ -3667,7 +3687,7 @@ PHP;
                 // were left `type: array` where the inline `items: {$ref: Shape}` got the members. Not
                 // beside sibling keywords, which read the target as an in-place applicator.
                 $mapRef = $this->referenceOrSingleRefAllOf($property);
-                $bareListRef = $mapRef !== null && array_keys($property) === ['$ref'] && $this->arrayAliasDefinition($mapRef) !== null;
+                $bareListRef = $mapRef !== null && $this->isAnnotatedReference($property) && $this->arrayAliasDefinition($mapRef) !== null;
                 if ($mapRef !== null && ($this->mapComponentDefinition($mapRef) !== null || $bareListRef)) {
                     $property = $this->inlineArrayAliasForConstraints($property);
                 } elseif ($mapRef !== null && !array_key_exists('items', $property) && $this->arrayAliasDefinition($mapRef) !== null) {
@@ -3731,7 +3751,7 @@ PHP;
             $branches = [];
             foreach ($schema[$keyword] as $branch) {
                 $ref = is_array($branch) ? $this->referenceOrSingleRefAllOf($branch) : null;
-                $definition = $ref !== null ? $this->nestedScalarRefDefinition($ref, $this->rootSpecFile) : null;
+                $definition = $ref !== null ? $this->nestedScalarRefDefinition($ref, $this->constraintSourceFile ?? $this->rootSpecFile) : null;
                 // The branch's 3.0 `nullable` stays with the members: `{allOf: [{$ref: Kind}], nullable:
                 // true}` written out as the bare enum refused the very null the branch admits.
                 $branches[] = is_array($definition) && is_array($definition['enum'] ?? null)
@@ -3803,12 +3823,10 @@ PHP;
     private function yii3UnionValueSchema(array $schema): ?array
     {
         $ref = $this->referenceOrSingleRefAllOf($schema);
-        $prefix = '#/components/schemas/';
-        if ($ref === null || !str_starts_with($ref, $prefix)) {
-            return null;
-        }
-        $className = $this->schemaClassName(substr($ref, strlen($prefix)));
-        if (!$this->yii3IsUnionInterface($className)) {
+        // A union of another document is one too: read as local pointers only, it was no union, and
+        // `{"kind": "zzz"}` — even a list — went through a property typed by it unchecked.
+        $className = $ref === null ? null : $this->constraintRefClassName($ref);
+        if ($className === null || !$this->yii3IsUnionInterface($className)) {
             return null;
         }
         $union = $this->dtoSchemas[$className] ?? [];
@@ -3947,7 +3965,10 @@ PHP;
             }
         }
 
-        return $own === [] ? [] : $this->inlineNestedContainerValidation(schema: $own, depth: 2);
+        return $own === [] ? [] : $this->withConstraintSourceOf(
+            className: $className,
+            extraction: fn(): array => $this->inlineNestedContainerValidation(schema: $own, depth: 2),
+        );
     }
 
     /**
@@ -3973,9 +3994,14 @@ PHP;
      */
     private function yii3MemberSchemaOfClass(string $className): array
     {
-        return $this->inlineNestedContainerValidation(
-            schema: $this->yii3ClassSchemaWithInlineAllOfMerged($this->dtoSchemas[$className] ?? [], $className),
-            depth: 2,
+        // The member's `$ref`s are written relative to ITS document: read against the holder's, a member
+        // of another document named a same-named file beside the root, and generation failed.
+        return $this->withConstraintSourceOf(
+            className: $className,
+            extraction: fn(): array => $this->inlineNestedContainerValidation(
+                schema: $this->yii3ClassSchemaWithInlineAllOfMerged($this->dtoSchemas[$className] ?? [], $className),
+                depth: 2,
+            ),
         );
     }
 

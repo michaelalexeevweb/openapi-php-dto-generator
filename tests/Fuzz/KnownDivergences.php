@@ -13,7 +13,9 @@ use stdClass;
  * Each entry names the README.support-matrix.md row (or the open item) it stands for. An entry matches
  * by mode, by what went wrong (`wrong-accept` / `wrong-refuse`), by mutation kind (prefix match; `valid`
  * for the valid payload) and by tags: `tagsAll` must all be present, `tagsAny` at least one. Keep the
- * entries NARROW — an entry that matches more than its row hides real defects.
+ * entries NARROW — an entry that matches more than its row hides real defects. `spelling` marks a row
+ * whose divergence depends on how the schema is spelled; `built` (`temporal` / `dto`) a symfony row the
+ * serializer answers because it builds the value's position as a date or a DTO.
  */
 final class KnownDivergences
 {
@@ -22,24 +24,77 @@ final class KnownDivergences
      */
     public static function explain(GenerationMode $mode, string $category, string $kind, array $tags): ?string
     {
-        foreach (self::entries() as $entry) {
-            if (!in_array($mode, $entry['modes'], true) || $entry['category'] !== $category) {
-                continue;
-            }
-            if (!self::kindMatches(kind: $kind, prefixes: $entry['kinds'])) {
-                continue;
-            }
-            if (array_diff($entry['tagsAll'] ?? [], $tags) !== []) {
-                continue;
-            }
-            if (($entry['tagsAny'] ?? []) !== [] && array_intersect($entry['tagsAny'], $tags) === []) {
-                continue;
-            }
+        return self::firstMatching(mode: $mode, category: $category, kind: $kind, tags: $tags, spellingOnly: false);
+    }
 
-            return $entry['row'];
+    /**
+     * {@see explain()} over the entries marked `spelling` only: rows whose divergence depends on how
+     * the schema is SPELLED (generated class names, member order), so that two equivalent spellings
+     * may meet it differently. The metamorphic run excuses a divergence between spellings only by these.
+     *
+     * @param array<int, string> $tags
+     */
+    public static function explainSpellingDependent(GenerationMode $mode, string $category, string $kind, array $tags): ?string
+    {
+        return self::firstMatching(mode: $mode, category: $category, kind: $kind, tags: $tags, spellingOnly: true);
+    }
+
+    /**
+     * {@see explain()} over the entries marked `built` only: symfony rows the serializer answers before
+     * any constraint runs, because the payload's position is a class it BUILDS — a `DateTimeImmutable`
+     * (`temporal`) or a generated DTO (`dto`). A spelling that holds the same position raw leaves the
+     * value to the generated callback, so two equivalent spellings may meet such a row differently
+     * ({@see MetamorphicRunner::excusedBySerializerBuiltPosition()}).
+     *
+     * @param array<int, string> $tags
+     * @return array{row: string, built: string}|null
+     */
+    public static function explainSerializerBuilt(GenerationMode $mode, string $category, string $kind, array $tags): ?array
+    {
+        foreach (self::entries() as $entry) {
+            $built = $entry['built'] ?? null;
+            if ($built !== null && self::entryMatches(entry: $entry, mode: $mode, category: $category, kind: $kind, tags: $tags)) {
+                return ['row' => $entry['row'], 'built' => $built];
+            }
         }
 
         return null;
+    }
+
+    /**
+     * @param array<int, string> $tags
+     */
+    private static function firstMatching(GenerationMode $mode, string $category, string $kind, array $tags, bool $spellingOnly): ?string
+    {
+        foreach (self::entries() as $entry) {
+            if ($spellingOnly && !($entry['spelling'] ?? false)) {
+                continue;
+            }
+            if (self::entryMatches(entry: $entry, mode: $mode, category: $category, kind: $kind, tags: $tags)) {
+                return $entry['row'];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array{modes: array<int, GenerationMode>, category: string, kinds: array<int, string>, tagsAll?: array<int, string>, tagsAny?: array<int, string>, row: string, spelling?: bool, built?: string} $entry
+     * @param array<int, string> $tags
+     */
+    private static function entryMatches(array $entry, GenerationMode $mode, string $category, string $kind, array $tags): bool
+    {
+        if (!in_array($mode, $entry['modes'], true) || $entry['category'] !== $category) {
+            return false;
+        }
+        if (!self::kindMatches(kind: $kind, prefixes: $entry['kinds'])) {
+            return false;
+        }
+        if (array_diff($entry['tagsAll'] ?? [], $tags) !== []) {
+            return false;
+        }
+
+        return ($entry['tagsAny'] ?? []) === [] || array_intersect($entry['tagsAny'], $tags) !== [];
     }
 
     /**
@@ -202,7 +257,7 @@ final class KnownDivergences
     }
 
     /**
-     * @return array<int, array{modes: array<int, GenerationMode>, category: string, kinds: array<int, string>, tagsAll?: array<int, string>, tagsAny?: array<int, string>, row: string}>
+     * @return array<int, array{modes: array<int, GenerationMode>, category: string, kinds: array<int, string>, tagsAll?: array<int, string>, tagsAny?: array<int, string>, row: string, spelling?: bool, built?: string}>
      */
     private static function entries(): array
     {
@@ -233,6 +288,8 @@ final class KnownDivergences
                 // `unionClassMember`: the row's own last sentence — a union of a class and a scalar is
                 // read the same way, the JSON array built into the class.
                 'tagsAny' => ['site:dto', 'site:nullable-dto', 'site:map', 'site:nullable-map', 'site:discriminated', 'site:nullable-discriminated', 'unionClassMember'],
+                // Built by the serializer: a spelling that holds the position raw meets the callback instead.
+                'built' => 'dto',
                 'row' => 'support matrix: "a JSON array for a `type: object` property" (symfony, yii3 accept)',
             ],
             [
@@ -284,6 +341,8 @@ final class KnownDivergences
                 'category' => 'wrong-accept',
                 'kinds' => ['extraKeyClosed'],
                 'tagsAny' => ['site:dto', 'site:nullable-dto'],
+                // Built by the serializer: a spelling that holds the position raw meets the callback instead.
+                'built' => 'dto',
                 'row' => 'support matrix: "`additionalProperties: false` / `unevaluatedProperties: false` on a DTO-shaped schema"',
             ],
             [
@@ -294,6 +353,8 @@ final class KnownDivergences
                 // builds that member's class without the key. yii3 holds the union decoded and refuses.
                 'kinds' => [''],
                 'tagsAll' => [FuzzSpec::REFUSED_ONLY_BY_UNDECLARED_KEY],
+                // Which member's class the serializer tries first follows the generated class names.
+                'spelling' => true,
                 'row' => 'support matrix: "`additionalProperties: false` / `unevaluatedProperties: false` on a DTO-shaped schema" and "a key `additionalProperties: {schema}` admits beside the named properties" (symfony, a member of an undiscriminated union of classes included)',
             ],
             [
@@ -301,6 +362,8 @@ final class KnownDivergences
                 'category' => 'wrong-accept',
                 'kinds' => [''],
                 'tagsAll' => ['in:additional'],
+                // Built by the serializer: a spelling that holds the position raw meets the callback instead.
+                'built' => 'dto',
                 'row' => 'support matrix: "a key `additionalProperties: {schema}` admits beside the named properties" (dropped unchecked)',
             ],
             [
@@ -309,6 +372,8 @@ final class KnownDivergences
                 'kinds' => ['impossibleDate:', 'looseDateTime'],
                 // Only where the serializer meets a date: the property, a list item or a map value.
                 'tagsAny' => ['site:temporal', 'site:nullable-temporal', 'itemsOf:temporal', 'itemsOf:nullable-temporal', 'valuesOf:temporal', 'valuesOf:nullable-temporal'],
+                // Built by the serializer: a spelling that holds the position raw meets the callback instead.
+                'built' => 'temporal',
                 'row' => 'support matrix: "a loose `format: date-time` string" / "an impossible calendar date" (the serializer parses first)',
             ],
             [
@@ -318,6 +383,8 @@ final class KnownDivergences
                 // only: a `format: date` is parsed with `!Y-m-d` since 2.15.160 and has no row.
                 'kinds' => ['parseableNonDate:date-time'],
                 'tagsAny' => ['site:temporal', 'site:nullable-temporal', 'itemsOf:temporal', 'itemsOf:nullable-temporal', 'valuesOf:temporal', 'valuesOf:nullable-temporal'],
+                // Built by the serializer: a spelling that holds the position raw meets the callback instead.
+                'built' => 'temporal',
                 'row' => 'support matrix: "a loose `format: date-time` string" (the serializer parses first)',
             ],
             [
@@ -328,6 +395,8 @@ final class KnownDivergences
                 'kinds' => ['parseableNonDate:date'],
                 'tagsAll' => ['dateOneDigit'],
                 'tagsAny' => ['site:temporal', 'site:nullable-temporal', 'itemsOf:temporal', 'itemsOf:nullable-temporal', 'valuesOf:temporal', 'valuesOf:nullable-temporal'],
+                // Built by the serializer: a spelling that holds the position raw meets the callback instead.
+                'built' => 'temporal',
                 'row' => 'support matrix: "an impossible calendar date … or a one-digit month or day" (the serializer parses first)',
             ],
             [
@@ -389,6 +458,8 @@ final class KnownDivergences
                 // `objectOfPair`: the value is no instance of the member whose generated class name sorts
                 // first — the class the serializer tries first ({@see FuzzRunner::tagObjectsOfAPair()}).
                 'tagsAll' => ['unionObjectPair', 'objectOfPair'],
+                // Which member's class the serializer tries first follows the generated class names.
+                'spelling' => true,
                 'row' => 'support matrix: "an object only a member whose class name does not sort first of an inline undiscriminated union of classes accepts" (symfony builds the class it tries first)',
             ],
             [
@@ -399,14 +470,17 @@ final class KnownDivergences
                 // second match ({@see FuzzSpec::confirmedByReference()} tags these `unionObjectPair`).
                 'kinds' => ['matchesTwoMembers'],
                 'tagsAll' => ['unionObjectPair'],
+                // Which member's class the serializer tries first follows the generated class names.
+                'spelling' => true,
                 'row' => 'support matrix: "an object only a member whose class name does not sort first of an inline undiscriminated union of classes accepts" (symfony builds one member, and an object both members accept reaches the validator as that member alone)',
             ],
             [
                 'modes' => [GenerationMode::Symfony],
                 'category' => 'wrong-refuse',
                 'kinds' => ['valid'],
-                'tagsAny' => ['nullItem:nullable-temporal', 'nullItem:nullable-enum', 'nullMapValue:nullable-temporal', 'nullMapValue:nullable-enum'],
-                'row' => 'support matrix: "a `null` ITEM of a nullable list of dates or enums", or a `null` VALUE of such a map (symfony refuses)',
+                // An enum one is held as the string it arrives as since 2.15.166, and its null accepted.
+                'tagsAny' => ['nullItem:nullable-temporal', 'nullMapValue:nullable-temporal'],
+                'row' => 'support matrix: "a `null` ITEM of a nullable list of dates", or a `null` VALUE of such a map (symfony refuses)',
             ],
             [
                 'modes' => [GenerationMode::LaravelData],

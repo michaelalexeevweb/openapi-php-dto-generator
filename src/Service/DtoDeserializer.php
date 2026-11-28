@@ -4269,8 +4269,8 @@ final class DtoDeserializer implements DtoDeserializerInterface
     }
 
     /**
-     * Whether the array's items schema permits null elements (`items: {nullable: true}`
-     * or an OpenAPI 3.1 type array containing "null").
+     * Whether the array's items schema permits null elements (`items: {nullable: true}`, an OpenAPI
+     * 3.1 type array containing "null", or a composition whose members admit it).
      *
      * @param array<string, mixed>|null $fieldConstraints
      */
@@ -4284,13 +4284,8 @@ final class DtoDeserializer implements DtoDeserializerInterface
             return false;
         }
 
-        if (($itemSchema['nullable'] ?? false) === true) {
-            return true;
-        }
-
-        $type = $itemSchema['type'] ?? null;
-
-        return $type === 'null' || (is_array($type) && in_array('null', $type, true));
+        // Read as a property's null is read, through `allOf` / `oneOf` / `anyOf` members.
+        return DtoServiceSupport::constraintsAdmitNull($itemSchema) === true;
     }
 
     /**

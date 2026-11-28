@@ -3,6 +3,41 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.166 — 2026-11-28
+
+- metamorphic fuzz: same schema, same verdict
+- rounds M1–M3: 37 fixes
+- scalar allOf folds to the scalar
+- allOf-wrapped refs unwrapped
+- cross-file refs resolved per file
+- symfony nullable date default fatal fixed
+
+A new fuzz layer (`tests/Fuzz/fuzz-metamorphic.sh`) rewrites a generated spec in equivalent spellings — wrap in
+`allOf`, extract a component, alias chain, move to another file, annotate a `$ref`, the three `nullable`
+spellings, split a scalar into `allOf` fragments, reorder union members — and requires every mode to give the
+same verdict on both. Most defects of the last rounds were of that "same schema, different spelling" class.
+Findings per 96 seeds went 27 → 8 → 2; the plain fuzz found 0 on its last two runs.
+
+**Regenerate after upgrading, in every mode.**
+
+- every mode: a scalar spelled as an `allOf` of fragments (`allOf: [{type: integer}, {enum: […]}]`,
+  `allOf: [{type: integer}, {maximum: 15}]`, inline or behind a `$ref`) is the flat scalar — a union of such
+  branches was an empty class that refused every value; `allOf: [{$ref: X, maxItems: 1}]` over a list or map
+  component is that list or map — it named a class that was never written; an `allOf`-wrapped map component
+  is a map; a `$ref` with an `enum` beside it is a scalar;
+- every mode: a `$ref` written inside another document resolves against that document for every reader
+  (null, dates, enum items, union members), not only for the constraints; union interfaces a `--ref` run
+  writes into another namespace are imported; a discriminated union that maps a member placed in another
+  document types its holders by the members;
+- runtime / laravel: object keywords inside `allOf` branches (`additionalProperties: false` or a schema,
+  `min/maxProperties`) are enforced — an extra key passed and was dropped; runtime: OAS 3.0 `nullable: true`
+  inside a one-member `allOf` admits null (`nullable` beside an `allOf` of fragments still does not spread
+  into the branches — README.validation); an annotated `$ref` in a union branch's `allOf` keeps the reference;
+- symfony: an optional nullable date-time union with a `default` no longer emits a property initializer with
+  `new` (a fatal error at class load); `allOf`-wrapped date lists are checked;
+- yii3: an enum of another document as a map value or list item, and a union component beside a scalar
+  (`anyOf: [{$ref: U}, {type: boolean}]`), are checked — `{}` and wrong types passed.
+
 ## 2.15.165 — 2026-11-28
 
 - fuzz rounds 29–31: 40 fixes

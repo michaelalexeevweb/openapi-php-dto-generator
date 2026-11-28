@@ -1,4 +1,4 @@
-# laravel mode — 106 files, 31583 lines
+# laravel mode — 106 files, 31585 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -26460,7 +26460,7 @@ final class TestPostRequest implements JsonSerializable
                 }
 
                 if (is_string($branchClass = $branch['x-php-instanceof'] ?? null) && $branchClass !== '') {
-                    $branchFqcn = __NAMESPACE__ . '\\' . ltrim($branchClass, '\\');
+                    $branchFqcn = str_contains($branchClass, '\\') ? ltrim($branchClass, '\\') : __NAMESPACE__ . '\\' . $branchClass;
                     // `{$ref: X, nullable: true}`: X or null.
                     if ((is_object($value) && $value instanceof $branchFqcn) || ($value === null && ($branch['nullable'] ?? false) === true)) {
                         $matchingBranches++;
@@ -26538,7 +26538,7 @@ final class TestPostRequest implements JsonSerializable
                                 implode(', ', array_keys($discriminatorMap)),
                             );
                         } elseif (is_string($expectedClass = $discriminatorMap[$mapKey]) && $expectedClass !== '') {
-                            $expectedFqcn = __NAMESPACE__ . '\\' . ltrim($expectedClass, '\\');
+                            $expectedFqcn = str_contains($expectedClass, '\\') ? ltrim($expectedClass, '\\') : __NAMESPACE__ . '\\' . $expectedClass;
                             if (!$value instanceof $expectedFqcn) {
                                 $errors[] = sprintf('%s discriminator %s must match concrete class', $path, $discriminatorProperty);
                             }
@@ -26908,6 +26908,7 @@ use function preg_match;
 use function preg_match_all;
 use function property_exists;
 use function sprintf;
+use function str_contains;
 use function str_ends_with;
 use function str_starts_with;
 use function strlen;
@@ -27527,7 +27528,7 @@ final class TreeNode implements JsonSerializable
                 }
 
                 if (is_string($branchClass = $branch['x-php-instanceof'] ?? null) && $branchClass !== '') {
-                    $branchFqcn = __NAMESPACE__ . '\\' . ltrim($branchClass, '\\');
+                    $branchFqcn = str_contains($branchClass, '\\') ? ltrim($branchClass, '\\') : __NAMESPACE__ . '\\' . $branchClass;
                     // `{$ref: X, nullable: true}`: X or null.
                     if ((is_object($value) && $value instanceof $branchFqcn) || ($value === null && ($branch['nullable'] ?? false) === true)) {
                         $matchingBranches++;
@@ -27605,7 +27606,7 @@ final class TreeNode implements JsonSerializable
                                 implode(', ', array_keys($discriminatorMap)),
                             );
                         } elseif (is_string($expectedClass = $discriminatorMap[$mapKey]) && $expectedClass !== '') {
-                            $expectedFqcn = __NAMESPACE__ . '\\' . ltrim($expectedClass, '\\');
+                            $expectedFqcn = str_contains($expectedClass, '\\') ? ltrim($expectedClass, '\\') : __NAMESPACE__ . '\\' . $expectedClass;
                             if (!$value instanceof $expectedFqcn) {
                                 $errors[] = sprintf('%s discriminator %s must match concrete class', $path, $discriminatorProperty);
                             }
@@ -27946,6 +27947,7 @@ use function preg_match;
 use function preg_match_all;
 use function property_exists;
 use function sprintf;
+use function str_contains;
 use function str_ends_with;
 use function str_starts_with;
 use function strlen;
@@ -28821,7 +28823,7 @@ final class UnionUnderContainer implements JsonSerializable
                 }
 
                 if (is_string($branchClass = $branch['x-php-instanceof'] ?? null) && $branchClass !== '') {
-                    $branchFqcn = __NAMESPACE__ . '\\' . ltrim($branchClass, '\\');
+                    $branchFqcn = str_contains($branchClass, '\\') ? ltrim($branchClass, '\\') : __NAMESPACE__ . '\\' . $branchClass;
                     // `{$ref: X, nullable: true}`: X or null.
                     if ((is_object($value) && $value instanceof $branchFqcn) || ($value === null && ($branch['nullable'] ?? false) === true)) {
                         $matchingBranches++;
@@ -28902,7 +28904,7 @@ final class UnionUnderContainer implements JsonSerializable
                                 implode(', ', array_keys($discriminatorMap)),
                             );
                         } elseif (is_string($expectedClass = $discriminatorMap[$mapKey]) && $expectedClass !== '') {
-                            $expectedFqcn = __NAMESPACE__ . '\\' . ltrim($expectedClass, '\\');
+                            $expectedFqcn = str_contains($expectedClass, '\\') ? ltrim($expectedClass, '\\') : __NAMESPACE__ . '\\' . $expectedClass;
                             if (!$value instanceof $expectedFqcn) {
                                 $errors[] = sprintf('%s discriminator %s must match concrete class', $path, $discriminatorProperty);
                             }

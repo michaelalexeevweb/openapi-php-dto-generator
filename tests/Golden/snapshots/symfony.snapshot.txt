@@ -1,4 +1,4 @@
-# symfony mode — 77 files, 15419 lines
+# symfony mode — 77 files, 15421 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -12389,7 +12389,7 @@ final class TestPostRequest
                 }
 
                 if (is_string($branchClass = $branch['x-php-instanceof'] ?? null) && $branchClass !== '') {
-                    $branchFqcn = __NAMESPACE__ . '\\' . ltrim($branchClass, '\\');
+                    $branchFqcn = str_contains($branchClass, '\\') ? ltrim($branchClass, '\\') : __NAMESPACE__ . '\\' . $branchClass;
                     // `{$ref: X, nullable: true}`: X or null.
                     if ((is_object($value) && $value instanceof $branchFqcn) || ($value === null && ($branch['nullable'] ?? false) === true)) {
                         $matchingBranches++;
@@ -12467,7 +12467,7 @@ final class TestPostRequest
                                 implode(', ', array_keys($discriminatorMap)),
                             );
                         } elseif (is_string($expectedClass = $discriminatorMap[$mapKey]) && $expectedClass !== '') {
-                            $expectedFqcn = __NAMESPACE__ . '\\' . ltrim($expectedClass, '\\');
+                            $expectedFqcn = str_contains($expectedClass, '\\') ? ltrim($expectedClass, '\\') : __NAMESPACE__ . '\\' . $expectedClass;
                             if (!$value instanceof $expectedFqcn) {
                                 $errors[] = sprintf('%s discriminator %s must match concrete class', $path, $discriminatorProperty);
                             }
@@ -12805,6 +12805,7 @@ use function ltrim;
 use function mb_strlen;
 use function method_exists;
 use function sprintf;
+use function str_contains;
 use function str_ends_with;
 use function str_starts_with;
 use function strpos;
@@ -12864,7 +12865,7 @@ final class TreeNode
                                                         'additionalProperties' => [
                                                             'oneOf' => [
                                                                 [
-                                                                    'x-php-instanceof' => 'TreeNode',
+                                                                    'x-php-instanceof' => 'GoldenCorpus\\TreeNode',
                                                                 ],
                                                                 [
                                                                     'type' => 'object',
@@ -13108,7 +13109,7 @@ final class TreeNode
                 }
 
                 if (is_string($branchClass = $branch['x-php-instanceof'] ?? null) && $branchClass !== '') {
-                    $branchFqcn = __NAMESPACE__ . '\\' . ltrim($branchClass, '\\');
+                    $branchFqcn = str_contains($branchClass, '\\') ? ltrim($branchClass, '\\') : __NAMESPACE__ . '\\' . $branchClass;
                     // `{$ref: X, nullable: true}`: X or null.
                     if ((is_object($value) && $value instanceof $branchFqcn) || ($value === null && ($branch['nullable'] ?? false) === true)) {
                         $matchingBranches++;
@@ -13186,7 +13187,7 @@ final class TreeNode
                                 implode(', ', array_keys($discriminatorMap)),
                             );
                         } elseif (is_string($expectedClass = $discriminatorMap[$mapKey]) && $expectedClass !== '') {
-                            $expectedFqcn = __NAMESPACE__ . '\\' . ltrim($expectedClass, '\\');
+                            $expectedFqcn = str_contains($expectedClass, '\\') ? ltrim($expectedClass, '\\') : __NAMESPACE__ . '\\' . $expectedClass;
                             if (!$value instanceof $expectedFqcn) {
                                 $errors[] = sprintf('%s discriminator %s must match concrete class', $path, $discriminatorProperty);
                             }
@@ -13525,6 +13526,7 @@ use function ltrim;
 use function mb_strlen;
 use function method_exists;
 use function sprintf;
+use function str_contains;
 use function str_ends_with;
 use function str_starts_with;
 use function strpos;
@@ -13906,7 +13908,7 @@ final class UnionUnderContainer
                 }
 
                 if (is_string($branchClass = $branch['x-php-instanceof'] ?? null) && $branchClass !== '') {
-                    $branchFqcn = __NAMESPACE__ . '\\' . ltrim($branchClass, '\\');
+                    $branchFqcn = str_contains($branchClass, '\\') ? ltrim($branchClass, '\\') : __NAMESPACE__ . '\\' . $branchClass;
                     // `{$ref: X, nullable: true}`: X or null.
                     if ((is_object($value) && $value instanceof $branchFqcn) || ($value === null && ($branch['nullable'] ?? false) === true)) {
                         $matchingBranches++;
@@ -13987,7 +13989,7 @@ final class UnionUnderContainer
                                 implode(', ', array_keys($discriminatorMap)),
                             );
                         } elseif (is_string($expectedClass = $discriminatorMap[$mapKey]) && $expectedClass !== '') {
-                            $expectedFqcn = __NAMESPACE__ . '\\' . ltrim($expectedClass, '\\');
+                            $expectedFqcn = str_contains($expectedClass, '\\') ? ltrim($expectedClass, '\\') : __NAMESPACE__ . '\\' . $expectedClass;
                             if (!$value instanceof $expectedFqcn) {
                                 $errors[] = sprintf('%s discriminator %s must match concrete class', $path, $discriminatorProperty);
                             }

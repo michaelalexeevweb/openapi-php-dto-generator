@@ -295,10 +295,11 @@ final class DtoServiceSupport
 
     /**
      * What a property's own constraints say about `null`: the OpenAPI 3.0 `nullable` when it is there,
-     * `true` for a `null` type (3.1 `type: [string, "null"]`) or a `oneOf` / `anyOf` member that admits
-     * null, and null when they say nothing — the caller then decides by whether the property is required
-     * and its PHP type admits null. The deserializer reads a property's null by it, and the validator a
-     * raw object's property, so a null the one refuses is never one the other lets in.
+     * `true` for a `null` type (3.1 `type: [string, "null"]`), a `oneOf` / `anyOf` member that admits
+     * null or an `allOf` every member of which lets it through (one of them saying so), and null when
+     * they say nothing — the caller then decides by whether the property is required and its PHP type
+     * admits null. The deserializer reads a property's null (and a list item's) by it, and the validator
+     * a raw object's property, so a null the one refuses is never one the other lets in.
      *
      * @param array<array-key, mixed> $constraints
      */
@@ -310,12 +311,11 @@ final class DtoServiceSupport
         if (self::typeAdmitsNull($constraints['type'] ?? null)) {
             return true;
         }
-        foreach (['oneOf', 'anyOf'] as $keyword) {
-            $members = $constraints[$keyword] ?? null;
-            foreach (is_array($members) ? $members : [] as $member) {
-                if (is_array($member) && (($member['nullable'] ?? false) === true || self::typeAdmitsNull($member['type'] ?? null))) {
-                    return true;
-                }
+        // The members are read through nested unions: `allOf: [{type: string, nullable: true}]` on an
+        // optional property took its null for "just optional" and refused it.
+        foreach (['oneOf', 'anyOf', 'allOf'] as $keyword) {
+            if (self::compositionNullStance($constraints, $keyword, 0) === true) {
+                return true;
             }
         }
 
@@ -512,6 +512,80 @@ final class DtoServiceSupport
         }
 
         return self::$undeclaredKeysSent[$dto];
+    }
+
+    /**
+     * Whether a schema lets `null` through: true when it says so (`nullable: true`, a `null` type, an
+     * `enum` or `const` that lists null, a composition that does), null when it does not speak about
+     * null at all (no `type`, `nullable`, `enum`, `const` or composition that does), false when it
+     * keeps null out.
+     *
+     * @param array<array-key, mixed> $schema
+     */
+    private static function schemaNullStance(array $schema, int $depth): ?bool
+    {
+        $stances = [];
+        if (array_key_exists('nullable', $schema)) {
+            $stances[] = $schema['nullable'] === true;
+        } elseif (array_key_exists('type', $schema)) {
+            $stances[] = self::typeAdmitsNull($schema['type']);
+        }
+        if (array_key_exists('enum', $schema)) {
+            $stances[] = is_array($schema['enum']) && in_array(null, $schema['enum'], true);
+        }
+        if (array_key_exists('const', $schema)) {
+            $stances[] = $schema['const'] === null;
+        }
+        foreach (['oneOf', 'anyOf', 'allOf'] as $keyword) {
+            $stances[] = self::compositionNullStance($schema, $keyword, $depth);
+        }
+
+        return self::allNullStances($stances);
+    }
+
+    /**
+     * A `oneOf` / `anyOf` lets null through when one member does (a member that does not speak about
+     * null lets everything through); an `allOf` when every member does. Null when the keyword is absent
+     * or its members do not speak about null, false past the nesting bound.
+     *
+     * @param array<array-key, mixed> $schema
+     */
+    private static function compositionNullStance(array $schema, string $keyword, int $depth): ?bool
+    {
+        $members = $schema[$keyword] ?? null;
+        if (!is_array($members) || $members === []) {
+            return null;
+        }
+        if ($depth >= self::MAX_NESTED_UNION_DEPTH) {
+            return false;
+        }
+        $stances = [];
+        foreach ($members as $member) {
+            $stances[] = is_array($member) ? self::schemaNullStance($member, $depth + 1) : null;
+        }
+        if ($keyword === 'allOf') {
+            return self::allNullStances($stances);
+        }
+        if (in_array(true, $stances, true)) {
+            return true;
+        }
+
+        return in_array(null, $stances, true) ? null : false;
+    }
+
+    /**
+     * Stances that must all hold: false when one keeps null out, true when one lets it through and the
+     * rest do not speak, null when none speaks.
+     *
+     * @param list<bool|null> $stances
+     */
+    private static function allNullStances(array $stances): ?bool
+    {
+        if (in_array(false, $stances, true)) {
+            return false;
+        }
+
+        return in_array(true, $stances, true) ? true : null;
     }
 
     private static function typeAdmitsNull(mixed $type): bool

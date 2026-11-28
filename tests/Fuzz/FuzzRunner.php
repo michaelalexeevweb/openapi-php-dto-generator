@@ -1165,7 +1165,7 @@ final class FuzzRunner
      * @param class-string $fqcn the generated Symfony `Probe`
      * @return array<int, array{property: string|null, kind: string, json: string, expected: PayloadVerdict, tags: array<int, string>}>
      */
-    private static function tagObjectsOfAPair(array $payloads, array $document, string $fqcn): array
+    public static function tagObjectsOfAPair(array $payloads, array $document, string $fqcn): array
     {
         foreach ($payloads as $index => $payload) {
             if ($payload['kind'] !== 'valid' || $payload['property'] === null || !in_array('unionObjectPair', $payload['tags'], true)) {
@@ -1454,6 +1454,53 @@ final class FuzzRunner
         }
 
         return $names;
+    }
+
+    /**
+     * The classes the Symfony serializer BUILDS for a property of a generated class: those its declared
+     * type names and those its `@var` docblock names anywhere (list items, map values) — a
+     * `DateTimeImmutable` among them. An interface (a union's) is no class the serializer builds, and an
+     * empty answer means the property holds what it is sent, raw.
+     *
+     * @param class-string $class
+     * @return array<int, class-string>
+     */
+    public static function builtClassesOf(string $class, string $wireName): array
+    {
+        if (!class_exists($class)) {
+            return [];
+        }
+        foreach ((new ReflectionClass($class))->getProperties() as $reflected) {
+            if (self::wireNameOf($reflected) !== $wireName) {
+                continue;
+            }
+            $type = $reflected->getType();
+            $names = [];
+            foreach ($type instanceof ReflectionUnionType ? $type->getTypes() : [$type] as $member) {
+                if ($member instanceof ReflectionNamedType && !$member->isBuiltin()) {
+                    $names[] = $member->getName();
+                }
+            }
+            $namespace = $reflected->getDeclaringClass()->getNamespaceName();
+            if (preg_match('/@var\s+([^\n*]+)/', (string)$reflected->getDocComment(), $match) === 1) {
+                preg_match_all('/\\\?[A-Za-z_][A-Za-z0-9_\\\]*/', $match[1], $words);
+                foreach ($words[0] as $word) {
+                    $names[] = str_contains($word, '\\') ? ltrim($word, '\\') : $namespace . '\\' . $word;
+                    // A global class the generated file imports (`use DateTimeImmutable;`).
+                    $names[] = ltrim($word, '\\');
+                }
+            }
+            $built = [];
+            foreach ($names as $name) {
+                if (class_exists($name) && !in_array($name, $built, true)) {
+                    $built[] = $name;
+                }
+            }
+
+            return $built;
+        }
+
+        return [];
     }
 
     /**

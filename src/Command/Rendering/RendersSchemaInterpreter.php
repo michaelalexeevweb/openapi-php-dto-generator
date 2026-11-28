@@ -659,7 +659,7 @@ PHP
                                 implode(', ', array_keys($discriminatorMap)),
                             );
                         } elseif (is_string($expectedClass = $discriminatorMap[$mapKey]) && $expectedClass !== '') {
-                            $expectedFqcn = __NAMESPACE__ . '\\' . ltrim($expectedClass, '\\');
+                            $expectedFqcn = str_contains($expectedClass, '\\') ? ltrim($expectedClass, '\\') : __NAMESPACE__ . '\\' . $expectedClass;
                             if (!$value instanceof $expectedFqcn) {
                                 $errors[] = sprintf('%s discriminator %s must match concrete class', $path, $discriminatorProperty);
                             }
@@ -803,7 +803,7 @@ PHP
                 }
 
 {$decodedRouteSkip}{$oneOfCheckedByClass}                if (is_string(\$branchClass = \$branch['x-php-instanceof'] ?? null) && \$branchClass !== '') {
-                    \$branchFqcn = __NAMESPACE__ . '\\\\' . ltrim(\$branchClass, '\\\\');
+                    \$branchFqcn = str_contains(\$branchClass, '\\\\') ? ltrim(\$branchClass, '\\\\') : __NAMESPACE__ . '\\\\' . \$branchClass;
                     // `{\$ref: X, nullable: true}`: X or null.
                     if ((is_object(\$value) && \$value instanceof \$branchFqcn) || (\$value === null && (\$branch['nullable'] ?? false) === true)) {
                         \$matchingBranches++;{$recordMatchedBranch}
@@ -1507,7 +1507,7 @@ PHP
             $anyOfClassBranch = $this->schemaUsesKeyword($constraints, 'x-php-raw-object')
                 ? <<<'PHP'
                 if (is_string($branchClass = $branch['x-php-instanceof'] ?? null) && $branchClass !== '') {
-                    $branchFqcn = __NAMESPACE__ . '\\' . ltrim($branchClass, '\\');
+                    $branchFqcn = str_contains($branchClass, '\\') ? ltrim($branchClass, '\\') : __NAMESPACE__ . '\\' . $branchClass;
                     $rawObject = (is_array($value) && ($value === [] || !array_is_list($value))) || $value instanceof \stdClass;
                     $nullBranch = $value === null && ($branch['nullable'] ?? false) === true;
                     if ((is_object($value) && $value instanceof $branchFqcn) || $nullBranch) {
@@ -1535,7 +1535,7 @@ PHP
                 ? $anyOfClassBranch
                 : <<<'PHP'
                 if (is_string($branchClass = $branch['x-php-instanceof'] ?? null) && $branchClass !== '') {
-                    $branchFqcn = __NAMESPACE__ . '\\' . ltrim($branchClass, '\\');
+                    $branchFqcn = str_contains($branchClass, '\\') ? ltrim($branchClass, '\\') : __NAMESPACE__ . '\\' . $branchClass;
                     $rawObject = (is_array($value) && ($value === [] || !array_is_list($value))) || $value instanceof \stdClass;
                     $nullBranch = $value === null && ($branch['nullable'] ?? false) === true;
                     if ((is_object($value) && $value instanceof $branchFqcn) || ($rawObject && !enum_exists($branchFqcn)) || $nullBranch) {
@@ -2823,24 +2823,60 @@ PHP;
      */
     private function foldScalarAllOfConstraints(array $constraints): array
     {
-        $branches = $constraints['allOf'] ?? null;
-        if (!is_array($branches) || $branches === [] || !$this->allOfHasPlainBranches($branches)) {
-            return $constraints;
+        return $this->allOfFragmentsMerged(schema: $constraints, depth: 0) ?? $constraints;
+    }
+
+    /**
+     * An `allOf` of plain value fragments merged into the one flat schema it spells: `{allOf: [{type:
+     * integer}, {maximum: 15}]}` is `{type: integer, maximum: 15}`. A
+     * fragment that is an `allOf` of its own is its fragments — `allOf` nests associatively — so a split
+     * alias inlined as one member of a wider `allOf` merges too. A `nullable` — the node's own or a
+     * branch's — is never merged: it would grant null to fragments whose `type` refuses it. `null` when
+     * the `allOf` does not merge:
+     * a keyword two fragments give different values, an applicator, a 3.0 boolean exclusive bound apart
+     * from the bound it qualifies.
+     *
+     * @param array<mixed> $schema
+     * @return array<string, mixed>|null
+     */
+    private function allOfFragmentsMerged(array $schema, int $depth): ?array
+    {
+        $branches = $schema['allOf'] ?? null;
+        if (!is_array($branches) || $branches === [] || $depth >= 8) {
+            return null;
         }
         $merged = [];
-        foreach ($constraints as $key => $value) {
+        foreach ($schema as $key => $value) {
             if ($key !== 'allOf') {
-                $merged[$key] = $value;
+                $merged[(string)$key] = $value;
             }
         }
-        if (array_key_exists('nullable', $merged)) {
-            return $constraints;
+        // The node's own 3.0 `nullable` relaxes its own `type`, not the fragments': merged in, it would
+        // admit the `null` each fragment's `type` refuses (README.validation, `allOf` keeps each branch).
+        if (array_key_exists('nullable', $merged) || !$this->exclusiveBoundsBesideTheirBounds($merged)) {
+            return null;
         }
         foreach ($branches as $branch) {
             if (!is_array($branch) || array_key_exists('nullable', $branch)) {
-                return $constraints;
+                return null;
+            }
+            if (array_key_exists('allOf', $branch)) {
+                $branch = $this->allOfFragmentsMerged(schema: $branch, depth: $depth + 1);
+                if ($branch === null || array_key_exists('nullable', $branch)) {
+                    return null;
+                }
+            }
+            if (!$this->exclusiveBoundsBesideTheirBounds($branch)) {
+                return null;
             }
             foreach ($branch as $key => $value) {
+                // An annotation asserts nothing; a generator marker (`x-php-…`, `x-discriminator-…`) does,
+                // except the inline-enum one, which the merged `enum` earns again.
+                $annotation = in_array($key, ['description', 'title', 'example', 'examples', '$comment', 'x-php-inline-enum'], true)
+                    || (str_starts_with((string)$key, 'x-') && !str_starts_with((string)$key, 'x-php-') && !str_starts_with((string)$key, 'x-discriminator'));
+                if ($annotation) {
+                    continue;
+                }
                 // Applicators can interact with siblings (if/then, contains/minContains, items).
                 // Only independent value assertions can move out of their branch.
                 if (
@@ -2854,10 +2890,10 @@ PHP;
                         strict: true,
                     )
                 ) {
-                    return $constraints;
+                    return null;
                 }
                 if (array_key_exists($key, $merged) && $merged[$key] !== $value) {
-                    return $constraints;
+                    return null;
                 }
                 $merged[$key] = $value;
             }
@@ -2866,11 +2902,50 @@ PHP;
         return $merged;
     }
 
-    /** @param array<mixed> $branches */
-    private function allOfHasPlainBranches(array $branches): bool
+    /**
+     * A 3.0 boolean `exclusiveMinimum` / `exclusiveMaximum` qualifies the bound in ITS fragment; moved
+     * beside a bound from another fragment it would make that one exclusive.
+     *
+     * @param array<mixed> $fragment
+     */
+    private function exclusiveBoundsBesideTheirBounds(array $fragment): bool
+    {
+        foreach (['exclusiveMinimum' => 'minimum', 'exclusiveMaximum' => 'maximum'] as $exclusive => $bound) {
+            if (is_bool($fragment[$exclusive] ?? null) && !array_key_exists($bound, $fragment)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Whether every branch is a plain fragment — a value assertion, no reference, object or union —
+     * counting a branch that is an `allOf` of plain fragments as the fragments it nests.
+     *
+     * @param array<mixed> $branches
+     */
+    private function allOfHasPlainBranches(array $branches, int $depth = 0): bool
     {
         foreach ($branches as $branch) {
-            if (!is_array($branch) || !$this->canFlattenAllOfPropertyItem($branch)) {
+            if (!is_array($branch)) {
+                return false;
+            }
+            $nested = $branch['allOf'] ?? null;
+            if (is_array($nested) && $nested !== [] && $depth < 8) {
+                $beside = [];
+                foreach ($branch as $key => $value) {
+                    if ($key !== 'allOf') {
+                        $beside[(string)$key] = $value;
+                    }
+                }
+                if (!$this->canFlattenAllOfPropertyItem($beside) || !$this->allOfHasPlainBranches($nested, $depth + 1)) {
+                    return false;
+                }
+
+                continue;
+            }
+            if (!$this->canFlattenAllOfPropertyItem($branch)) {
                 return false;
             }
         }

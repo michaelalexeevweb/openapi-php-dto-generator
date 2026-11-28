@@ -964,6 +964,10 @@ trait RendersLaravelValidation
         if ($this->attributeMode === self::ATTRIBUTE_MODE_LARAVEL) {
             foreach ($this->generatedClassesNamedByType($property['type']) as $namedClass) {
                 $builtMembers = [...$builtMembers, ...$this->laravelUnionComponentMembers($namedClass)];
+                // A discriminated union beside a scalar (`string|Scarlet`) is built by the member its tag
+                // names, spelled short: imported only for a property typed by the union alone, a union of
+                // another namespace built `Azure` the holder's namespace has no class of.
+                $builtMembers = [...$builtMembers, ...array_values($this->discriminatorSchemas[$namedClass]['mapping'] ?? [])];
             }
         }
         foreach ([...$this->generatedClassesNamedByType($property['type']), ...$this->laravelUndiscriminatedUnionClasses($property), ...$builtMembers] as $nested) {
@@ -1460,6 +1464,14 @@ trait RendersLaravelValidation
         // The object-wide keywords of what the class is built from with `allOf`: one entry per branch,
         // never merged, so two parents that both carry a `not` keep both.
         $branchParts = $this->laravelAllOfBranchObjectLevel(className: $className, visitedClasses: [$className]);
+        // And what each branch says about the KEYS — its `additionalProperties`, `false` or a schema,
+        // over the names of its `allOf`: the closed-object flag below reads the top level only, and a
+        // class spelled `allOf: [{properties: {crane}, additionalProperties: false}]` took any extra key.
+        // Where `unevaluatedProperties` reads the tree, the evaluation below carries the branches itself.
+        $evaluation = $this->unevaluatedPropertiesEvaluation(schema: $schema, extracted: $extracted);
+        if ($evaluation === []) {
+            $branchParts = [...$branchParts, ...$this->allOfBranchKeyConstraints(schema: $schema, className: $className, objectKeywords: [])];
+        }
         if ($branchParts !== []) {
             $objectLevel['allOf'] = $branchParts;
         }
@@ -1481,7 +1493,6 @@ trait RendersLaravelValidation
         // Where an in-place applicator evaluates keys too, the interpreter decides `unevaluatedProperties`
         // from the whole tree — see `unevaluatedPropertiesEvaluation()`. `additionalProperties` beside
         // the keyword evaluates every key, which leaves the keyword itself nothing to refuse.
-        $evaluation = $this->unevaluatedPropertiesEvaluation(schema: $schema, extracted: $extracted);
         if ($evaluation !== []) {
             $objectLevel = [...$objectLevel, ...$evaluation];
             if (array_key_exists('unevaluatedProperties', $extracted) && !array_key_exists('additionalProperties', $schema)) {

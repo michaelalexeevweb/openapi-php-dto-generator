@@ -183,11 +183,15 @@ trait RendersSymfonyDto
      * {"kind": "dog"}}` was a 500. The value is held as the decoded array, and the member its tag names
      * judges it, as for a union nested in a union (`symfonyUnionNestsDiscriminatedUnion()`).
      *
+     * Any spelling of the reference counts (`unionReferenceTheSchemaConsistsOf()`): beside a null,
+     * `anyOf: [$ref Teal, {type: null}]` stayed typed `Teal|array|null`, and the serializer refused the
+     * member it built for not being a Teal.
+     *
      * @param array<mixed> $schema
      */
     private function symfonyUnionHasMemberWrittenElsewhere(array $schema): bool
     {
-        $ref = $this->referenceOrSingleRefAllOf($schema);
+        $ref = $this->unionReferenceTheSchemaConsistsOf($schema)['ref'] ?? null;
 
         return $ref !== null
             && str_starts_with($ref, '#/components/schemas/')
@@ -244,6 +248,12 @@ trait RendersSymfonyDto
                     && is_array($branch['discriminator'] ?? null)
                     && (is_array($branch['oneOf'] ?? null) || is_array($branch['anyOf'] ?? null))
                 ) {
+                    return true;
+                }
+                // One level further down: `anyOf: [{anyOf: [{type: string}, <discriminated union>]},
+                // {type: null}]` spreads the inner union into `string|Amber|Indigo|null` as much as the
+                // one-level spelling does, and the serializer built Amber for a valid `circle` the same.
+                if (is_array($branch) && $depth < 8 && $this->symfonyUnionNestsDiscriminatedUnion(schema: $branch, depth: $depth + 1, sourceFile: $sourceFile)) {
                     return true;
                 }
             }
@@ -654,6 +664,35 @@ trait RendersSymfonyDto
     }
 
     /**
+     * A list item or map value one container deep that is an enum or null — `additionalProperties: {$ref:
+     * Kind, nullable: true}`, `{allOf: [$ref Kind], nullable: true}`, `anyOf: [{$ref: Kind}, {type:
+     * null}]` — typed as the strings (or integers) it arrives as (`array<string, ?string>`), the callback
+     * checking the enum. Typed `?Kind`, symfony/serializer's `ArrayDenormalizer` handed the null to
+     * `BackedEnumNormalizer`, which refuses null: `{"otter": {"ka": null}}` was refused although the
+     * document allows it. The inline enum that lists `null` itself is a string already; a nullable list
+     * of enums one container deep moved the same way in 2.15.159 (`symfonyAliasInAContainerType()`).
+     *
+     * @param array<int, SchemaProperty> $properties
+     * @return array<int, SchemaProperty>
+     */
+    private function symfonyWithNullableEnumMembersHeldAsStrings(array $properties): array
+    {
+        foreach ($properties as $index => $property) {
+            if (preg_match('/^(\??array<(?:(?:string|int), )?)\?([\\\\\w]+)>$/', $property['type'], $matches) !== 1) {
+                continue;
+            }
+            // The backing type is what the case arrives as: `string`, or `int` for an integer enum.
+            $backing = $this->enumSchemas[$this->shortClassName($matches[2])]['type'] ?? null;
+            if (!in_array($backing, ['string', 'int'], true)) {
+                continue;
+            }
+            $properties[$index]['type'] = $matches[1] . '?' . $backing . '>';
+        }
+
+        return $properties;
+    }
+
+    /**
      * A property whose `oneOf`/`anyOf` holds a list of a UNION component beside `null` or a scalar
      * (`oneOf: [{type: array, items: {$ref: Shape}}, {type: integer}]`), typed as that list:
      * `array<Shape>|int`.
@@ -790,6 +829,7 @@ trait RendersSymfonyDto
         }
 
         $properties = $this->symfonyWithUnionListsTyped($className, $properties);
+        $properties = $this->symfonyWithNullableEnumMembersHeldAsStrings($properties);
         $heldAsArray = $this->symfonyFreeFormObjectUnionsHeldAsArray($className, $properties);
         $properties = $this->symfonyWithFreeFormObjectUnionsHeldAsArray($className, $properties);
         $heldDecoded = $this->symfonyUndiscriminatedUnionsHeldDecoded($className, $properties);
@@ -824,8 +864,17 @@ trait RendersSymfonyDto
 
         $schemaDefinition = $this->dtoSchemas[$className] ?? [];
         $forceRootCallbackBounds = [];
+        $schemaProperties = is_array($schemaDefinition['properties'] ?? null) ? $schemaDefinition['properties'] : [];
         foreach ($properties as $property) {
-            if ($this->shouldForceRootCallbackForProperty($property)) {
+            // A union with a member another document writes is held as the decoded array, and its
+            // members are written out in place (`symfonyContainerUnionReferenceInlined()`): an `anyOf` of
+            // them has no `AtLeastOneOf` spelling, so left to the attribute it was checked by nothing —
+            // `{"kind": "Azure"}` passed a member that requires `newt`.
+            $propertySchema = $schemaProperties[$property['openApiName']] ?? null;
+            if (
+                $this->shouldForceRootCallbackForProperty($property)
+                || (is_array($propertySchema) && $this->symfonyUnionHasMemberWrittenElsewhere($propertySchema))
+            ) {
                 $forceRootCallbackBounds[$property['openApiName']] = true;
             }
         }
@@ -1335,7 +1384,7 @@ trait RendersSymfonyDto
         if ($depth >= 8) {
             return $schema;
         }
-        $branchClass = $schema['x-php-instanceof'] ?? null;
+        $branchClass = is_string($schema['x-php-instanceof'] ?? null) ? $this->shortClassName($schema['x-php-instanceof']) : null;
         if (is_string($branchClass) && array_key_exists($branchClass, $rawObjectSchemas)) {
             $schema['x-php-raw-object'] = $rawObjectSchemas[$branchClass];
         }
@@ -1558,15 +1607,21 @@ trait RendersSymfonyDto
     }
 
     /**
-     * Whether a rendered property type names no generated class or enum: every member a PHP type of its
-     * own, so the serializer hydrates nothing the property's union branches name.
+     * Whether a rendered property type names no generated object class: every member a PHP type of its
+     * own or a backed enum, so an object the property holds is always the decoded array, never a class
+     * the serializer built from one of the union's branches.
+     *
+     * A backed enum beside the array holds a scalar only. Counted as a class, `ProbeWombatAnyOf2|array`
+     * (an integer-enum branch beside an object and a list) left the object branch's property enums to a
+     * PHP enum the array never holds, and `{"urchin": 9}` passed `enum: [27, 15]`.
      *
      * @param list<string> $typeMembers
      */
     private function symfonyTypeHoldsNoGeneratedClass(array $typeMembers): bool
     {
         foreach ($typeMembers as $member) {
-            if (array_key_exists($member, $this->dtoSchemas) || array_key_exists($member, $this->enumSchemas)) {
+            $short = $this->shortClassName($member);
+            if (array_key_exists($short, $this->dtoSchemas) && !array_key_exists($short, $this->enumSchemas)) {
                 return false;
             }
         }
@@ -1589,12 +1644,21 @@ trait RendersSymfonyDto
     private function symfonyContainerUnionReferenceInlined(array $propertySchema): array
     {
         $ref = $this->referenceOrSingleRefAllOf($propertySchema);
+        // A union with a member another document writes is held as the decoded array in every spelling
+        // (`symfonyUnionHasMemberWrittenElsewhere()`), the one beside a null included: written out here,
+        // the null kept as `nullable`.
+        $reference = $this->unionReferenceTheSchemaConsistsOf($propertySchema);
+        $nullable = false;
+        if ($ref === null && $reference !== null && $this->symfonyUnionHasMemberWrittenElsewhere($propertySchema)) {
+            $ref = $reference['ref'];
+            $nullable = $reference['nullable'];
+        }
         $visited = [];
         $definition = null;
         while (is_string($ref) && !in_array($ref, $visited, true)) {
             $visited[] = $ref;
             $definition = $this->localComponentDefinition($ref);
-            $ref = is_array($definition) && array_keys($definition) === ['$ref'] ? $definition['$ref'] : null;
+            $ref = $this->isAnnotatedReference($definition) ? $definition['$ref'] : null;
         }
         if (!is_array($definition)) {
             return $propertySchema;
@@ -1618,13 +1682,25 @@ trait RendersSymfonyDto
         if (!$hasContainerBranch && !$this->symfonyUnionNestsDiscriminatedUnion($definition) && !$this->symfonyUnionHasMemberWrittenElsewhere($propertySchema)) {
             return $propertySchema;
         }
+        // The members are written out below, so the implicit map — each member named by its schema —
+        // is spelled now, while the `$ref`s still name them: read afterwards it was empty, and
+        // `{"kind": "zzq"}` passed a discriminated union with a member of another document.
+        if (is_array($definition['discriminator'] ?? null) && !array_key_exists('mapping', $definition['discriminator'])) {
+            $implicitMapping = $this->implicitDiscriminatorMapping($definition);
+            if ($implicitMapping !== []) {
+                $definition['discriminator']['mapping'] = $implicitMapping;
+            }
+        }
         // The wrapper goes with the reference it held; an `allOf` beside a bare `$ref` stays.
-        $referenceKeyword = array_key_exists('$ref', $propertySchema) ? '$ref' : 'allOf';
+        $referenceKeywords = array_key_exists('$ref', $propertySchema) ? ['$ref'] : ($reference['wrappers'] ?? ['allOf']);
         $own = [];
         foreach ($propertySchema as $keyword => $value) {
-            if ($keyword !== $referenceKeyword) {
+            if (!in_array($keyword, $referenceKeywords, true)) {
                 $own[$keyword] = $value;
             }
+        }
+        if ($nullable) {
+            $own['nullable'] = true;
         }
 
         // The component as written still holds `items: {$ref: Indigo, properties: {ferret: …}}`; inlined
@@ -2345,12 +2421,15 @@ PHP;
         // A temporal default is `new DateTimeImmutable(...)`, and PHP forbids `new` in a PROPERTY
         // initialiser — which is what an optional property here is, since the serializer fills it
         // through the setter rather than the constructor. The constructor BODY is the one place that
-        // can hold the expression, so the property is left uninitialised and assigned there.
+        // can hold the expression, so the property is left uninitialised and assigned there. The PHP
+        // type decides, as it does for `renderDefaultValue()`: a date-time beside a null spelled as a
+        // `oneOf` / `anyOf` carries its format as `unionTemporalFormats`, not `temporalFormat`, and its
+        // `new` landed in the initialiser — "New expressions are not supported in this context".
         $temporalDefault = null;
         $defaultLiteral = '';
         if (!$required && $default !== null) {
             $rendered = $this->renderDefaultValue($default, $phpType, $this->composePhpTypeHint($phpType, $schemaNullable));
-            if ($this->symfonyPropertyIsTemporalScalar($property)) {
+            if ($this->shortClassName(ltrim($phpType, '?')) === 'DateTimeImmutable') {
                 $expression = ltrim($rendered, ' =');
                 $temporalDefault = $expression === '' ? null : $expression;
             } else {
@@ -2528,6 +2607,8 @@ PHP;
     /**
      * Whether a class schema admits objects only: its own `type` is `object` (or a list of it without
      * `null`), or one `allOf` part — every part must hold — pins it so. A part `nullable: true` pins nothing.
+     * A `$ref` part pins what the component it names pins: `Teal: {allOf: [{$ref: Ochre}]}` extends an
+     * object, and unread, the setter took `2.5`, `"x"` and `null` as an empty Teal.
      *
      * @param array<mixed> $schema
      */
@@ -2546,6 +2627,9 @@ PHP;
             return false;
         }
         foreach ($allOf as $part) {
+            if (is_array($part) && is_string($part['$ref'] ?? null) && $this->isAnnotatedReference($part)) {
+                $part = $this->localComponentDefinition($part['$ref']) ?? [];
+            }
             if (is_array($part) && $this->symfonySchemaPinsObject($part, $depth + 1)) {
                 return true;
             }
@@ -3304,7 +3388,7 @@ PHP;
         // An enum the same: the serializer has already turned a member into its case, so holding the
         // enum IS the member check. Left out, the branch had no expression, the whole `AtLeastOneOf`
         // was dropped with it, and the scalar branch beside it — `minimum: 5` — checked nothing.
-        $branchClass = $schema['x-php-instanceof'] ?? null;
+        $branchClass = is_string($schema['x-php-instanceof'] ?? null) ? $this->shortClassName($schema['x-php-instanceof']) : null;
         if (is_string($branchClass) && (array_key_exists($branchClass, $this->dtoSchemas) || array_key_exists($branchClass, $this->enumSchemas))) {
             return ['new Assert\Type(' . $branchClass . '::class)'];
         }
@@ -3997,7 +4081,7 @@ PHP;
             if (!is_array($branch)) {
                 continue;
             }
-            $branchClass = $branch['x-php-instanceof'] ?? null;
+            $branchClass = is_string($branch['x-php-instanceof'] ?? null) ? $this->shortClassName($branch['x-php-instanceof']) : null;
             if (is_string($branchClass)) {
                 if (array_key_exists($branchClass, $this->dtoSchemas) && !array_key_exists($branchClass, $this->enumSchemas) && !in_array($branchClass, $held, true)) {
                     return true;

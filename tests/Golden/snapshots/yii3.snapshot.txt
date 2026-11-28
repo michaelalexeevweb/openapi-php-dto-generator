@@ -1,4 +1,4 @@
-# yii3 mode — 80 files, 37562 lines
+# yii3 mode — 80 files, 37564 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -32960,7 +32960,7 @@ final class TestPostRequest extends AbstractInput implements DataSetInterface, R
                 }
 
                 if (is_string($branchClass = $branch['x-php-instanceof'] ?? null) && $branchClass !== '') {
-                    $branchFqcn = __NAMESPACE__ . '\\' . ltrim($branchClass, '\\');
+                    $branchFqcn = str_contains($branchClass, '\\') ? ltrim($branchClass, '\\') : __NAMESPACE__ . '\\' . $branchClass;
                     // `{$ref: X, nullable: true}`: X or null.
                     if ((is_object($value) && $value instanceof $branchFqcn) || ($value === null && ($branch['nullable'] ?? false) === true)) {
                         $matchingBranches++;
@@ -33038,7 +33038,7 @@ final class TestPostRequest extends AbstractInput implements DataSetInterface, R
                                 implode(', ', array_keys($discriminatorMap)),
                             );
                         } elseif (is_string($expectedClass = $discriminatorMap[$mapKey]) && $expectedClass !== '') {
-                            $expectedFqcn = __NAMESPACE__ . '\\' . ltrim($expectedClass, '\\');
+                            $expectedFqcn = str_contains($expectedClass, '\\') ? ltrim($expectedClass, '\\') : __NAMESPACE__ . '\\' . $expectedClass;
                             if (!$value instanceof $expectedFqcn) {
                                 $errors[] = sprintf('%s discriminator %s must match concrete class', $path, $discriminatorProperty);
                             }
@@ -33379,6 +33379,7 @@ use function method_exists;
 use function preg_split;
 use function property_exists;
 use function sprintf;
+use function str_contains;
 use function str_ends_with;
 use function str_starts_with;
 use function strpos;
@@ -33842,7 +33843,7 @@ final class TreeNode extends AbstractInput implements DataSetInterface, RulesPro
                 }
 
                 if (is_string($branchClass = $branch['x-php-instanceof'] ?? null) && $branchClass !== '') {
-                    $branchFqcn = __NAMESPACE__ . '\\' . ltrim($branchClass, '\\');
+                    $branchFqcn = str_contains($branchClass, '\\') ? ltrim($branchClass, '\\') : __NAMESPACE__ . '\\' . $branchClass;
                     // `{$ref: X, nullable: true}`: X or null.
                     if ((is_object($value) && $value instanceof $branchFqcn) || ($value === null && ($branch['nullable'] ?? false) === true)) {
                         $matchingBranches++;
@@ -33920,7 +33921,7 @@ final class TreeNode extends AbstractInput implements DataSetInterface, RulesPro
                                 implode(', ', array_keys($discriminatorMap)),
                             );
                         } elseif (is_string($expectedClass = $discriminatorMap[$mapKey]) && $expectedClass !== '') {
-                            $expectedFqcn = __NAMESPACE__ . '\\' . ltrim($expectedClass, '\\');
+                            $expectedFqcn = str_contains($expectedClass, '\\') ? ltrim($expectedClass, '\\') : __NAMESPACE__ . '\\' . $expectedClass;
                             if (!$value instanceof $expectedFqcn) {
                                 $errors[] = sprintf('%s discriminator %s must match concrete class', $path, $discriminatorProperty);
                             }
@@ -34251,6 +34252,7 @@ use function method_exists;
 use function preg_split;
 use function property_exists;
 use function sprintf;
+use function str_contains;
 use function str_ends_with;
 use function str_starts_with;
 use function strpos;
@@ -34717,7 +34719,7 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
                 }
 
                 if (is_string($branchClass = $branch['x-php-instanceof'] ?? null) && $branchClass !== '') {
-                    $branchFqcn = __NAMESPACE__ . '\\' . ltrim($branchClass, '\\');
+                    $branchFqcn = str_contains($branchClass, '\\') ? ltrim($branchClass, '\\') : __NAMESPACE__ . '\\' . $branchClass;
                     // `{$ref: X, nullable: true}`: X or null.
                     if ((is_object($value) && $value instanceof $branchFqcn) || ($value === null && ($branch['nullable'] ?? false) === true)) {
                         $matchingBranches++;
@@ -34798,7 +34800,7 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
                                 implode(', ', array_keys($discriminatorMap)),
                             );
                         } elseif (is_string($expectedClass = $discriminatorMap[$mapKey]) && $expectedClass !== '') {
-                            $expectedFqcn = __NAMESPACE__ . '\\' . ltrim($expectedClass, '\\');
+                            $expectedFqcn = str_contains($expectedClass, '\\') ? ltrim($expectedClass, '\\') : __NAMESPACE__ . '\\' . $expectedClass;
                             if (!$value instanceof $expectedFqcn) {
                                 $errors[] = sprintf('%s discriminator %s must match concrete class', $path, $discriminatorProperty);
                             }

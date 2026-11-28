@@ -778,6 +778,231 @@ trait RendersCommonDtoParts
     }
 
     /**
+     * What each `allOf` branch of a class says about the KEYS of the object — its
+     * `additionalProperties` (`false` or a schema) and the object-wide keywords a mode asks for — as one
+     * interpreter schema per branch, never merged: `{allOf: [{properties: {crane}, additionalProperties:
+     * false}]}` closes the object as the plain spelling does, and two branches keep two bounds.
+     *
+     * The class folds its branches into one set of properties, and these keywords were read from the
+     * class's own top level only: such a class closed on nothing, and `{"crane": "a", "stray": "x"}` was
+     * accepted with the stray key dropped where the plain spelling refused it. A `$ref` parent branch
+     * stands for the parent's schema, at any depth of the chain.
+     *
+     * A branch's `additionalProperties` speaks about the keys no branch of the same `allOf` declares —
+     * the inherited properties are not extra ones beside a parent, as `analyzeSchema()` folds them into
+     * one class — while a property the class declares BESIDE its `allOf` reaches no branch, and stays
+     * extra to the closure. Property schemas travel as names over the empty schema: the class checks
+     * each property already. `unevaluatedProperties` is left to `unevaluatedPropertiesEvaluation()`,
+     * which reads the whole tree; the caller drops these parts where that one speaks.
+     *
+     * @param array<string, mixed> $schema the class schema as the document declared it
+     * @param list<string> $objectKeywords the object-wide keywords the mode carries for each branch beside the closure
+     * @param string|null $inheritedParent the parent the class extends, whose own method carries its branch
+     * @return list<array<string, mixed>>
+     */
+    private function allOfBranchKeyConstraints(
+        array $schema,
+        string $className,
+        array $objectKeywords,
+        ?string $inheritedParent = null,
+    ): array {
+        $allOf = $schema['allOf'] ?? null;
+        if (!is_array($allOf)) {
+            return [];
+        }
+
+        return $this->keyConstraintsOfAllOf(
+            allOf: $allOf,
+            sourceClass: $className,
+            objectKeywords: $objectKeywords,
+            visitedClasses: [$className],
+            inheritedParent: $inheritedParent,
+        );
+    }
+
+    /**
+     * @param array<mixed> $allOf
+     * @param list<string> $objectKeywords
+     * @param list<string> $visitedClasses the `$ref` chain walked so far, so a cycle ends
+     * @return list<array<string, mixed>>
+     */
+    private function keyConstraintsOfAllOf(
+        array $allOf,
+        string $sourceClass,
+        array $objectKeywords,
+        array $visitedClasses,
+        ?string $inheritedParent,
+    ): array {
+        $branches = [];
+        $siblingNames = [];
+        $siblingPatterns = [];
+        foreach ($allOf as $branch) {
+            $resolved = $this->allOfBranchInPlace(branch: $branch, sourceClass: $sourceClass, visitedClasses: $visitedClasses);
+            if ($resolved === null) {
+                continue;
+            }
+            $keys = $this->keysDeclaredInPlace(
+                schema: $resolved['schema'],
+                sourceClass: $resolved['sourceClass'],
+                visitedClasses: $resolved['visitedClasses'],
+            );
+            $siblingNames += $keys['names'];
+            $siblingPatterns += $keys['patterns'];
+            $branches[] = $resolved;
+        }
+
+        $parts = [];
+        foreach ($branches as $resolved) {
+            // The class extends that parent and inherits the parent's own constraints with it.
+            if ($resolved['sourceClass'] !== $sourceClass && $resolved['sourceClass'] === $inheritedParent) {
+                continue;
+            }
+            $part = $this->branchKeyConstraints(
+                branch: $resolved['schema'],
+                sourceClass: $resolved['sourceClass'],
+                objectKeywords: $objectKeywords,
+                siblingNames: $siblingNames,
+                siblingPatterns: $siblingPatterns,
+            );
+            if ($part !== []) {
+                $parts[] = $part;
+            }
+            $nested = $resolved['schema']['allOf'] ?? null;
+            if (is_array($nested)) {
+                $parts = [...$parts, ...$this->keyConstraintsOfAllOf(
+                    allOf: $nested,
+                    sourceClass: $resolved['sourceClass'],
+                    objectKeywords: $objectKeywords,
+                    visitedClasses: $resolved['visitedClasses'],
+                    inheritedParent: null,
+                )];
+            }
+        }
+
+        return $parts;
+    }
+
+    /**
+     * An `allOf` branch as the schema it stands for: itself, or the component a `$ref` names, with the
+     * class it belongs to; null for what is not an object schema of this document's classes, or a cycle.
+     *
+     * @param list<string> $visitedClasses
+     * @return array{schema: array<string, mixed>, sourceClass: string, visitedClasses: list<string>}|null
+     */
+    private function allOfBranchInPlace(mixed $branch, string $sourceClass, array $visitedClasses): ?array
+    {
+        if (!is_array($branch)) {
+            return null;
+        }
+        $ref = $branch['$ref'] ?? null;
+        if (!is_string($ref)) {
+            $inline = [];
+            foreach ($branch as $keyword => $value) {
+                $inline[(string)$keyword] = $value;
+            }
+
+            return ['schema' => $inline, 'sourceClass' => $sourceClass, 'visitedClasses' => $visitedClasses];
+        }
+
+        $parentClass = $this->schemaRefToClassName(ref: $ref, currentSourceFile: $this->getSchemaSourceFile($sourceClass));
+        $parentSchema = $this->dtoSchemas[$parentClass] ?? null;
+        if (!is_array($parentSchema) || in_array($parentClass, $visitedClasses, true)) {
+            return null;
+        }
+
+        return ['schema' => $parentSchema, 'sourceClass' => $parentClass, 'visitedClasses' => [...$visitedClasses, $parentClass]];
+    }
+
+    /**
+     * The property names and `patternProperties` patterns a schema declares in place: its own and those
+     * of its `allOf` branches, a `$ref`'d parent's included.
+     *
+     * @param array<string, mixed> $schema
+     * @param list<string> $visitedClasses
+     * @return array{names: array<string, array{}>, patterns: array<string, array{}>}
+     */
+    private function keysDeclaredInPlace(array $schema, string $sourceClass, array $visitedClasses): array
+    {
+        $names = self::evaluatedNamesOnly($schema['properties'] ?? null);
+        $patterns = self::evaluatedNamesOnly($schema['patternProperties'] ?? null);
+        foreach (is_array($schema['allOf'] ?? null) ? $schema['allOf'] : [] as $branch) {
+            $resolved = $this->allOfBranchInPlace(branch: $branch, sourceClass: $sourceClass, visitedClasses: $visitedClasses);
+            if ($resolved === null) {
+                continue;
+            }
+            $keys = $this->keysDeclaredInPlace(
+                schema: $resolved['schema'],
+                sourceClass: $resolved['sourceClass'],
+                visitedClasses: $resolved['visitedClasses'],
+            );
+            $names += $keys['names'];
+            $patterns += $keys['patterns'];
+        }
+
+        return ['names' => $names, 'patterns' => $patterns];
+    }
+
+    /**
+     * One branch's part of `allOfBranchKeyConstraints()`: the object-wide keywords asked for, and the
+     * closure over the names of its `allOf` with the branch's `additionalProperties`.
+     *
+     * @param array<string, mixed> $branch
+     * @param list<string> $objectKeywords
+     * @param array<string, array{}> $siblingNames
+     * @param array<string, array{}> $siblingPatterns
+     * @return array<string, mixed>
+     */
+    private function branchKeyConstraints(
+        array $branch,
+        string $sourceClass,
+        array $objectKeywords,
+        array $siblingNames,
+        array $siblingPatterns,
+    ): array {
+        $objectWide = [];
+        foreach ($objectKeywords as $keyword) {
+            if (array_key_exists($keyword, $branch)) {
+                $objectWide[$keyword] = $branch[$keyword];
+            }
+        }
+        $closes = ($branch['additionalProperties'] ?? null) === false;
+        if (is_array($branch['additionalProperties'] ?? null)) {
+            $objectWide['additionalProperties'] = $branch['additionalProperties'];
+        }
+
+        $extracted = $objectWide === [] ? [] : $this->withConstraintSourceOf(
+            className: $sourceClass,
+            extraction: fn(): array => $this->extractValidationConstraints(
+                $this->inlineNestedContainerValidation(schema: $objectWide, belowMaterialization: true),
+            ),
+        );
+        $part = [];
+        foreach ($objectKeywords as $keyword) {
+            if (array_key_exists($keyword, $extracted)) {
+                $part[$keyword] = $extracted[$keyword];
+            }
+        }
+        // `{}` admits every value, so it asserts nothing.
+        $additionalSchema = is_array($extracted['additionalProperties'] ?? null) && $extracted['additionalProperties'] !== []
+            ? $extracted['additionalProperties']
+            : null;
+        if (!$closes && $additionalSchema === null) {
+            return $part;
+        }
+
+        // The interpreter decides what is additional from `properties` and `patternProperties` of the
+        // same schema, so the names of the whole `allOf` travel with the closure.
+        $part['properties'] = $siblingNames;
+        $ownPatterns = is_array($part['patternProperties'] ?? null) ? $part['patternProperties'] : [];
+        if ($ownPatterns !== [] || $siblingPatterns !== []) {
+            $part['patternProperties'] = $ownPatterns + $siblingPatterns;
+        }
+        $part['additionalProperties'] = $closes ? false : $additionalSchema;
+
+        return $part;
+    }
+
+    /**
      * The interpreter constraints of a class whose `allOf` was merged into one schema, with the
      * evaluation of its `unevaluatedProperties` put back the way the document wrote it.
      *
