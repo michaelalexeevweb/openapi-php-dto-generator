@@ -478,14 +478,6 @@ final class KnownDivergences
                 'row' => 'support matrix: "an object only a member whose class name does not sort first of an inline undiscriminated union of classes accepts" (symfony builds one member, and an object both members accept reaches the validator as that member alone)',
             ],
             [
-                'modes' => [GenerationMode::Symfony],
-                'category' => 'wrong-refuse',
-                'kinds' => ['valid'],
-                // An enum one is held as the string it arrives as since 2.15.166, and its null accepted.
-                'tagsAny' => ['nullItem:nullable-temporal', 'nullMapValue:nullable-temporal'],
-                'row' => 'support matrix: "a `null` ITEM of a nullable list of dates", or a `null` VALUE of such a map (symfony refuses)',
-            ],
-            [
                 'modes' => [GenerationMode::LaravelData],
                 'category' => 'wrong-refuse',
                 'kinds' => ['valid'],

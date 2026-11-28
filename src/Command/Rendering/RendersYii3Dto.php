@@ -1410,6 +1410,27 @@ trait RendersYii3Dto
             );
         }
 
+        // An integer or number `enum` the PHP type does not name — `type: [integer, "null"], enum: [6, 9,
+        // null]`, held as `?int` — is checked by the interpreter on the CAST value, and the lenient raw
+        // type rule takes `"6"`: the string passed where the enum-class spelling refused it. The raw value
+        // is checked against the listed values instead, strictly in a body as for an enum class.
+        $inlineEnum = $constraints['enum'] ?? null;
+        if (
+            $enum === null
+            && !$isParameter
+            && is_array($inlineEnum)
+            && in_array($heldClass, ['int', 'float'], true)
+        ) {
+            $listed = array_values(array_filter($inlineEnum, static fn(mixed $value): bool => is_int($value) || is_float($value)));
+            if ($listed !== [] && count($listed) === count(array_filter($inlineEnum, static fn(mixed $value): bool => $value !== null))) {
+                $attributes[] = $this->yii3RawRuleChain(
+                    rules: [['rule' => 'In', 'arguments' => ['[' . implode(', ', $this->yii3EnumInValues(values: $listed, strict: true)) . ']', 'strict: true']]],
+                    skip: $skip,
+                    ruleImports: $ruleImports,
+                );
+            }
+        }
+
         // The same loss for a date: `#[ToDateTime]` that parses nothing leaves the property uninitialised,
         // and `{"begin": "nonsense"}` read as "no filter". The raw string is checked against the formats
         // the hydrator is told to parse — one rule for `date`, any of them for the others. A STRING
@@ -4301,7 +4322,7 @@ PHP;
      * one number type and `1.0` IS the integer 1, decoded to a float: an int member is listed as both.
      * A lenient one (a parameter, sent as text) compares loosely and needs only the member.
      *
-     * @param array<int, int|string> $values
+     * @param array<int, float|int|string> $values
      * @return list<string>
      */
     private function yii3EnumInValues(array $values, bool $strict): array

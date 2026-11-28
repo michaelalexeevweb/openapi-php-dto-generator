@@ -167,7 +167,7 @@ final class SchemaNormalizerTest extends TestCase
         ];
     }
 
-    public function testTheGenerationRulesCollapseFoldAndFollowAliasesOnly(): void
+    public function testTheGenerationRulesCollapseFoldNullUnionsAndFollowAliasesOnly(): void
     {
         $property = ['type' => 'object', 'properties' => [
             'wrapped' => ['allOf' => [['type' => 'string']]],
@@ -175,6 +175,8 @@ final class SchemaNormalizerTest extends TestCase
             'split' => ['allOf' => [['type' => 'string'], ['maxLength' => 3]]],
             'aliased' => ['$ref' => self::REF . 'Alias'],
             'nullPair' => ['oneOf' => [['type' => 'null'], ['type' => 'integer']]],
+            // Respelled only by the null-spelling rule, which generation does not run.
+            'refNullPair' => ['oneOf' => [['type' => 'null'], ['$ref' => self::REF . 'Teal']]],
         ]];
         $components = ['Alias' => ['$ref' => self::REF . 'Teal'], 'Teal' => ['type' => 'object']];
         $normalized = (new SchemaNormalizer(SchemaNormalizer::GENERATION_RULES))->normalize(self::document(openApi: '3.1.0', property: $property, components: $components));
@@ -184,7 +186,8 @@ final class SchemaNormalizerTest extends TestCase
         $this->assertSame(['$ref' => self::REF . 'Teal'], $properties['union']);
         $this->assertSame(['type' => 'string', 'maxLength' => 3], $properties['split']);
         $this->assertSame(['$ref' => self::REF . 'Teal'], $properties['aliased']);
-        $this->assertSame($property['properties']['nullPair'], $properties['nullPair']);
+        $this->assertSame(['type' => ['integer', 'null']], $properties['nullPair']);
+        $this->assertSame($property['properties']['refNullPair'], $properties['refNullPair']);
     }
 
     public function testAWrapperAtTheTopOfAComponentIsAClassOfItsOwn(): void

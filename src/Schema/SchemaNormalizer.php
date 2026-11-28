@@ -123,6 +123,7 @@ final class SchemaNormalizer
     public const array GENERATION_RULES = [
         self::RULE_SINGLE_MEMBER,
         self::RULE_SCALAR_FRAGMENTS,
+        self::RULE_NULL_UNION,
         self::RULE_ALIAS_CHAINS,
     ];
 

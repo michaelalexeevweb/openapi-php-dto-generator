@@ -2707,13 +2707,11 @@ final class ValidationParityTest extends TestCase
         }
         $payloads['{"okapi":["2018-02-19",null]}'] = true;
         $payloads['{"okapi":["2018-02-19T10:00:00Z"]}'] = false;
-        // Symfony's serializer parses every map value before any constraint runs: a null value is
-        // refused (README.support-matrix, "a `null` ITEM of a nullable list of dates"), and how much
-        // of a date-time its parser lets through for a `Y-m-d` value is its own business — the row
-        // "a loose `format: date-time` string". Unasserted there.
+        // Symfony holds a nullable date value as its string since 3.0, so its null is accepted; how much
+        // of a date-time its parser lets through for a `Y-m-d` value is its own business — the row "a
+        // loose `format: date-time` string". Unasserted there.
         $symfonyParsesFirst = [];
         foreach (['bison', 'heron', 'lynx', 'puma'] as $name) {
-            $symfonyParsesFirst['{"' . $name . '":{"k":null}}'] = null;
             $symfonyParsesFirst['{"' . $name . '":{"k":"2018-02-19T10:00:00Z"}}'] = null;
         }
 
@@ -4935,14 +4933,10 @@ final class ValidationParityTest extends TestCase
                 ['type' => 'array', 'items' => ['type' => ['string', 'null'], 'format' => 'date']],
                 [],
                 '{"f":[null,"2026-01-02"]}',
+                // Symfony holds a nullable date item as its string since 3.0, the callback checking the
+                // format: typed `?DateTimeImmutable`, the serializer's DateTimeNormalizer was handed the
+                // null item and threw.
                 '{"f":["x"]}',
-                // OPEN DEFECT, not a design choice: the serializer's DateTimeNormalizer is handed the
-                // null item and throws. "x" is refused since 2.15.160 (the date is read as `!Y-m-d`).
-                self::diverges(
-                    mode: GenerationMode::Symfony,
-                    expected: ['valid' => false, 'invalid' => false],
-                    reason: 'open defect: Symfony serializer cannot denormalize a null date item',
-                ),
             ],
             'nullable dto items' => [
                 ['type' => 'array', 'items' => ['anyOf' => [$tagRef, ['type' => 'null']]]],
@@ -12306,21 +12300,29 @@ final class ValidationParityTest extends TestCase
                 // `testAnObjectBranchBesideAScalarBranchIsJudgedByTheBranchItMatches`, README.support-matrix
                 // "a scalar for a property typed as a generated class"); a class member beside a scalar
                 // is not judged by the callback there either.
-                ['symfony' => [
-                    '{"mix":"x"}' => null,
-                    '{"mix":{"flag":true,"hue":"r"}}' => null,
-                    '{"ibis":"chj"}' => null,
-                    '{"ibis":{"ocelot":true,"koala":"k"}}' => null,
-                    '{"pet":"x"}' => null,
-                    '{"pet":{"eye":true}}' => null,
-                    '{"pet":{"eye":true,"wing":"w"}}' => null,
-                    '{"egret":{"crane":1}}' => null,
-                    '{"egret":"ab"}' => null,
-                    // Built into the class member, `"caz"` is an object to the callback. It used to be
-                    // refused only because the class member, filtered to nothing, had left the union and
-                    // every object with it — `{"egret": {"crane": 1}}` too.
-                    '{"egret":"caz"}' => null,
-                ]],
+                [
+                    'symfony' => [
+                        '{"mix":"x"}' => null,
+                        '{"mix":{"flag":true,"hue":"r"}}' => null,
+                        '{"ibis":"chj"}' => null,
+                        '{"ibis":{"ocelot":true,"koala":"k"}}' => null,
+                        '{"pet":"x"}' => null,
+                        '{"pet":{"eye":true}}' => null,
+                        '{"pet":{"eye":true,"wing":"w"}}' => null,
+                        '{"egret":{"crane":1}}' => null,
+                        '{"egret":"ab"}' => null,
+                        // Built into the class member, `"caz"` is an object to the callback. It used to be
+                        // refused only because the class member, filtered to nothing, had left the union and
+                        // every object with it — `{"egret": {"crane": 1}}` too.
+                        '{"egret":"caz"}' => null,
+                    ],
+                    // `lemur` is the list of `Leaf` objects `type: [array, "null"]` spells, and yii3 builds
+                    // each item into a `Leaf`: the use-site `newt` beside the reference is a key the class
+                    // does not declare — README.support-matrix, "`properties` beside `allOf: [$ref]` … for a
+                    // key the class does not declare", as for `{type: array, items: {$ref: Leaf, properties:
+                    // {newt}}}`. Held decoded behind the null union, it was judged.
+                    'yii3' => ['{"lemur":[{"raven":"r","newt":1}]}' => null],
+                ],
             ],
             'container ref with sibling keywords' => [
                 '3.1.0',
@@ -12508,6 +12510,12 @@ final class ValidationParityTest extends TestCase
                     '{"plainMap":{"k":{"hue":"blue"}}}' => true,
                     '{"plainMap":{"k":{"hue":"zzq"}}}' => false,
                 ],
+                // `moth` is the map of `Ring` objects `type: [object, "null"]` spells, and Symfony builds
+                // each value into a `Ring`: the undeclared `stray` is left behind before any validator
+                // runs, its value unchecked — README.support-matrix, "a key `additionalProperties:
+                // {schema}` admits beside the named properties", as for `{type: object,
+                // additionalProperties: {$ref: Ring}}`. Held decoded behind the null union, it was judged.
+                ['symfony' => ['{"moth":{"a":{"stray":4}}}' => null]],
             ],
             // G2.6: an enum below a container nothing hydrates is kept.
             'enum below a raw container' => [
@@ -15467,9 +15475,6 @@ final class ValidationParityTest extends TestCase
         $tuple = ['type' => 'array', 'prefixItems' => [['type' => 'integer']], 'items' => ['type' => 'string']];
         $weights = ['Weights' => ['type' => 'object', 'additionalProperties' => ['type' => 'number']]];
         $uuid = '"0b7e6c1a-3f4d-4c2b-9a8e-1d2c3b4a5f60"';
-        // "a `null` ITEM of a nullable list of dates, or a `null` VALUE of such a map": symfony/serializer
-        // hands the null to the date normalizer, which refuses it. An enum one is held as its string.
-        $symfonyRefusesANullMember = static fn(string $json): array => ['symfony' => [$json => false]];
 
         return [
             // "a non-object ITEM of a list or map of DTOs" with an item class that requires nothing:
@@ -15579,8 +15584,8 @@ final class ValidationParityTest extends TestCase
                 '3.1.0',
                 ['type' => 'object', 'additionalProperties' => ['type' => ['string', 'null'], 'format' => 'date']],
                 [],
+                // Symfony holds a nullable date value as its string since 3.0, so its null is accepted.
                 ['{"f":{"a":null}}' => true, '{"f":{"a":"2020-01-02"}}' => true, '{"f":{"a":5}}' => false],
-                $symfonyRefusesANullMember('{"f":{"a":null}}'),
             ],
             'map of a nullable enum, the 3.0 spelling' => [
                 '3.0.3',
@@ -17046,6 +17051,12 @@ final class ValidationParityTest extends TestCase
                 '{"otter":["a"]}' => true,
                 '{"otter":3}' => true,
             ],
+            // `lynx` and `tiger` are the map and list of `Azure` items beside null that `type: [object |
+            // array, "null"]` spells, and laravel-data builds each item through `#[DataCollectionOf]`:
+            // README.support-matrix, "a `null` ITEM of a nullable list of DTOs … a discriminated union's
+            // included" — the generated guard refuses the null, as for the plain `{type: array, items:
+            // {oneOf: [{$ref: Azure}, {type: null}]}}`. Held decoded behind the null union, it was judged.
+            ['laravel-data' => ['{"lynx":{"ka":null}}' => null, '{"tiger":[null]}' => null]],
         ];
     }
 
@@ -24555,6 +24566,13 @@ final class ValidationParityTest extends TestCase
             ['{"stoat":6}' => true, '{"stoat":null}' => true, '{"stoat":-15}' => false, '{"stoat":"6"}' => false],
             // README.support-matrix: a numeric string for an integer `enum` builds the backed enum.
             ['symfony' => ['{"stoat":"6"}' => null], 'laravel-data' => ['{"stoat":"6"}' => null]],
+        ];
+        // Its canonical spelling, inline: yii3 held it as `?int` and its lenient raw `Integer` rule took
+        // `"6"`, the enum then checked on the cast value — now the raw value is checked against the list.
+        yield 'enum fragment union, the type-list spelling inline' => [
+            '3.1.0',
+            ['Probe' => $probe(['stoat' => ['type' => ['integer', 'null'], 'enum' => [6, 9, 0, null]]])],
+            ['{"stoat":6}' => true, '{"stoat":null}' => true, '{"stoat":-15}' => false, '{"stoat":"6"}' => false],
         ];
         yield 'enum fragment union as list items' => [
             '3.1.0',

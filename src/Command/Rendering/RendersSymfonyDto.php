@@ -672,6 +672,10 @@ trait RendersSymfonyDto
      * document allows it. The inline enum that lists `null` itself is a string already; a nullable list
      * of enums one container deep moved the same way in 2.15.159 (`symfonyAliasInAContainerType()`).
      *
+     * A nullable DATE item or value — `items: {type: [string, null], format: date}`, the canonical
+     * spelling of `anyOf: [{format: date}, {type: null}]` — is held as the string for the same reason:
+     * `DateTimeNormalizer` refuses null too.
+     *
      * @param array<int, SchemaProperty> $properties
      * @return array<int, SchemaProperty>
      */
@@ -681,8 +685,11 @@ trait RendersSymfonyDto
             if (preg_match('/^(\??array<(?:(?:string|int), )?)\?([\\\\\w]+)>$/', $property['type'], $matches) !== 1) {
                 continue;
             }
-            // The backing type is what the case arrives as: `string`, or `int` for an integer enum.
-            $backing = $this->enumSchemas[$this->shortClassName($matches[2])]['type'] ?? null;
+            // A date arrives as a string, the callback checking its format; the backing type is what an
+            // enum case arrives as: `string`, or `int` for an integer enum.
+            $backing = $matches[2] === 'DateTimeImmutable'
+                ? 'string'
+                : $this->enumSchemas[$this->shortClassName($matches[2])]['type'] ?? null;
             if (!in_array($backing, ['string', 'int'], true)) {
                 continue;
             }
