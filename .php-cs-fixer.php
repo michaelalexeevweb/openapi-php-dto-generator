@@ -2,6 +2,11 @@
 
 declare(strict_types=1);
 
+// Every parallel worker loads this file, and a worker on tests/Parity/ValidationParityTest.php (26k lines)
+// needs about 130 MB — over PHP's 128 MB CLI default, which `php -d memory_limit=…` does not pass on to the
+// workers. Raise it here so the gate judges the style instead of dying on memory.
+ini_set('memory_limit', '512M');
+
 $finder = PhpCsFixer\Finder::create()
     ->in([__DIR__ . '/src', __DIR__ . '/tests'])
     // `bin/benchmark` is a script, not a class, so it lives outside src/ — but it is still code in this

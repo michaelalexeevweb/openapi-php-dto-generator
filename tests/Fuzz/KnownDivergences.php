@@ -353,7 +353,8 @@ final class KnownDivergences
                 // builds that member's class without the key. yii3 holds the union decoded and refuses.
                 'kinds' => [''],
                 'tagsAll' => [FuzzSpec::REFUSED_ONLY_BY_UNDECLARED_KEY],
-                // Which member's class the serializer tries first follows the generated class names.
+                // Which member's class the serializer tries first follows the generated class names, fully
+                // qualified: a component moved to another file sorts by the `--ref` namespace it lands in.
                 'spelling' => true,
                 'row' => 'support matrix: "`additionalProperties: false` / `unevaluatedProperties: false` on a DTO-shaped schema" and "a key `additionalProperties: {schema}` admits beside the named properties" (symfony, a member of an undiscriminated union of classes included)',
             ],
@@ -458,7 +459,8 @@ final class KnownDivergences
                 // `objectOfPair`: the value is no instance of the member whose generated class name sorts
                 // first — the class the serializer tries first ({@see FuzzRunner::tagObjectsOfAPair()}).
                 'tagsAll' => ['unionObjectPair', 'objectOfPair'],
-                // Which member's class the serializer tries first follows the generated class names.
+                // Which member's class the serializer tries first follows the generated class names, fully
+                // qualified: a component moved to another file sorts by the `--ref` namespace it lands in.
                 'spelling' => true,
                 'row' => 'support matrix: "an object only a member whose class name does not sort first of an inline undiscriminated union of classes accepts" (symfony builds the class it tries first)',
             ],
@@ -470,7 +472,8 @@ final class KnownDivergences
                 // second match ({@see FuzzSpec::confirmedByReference()} tags these `unionObjectPair`).
                 'kinds' => ['matchesTwoMembers'],
                 'tagsAll' => ['unionObjectPair'],
-                // Which member's class the serializer tries first follows the generated class names.
+                // Which member's class the serializer tries first follows the generated class names, fully
+                // qualified: a component moved to another file sorts by the `--ref` namespace it lands in.
                 'spelling' => true,
                 'row' => 'support matrix: "an object only a member whose class name does not sort first of an inline undiscriminated union of classes accepts" (symfony builds one member, and an object both members accept reaches the validator as that member alone)',
             ],

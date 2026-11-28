@@ -3,6 +3,29 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.167 — 2026-11-28
+
+- nested allOf wrappers peeled
+- wrapped map of union values typed
+- map component nullable values
+- external ref siblings kept
+- fresh fuzz and metamorphic: 0 findings
+
+The last of the 2.15.x fuzz work: a 400-seed plain and a 400-seed metamorphic run found 3 and 16; after this
+round fresh 96-seed runs of both found 0. Further spelling defects are closed structurally in 3.0 (one schema
+normalizer before generation) rather than shape by shape.
+
+**Regenerate after upgrading, in every mode.**
+
+- every mode: `{allOf: [{allOf: [{$ref: X}], nullable: true}]}` — the 3.0 nullable-reference idiom wrapped
+  once more, at any depth, annotations on either layer — reads as the one-layer spelling. A list alias X
+  behind it was typed by a class that is never written (every payload refused or a crash), and a null list
+  item or map value of a class behind it was refused;
+- every mode: a map whose values are a `$ref` to a scalar union component, behind `allOf`/`anyOf`/`oneOf`,
+  is typed like the bare map — the values named a class that is never written;
+- runtime: a `$ref` to a map component whose values are a class component admitting null accepts a null
+  value; symfony / yii3: keywords beside a `$ref` into another document are kept.
+
 ## 2.15.166 — 2026-11-28
 
 - metamorphic fuzz: same schema, same verdict

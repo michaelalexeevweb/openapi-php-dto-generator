@@ -11,6 +11,7 @@ use OpenapiPhpDtoGenerator\Tests\Parity\PayloadVerdict;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
+use ReflectionMethod;
 
 /**
  * The metamorphic layer: every {@see SpecRewriter} rewrite is equivalent by the reference oracle, and
@@ -227,6 +228,50 @@ final class MetamorphicTest extends TestCase
     }
 
     /**
+     * Symfony sorts a union's classes by FULLY-QUALIFIED name. A member moved to another file is placed
+     * by `--ref` in `<namespace>\Other`, so `Lynx|Other\Fox` tries `Lynx` first although `Fox` is the
+     * first short name: the object only `Fox` accepts is refused for `Lynx`'s missing `paw` — the
+     * documented row. Sorted by short name the tagger named `Fox` the class tried first, left the
+     * payload untagged and the row unmatched (seed 49058, `moveToOtherFile`).
+     */
+    public function testAMemberPlacedInAnotherNamespaceSortsByItsFullName(): void
+    {
+        $runner = new MetamorphicRunner(outputDirectory: $this->outputDirectory, modes: [GenerationMode::Symfony], propertiesPerSpec: 1);
+        $document = ['openapi' => '3.1.0', 'info' => ['title' => 'Fuzz', 'version' => '1.0.0'], 'components' => ['schemas' => [
+            'Probe' => ['type' => 'object', 'properties' => ['pet' => ['oneOf' => [
+                ['allOf' => [['$ref' => 'other.json#/components/schemas/Fox']]],
+                ['$ref' => '#/components/schemas/Lynx'],
+            ]]]],
+            'Lynx' => ['type' => 'object', 'properties' => ['paw' => ['type' => 'integer']], 'required' => ['paw']],
+        ]]];
+        $externals = ['other.json' => ['openapi' => '3.1.0', 'info' => ['title' => 'Other', 'version' => '1.0.0'], 'components' => ['schemas' => [
+            'Fox' => ['type' => 'object', 'properties' => ['tail' => ['type' => 'integer']], 'required' => ['tail'], 'additionalProperties' => false],
+        ]]]];
+        $generation = (new ReflectionMethod(MetamorphicRunner::class, 'generateChecked'))
+            ->invoke($runner, $document, $externals, true, GenerationMode::Symfony);
+        $this->assertIsString($generation['fqcn']);
+
+        // The runner tags against the document bundled back into one, as `RewrittenSpec::bundled()` does.
+        $bundled = $document;
+        $bundled['components']['schemas']['Probe']['properties']['pet']['oneOf'][0] = ['allOf' => [['$ref' => '#/components/schemas/Fox']]];
+        $bundled['components']['schemas']['Fox'] = $externals['other.json']['components']['schemas']['Fox'];
+        $tags = static fn(string $json): array => FuzzRunner::tagObjectsOfAPair(
+            payloads: [['property' => 'pet', 'kind' => 'valid', 'json' => $json, 'expected' => PayloadVerdict::Accepted, 'tags' => ['unionObjectPair']]],
+            document: $bundled,
+            fqcn: $generation['fqcn'],
+        )[0]['tags'];
+
+        $this->assertContains('objectOfPair', $tags('{"pet":{"tail":1}}'), 'Fox, sorted after Lynx by its namespace');
+        $this->assertNotContains('objectOfPair', $tags('{"pet":{"paw":1}}'), 'Lynx, the class tried first');
+        $this->assertNotNull(KnownDivergences::explainSpellingDependent(
+            mode: GenerationMode::Symfony,
+            category: 'wrong-refuse',
+            kind: 'valid',
+            tags: $tags('{"pet":{"tail":1}}'),
+        ));
+    }
+
+    /**
      * The excuse stays narrow: a wrong answer no row explains, a right refusal from the validator
      * rather than the serializer's first class, or a value the first class does not miss, is still
      * reported.
@@ -393,6 +438,69 @@ final class MetamorphicTest extends TestCase
         $runner->runSpec(seed: 43064);
 
         $this->assertSame([], array_column($runner->findings(), 'signature'));
+    }
+
+    /**
+     * A discriminated union property is typed as the union's INTERFACE, and the serializer builds the
+     * member DTO through the interface's `#[DiscriminatorMap]`: the date inside it is parsed before
+     * any constraint runs (the documented impossible-date row). With the member moved to another
+     * file it is no member of the interface (`--ref`), the property is held raw, and its callback
+     * refuses. `builtClassesOf()` read only classes, answered nothing for the interface, and the
+     * excuse never applied (seeds 51102 and 51129, `moveToOtherFile`).
+     */
+    public function testADiscriminatedUnionInterfaceIsASerializerBuiltPosition(): void
+    {
+        $runner = new MetamorphicRunner(outputDirectory: $this->outputDirectory, modes: [GenerationMode::Symfony], propertiesPerSpec: 1);
+        $members = [
+            'Azurea' => ['type' => 'object', 'properties' => ['kind' => ['type' => 'string', 'enum' => ['Azurea']], 'quokka' => ['type' => 'string', 'format' => 'date']], 'required' => ['kind']],
+            'Ambera' => ['type' => 'object', 'properties' => ['kind' => ['type' => 'string', 'enum' => ['Ambera']], 'koala' => ['type' => 'string']], 'required' => ['kind']],
+        ];
+        $probe = static fn(string $azurea): array => ['type' => 'object', 'properties' => ['walrus' => [
+            'oneOf' => [['$ref' => $azurea], ['$ref' => '#/components/schemas/Ambera']],
+            'discriminator' => ['propertyName' => 'kind'],
+        ]]];
+        $info = ['title' => 'Fuzz', 'version' => '1.0.0'];
+        $original = ['openapi' => '3.1.0', 'info' => $info, 'components' => ['schemas' => ['Probe' => $probe('#/components/schemas/Azurea'), ...$members]]];
+        $rewritten = ['openapi' => '3.1.0', 'info' => $info, 'components' => ['schemas' => ['Probe' => $probe('other.json#/components/schemas/Azurea'), 'Ambera' => $members['Ambera']]]];
+        $externals = ['other.json' => ['openapi' => '3.1.0', 'info' => $info, 'components' => ['schemas' => ['Azurea' => $members['Azurea']]]]];
+        $generate = new ReflectionMethod(MetamorphicRunner::class, 'generateChecked');
+        $wrongSide = $generate->invoke($runner, $original, [], false, GenerationMode::Symfony);
+        $rightSide = $generate->invoke($runner, $rewritten, $externals, true, GenerationMode::Symfony);
+        $this->assertIsString($wrongSide['fqcn']);
+        $this->assertIsString($rightSide['fqcn']);
+
+        $wrongBuilt = FuzzRunner::builtClassesOf(class: $wrongSide['fqcn'], wireName: 'walrus');
+        $rightBuilt = FuzzRunner::builtClassesOf(class: $rightSide['fqcn'], wireName: 'walrus');
+        $this->assertCount(1, $wrongBuilt);
+        $this->assertTrue(interface_exists($wrongBuilt[0]), 'the union interface, built through its discriminator map');
+        $this->assertSame([], $rightBuilt, 'the member placed in another namespace leaves the property raw');
+
+        $payload = [
+            'property' => 'walrus',
+            'kind' => 'impossibleDate:date',
+            'json' => '{"walrus":{"kind":"Azurea","quokka":"2026-02-30"}}',
+            'expected' => PayloadVerdict::Refused,
+            'tags' => ['in:discriminated', 'inlineDiscriminator', 'in:prop', 'site:temporal'],
+        ];
+        $this->assertNotNull(MetamorphicRunner::excusedBySerializerBuiltPosition(
+            mode: GenerationMode::Symfony,
+            category: 'wrong-accept',
+            originalAnsweredWrong: true,
+            payload: $payload,
+            right: PayloadOutcome::refused(stage: 'validate', detail: 'walrus.quokka: must match format date.'),
+            wrongBuilt: $wrongBuilt,
+            rightBuilt: $rightBuilt,
+        ));
+        // Both spellings building the union: they meet the same serializer and must agree.
+        $this->assertNull(MetamorphicRunner::excusedBySerializerBuiltPosition(
+            mode: GenerationMode::Symfony,
+            category: 'wrong-accept',
+            originalAnsweredWrong: true,
+            payload: $payload,
+            right: PayloadOutcome::refused(stage: 'validate', detail: 'walrus.quokka: must match format date.'),
+            wrongBuilt: $wrongBuilt,
+            rightBuilt: $wrongBuilt,
+        ));
     }
 
     public function testEveryModeAnswersTheSameForEveryRewriteOnTheCiBudget(): void

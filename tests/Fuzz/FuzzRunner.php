@@ -15,6 +15,7 @@ use ReflectionNamedType;
 use ReflectionProperty;
 use ReflectionUnionType;
 use stdClass;
+use Symfony\Component\Serializer\Attribute\DiscriminatorMap;
 use Symfony\Component\Serializer\Attribute\Ignore;
 use Symfony\Component\Serializer\Attribute\SerializedName;
 use Throwable;
@@ -1154,8 +1155,8 @@ final class FuzzRunner
 
     /**
      * Tags `objectOfPair` on every valid payload of an undiscriminated union of two objects that is NO
-     * instance of the member whose generated class short name sorts first. Symfony's PropertyInfo
-     * reports a union type's classes sorted by name (`Green|ProbeFox` for a property declared
+     * instance of the member whose generated class name sorts first. Symfony's PropertyInfo reports a
+     * union type's classes sorted by fully-qualified name (`Green|ProbeFox` for a property declared
      * `ProbeFox|Green`), and the serializer builds the first it tries — the declaration order of the
      * document says nothing about it, and an inline member's generated name (`ProbeFox`) takes part.
      * Read off the Symfony classes generated for the document.
@@ -1182,7 +1183,7 @@ final class FuzzRunner
 
     /**
      * Whether the value, walked down the document and the generated Symfony classes side by side, meets
-     * an undiscriminated union of object members whose first class by short name is built from a value
+     * an undiscriminated union of object members whose first class by fully-qualified name is built from a value
      * that is no instance of that member's schema.
      *
      * @param array<string, mixed> $document
@@ -1224,7 +1225,10 @@ final class FuzzRunner
             $members = self::objectMembers(schema: $schema, schemas: $schemas, depth: 0);
             $class = $classes[0];
             if (count($members) >= 2 && count($classes) >= 2) {
-                usort($classes, static fn(string $left, string $right): int => strcmp(self::shortName($left), self::shortName($right)));
+                // By the FULLY-QUALIFIED name, as symfony/type-info's `UnionType` sorts its members: a
+                // member placed by `--ref` in `<namespace>\Other` sorts by that namespace, so
+                // `Ochre|Other\Indigo` tries `Ochre` first although `Indigo` is the first short name.
+                sort($classes, SORT_STRING);
                 $class = $classes[0];
                 $member = self::memberOfClass(class: $class, members: $members, schemas: $schemas);
                 if ($member === null) {
@@ -1459,8 +1463,10 @@ final class FuzzRunner
     /**
      * The classes the Symfony serializer BUILDS for a property of a generated class: those its declared
      * type names and those its `@var` docblock names anywhere (list items, map values) — a
-     * `DateTimeImmutable` among them. An interface (a union's) is no class the serializer builds, and an
-     * empty answer means the property holds what it is sent, raw.
+     * `DateTimeImmutable` among them. A union's interface counts when it carries `#[DiscriminatorMap]`:
+     * the serializer builds the member class it maps the payload's tag to (seeds 51102, 51129); one
+     * without a map is nothing the serializer builds. An empty answer means the property holds what it
+     * is sent, raw.
      *
      * @param class-string $class
      * @return array<int, class-string>
@@ -1492,7 +1498,7 @@ final class FuzzRunner
             }
             $built = [];
             foreach ($names as $name) {
-                if (class_exists($name) && !in_array($name, $built, true)) {
+                if ((class_exists($name) || self::isDiscriminatedInterface($name)) && !in_array($name, $built, true)) {
                     $built[] = $name;
                 }
             }
@@ -1501,6 +1507,14 @@ final class FuzzRunner
         }
 
         return [];
+    }
+
+    /**
+     * An interface the serializer resolves to a member class through its `#[DiscriminatorMap]`.
+     */
+    private static function isDiscriminatedInterface(string $name): bool
+    {
+        return interface_exists($name) && (new ReflectionClass($name))->getAttributes(DiscriminatorMap::class) !== [];
     }
 
     /**
@@ -1563,13 +1577,6 @@ final class FuzzRunner
         }
 
         return ['classes' => [], 'items' => []];
-    }
-
-    private static function shortName(string $class): string
-    {
-        $cut = strrpos($class, '\\');
-
-        return $cut === false ? $class : substr($class, $cut + 1);
     }
 
     /**

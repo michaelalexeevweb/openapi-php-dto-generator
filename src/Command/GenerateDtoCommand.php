@@ -302,6 +302,16 @@ final class GenerateDtoCommand extends Command
     private const array DATA_VALUED_KEYWORDS = ['enum', 'const', 'default', 'example', 'examples'];
 
     /**
+     * Keywords an inner `allOf` wrapper may carry and still be peeled into the outer one — see
+     * `peeledAllOfWrapper()`: annotations and the 3.0 `nullable`, nothing that asserts.
+     *
+     * @var list<string>
+     */
+    private const array PEELABLE_WRAPPER_KEYWORDS = [
+        'description', 'title', 'example', 'examples', 'deprecated', 'externalDocs', 'nullable', '$comment',
+    ];
+
+    /**
      * Keywords (and OpenAPI containers) whose value maps NAMES to schemas or objects — see
      * `rewriteDefsRefs()`. `responses` is among them for its `default` response.
      *
@@ -1206,7 +1216,7 @@ final class GenerateDtoCommand extends Command
         // Before the `$defs` fold: it rewrites pointers by their text, and an anchor or an `$id`
         // reference has to be resolved against the document as written.
         $data = (new SchemaResourceResolver())->resolve(document: $data, documentBase: $this->fileUri($realFilePath));
-        $data = $this->hoistComponentSubschemas($this->foldJsonSchemaDefs($data));
+        $data = $this->withNestedAllOfWrappersPeeled($this->hoistComponentSubschemas($this->foldJsonSchemaDefs($data)));
 
         $this->initializeGeneration(
             outputDirectory: $outputDirectory,
@@ -2027,6 +2037,80 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * A document with every nested `allOf` wrapper peeled to one layer: `{allOf: [{allOf: [X],
+     * nullable: true}]}` — the 3.0 idiom `{allOf: [X], nullable: true}` wrapped once more — is that idiom,
+     * and the inner wrapper's annotations and `nullable` move out beside the outer `allOf`
+     * (`peeledAllOfWrapper()`). Every reader of a wrapper — a reference, a list alias, an item class,
+     * a union member — unwraps one layer, so the second one hid X from all of them: a list alias was
+     * typed by its class, which is never written, and an object item lost its `null`.
+     *
+     * The walk follows `rewriteDefsRefs()`: a data value is left as written, and below a map of names a
+     * key spelled `allOf` is a property name.
+     */
+    private function withNestedAllOfWrappersPeeled(mixed $node, bool $namesKeys = false): mixed
+    {
+        if (!is_array($node)) {
+            return $node;
+        }
+        $result = [];
+        foreach ($node as $key => $value) {
+            $result[$key] = !$namesKeys && in_array($key, self::DATA_VALUED_KEYWORDS, true)
+                ? $value
+                : $this->withNestedAllOfWrappersPeeled(
+                    node: $value,
+                    namesKeys: !$namesKeys && in_array($key, self::NAME_KEYED_KEYWORDS, true),
+                );
+        }
+        if ($namesKeys) {
+            return $result;
+        }
+        while (($peeled = $this->peeledAllOfWrapper($result)) !== null) {
+            $result = $peeled;
+        }
+
+        return $result;
+    }
+
+    /**
+     * `{allOf: [{allOf: [X], <inner>}], <outer>}` as `{allOf: [X], <outer>, <inner>}`, when the inner
+     * wrapper says nothing but annotations and `nullable` (`PEELABLE_WRAPPER_KEYWORDS`, `x-`
+     * extensions) and the two sides share no keyword with different values; null otherwise. An `allOf`
+     * of one member holds what that member holds, so the inner layer's keywords hold beside the outer
+     * `allOf` as well — its `nullable: true` too: `allOf: [S]` with S admitting null is S.
+     *
+     * @param array<mixed> $schema
+     * @return array<mixed>|null
+     */
+    private function peeledAllOfWrapper(array $schema): ?array
+    {
+        $outer = $schema['allOf'] ?? null;
+        if (!is_array($outer) || count($outer) !== 1 || !array_is_list($outer) || !is_array($outer[0])) {
+            return null;
+        }
+        $inner = $outer[0];
+        $innerAllOf = $inner['allOf'] ?? null;
+        if (!is_array($innerAllOf) || count($innerAllOf) !== 1 || !array_is_list($innerAllOf)) {
+            return null;
+        }
+        $peeled = $schema;
+        $peeled['allOf'] = $innerAllOf;
+        foreach ($inner as $keyword => $value) {
+            if ($keyword === 'allOf') {
+                continue;
+            }
+            if (!in_array($keyword, self::PEELABLE_WRAPPER_KEYWORDS, true) && !str_starts_with((string)$keyword, 'x-')) {
+                return null;
+            }
+            if (array_key_exists($keyword, $peeled) && $peeled[$keyword] !== $value) {
+                return null;
+            }
+            $peeled[$keyword] = $value;
+        }
+
+        return $peeled;
+    }
+
+    /**
      * The URI a document read from disk is retrieved by — the base its relative `$id`s resolve
      * against when it declares no `$self`.
      */
@@ -2100,7 +2184,7 @@ final class GenerateDtoCommand extends Command
         $this->initializeGeneration(outputDirectory: $outputDirectory, namespace: $namespace, rootSpecFile: null);
         $this->readDocumentLevelFields($openApi);
         $openApi = (new SchemaResourceResolver())->resolve(document: $openApi, documentBase: SchemaResourceResolver::ARRAY_DOCUMENT_BASE);
-        $openApi = $this->hoistComponentSubschemas($this->foldJsonSchemaDefs($openApi));
+        $openApi = $this->withNestedAllOfWrappersPeeled($this->hoistComponentSubschemas($this->foldJsonSchemaDefs($openApi)));
         $openApi = $this->rewriteSchemaPointers(document: $openApi, sourceFile: null, isRootDocument: true);
         $schemas = $this->withComponentBodiesNormalized($this->extractSchemas($openApi));
         foreach ($this->extractInlineResponseSchemas($openApi) as $name => $schema) {
@@ -2756,7 +2840,13 @@ final class GenerateDtoCommand extends Command
     {
         $propertySchema = $this->canonicalNullableRefContainers($propertySchema);
         $propertySchema = $this->nullableScalarAliasUnion(schema: $propertySchema, sourceFile: $sourceFile);
-        $propertySchema = $this->objectReferenceWithItsSiblings($propertySchema);
+        $sourceFileBefore = $this->constraintSourceFile;
+        $this->constraintSourceFile = $sourceFile ?? $sourceFileBefore;
+        try {
+            $propertySchema = $this->objectReferenceWithItsSiblings($propertySchema);
+        } finally {
+            $this->constraintSourceFile = $sourceFileBefore;
+        }
         $propertySchema = $this->withNullableAllOfWrappedUnionItemsFolded($propertySchema);
         $ref = $propertySchema['$ref'] ?? null;
         // A `$ref` to a component that is itself `nullable: true` (3.0) admits null like the
@@ -3188,39 +3278,55 @@ final class GenerateDtoCommand extends Command
     private function mergeObjectReferenceSiblings(): void
     {
         foreach ($this->dtoSchemas as $className => $schema) {
-            $schema = $this->propertiesWithObjectReferenceSiblings($schema, depth: 0);
-            // A union component's branches are value positions too: `Mix: {oneOf: [{type: string},
-            // {$ref: Base, properties: {hue: …}}]}` typed the second branch as the bare `Base`, and the
-            // `hue` its `required` insists on was dropped on the way in — every valid object refused.
-            // An `allOf` fragment's properties are the component's own: `Beige: {allOf: [{properties:
-            // {raven: {$ref: Ochre, properties: {puffin: …}}}}]}` typed `raven` as the bare `Ochre`.
-            foreach (['anyOf', 'oneOf'] as $keyword) {
-                $branches = $schema[$keyword] ?? null;
-                if (!is_array($branches) || !array_is_list($branches)) {
-                    continue;
-                }
-                $rewritten = [];
-                foreach ($branches as $branch) {
-                    $rewritten[] = is_array($branch) ? $this->objectReferencesWithTheirSiblings($branch) : $branch;
-                }
-                $schema[$keyword] = $rewritten;
-            }
-            if (is_array($schema['allOf'] ?? null) && array_is_list($schema['allOf'])) {
-                $schema['allOf'] = $this->allOfFragmentsWithObjectReferenceSiblings($schema['allOf'], depth: 0);
-            }
-            // So are the items of an array alias and the values of a map component: `Ring: {type:
-            // array, items: {$ref: Circle, properties: {tail: …}}}` kept the bare `Circle` as its item,
-            // where the same list written inline on a property judged both sides — `tail` went
-            // unchecked and was dropped on the way through, and as a union branch the alias kept the
-            // siblings only, so the target's own properties went unchecked instead.
-            if ($this->isArrayAliasSchema($schema) && is_array($schema['items'] ?? null)) {
-                $schema['items'] = $this->objectReferencesWithTheirSiblings($schema['items'], depth: 1);
-            }
-            if ($this->isMapLikeObjectSchema($schema) && is_array($schema['additionalProperties'] ?? null)) {
-                $schema['additionalProperties'] = $this->objectReferencesWithTheirSiblings($schema['additionalProperties'], depth: 1);
-            }
-            $this->dtoSchemas[$className] = $schema;
+            // Read against the document that declares the class: a reference into a third document is
+            // relative to it, not to the root one (`objectReferenceWithItsSiblings()` resolves it).
+            $this->dtoSchemas[$className] = $this->withConstraintSourceOf(
+                className: $className,
+                extraction: fn(): array => $this->componentWithObjectReferenceSiblings($schema),
+            );
         }
+    }
+
+    /**
+     * One component with `objectReferenceWithItsSiblings()` applied — see `mergeObjectReferenceSiblings()`.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<string, mixed>
+     */
+    private function componentWithObjectReferenceSiblings(array $schema): array
+    {
+        $schema = $this->propertiesWithObjectReferenceSiblings($schema, depth: 0);
+        // A union component's branches are value positions too: `Mix: {oneOf: [{type: string},
+        // {$ref: Base, properties: {hue: …}}]}` typed the second branch as the bare `Base`, and the
+        // `hue` its `required` insists on was dropped on the way in — every valid object refused.
+        // An `allOf` fragment's properties are the component's own: `Beige: {allOf: [{properties:
+        // {raven: {$ref: Ochre, properties: {puffin: …}}}}]}` typed `raven` as the bare `Ochre`.
+        foreach (['anyOf', 'oneOf'] as $keyword) {
+            $branches = $schema[$keyword] ?? null;
+            if (!is_array($branches) || !array_is_list($branches)) {
+                continue;
+            }
+            $rewritten = [];
+            foreach ($branches as $branch) {
+                $rewritten[] = is_array($branch) ? $this->objectReferencesWithTheirSiblings($branch) : $branch;
+            }
+            $schema[$keyword] = $rewritten;
+        }
+        if (is_array($schema['allOf'] ?? null) && array_is_list($schema['allOf'])) {
+            $schema['allOf'] = $this->allOfFragmentsWithObjectReferenceSiblings($schema['allOf'], depth: 0);
+        }
+        // So are the items of an array alias and the values of a map component: `Ring: {type:
+        // array, items: {$ref: Circle, properties: {tail: …}}}` kept the bare `Circle` as its item,
+        // where the same list written inline on a property judged both sides — `tail` went
+        // unchecked and was dropped on the way through, and as a union branch the alias kept the
+        // siblings only, so the target's own properties went unchecked instead.
+        if ($this->isArrayAliasSchema($schema) && is_array($schema['items'] ?? null)) {
+            $schema['items'] = $this->objectReferencesWithTheirSiblings($schema['items'], depth: 1);
+        }
+        if ($this->isMapLikeObjectSchema($schema) && is_array($schema['additionalProperties'] ?? null)) {
+            $schema['additionalProperties'] = $this->objectReferencesWithTheirSiblings($schema['additionalProperties'], depth: 1);
+        }
+        return $schema;
     }
 
     /**
@@ -3375,14 +3481,23 @@ final class GenerateDtoCommand extends Command
     {
         $ref = $schema['$ref'] ?? null;
         $prefix = '#/components/schemas/';
-        if (!is_string($ref) || !str_starts_with($ref, $prefix)) {
+        if (!is_string($ref) || !str_contains($ref, $prefix)) {
             return $schema;
         }
         $keys = ['properties', 'patternProperties', 'additionalProperties', 'propertyNames', 'required', 'dependentRequired', 'minProperties', 'maxProperties'];
         if (array_intersect_key($schema, array_flip($keys)) === []) {
             return $schema;
         }
-        $targetClass = $this->schemaClassName(substr($ref, strlen($prefix)));
+        // A reference into ANOTHER document's components names the class that document's schema is
+        // registered as (`componentPointer()`). Only the local spelling was merged, so `{$ref:
+        // other.json#/components/schemas/Fox, properties: {egret: …}}` was typed the bare `Fox` and
+        // symfony and yii3 never checked `egret`. The `allOf` keeps the reference as written: it is
+        // read against the same document as the schema around it.
+        $pointer = $this->componentPointer($ref);
+        if ($pointer === null) {
+            return $schema;
+        }
+        $targetClass = $this->schemaClassName(substr($pointer, strlen($prefix)));
         if (!$this->isObjectDtoComponent($targetClass)) {
             return $schema;
         }
@@ -4572,11 +4687,25 @@ final class GenerateDtoCommand extends Command
      * (README.support-matrix); there the wrapped list keeps answering it, as it did — a union target is
      * folded once every component is known, by `withNullableAllOfWrappedUnionItemsFolded()`.
      *
+     * The lists inside the branches of a union are unwrapped the same way: `{anyOf: [{type: array, items:
+     * {allOf: [{$ref: Shape}]}}, {type: null}]}`, Shape a union component, was held by symfony as a bare
+     * nullable list, and any item — `2.5`, a member missing its required keys — passed.
+     *
      * @param array<mixed> $schema
      * @return array<mixed>
      */
     private function withAllOfWrappedReferenceItemsUnwrapped(array $schema): array
     {
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            $members = $schema[$keyword] ?? null;
+            if (!is_array($members) || !array_is_list($members)) {
+                continue;
+            }
+            $schema[$keyword] = array_map(
+                callback: fn(mixed $member): mixed => is_array($member) ? $this->withAllOfWrappedReferenceItemsUnwrapped($member) : $member,
+                array: $members,
+            );
+        }
         $items = $schema['items'] ?? null;
         if (!is_array($items)) {
             return $schema;
@@ -5335,7 +5464,7 @@ final class GenerateDtoCommand extends Command
         $data = (new SchemaResourceResolver())->resolve(document: $data, documentBase: $this->fileUri($filePath));
         // Fold this external document's own `$defs` into its components.schemas (and rewrite
         // its internal `#/$defs/` pointers) so cross-file `file#/$defs/X` references resolve.
-        $data = $this->hoistComponentSubschemas($this->foldJsonSchemaDefs($data));
+        $data = $this->withNestedAllOfWrappersPeeled($this->hoistComponentSubschemas($this->foldJsonSchemaDefs($data)));
         // Cached before its references are rewritten: a file they lead to may point back here, and
         // finds the components it declares.
         $this->externalDocuments[$filePath] = $data;
@@ -10996,7 +11125,11 @@ final class GenerateDtoCommand extends Command
 
         unset($propertySchema['$ref']);
 
-        return $propertySchema + $definition;
+        // Its values read as the type reads them, as for a list alias (`inlineArrayAliasForConstraints()`):
+        // a value `$ref` to a class component that admits null — `type: [object, null]`, 3.0 `nullable:
+        // true` — admits a null value. Inlined as written, the property was typed `array<string, ?Fern>`
+        // while its constraints said only `type: object`, and runtime refused `{"ka": null}`.
+        return $propertySchema + $this->canonicalNullableRefContainers($definition);
     }
 
     /**
@@ -11280,6 +11413,20 @@ final class GenerateDtoCommand extends Command
             // rewriting its items collides with nothing.
             if ($this->soleTypeBesidesNull($schema['type'] ?? null) === 'array' && is_array($schema['items'] ?? null)) {
                 $schema['items'] = $this->inlineScalarAliasValue(schema: $schema['items'], ownerClassName: $ownerClassName, depth: $depth + 1);
+
+                return $schema;
+            }
+
+            // A map one level down the same: `allOf: [{type: object, additionalProperties: {$ref:
+            // Shade}}]` with `Shade` a scalar union is the bare map spelled longer, and was typed
+            // `array<string, Shade>`, a class that is never written — runtime refused to load the DTO,
+            // the other modes named a missing type. A map is no class either (`staysAMap()`).
+            if (is_array($schema['additionalProperties'] ?? null) && $this->staysAMap($schema)) {
+                $schema['additionalProperties'] = $this->inlineScalarAliasValue(
+                    schema: $schema['additionalProperties'],
+                    ownerClassName: $ownerClassName,
+                    depth: $depth + 1,
+                );
 
                 return $schema;
             }

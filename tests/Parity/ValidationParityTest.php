@@ -17459,6 +17459,29 @@ final class ValidationParityTest extends TestCase
                 '{"raft":[3]}' => false,
             ],
         ];
+        // The same for a MAP of a scalar union component: wrapped in a one-member `allOf`, its values
+        // were typed `array<string, Spoke>` — a class never written. Runtime refused to load the DTO,
+        // the other modes named the missing class. The bare map (`hamper`) already worked.
+        $spokeMap = ['type' => 'object', 'additionalProperties' => $ref('Spoke')];
+        yield 'a wrapped map of a scalar union component' => [
+            '3.1.0',
+            [
+                'Probe' => $probe([
+                    'hamper' => $spokeMap,
+                    'crate' => ['allOf' => [$spokeMap]],
+                    'chest' => ['allOf' => [['allOf' => [$spokeMap]]]],
+                ]),
+                'Spoke' => ['oneOf' => [['type' => 'string'], ['type' => 'integer']]],
+            ],
+            [
+                '{"hamper":{"a":"x","b":3}}' => true,
+                '{"hamper":{"a":true}}' => false,
+                '{"crate":{"a":"x","b":3}}' => true,
+                '{"crate":{"a":true}}' => false,
+                '{"chest":{"a":"x","b":3}}' => true,
+                '{"chest":{"a":true}}' => false,
+            ],
+        ];
     }
 
     /**
@@ -24746,6 +24769,126 @@ final class ValidationParityTest extends TestCase
     }
 
     /**
+     * `{$ref: other.json#/…/Fox, properties: {egret: …}}` — a reference into ANOTHER document with keys
+     * beside it — is both the class and the keys, as the local spelling is. Only a local pointer was
+     * merged into the `allOf`, so symfony and yii3 typed the bare `Fox` and accepted an `egret` item
+     * outside its enum.
+     *
+     * @param array<string, mixed> $marten
+     */
+    #[DataProvider('externalReferenceWithSiblingsCases')]
+    public function testAnExternalReferenceKeepsTheKeysBesideIt(array $marten): void
+    {
+        $fox = ['Fox' => ['type' => 'object', 'properties' => ['tail' => ['type' => 'string']], 'required' => ['tail']]];
+        $external = str_contains((string)json_encode($marten), 'other.json');
+        if ($external) {
+            $this->siblingDocuments = ['other.json' => [
+                'openapi' => '3.1.0',
+                'info' => ['title' => 'O', 'version' => '1.0.0'],
+                'paths' => [],
+                'components' => ['schemas' => $fox],
+            ]];
+        }
+        $spec = [
+            'openapi' => '3.1.0',
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => [],
+            'components' => ['schemas' => ['Probe' => ['type' => 'object', 'properties' => ['marten' => $marten]]] + ($external ? [] : $fox)],
+        ];
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: $spec,
+                key: 'external reference with siblings ' . md5((string)json_encode($marten)),
+                payloads: [
+                    '{"marten":{"egret":["violet"],"tail":"x"}}' => true,
+                    '{"marten":{"egret":[2.5],"tail":"x"}}' => false,
+                    '{"marten":{"egret":["violet"]}}' => false,
+                ],
+            ),
+        );
+    }
+
+    /**
+     * Every position twice: the reference into another document under test, and the local one that
+     * already worked.
+     *
+     * @return iterable<string, array{array<string, mixed>}>
+     */
+    public static function externalReferenceWithSiblingsCases(): iterable
+    {
+        foreach (['other document' => 'other.json#/components/schemas/Fox', 'local' => '#/components/schemas/Fox'] as $where => $ref) {
+            $withSiblings = ['$ref' => $ref, 'properties' => ['egret' => ['type' => 'array', 'items' => ['enum' => ['violet']]]]];
+            yield 'property / ' . $where => [$withSiblings];
+            yield 'union branch / ' . $where => [['oneOf' => [$withSiblings, ['type' => 'null']]]];
+        }
+    }
+
+    /**
+     * A `$ref` to a MAP component whose values name a class component that admits null — `Den:
+     * {type: object, additionalProperties: {$ref: Fern}}`, Fern `type: [object, null]` or 3.0 `nullable:
+     * true` — admits a null value, as the same map written inline does. The property was typed
+     * `array<string, ?Fern>` while its constraints said only `type: object`, so runtime refused
+     * `{"ka": null}`.
+     *
+     * @param array<string, mixed> $yak
+     * @param array<string, mixed> $fern
+     */
+    #[DataProvider('mapComponentOfNullableClassValuesCases')]
+    public function testAMapComponentOfNullableClassValuesAdmitsANullValue(string $openapi, array $yak, array $fern): void
+    {
+        $spec = [
+            'openapi' => $openapi,
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => [],
+            'components' => ['schemas' => [
+                'Probe' => ['type' => 'object', 'properties' => ['yak' => $yak]],
+                'Den' => ['type' => 'object', 'additionalProperties' => ['$ref' => '#/components/schemas/Fern']],
+                'Fern' => $fern,
+            ]],
+        ];
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: $spec,
+                key: 'map component nullable class values ' . md5((string)json_encode([$openapi, $yak, $fern])),
+                payloads: [
+                    '{"yak":{"ka":null}}' => true,
+                    '{"yak":{"ka":{"ear":3}}}' => true,
+                    '{"yak":{"ka":{"ear":"x"}}}' => false,
+                    '{"yak":{"ka":5}}' => false,
+                ],
+                // README.support-matrix: laravel-data's `#[DataCollectionOf]` has no null value; the
+                // Symfony serializer builds a scalar map value into a requirement-free class.
+                diverging: [
+                    GenerationMode::LaravelData->value => ['{"yak":{"ka":null}}' => false],
+                    GenerationMode::Symfony->value => ['{"yak":{"ka":5}}' => null],
+                ],
+            ),
+        );
+    }
+
+    /**
+     * The map component under test in both null spellings, beside the inline map and the list
+     * component that already worked.
+     *
+     * @return iterable<string, array{string, array<string, mixed>, array<string, mixed>}>
+     */
+    public static function mapComponentOfNullableClassValuesCases(): iterable
+    {
+        $fernProperties = ['ear' => ['type' => 'integer']];
+        $den = ['$ref' => '#/components/schemas/Den'];
+        $inline = ['type' => 'object', 'additionalProperties' => ['$ref' => '#/components/schemas/Fern']];
+
+        yield 'map component / 3.1 type list' => ['3.1.0', $den, ['type' => ['object', 'null'], 'properties' => $fernProperties]];
+        yield 'map component / 3.0 nullable' => ['3.0.3', $den, ['type' => 'object', 'nullable' => true, 'properties' => $fernProperties]];
+        yield 'inline map / 3.1 type list' => ['3.1.0', $inline, ['type' => ['object', 'null'], 'properties' => $fernProperties]];
+        yield 'inline map / 3.0 nullable' => ['3.0.3', $inline, ['type' => 'object', 'nullable' => true, 'properties' => $fernProperties]];
+    }
+
+    /**
      * A discriminated union of ANOTHER document — `gecko: {$ref: other.json#/…/Shape}`, bare or beside
      * a null branch — is dispatched on its discriminator, as the local union is. Only local pointers
      * were recognised as a union, so yii3 accepted `{"kind": "zzz"}` and even a list.
@@ -25375,6 +25518,141 @@ final class ValidationParityTest extends TestCase
                 ['Probe' => $probe('crane', $ref('Teal')), 'Teal' => $alias, 'Target' => $ochre(['object', 'null'])],
                 $payloads('crane', ['{"toucan":"x"}' => true, '{"toucan":1}' => false, 'null' => true, '2.5' => false]),
             ];
+        }
+    }
+
+    /**
+     * `{allOf: [{allOf: [{$ref: X}], nullable: true}]}` — the 3.0 idiom `{allOf: [{$ref: X}], nullable:
+     * true}` wrapped once more — is that idiom, and so `{$ref: X, nullable: true}`. Every reader unwrapped
+     * one layer only: a list alias X was typed by its class, which is never written (runtime refused every
+     * payload, symfony could not denormalize the map, laravel died on "Class not found", yii3 refused the
+     * null), and an object or scalar item or map value lost its null. A union of lists whose items are
+     * `{allOf: [{$ref: Shape}]}`, Shape a union component, beside `{type: null}` is the list of Shape:
+     * symfony held it as a bare list and let any item through. The one-layer and bare spellings, which
+     * already worked, are pinned beside each.
+     *
+     * @param array<string, mixed> $schemas
+     * @param array<string, bool|null> $payloads
+     * @param array<string, array<string, bool|null>> $diverging
+     */
+    #[DataProvider('nestedAllOfWrapperCases')]
+    public function testANestedAllOfWrapperIsTheOneLayerSpelling(string $openapi, array $schemas, array $payloads, array $diverging = []): void
+    {
+        $spec = [
+            'openapi' => $openapi,
+            'info' => ['title' => 'T', 'version' => '1.0.0'],
+            'paths' => [],
+            'components' => ['schemas' => $schemas],
+        ];
+
+        $this->assertSame(
+            expected: [],
+            actual: $this->payloadTableMisses(
+                spec: $spec,
+                key: 'nested allOf wrapper ' . md5((string)json_encode($spec)),
+                payloads: $payloads,
+                diverging: $diverging,
+            ),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{0: string, 1: array<string, mixed>, 2: array<string, bool|null>, 3?: array<string, array<string, bool|null>>}>
+     */
+    public static function nestedAllOfWrapperCases(): iterable
+    {
+        $ref = static fn(string $name): array => ['$ref' => '#/components/schemas/' . $name];
+        $probe = static fn(array $schema): array => ['type' => 'object', 'properties' => ['fox' => $schema]];
+        $payloads = static function (array $answers): array {
+            $table = [];
+            foreach ($answers as $value => $accepted) {
+                $table[sprintf('{"fox":%s}', $value)] = $accepted;
+            }
+
+            return $table;
+        };
+        $teal = ['type' => 'array', 'items' => ['type' => 'integer'], 'maxItems' => 2];
+        $cat = ['type' => 'object', 'properties' => ['ear' => ['type' => 'integer']], 'required' => ['ear']];
+        $mint = ['type' => 'integer', 'maximum' => 5];
+        $spellings = [
+            'nested' => static fn(string $name): array => ['allOf' => [['allOf' => [$ref($name)], 'nullable' => true]]],
+            'nested with annotations' => static fn(string $name): array => [
+                'allOf' => [['allOf' => [$ref($name)], 'nullable' => true, 'description' => 'Inner.']],
+                'title' => 'Outer',
+            ],
+            'nested three deep' => static fn(string $name): array => ['allOf' => [['allOf' => [['allOf' => [$ref($name)]]], 'nullable' => true]]],
+            'one layer' => static fn(string $name): array => ['allOf' => [$ref($name)], 'nullable' => true],
+            'bare' => static fn(string $name): array => [...$ref($name), 'nullable' => true],
+        ];
+        foreach ($spellings as $spelling => $wrap) {
+            yield 'a list alias property, ' . $spelling => [
+                '3.0.3',
+                ['Probe' => $probe($wrap('Teal')), 'Teal' => $teal],
+                $payloads(['[1]' => true, 'null' => true, '[1,2,3]' => false, '["x"]' => false]),
+            ];
+            yield 'a list alias map value, ' . $spelling => [
+                '3.0.3',
+                ['Probe' => $probe(['type' => 'object', 'additionalProperties' => $wrap('Teal')]), 'Teal' => $teal],
+                $payloads(['{"ka":[-3],"kb":[]}' => true, '{"ka":null}' => true, '{"ka":[1,2,3]}' => false, '{"ka":["x"]}' => false]),
+            ];
+            yield 'a list alias list item, ' . $spelling => [
+                '3.0.3',
+                ['Probe' => $probe(['type' => 'array', 'items' => $wrap('Teal')]), 'Teal' => $teal],
+                $payloads(['[[1],null]' => true, '[[1,2,3]]' => false, '[["x"]]' => false]),
+            ];
+            yield 'an object list item, ' . $spelling => [
+                '3.0.3',
+                ['Probe' => $probe(['type' => 'array', 'items' => $wrap('Cat')]), 'Cat' => $cat],
+                $payloads(['[null]' => true, '[{"ear":1}]' => true, '[{"ear":"x"}]' => false, '[2]' => false]),
+                // `#[DataCollectionOf]` of the bare nullable reference refuses a null item (README.support-matrix).
+                $spelling === 'bare' ? ['laravel-data' => ['{"fox":[null]}' => false]] : [],
+            ];
+            yield 'an object map value, ' . $spelling => [
+                '3.0.3',
+                ['Probe' => $probe(['type' => 'object', 'additionalProperties' => $wrap('Cat')]), 'Cat' => $cat],
+                $payloads(['{"k":null}' => true, '{"k":{"ear":1}}' => true, '{"k":{"ear":"x"}}' => false, '{"k":2}' => false]),
+                // A null value of a map of DTOs, refused by the guard before laravel-data builds it (README.support-matrix).
+                ['laravel-data' => ['{"fox":{"k":null}}' => false]],
+            ];
+            yield 'a scalar alias list item, ' . $spelling => [
+                '3.0.3',
+                ['Probe' => $probe(['type' => 'array', 'items' => $wrap('Mint')]), 'Mint' => $mint],
+                $payloads(['[null]' => true, '[3]' => true, '[9]' => false, '["x"]' => false]),
+            ];
+        }
+        $shapes = [
+            'Circle' => [
+                'type' => 'object',
+                'properties' => ['kind' => ['type' => 'string', 'enum' => ['Circle']], 'radius' => ['type' => 'integer']],
+                'required' => ['kind', 'radius'],
+            ],
+            'Square' => [
+                'type' => 'object',
+                'properties' => ['kind' => ['enum' => ['Square']], 'side' => ['type' => 'boolean']],
+                'required' => ['kind', 'side'],
+            ],
+        ];
+        $members = ['oneOf' => [$ref('Circle'), $ref('Square')]];
+        foreach ([
+            'discriminated' => $members + ['discriminator' => ['propertyName' => 'kind']],
+            'undiscriminated' => $members,
+        ] as $unionKind => $shape) {
+            foreach ([
+                'wrapped items' => ['allOf' => [$ref('Shape')]],
+                'bare items' => $ref('Shape'),
+            ] as $spelling => $items) {
+                yield sprintf('a nullable list of a %s union component, %s', $unionKind, $spelling) => [
+                    '3.1.0',
+                    ['Probe' => $probe(['anyOf' => [['type' => 'array', 'items' => $items], ['type' => 'null']]]), 'Shape' => $shape, ...$shapes],
+                    $payloads([
+                        'null' => true,
+                        '[{"kind":"Square","side":true}]' => true,
+                        '[2.5]' => false,
+                        '[{"side":false}]' => false,
+                        '[{"kind":"Square"}]' => false,
+                    ]),
+                ];
+            }
         }
     }
 
