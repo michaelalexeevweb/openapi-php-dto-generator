@@ -5267,9 +5267,10 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
      * Every `$ref` on a path that materializes nothing — A -> B -> C -> D through a union branch.
      *
      * A `$ref` chain normally needs no inlining past the first hop: B becomes a class and checks
-     * itself, so C is reached by the rule one level down. Under a `oneOf` below a container there is
-     * no class anywhere on the path — the property type collapses to `array` — and each level has to
-     * reach the emitted constraints on its own. A one-hop inline stopped at B and a two-hop one at C,
+     * itself, so C is reached by the rule one level down. Under a `oneOf` of the class and a scalar
+     * below a container there is no class anywhere on the path — the property type collapses to
+     * `array` — and each level has to reach the emitted constraints on its own. (A one-member
+     * `oneOf: [$ref Middle]` is `Middle` itself since 3.0, a class like the plain chain.) A one-hop inline stopped at B and a two-hop one at C,
      * each leaving a violation one level further down to pass in SILENCE while the same payload
      * through the plain chain was refused.
      *
@@ -5317,7 +5318,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
                     'properties' => [
                         'middles' => [
                             'type' => 'array',
-                            'items' => ['oneOf' => [['$ref' => '#/components/schemas/Middle']]],
+                            'items' => ['oneOf' => [['$ref' => '#/components/schemas/Middle'], ['type' => 'boolean']]],
                         ],
                     ],
                 ],
@@ -5471,6 +5472,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             if ($level < 7) {
                 $properties['next'] = ['type' => 'array', 'items' => ['oneOf' => [
                     ['$ref' => '#/components/schemas/L' . ($level + 1)],
+                    ['type' => 'boolean'],
                 ]]];
             }
             $schemas['L' . $level] = ['type' => 'object', 'required' => ['code'], 'properties' => $properties];
@@ -5481,15 +5483,15 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             'required' => ['code'],
             'properties' => [
                 'code' => ['type' => 'string', 'minLength' => 42],
-                'kids' => ['type' => 'array', 'items' => ['oneOf' => [['$ref' => '#/components/schemas/Loop']]]],
+                'kids' => ['type' => 'array', 'items' => ['oneOf' => [['$ref' => '#/components/schemas/Loop'], ['type' => 'boolean']]]],
             ],
         ];
         $schemas['Root'] = [
             'type' => 'object',
             'required' => ['chain', 'loops'],
             'properties' => [
-                'chain' => ['type' => 'array', 'items' => ['oneOf' => [['$ref' => '#/components/schemas/L0']]]],
-                'loops' => ['type' => 'array', 'items' => ['oneOf' => [['$ref' => '#/components/schemas/Loop']]]],
+                'chain' => ['type' => 'array', 'items' => ['oneOf' => [['$ref' => '#/components/schemas/L0'], ['type' => 'boolean']]]],
+                'loops' => ['type' => 'array', 'items' => ['oneOf' => [['$ref' => '#/components/schemas/Loop'], ['type' => 'boolean']]]],
             ],
         ];
         $spec = [

@@ -1,4 +1,4 @@
-# runtime mode — 80 files, 23844 lines
+# runtime mode — 80 files, 23851 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -21893,6 +21893,9 @@ use function json_encode;
  */
 final class UnionUnderContainer implements GeneratedDtoInterface, Stringable
 {
+    /**
+     * @var ?array<ChainMiddle>
+     */
     private ?array $chain;
     private bool $chainInRequest = false;
     private bool $chainInPath = false;
@@ -21921,6 +21924,7 @@ final class UnionUnderContainer implements GeneratedDtoInterface, Stringable
     private bool $listOfUnionsInCookie = false;
 
     /**
+     * @param ?array<ChainMiddle> $chain
      * @param ?array<ChainMiddle> $chainAllOf
      */
     public function __construct(
@@ -21941,6 +21945,9 @@ final class UnionUnderContainer implements GeneratedDtoInterface, Stringable
         $this->listOfUnions = $listOfUnions !== UnsetValue::UNSET ? $listOfUnions : null;
     }
 
+    /**
+     * @return ?array<ChainMiddle>
+     */
     public function getChain(): ?array
     {
         return $this->chain;
@@ -21976,7 +21983,7 @@ final class UnionUnderContainer implements GeneratedDtoInterface, Stringable
         return $this->chainInRequest;
     }
 
-    public function addItemToChain(mixed $item): void
+    public function addItemToChain(ChainMiddle $item): void
     {
         if ($this->chain === null) {
             $this->chain = [];
@@ -22197,7 +22204,7 @@ final class UnionUnderContainer implements GeneratedDtoInterface, Stringable
                 'writeOnly' => false,
                 'readOnly' => false,
                 'isParameter' => false,
-                'arrayItemType' => '',
+                'arrayItemType' => '?array<ChainMiddle>',
             ],
         ];
         $map['chainAllOf'] = [
@@ -22275,7 +22282,7 @@ final class UnionUnderContainer implements GeneratedDtoInterface, Stringable
     public static function getConstraints(): array
     {
         $constraints = [];
-        $constraints['chain'] = ['type' => 'array', 'items' => ['oneOf' => [['type' => 'object', 'required' => ['links'], 'properties' => ['links' => ['type' => 'array', 'items' => ['type' => 'object', 'required' => ['code'], 'properties' => ['code' => ['type' => 'string', 'minLength' => 3], 'tags' => ['type' => 'array', 'items' => ['type' => 'object', 'required' => ['label'], 'properties' => ['label' => ['type' => 'string', 'minLength' => 2]]]]]]]]]]]];
+        $constraints['chain'] = ['type' => 'array'];
         $constraints['chainAllOf'] = ['type' => 'array'];
         $constraints['listOfUnions'] = ['type' => 'array', 'items' => ['anyOf' => [['type' => 'object', 'required' => ['id', 'name'], 'properties' => ['id' => ['type' => 'integer'], 'name' => ['type' => 'string']]], ['type' => 'string', 'minLength' => 2]]]];
 

@@ -1,4 +1,4 @@
-# laravel mode — 106 files, 31585 lines
+# laravel mode — 106 files, 31478 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -27914,7 +27914,6 @@ use stdClass;
 
 use function array_column;
 use function array_diff_key;
-use function array_intersect;
 use function array_is_list;
 use function array_key_exists;
 use function array_key_last;
@@ -27983,46 +27982,7 @@ final class UnionUnderContainer implements JsonSerializable
             ],
             'chain' => [
                 'items' => [
-                    'oneOf' => [
-                        [
-                            'type' => 'object',
-                            'required' => [
-                                'links',
-                            ],
-                            'properties' => [
-                                'links' => [
-                                    'type' => 'array',
-                                    'items' => [
-                                        'type' => 'object',
-                                        'required' => [
-                                            'code',
-                                        ],
-                                        'properties' => [
-                                            'code' => [
-                                                'type' => 'string',
-                                                'minLength' => 3,
-                                            ],
-                                            'tags' => [
-                                                'type' => 'array',
-                                                'items' => [
-                                                    'type' => 'object',
-                                                    'required' => [
-                                                        'label',
-                                                    ],
-                                                    'properties' => [
-                                                        'label' => [
-                                                            'type' => 'string',
-                                                            'minLength' => 2,
-                                                        ],
-                                                    ],
-                                                ],
-                                            ],
-                                        ],
-                                    ],
-                                ],
-                            ],
-                        ],
-                    ],
+                    'x-openapi-recurse' => 'ChainMiddle@rules',
                 ],
             ],
             'chainAllOf' => [
@@ -28313,6 +28273,7 @@ final class UnionUnderContainer implements JsonSerializable
     private array $providedOpenApiKeys = [];
 
     /**
+     * @param ?array<ChainMiddle> $chain
      * @param ?array<ChainMiddle> $chainAllOf
      */
     public function __construct(
@@ -28343,6 +28304,7 @@ final class UnionUnderContainer implements JsonSerializable
         return [
             'tree' => self::withBlankStringValidation(['present', 'array']),
             'chain' => self::withBlankStringValidation(['sometimes', 'list']),
+            'chain.*' => self::withBlankStringValidation(['array']),
             'chainAllOf' => self::withBlankStringValidation(['sometimes', 'list']),
             'chainAllOf.*' => self::withBlankStringValidation(['array']),
             'listOfUnions' => self::withBlankStringValidation(['sometimes', 'list']),
@@ -28429,6 +28391,7 @@ final class UnionUnderContainer implements JsonSerializable
     {
         $parts = [
             TreeNode::openApiNestedValidation('tree', [self::class]),
+            ChainMiddle::openApiNestedValidation('chain.*', [self::class]),
             ChainMiddle::openApiNestedValidation('chainAllOf.*', [self::class]),
         ];
 
@@ -28633,7 +28596,7 @@ final class UnionUnderContainer implements JsonSerializable
     {
         $dto = new self(
             tree: TreeNode::fromValidated(($data['tree'] ?? [])),
-            chain: ($data['chain'] ?? null) === null ? null : $data['chain'],
+            chain: ($data['chain'] ?? null) === null ? null : array_map(static fn(array $item): ChainMiddle => ChainMiddle::fromValidated($item), $data['chain']),
             chainAllOf: ($data['chainAllOf'] ?? null) === null ? null : array_map(static fn(array $item): ChainMiddle => ChainMiddle::fromValidated($item), $data['chainAllOf']),
             listOfUnions: ($data['listOfUnions'] ?? null) === null ? null : $data['listOfUnions'],
         );
@@ -28647,6 +28610,9 @@ final class UnionUnderContainer implements JsonSerializable
         return $this->tree;
     }
 
+    /**
+     * @return ?array<ChainMiddle>
+     */
     public function getChain(): ?array
     {
         return $this->chain;
@@ -28839,9 +28805,6 @@ final class UnionUnderContainer implements JsonSerializable
                 if (array_key_exists('type', $branch) && !self::matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
                     continue;
                 }
-                if (self::openApiListBelongsToArrayBranch($normalizedValue, $schema['oneOf'], $branch)) {
-                    continue;
-                }
                 // Keep why each branch failed: with no match at all those reasons are far more
                 // useful than "does not match any oneOf branch".
                 $errorsForBranch = self::validateOpenApiNode($value, $branch, $path, $depth + 1);
@@ -28918,9 +28881,7 @@ final class UnionUnderContainer implements JsonSerializable
             $typeConstraint = $schema['type'];
             if (is_string($typeConstraint)) {
                 if (!self::matchesOpenApiCallbackType($normalizedValue, $typeConstraint)) {
-                    $errors[] = $typeConstraint === 'array' && is_array($normalizedValue)
-                        ? sprintf('%s must be a JSON array (list with sequential keys), got an associative array', $path)
-                        : sprintf('%s must be of type %s', $path, $typeConstraint);
+                    $errors[] = sprintf('%s must be of type %s', $path, $typeConstraint);
                 }
             }
         }
@@ -28992,9 +28953,6 @@ final class UnionUnderContainer implements JsonSerializable
                     && !($normalizedValue === null && ($branch['nullable'] ?? false) === true)
                     && !self::matchesOpenApiCallbackType($normalizedValue, $branch['type'])
                 ) {
-                    continue;
-                }
-                if (self::openApiListBelongsToArrayBranch($normalizedValue, $schema['anyOf'], $branch)) {
                     continue;
                 }
                 $errorsForBranch = self::validateOpenApiNode($value, $branch, $path, $depth + 1);
@@ -29114,74 +29072,9 @@ final class UnionUnderContainer implements JsonSerializable
         return match ($type) {
             'integer' => is_int($value) || (is_float($value) && is_finite($value) && floor($value) === $value),
             'string' => is_string($value),
-            'array' => is_array($value) && array_is_list($value),
             'object' => is_object($value) || (is_array($value) && !self::$openApiJsonShapesKnown),
             default => true,
         };
-    }
-
-    /**
-     * @param array<array-key, mixed> $branches
-     * @param array<array-key, mixed> $branch
-     */
-    private static function openApiListBelongsToArrayBranch(mixed $value, array $branches, array $branch): bool
-    {
-        $branchTypes = self::openApiAssertedTypes($branch);
-        if (!is_array($value) || !array_is_list($value) || !in_array('object', $branchTypes, true) || in_array('array', $branchTypes, true)) {
-            return false;
-        }
-
-        foreach ($branches as $sibling) {
-            if (in_array('array', self::openApiAssertedTypes($sibling), true)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * The types a schema admits through its own `type`, every `allOf` member's, and a nested `oneOf` /
-     * `anyOf` whose members all say: an object branch spelled `allOf: [{type: object}]` or
-     * `oneOf: [{type: object, required: [a]}, {type: object}]` is one as much as `type: object` is.
-     * Empty when nothing says.
-     *
-     * @return array<array-key, mixed>
-     */
-    private static function openApiAssertedTypes(mixed $schema): array
-    {
-        if (!is_array($schema)) {
-            return [];
-        }
-        $types = is_string($schema['type'] ?? null) ? [$schema['type']] : (is_array($schema['type'] ?? null) ? $schema['type'] : null);
-        $asserted = [];
-        foreach (is_array($schema['allOf'] ?? null) ? $schema['allOf'] : [] as $member) {
-            $asserted[] = self::openApiAssertedTypes($member);
-        }
-        foreach (['oneOf', 'anyOf'] as $keyword) {
-            if (!is_array($schema[$keyword] ?? null) || $schema[$keyword] === []) {
-                continue;
-            }
-            // A union admits what any member does — and says nothing once one member says nothing.
-            $unionTypes = [];
-            foreach ($schema[$keyword] as $member) {
-                $memberTypes = self::openApiAssertedTypes($member);
-                if ($memberTypes === []) {
-                    $unionTypes = [];
-
-                    break;
-                }
-                $unionTypes = [...$unionTypes, ...$memberTypes];
-            }
-            $asserted[] = array_values(array_unique($unionTypes));
-        }
-        foreach ($asserted as $memberTypes) {
-            if ($memberTypes !== []) {
-                $types = $types === null ? $memberTypes : array_values(array_intersect($types, $memberTypes));
-            }
-        }
-
-        return $types ?? [];
     }
 
     private static function normalizeOpenApiStructuralValue(mixed $value): mixed
@@ -29284,7 +29177,7 @@ final class UnionUnderContainer implements JsonSerializable
         $result = [];
 
         if ($this->isChainProvided()) {
-            $result['chain'] = $this->chain === null ? null : array_map(static fn(mixed $item): mixed => is_array($item) ? self::toJsonObjects($item) : self::toJsonValue($item), array_values($this->chain));
+            $result['chain'] = $this->chain === null ? null : array_map(static fn(ChainMiddle $item): array|object => $item->toArray() ?: (object)[], array_values($this->chain));
         }
 
         if ($this->isChainAllOfProvided()) {

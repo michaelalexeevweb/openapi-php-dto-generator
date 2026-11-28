@@ -1,4 +1,4 @@
-# yii3 mode — 80 files, 37564 lines
+# yii3 mode — 80 files, 37424 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -34244,15 +34244,12 @@ use function is_finite;
 use function is_float;
 use function is_int;
 use function is_object;
-use function is_scalar;
 use function is_string;
-use function ltrim;
 use function mb_strlen;
 use function method_exists;
 use function preg_split;
 use function property_exists;
 use function sprintf;
-use function str_contains;
 use function str_ends_with;
 use function str_starts_with;
 use function strpos;
@@ -34281,6 +34278,7 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
 
     /** OpenAPI name => where an empty array of its wire form is a JSON object (`openApiEmptyObjects()`). */
     private const array OPENAPI_WIRE_SHAPES = [
+        'chain' => 'list<object>',
         'chainAllOf' => 'list<object>',
     ];
 
@@ -34292,48 +34290,6 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
         'properties' => [
             'chain' => [
                 'type' => 'array',
-                'items' => [
-                    'oneOf' => [
-                        [
-                            'type' => 'object',
-                            'required' => [
-                                'links',
-                            ],
-                            'properties' => [
-                                'links' => [
-                                    'type' => 'array',
-                                    'items' => [
-                                        'type' => 'object',
-                                        'required' => [
-                                            'code',
-                                        ],
-                                        'properties' => [
-                                            'code' => [
-                                                'type' => 'string',
-                                                'minLength' => 3,
-                                            ],
-                                            'tags' => [
-                                                'type' => 'array',
-                                                'items' => [
-                                                    'type' => 'object',
-                                                    'required' => [
-                                                        'label',
-                                                    ],
-                                                    'properties' => [
-                                                        'label' => [
-                                                            'type' => 'string',
-                                                            'minLength' => 2,
-                                                        ],
-                                                    ],
-                                                ],
-                                            ],
-                                        ],
-                                    ],
-                                ],
-                            ],
-                        ],
-                    ],
-                ],
             ],
             'chainAllOf' => [
                 'type' => 'array',
@@ -34369,7 +34325,10 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
 
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
-    #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
+    /** @var ?array<ChainMiddle> */
+    #[Each(new Nested(), skipOnEmpty: new WhenNull())]
+    #[Validate(new Each([new Callback(callback: [self::class, 'validateOpenApiObjectItem'])], incorrectInputMessage: '{Property} must be an array. {type} given.', skipOnEmpty: new WhenNull()), new Callback(callback: [self::class, 'validateOpenApiListShape'], skipOnEmpty: new WhenNull(), skipOnError: true))]
+    #[Collection(ChainMiddle::class)]
     public readonly ?array $chain;
 
     /** @var ?array<ChainMiddle> */
@@ -34385,6 +34344,7 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
     #[Validate(new Each([], incorrectInputMessage: '{Property} must be an object. {type} given.', skipOnEmpty: new WhenNull()))]
     public readonly ?array $listOfUnions;
 
+    /** @return ?array<ChainMiddle> */
     public function getChain(): ?array
     {
         return $this->hasProperty('chain') ? $this->chain : null;
@@ -34430,6 +34390,7 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
      * a payload lacks the key. Passing `null` writes `null` where the schema lets the property be null;
      * anywhere else `null` means "not sent" too.
      *
+     * @param ?array<ChainMiddle> $chain
      * @param ?array<ChainMiddle> $chainAllOf
      */
     public static function create(
@@ -34707,107 +34668,6 @@ final class UnionUnderContainer extends AbstractInput implements DataSetInterfac
             && (!in_array('object', (array)($schema['type'] ?? []), true) || in_array('array', (array)($schema['type'] ?? []), true))
         ) {
             $structuredValue = null;
-        }
-
-        if (is_array($schema['oneOf'] ?? null)) {
-            $matchingBranches = 0;
-            $nullableBranchAdmitsNull = false;
-            $branchErrors = [];
-            foreach ($schema['oneOf'] as $branch) {
-                if (!is_array($branch)) {
-                    continue;
-                }
-
-                if (is_string($branchClass = $branch['x-php-instanceof'] ?? null) && $branchClass !== '') {
-                    $branchFqcn = str_contains($branchClass, '\\') ? ltrim($branchClass, '\\') : __NAMESPACE__ . '\\' . $branchClass;
-                    // `{$ref: X, nullable: true}`: X or null.
-                    if ((is_object($value) && $value instanceof $branchFqcn) || ($value === null && ($branch['nullable'] ?? false) === true)) {
-                        $matchingBranches++;
-                    }
-                    continue;
-                }
-
-                // `nullable: true` says "or null": it admits null, and never makes null match twice.
-                if ($normalizedValue === null && ($branch['nullable'] ?? false) === true) {
-                    $nullableBranchAdmitsNull = true;
-                    continue;
-                }
-                if (array_key_exists('type', $branch) && !$this->matchesOpenApiCallbackType($normalizedValue, $branch['type'])) {
-                    continue;
-                }
-                if ($this->openApiListBelongsToArrayBranch($normalizedValue, $schema['oneOf'], $branch)) {
-                    continue;
-                }
-                // Keep why each branch failed: with no match at all those reasons are far more
-                // useful than "does not match any oneOf branch".
-                $errorsForBranch = $this->validateOpenApiNode($value, $branch, $path, $depth + 1);
-                if ($errorsForBranch === []) {
-                    $matchingBranches++;
-                    continue;
-                }
-
-                $branchErrors = [...$branchErrors, ...$errorsForBranch];
-            }
-
-            if ($matchingBranches === 0 && $nullableBranchAdmitsNull) {
-                $matchingBranches = 1;
-            }
-
-            if ($matchingBranches > 1) {
-                $errors[] = sprintf('%s matches more than one allowed oneOf branch', $path);
-            } elseif ($matchingBranches === 0) {
-                $errors = $branchErrors === []
-                    ? [...$errors, $this->describeOpenApiUnionMismatch($path, 'oneOf', $schema['oneOf'], $value)]
-                    : [...$errors, ...array_values(array_unique($branchErrors))];
-            }
-
-            if ($matchingBranches === 1) {
-                $discriminatorProperty = is_string($schema['x-discriminator-property'] ?? null)
-                    ? $schema['x-discriminator-property']
-                    : null;
-                $discriminatorPhpProperty = is_string($schema['x-discriminator-php-property'] ?? null)
-                    ? $schema['x-discriminator-php-property']
-                    : null;
-                $discriminatorMap = is_array($schema['x-discriminator-map'] ?? null)
-                    ? $schema['x-discriminator-map']
-                    : null;
-
-                if ($discriminatorProperty !== null && $discriminatorMap !== null && is_object($value)) {
-                    $phpProperty = $discriminatorPhpProperty ?? $discriminatorProperty;
-                    // The DTO keeps its state private: read the discriminator from the payload it
-                    // reports, keyed by the OpenAPI name, and fall back to a public property for a
-                    // hand-written object. get_object_vars() lists only what this scope may read:
-                    // property_exists() also answers for a private property of another DTO, and
-                    // reading that one is an Error.
-                    $discriminatorPayload = $this->normalizeOpenApiStructuralValue($value);
-                    $discriminatorCarrier = is_array($discriminatorPayload) ? $discriminatorPayload : [];
-                    $readableProperties = get_object_vars($value);
-                    if (!array_key_exists($discriminatorProperty, $discriminatorCarrier) && !array_key_exists($phpProperty, $readableProperties)) {
-                        $errors[] = sprintf('%s discriminator property %s is required', $path, $discriminatorProperty);
-                    } else {
-                        $discriminatorValue = $discriminatorCarrier[$discriminatorProperty]
-                            ?? $readableProperties[$phpProperty] ?? null;
-                        // A variant whose discriminator is a one-value `enum` holds it as its enum case.
-                        if ($discriminatorValue instanceof BackedEnum) {
-                            $discriminatorValue = $discriminatorValue->value;
-                        }
-                        $mapKey = is_scalar($discriminatorValue) ? (string)$discriminatorValue : null;
-                        if ($mapKey === null || !array_key_exists($mapKey, $discriminatorMap)) {
-                            $errors[] = sprintf(
-                                '%s discriminator %s must be one of: %s',
-                                $path,
-                                $discriminatorProperty,
-                                implode(', ', array_keys($discriminatorMap)),
-                            );
-                        } elseif (is_string($expectedClass = $discriminatorMap[$mapKey]) && $expectedClass !== '') {
-                            $expectedFqcn = str_contains($expectedClass, '\\') ? ltrim($expectedClass, '\\') : __NAMESPACE__ . '\\' . $expectedClass;
-                            if (!$value instanceof $expectedFqcn) {
-                                $errors[] = sprintf('%s discriminator %s must match concrete class', $path, $discriminatorProperty);
-                            }
-                        }
-                    }
-                }
-            }
         }
 
         if (array_key_exists('type', $schema)) {

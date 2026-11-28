@@ -834,12 +834,13 @@ final class GenerateDtoCommandTest extends TestCase
             if ($level < 7) {
                 $properties['next'] = ['type' => 'array', 'items' => ['oneOf' => [
                     ['$ref' => '#/components/schemas/L' . ($level + 1)],
+                    ['type' => 'boolean'],
                 ]]];
             }
             $chain['L' . $level] = ['type' => 'object', 'required' => ['code'], 'properties' => $properties];
         }
         $chain['Root'] = ['type' => 'object', 'required' => ['chain'], 'properties' => [
-            'chain' => ['type' => 'array', 'items' => ['oneOf' => [['$ref' => '#/components/schemas/L0']]]],
+            'chain' => ['type' => 'array', 'items' => ['oneOf' => [['$ref' => '#/components/schemas/L0'], ['type' => 'boolean']]]],
         ]];
 
         $this->generator->generateFromArray(
@@ -875,10 +876,10 @@ final class GenerateDtoCommandTest extends TestCase
                 'components' => ['schemas' => [
                     'Loop' => ['type' => 'object', 'required' => ['code'], 'properties' => [
                         'code' => ['type' => 'string', 'minLength' => 2],
-                        'kids' => ['type' => 'array', 'items' => ['oneOf' => [['$ref' => '#/components/schemas/Loop']]]],
+                        'kids' => ['type' => 'array', 'items' => ['oneOf' => [['$ref' => '#/components/schemas/Loop'], ['type' => 'boolean']]]],
                     ]],
                     'LoopRoot' => ['type' => 'object', 'required' => ['loops'], 'properties' => [
-                        'loops' => ['type' => 'array', 'items' => ['oneOf' => [['$ref' => '#/components/schemas/Loop']]]],
+                        'loops' => ['type' => 'array', 'items' => ['oneOf' => [['$ref' => '#/components/schemas/Loop'], ['type' => 'boolean']]]],
                     ]],
                 ]],
             ],

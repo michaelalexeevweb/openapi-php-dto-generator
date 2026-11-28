@@ -21,10 +21,10 @@ namespace OpenapiPhpDtoGenerator\Schema;
  * 1. `{allOf|oneOf|anyOf: [M]}` — one member — is M merged with its siblings when those only annotate
  *    (or are a 3.0 `nullable`), the two sides do not disagree on a keyword and no keyword reads one on
  *    the other side (`additionalProperties` reads `properties`, a 3.0 boolean `exclusiveMinimum` reads
- *    `minimum`, …). A bare `$ref` member of an `allOf` is the reference itself when nothing stands beside
- *    the wrapper. Kept: the wrapper around a `$ref` at the top of a component (inheritance or a union
- *    interface, a class of its own), a one-member UNION of a `$ref` anywhere (held as a union, not as the
- *    class), beside a `discriminator`, and as a direct member of a discriminated union (matched by `$ref`);
+ *    `minimum`, …). A bare `$ref` member — of an `allOf`, a `oneOf` or an `anyOf` — is the reference
+ *    itself when nothing stands beside the wrapper. Kept: the wrapper around a `$ref` at the top of a component (inheritance or a union
+ *    interface, a class of its own), beside a `discriminator`, and as a direct member of a discriminated
+ *    union (matched by `$ref`);
  * 2. `{allOf: [F1, …, Fn]}` whose fragments only say scalar things (`type`, `enum`, bounds, `format`)
  *    is one flat scalar schema — unless a 3.0 `nullable` fragment meets an `enum` / `const` without null
  *    or a second `type` (the fragment without `nullable` refuses null);
@@ -121,6 +121,7 @@ final class SchemaNormalizer
      * a spelling-dependent class plan or check to settle before the rule can run in front of it.
      */
     public const array GENERATION_RULES = [
+        self::RULE_SINGLE_MEMBER,
         self::RULE_SCALAR_FRAGMENTS,
         self::RULE_ALIAS_CHAINS,
     ];
@@ -319,13 +320,10 @@ final class SchemaNormalizer
             $member = $members[0];
             $siblings = $this->without(schema: $schema, keyword: $keyword);
             if (array_key_exists('$ref', $member)) {
-                // A bare wrapper around a reference is the reference — but at a component's top it is a
-                // class of its own (`allOf` = inheritance, a union = an interface), and a discriminated
-                // member is matched by its `$ref`. A one-member UNION of a reference is kept anywhere:
-                // the generator holds it as a union (decoded, checked by the interpreter) where the bare
-                // reference is a class — collapsing it changes a property's PHP type, which is a 3.0
-                // decision of its own (`.local/3.0-normalizer.md`), not a spelling.
-                if ($siblings !== [] || $position !== self::POSITION_OTHER || $keyword !== 'allOf') {
+                // A bare wrapper around a reference is the reference — `oneOf: [$ref X]` too: a union of
+                // one class is that class. But at a component's top it is a class of its own (`allOf` =
+                // inheritance, a union = an interface), and a discriminated member is matched by its `$ref`.
+                if ($siblings !== [] || $position !== self::POSITION_OTHER) {
                     return null;
                 }
 

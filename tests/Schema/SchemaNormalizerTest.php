@@ -51,10 +51,16 @@ final class SchemaNormalizerTest extends TestCase
             ['$ref' => self::REF . 'Teal'],
             $teal,
         ];
-        yield 'one-member union of a reference is kept (a union, not a class, to the generator)' => [
+        yield 'one-member union of a reference is the reference (a union of one class is the class)' => [
             '3.1.0',
             ['type' => 'array', 'items' => ['oneOf' => [['$ref' => self::REF . 'Teal']]]],
-            ['type' => 'array', 'items' => ['oneOf' => [['$ref' => self::REF . 'Teal']]]],
+            ['type' => 'array', 'items' => ['$ref' => self::REF . 'Teal']],
+            $teal,
+        ];
+        yield 'annotated one-member union of a reference is kept' => [
+            '3.1.0',
+            ['anyOf' => [['$ref' => self::REF . 'Teal']], 'description' => 'Kept.'],
+            ['anyOf' => [['$ref' => self::REF . 'Teal']], 'description' => 'Kept.'],
             $teal,
         ];
         yield 'annotated wrapper around a reference is kept' => [
@@ -161,10 +167,11 @@ final class SchemaNormalizerTest extends TestCase
         ];
     }
 
-    public function testTheGenerationRulesFoldFragmentsAndFollowAliasesOnly(): void
+    public function testTheGenerationRulesCollapseFoldAndFollowAliasesOnly(): void
     {
         $property = ['type' => 'object', 'properties' => [
             'wrapped' => ['allOf' => [['type' => 'string']]],
+            'union' => ['oneOf' => [['$ref' => self::REF . 'Teal']]],
             'split' => ['allOf' => [['type' => 'string'], ['maxLength' => 3]]],
             'aliased' => ['$ref' => self::REF . 'Alias'],
             'nullPair' => ['oneOf' => [['type' => 'null'], ['type' => 'integer']]],
@@ -173,7 +180,8 @@ final class SchemaNormalizerTest extends TestCase
         $normalized = (new SchemaNormalizer(SchemaNormalizer::GENERATION_RULES))->normalize(self::document(openApi: '3.1.0', property: $property, components: $components));
         $properties = $normalized['components']['schemas']['Probe']['properties']['shade']['properties'];
 
-        $this->assertSame(['allOf' => [['type' => 'string']]], $properties['wrapped']);
+        $this->assertSame(['type' => 'string'], $properties['wrapped']);
+        $this->assertSame(['$ref' => self::REF . 'Teal'], $properties['union']);
         $this->assertSame(['type' => 'string', 'maxLength' => 3], $properties['split']);
         $this->assertSame(['$ref' => self::REF . 'Teal'], $properties['aliased']);
         $this->assertSame($property['properties']['nullPair'], $properties['nullPair']);

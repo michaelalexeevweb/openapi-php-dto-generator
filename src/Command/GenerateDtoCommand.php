@@ -1221,7 +1221,7 @@ final class GenerateDtoCommand extends Command
         // reference has to be resolved against the document as written.
         $data = (new SchemaResourceResolver())->resolve(document: $data, documentBase: $this->fileUri($realFilePath));
         $this->rootOpenApiVersion = is_string($data['openapi'] ?? null) ? $data['openapi'] : null;
-        $data = $this->withNestedAllOfWrappersPeeled($this->normalizedDocument($this->hoistComponentSubschemas($this->foldJsonSchemaDefs($data))));
+        $data = $this->preparedDocument($data);
 
         $this->initializeGeneration(
             outputDirectory: $outputDirectory,
@@ -1427,7 +1427,7 @@ final class GenerateDtoCommand extends Command
             $openApi = is_array($rewritten) ? $rewritten : $openApi;
         }
 
-        return $this->hoistInlineDiscriminatedUnions($this->flattenNullableDiscriminatedUnions($openApi));
+        return $openApi;
     }
 
     /**
@@ -2042,6 +2042,23 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
+     * A loaded document as generation reads it: `$defs` folded into components, schemas named inside a
+     * component hoisted, the canonical spelling (`normalizedDocument()`), and only THEN an inline
+     * discriminated union made a component of its own — it has to be found in the canonical spelling, or
+     * the same union behind a one-member wrapper (`{allOf: [{anyOf: [<discriminated oneOf>]}]}`) stays
+     * inline and loses its discriminator. Nested `allOf` wrappers are peeled last.
+     *
+     * @param array<array-key, mixed> $document
+     * @return array<array-key, mixed>
+     */
+    private function preparedDocument(array $document): array
+    {
+        $canonical = $this->normalizedDocument($this->hoistComponentSubschemas($this->foldJsonSchemaDefs($document)));
+
+        return $this->withNestedAllOfWrappersPeeled($this->hoistInlineDiscriminatedUnions($this->flattenNullableDiscriminatedUnions($canonical)));
+    }
+
+    /**
      * The document in the canonical spelling of `SchemaNormalizer` — the same schema written one way
      * whatever wrapper the document put around it — under the rules the generator already reads alike
      * (`SchemaNormalizer::GENERATION_RULES`). A referenced file without an `openapi` field is read as the
@@ -2204,7 +2221,7 @@ final class GenerateDtoCommand extends Command
         $this->readDocumentLevelFields($openApi);
         $openApi = (new SchemaResourceResolver())->resolve(document: $openApi, documentBase: SchemaResourceResolver::ARRAY_DOCUMENT_BASE);
         $this->rootOpenApiVersion = is_string($openApi['openapi'] ?? null) ? $openApi['openapi'] : null;
-        $openApi = $this->withNestedAllOfWrappersPeeled($this->normalizedDocument($this->hoistComponentSubschemas($this->foldJsonSchemaDefs($openApi))));
+        $openApi = $this->preparedDocument($openApi);
         $openApi = $this->rewriteSchemaPointers(document: $openApi, sourceFile: null, isRootDocument: true);
         $schemas = $this->withComponentBodiesNormalized($this->extractSchemas($openApi));
         foreach ($this->extractInlineResponseSchemas($openApi) as $name => $schema) {
@@ -5484,7 +5501,7 @@ final class GenerateDtoCommand extends Command
         $data = (new SchemaResourceResolver())->resolve(document: $data, documentBase: $this->fileUri($filePath));
         // Fold this external document's own `$defs` into its components.schemas (and rewrite
         // its internal `#/$defs/` pointers) so cross-file `file#/$defs/X` references resolve.
-        $data = $this->withNestedAllOfWrappersPeeled($this->normalizedDocument($this->hoistComponentSubschemas($this->foldJsonSchemaDefs($data))));
+        $data = $this->preparedDocument($data);
         // Cached before its references are rewritten: a file they lead to may point back here, and
         // finds the components it declares.
         $this->externalDocuments[$filePath] = $data;

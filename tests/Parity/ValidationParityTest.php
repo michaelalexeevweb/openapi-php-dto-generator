@@ -19534,6 +19534,9 @@ final class ValidationParityTest extends TestCase
             $inline['Probe']['properties']['otter'] = ['type' => 'array', 'items' => ['allOf' => [$scarletRef]]];
             yield 'inline array, items allOf, ' . $name => ['3.0.3', array_diff_key($inline, ['Olive' => true]), $items];
         }
+        // Since 3.0 the one-member `allOf` is the bare `items: {$ref: Azure}`, a list of DTOs: symfony's
+        // serializer builds the string item into an empty `Azure`, which requires nothing — the
+        // support-matrix row "a non-object ITEM of a list or map of DTOs", a framework boundary.
         yield 'array component, items allOf of a plain class' => [
             '3.0.3',
             $otterSchemas(['type' => 'array', 'items' => ['allOf' => [['$ref' => '#/components/schemas/Azure']]]], false),
@@ -19542,6 +19545,7 @@ final class ValidationParityTest extends TestCase
                 '{"otter":["zzq"]}' => false,
                 '{"otter":[{"kind":"circle","raven":"i"}]}' => false,
             ],
+            ['symfony' => ['{"otter":["zzq"]}' => null]],
         ];
 
         $hyenaFragment = ['type' => 'object', 'properties' => ['hyena' => ['type' => 'string']], 'required' => ['hyena']];
