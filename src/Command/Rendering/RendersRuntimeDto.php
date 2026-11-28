@@ -703,10 +703,10 @@ trait RendersRuntimeDto
      *     nullableArray: bool,
      *     usesUnsetSentinel: bool,
      *     getterUsesSentinel: bool,
-     *     hasObjectGetter: bool,
-     *     objectGetterMethodName: string,
-     *     objectGetterReturnType: string,
-     *     objectGetterDocReturnType: ?string,
+     *     hasWireFormatter: bool,
+     *     wireMethodName: string,
+     *     wireReturnType: string,
+     *     wireDocReturnType: ?string,
      *     writeOnly: bool,
      *     isParameter: bool,
      * }
@@ -773,12 +773,20 @@ trait RendersRuntimeDto
             && is_string($itemsTemporalFormat)
             && ltrim($arrayItemPhpType, '?') === 'DateTimeImmutable';
 
+        // A `format: date` / `date-time` value is a DateTimeImmutable wherever it sits — a plain
+        // property, a list or map of them, a union branch — and its getter hands back the object. The
+        // wire form (the string the schema declares) is written by a private formatter `toArray()`
+        // calls; before 3.0 the plain spelling's getter returned that string and a `getXAsDateTime()`
+        // twin returned the object, while a wrapped spelling of the same schema returned the object.
+        $wireReturnType = '';
+        $wireDocReturnType = null;
         if ($phpType === 'DateTimeImmutable' && $temporalFormat !== null) {
             $returnKind = 'temporal';
-            $returnType = $property['nullable'] || $usesUnsetSentinel ? '?string' : 'string';
+            $isNullableTemporal = $property['nullable'] || $usesUnsetSentinel;
+            $returnType = $isNullableTemporal ? '?DateTimeImmutable' : 'DateTimeImmutable';
+            $wireReturnType = $isNullableTemporal ? '?string' : 'string';
             $expectedFormat = $temporalFormat;
             $phpDateFormat = $temporalFormat === 'Y-m-d' ? 'Y-m-d' : 'c';
-            $isNullableTemporal = $property['nullable'] || $usesUnsetSentinel;
         } elseif (
             in_array('DateTimeImmutable', explode('|', ltrim($phpType, '?')), true)
             && ($property['unionTemporalFormats'] ?? []) !== []
@@ -791,9 +799,9 @@ trait RendersRuntimeDto
             $returnKind = 'temporalArray';
             $expectedFormat = $itemsTemporalFormat;
             $phpDateFormat = $itemsTemporalFormat === 'Y-m-d' ? 'Y-m-d' : 'c';
-            // The getter hands back strings, so its docblock — and the `arrayItemType` the
-            // normalization map reads off it — must say strings.
-            $docReturnType = $this->composePhpTypeHint(
+            $docReturnType = $this->composePhpTypeHint($phpDocType, $property['nullable']);
+            // The formatter hands back strings, so its docblock says strings.
+            $wireDocReturnType = $this->composePhpTypeHint(
                 type: $this->replaceTemporalItemTypeWithString($phpDocType),
                 nullable: $property['nullable'],
             );
@@ -806,6 +814,12 @@ trait RendersRuntimeDto
             if (is_string($docReturnType)) {
                 $docReturnType = $this->ensureTypeAllowsNull($docReturnType);
             }
+            if (is_string($wireDocReturnType)) {
+                $wireDocReturnType = $this->ensureTypeAllowsNull($wireDocReturnType);
+            }
+        }
+        if ($returnKind === 'temporalArray') {
+            $wireReturnType = $returnType;
         }
 
         // Array fields are stored in a dedicated `?array` property (the constructor maps the
@@ -813,20 +827,10 @@ trait RendersRuntimeDto
         // the property is never UnsetValue at read time. Non-array sentinel getters still do.
         $getterUsesSentinel = $usesUnsetSentinel && $phpType !== 'array';
 
-        // Temporal fields expose a second getter that returns the underlying DateTimeImmutable
-        // value(s) — the primary getter returns the formatted string(s). The value is already
-        // stored as DateTimeImmutable, so this just unwraps the sentinel/null.
-        $hasObjectGetter = $returnKind === 'temporal' || $returnKind === 'temporalArray';
-        $objectGetterMethodName = $hasObjectGetter ? 'get' . ucfirst($property['name']) . 'AsDateTime' : '';
-        $objectGetterReturnType = $isNullableTemporal ? '?DateTimeImmutable' : 'DateTimeImmutable';
-        $objectGetterDocReturnType = null;
-        if ($returnKind === 'temporalArray') {
-            $objectGetterReturnType = $returnType;
-            $objectGetterDocReturnType = $this->composePhpTypeHint($phpDocType, $property['nullable']);
-            if ($usesUnsetSentinel) {
-                $objectGetterDocReturnType = $this->ensureTypeAllowsNull($objectGetterDocReturnType);
-            }
-        }
+        // Named after the property, not the getter: a `get…` prefix would put it beside the public
+        // getters, and no other generated member starts with `wireFormOf`.
+        $hasWireFormatter = $returnKind === 'temporal' || $returnKind === 'temporalArray';
+        $wireMethodName = $hasWireFormatter ? 'wireFormOf' . ucfirst($property['name']) : '';
 
         return [
             'name' => $property['name'],
@@ -902,10 +906,10 @@ trait RendersRuntimeDto
             'nullableArray' => $property['nullable'],
             'usesUnsetSentinel' => $usesUnsetSentinel,
             'getterUsesSentinel' => $getterUsesSentinel,
-            'hasObjectGetter' => $hasObjectGetter,
-            'objectGetterMethodName' => $objectGetterMethodName,
-            'objectGetterReturnType' => $objectGetterReturnType,
-            'objectGetterDocReturnType' => $objectGetterDocReturnType,
+            'hasWireFormatter' => $hasWireFormatter,
+            'wireMethodName' => $wireMethodName,
+            'wireReturnType' => $wireReturnType,
+            'wireDocReturnType' => $wireDocReturnType,
             'readOnly' => $property['readOnly'] ?? false,
             'writeOnly' => $property['writeOnly'] ?? false,
             'deprecated' => $property['deprecated'] ?? false,

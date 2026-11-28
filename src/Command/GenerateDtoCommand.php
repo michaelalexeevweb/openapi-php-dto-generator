@@ -10456,6 +10456,28 @@ final class GenerateDtoCommand extends Command
                 return ['array<' . $this->composePhpTypeHint($itemClassName, $itemNullable || $itemClassNullable) . '>', $nullable];
             }
 
+            // A temporal ITEM behind a composition — `items: {allOf: [{format: date}]}`, `{oneOf:
+            // [{format: date}]}`, `{anyOf: [{format: date}, {type: null}]}` — is a date, as the plain
+            // `items: {format: date}` is and as the same schema is as a property or a map value. Left
+            // to the mapping below the list stayed one of wire strings while every other spelling
+            // held DateTimeImmutable objects.
+            if ($itemsType === null && $this->unionBranchTemporalFormats(branch: $items, depth: 0) !== []) {
+                [$composedItemType, $composedItemNullable] = $this->resolvePropertyType(
+                    propertySchema: $items,
+                    ownerClassName: $ownerClassName,
+                    propertyName: $propertyName . 'Item',
+                );
+                // Not in Symfony mode when the item admits null: its `ArrayDenormalizer` hands a null
+                // element to `DateTimeNormalizer`, which refuses it — the boundary the plain
+                // `items: {type: [string, null], format: date}` hits (README.support-matrix). Held as
+                // the strings it arrives as, the null the document allows stays accepted.
+                $symfonyRefusesNullItem = $this->attributeMode === self::ATTRIBUTE_MODE_SYMFONY
+                    && ($itemNullable || $composedItemNullable);
+                if ($composedItemType === 'DateTimeImmutable' && !$symfonyRefusesNullItem) {
+                    return ['array<' . $this->composePhpTypeHint('DateTimeImmutable', $itemNullable || $composedItemNullable) . '>', $nullable];
+                }
+            }
+
             // A list of lists. Left to the scalar mapping below it landed on `default => 'mixed'`, so
             // `array<array<int>>` was declared `array<mixed>` — and `mixed` is the one item type
             // `DtoNormalizer::validate()` skips, which is why a matrix with a scalar where a row

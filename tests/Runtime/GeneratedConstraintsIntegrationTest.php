@@ -1431,11 +1431,11 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $this->assertTrue($refused, 'the second deserializer used the first one\'s validator');
     }
 
-    public function testTemporalFieldExposesObjectGetterAlongsideStringGetter(): void
+    public function testTemporalFieldGetterReturnsTheObjectAndToArrayTheWireString(): void
     {
-        // A scalar temporal field keeps its string getter (formatted per the OpenAPI format) and
-        // gains a getXAsDateTime() that returns the underlying DateTimeImmutable. Covers a required
-        // (non-null) and a nullable field.
+        // 3.0: a scalar temporal field's getter returns the DateTimeImmutable — the same type a
+        // wrapped spelling of that schema always had — and `toArray()` writes the string the
+        // OpenAPI format declares. Covers a required (non-null) and a nullable field.
         $openApi = [
             'openapi' => '3.0.0',
             'info' => ['title' => 'Temporal', 'version' => '1.0.0'],
@@ -1461,32 +1461,31 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         /** @var class-string<GeneratedDtoInterface> $cls */
         $cls = '\GenTemporal\Event';
 
-        /** @var object{getStartDate: callable, getStartDateAsDateTime: callable, getCreatedAt: callable, getCreatedAtAsDateTime: callable} $dto */
+        /** @var object{getStartDate: callable, getCreatedAt: callable, toArray: callable} $dto */
         $dto = (new DtoDeserializer())->deserialize(
             request: $this->jsonPostRequest('{"startDate":"2026-01-15","createdAt":"2026-02-20T08:30:00+00:00"}'),
             dtoClass: $cls,
         );
 
-        // String getter: formatted per the OpenAPI format.
-        $this->assertSame('2026-01-15', $dto->getStartDate());
-        // Object getter: the underlying DateTimeImmutable.
-        $startDateObject = $dto->getStartDateAsDateTime();
+        $startDateObject = $dto->getStartDate();
         $this->assertInstanceOf(DateTimeImmutable::class, $startDateObject);
         $this->assertSame('2026-01-15', $startDateObject->format('Y-m-d'));
+        $this->assertInstanceOf(DateTimeImmutable::class, $dto->getCreatedAt());
 
-        // Nullable field present → both getters return the value.
-        $this->assertSame('2026-02-20T08:30:00+00:00', $dto->getCreatedAt());
-        $this->assertInstanceOf(DateTimeImmutable::class, $dto->getCreatedAtAsDateTime());
+        // The wire form is formatted per the OpenAPI format.
+        $this->assertSame('2026-01-15', $dto->toArray()['startDate']);
+        $this->assertSame('2026-02-20T08:30:00+00:00', $dto->toArray()['createdAt']);
 
-        // Reflect the declared return types.
+        // Reflect the declared return types; the pre-3.0 `AsDateTime` twin is gone.
         $this->assertSame(
             expected: 'DateTimeImmutable',
-            actual: (string)(new ReflectionMethod($cls, 'getStartDateAsDateTime'))->getReturnType(),
+            actual: (string)(new ReflectionMethod($cls, 'getStartDate'))->getReturnType(),
         );
         $this->assertSame(
             expected: '?DateTimeImmutable',
-            actual: (string)(new ReflectionMethod($cls, 'getCreatedAtAsDateTime'))->getReturnType(),
+            actual: (string)(new ReflectionMethod($cls, 'getCreatedAt'))->getReturnType(),
         );
+        $this->assertFalse(method_exists($cls, 'getStartDateAsDateTime'));
     }
 
     public function testArrayOfDateTimeItemsAreParsedThroughGeneratedDto(): void
@@ -1501,15 +1500,15 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             dtoClass: $cls,
         );
 
-        $dates = $dto->getDatesAsDateTime();
+        $dates = $dto->getDates();
         $this->assertCount(2, $dates);
         $this->assertInstanceOf(DateTimeImmutable::class, $dates[0]);
         $this->assertSame('2026-01-15T12:00:00+00:00', $dates[0]->format('c'));
 
-        // The string getter formats every item per the ITEMS format, exactly like the scalar one.
+        // The wire form formats every item per the ITEMS format, exactly like the scalar one.
         $this->assertSame(
             expected: ['2026-01-15T12:00:00+00:00', '2026-02-20T08:30:00+00:00'],
-            actual: $dto->getDates(),
+            actual: $dto->toArray()['dates'],
         );
     }
 
@@ -1517,8 +1516,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
      * `items: {format: date}` types the item as DateTimeImmutable, and for a long time that was the
      * end of it: the getter handed the objects back and the normalizer printed them RFC 3339, so a
      * schema that said `date` produced `2026-01-15T00:00:00+00:00`. The item now gets the same
-     * treatment the scalar has always had — the string getter formats, the `AsDateTime` twin keeps
-     * the objects.
+     * treatment the scalar has: the getter keeps the objects, `toArray()` formats.
      */
     public function testArrayAndMapOfDateItemsSerializeAsDateStrings(): void
     {
@@ -1551,15 +1549,12 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             dtoClass: $fqcn,
         );
 
-        $this->assertSame(['2026-01-15', '2026-02-20'], $dto->getDates());
-        $this->assertSame(['mon' => '2026-01-19'], $dto->getByDay());
-
-        // The objects stay reachable through the twin getter.
-        $objects = $dto->getDatesAsDateTime();
+        $objects = $dto->getDates();
         $this->assertInstanceOf(DateTimeImmutable::class, $objects[0]);
         $this->assertSame('2026-01-15', $objects[0]->format('Y-m-d'));
+        $this->assertSame('2026-01-19', $dto->getByDay()['mon']->format('Y-m-d'));
 
-        // Serialization goes through the string getter, so the wire matches the schema.
+        // Serialization formats the items, so the wire matches the schema.
         $this->assertSame(['2026-01-15', '2026-02-20'], $dto->toArray()['dates']);
         $normalized = (new DtoNormalizer())->toArray($dto);
         $this->assertSame(['2026-01-15', '2026-02-20'], $normalized['dates']);
@@ -1601,7 +1596,8 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             request: $this->jsonPostRequest('{"dates":["2026-01-15",null]}'),
             dtoClass: $fqcn,
         );
-        $this->assertSame(['2026-01-15', null], $withItems->getDates());
+        $this->assertSame('2026-01-15', $withItems->getDates()[0]->format('Y-m-d'));
+        $this->assertNull($withItems->getDates()[1]);
         $this->assertSame(['2026-01-15', null], $withItems->toArray()['dates']);
 
         // Field absent: the getter must not map over a null.
@@ -1611,7 +1607,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
     }
 
     /**
-     * `date-time` items keep the RFC 3339 spelling the scalar getter uses — including the
+     * `date-time` items keep the RFC 3339 spelling the scalar field is written with — including the
      * sub-second form when the value carries one.
      */
     public function testArrayOfDateTimeItemsSerializeAsRfc3339Strings(): void
@@ -1625,7 +1621,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
 
         $this->assertSame(
             expected: ['2026-01-15T12:00:00+00:00', '2026-02-20T08:30:00.123456+00:00'],
-            actual: $dto->getDates(),
+            actual: $dto->toArray()['dates'],
         );
         $this->assertSame(
             expected: ['2026-01-15T12:00:00+00:00', '2026-02-20T08:30:00.123456+00:00'],
@@ -2493,7 +2489,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $filter = $dto->getFilter();
         $this->assertIsObject($filter, 'a content: application/json parameter becomes its own DTO');
         /** @var object{getSince: callable} $filter */
-        $this->assertSame('2026-03-10', $filter->getSince(), 'and its JSON was decoded before casting');
+        $this->assertSame('2026-03-10', $filter->getSince()?->format('Y-m-d'), 'and its JSON was decoded before casting');
     }
 
     /**
@@ -4348,20 +4344,20 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
         $cls = '\GenMoment\Moment';
 
         // Microseconds are preserved on output (not silently dropped by 'c').
-        /** @var object{getAt: callable} $withMicros */
+        /** @var object{toArray: callable} $withMicros */
         $withMicros = (new DtoDeserializer())->deserialize(
             request: $this->jsonPostRequest('{"at":"2026-01-01T12:00:00.123456+00:00"}'),
             dtoClass: $cls,
         );
-        $this->assertSame('2026-01-01T12:00:00.123456+00:00', $withMicros->getAt());
+        $this->assertSame('2026-01-01T12:00:00.123456+00:00', $withMicros->toArray()['at']);
 
         // Whole-second values keep the plain RFC 3339 ('c') form — no spurious fraction.
-        /** @var object{getAt: callable} $wholeSecond */
+        /** @var object{toArray: callable} $wholeSecond */
         $wholeSecond = (new DtoDeserializer())->deserialize(
             request: $this->jsonPostRequest('{"at":"2026-01-01T12:00:00+00:00"}'),
             dtoClass: $cls,
         );
-        $this->assertSame('2026-01-01T12:00:00+00:00', $wholeSecond->getAt());
+        $this->assertSame('2026-01-01T12:00:00+00:00', $wholeSecond->toArray()['at']);
     }
 
     public function testValidateAndNormalizeOmitsUnprovidedOptionalField(): void
@@ -6225,7 +6221,7 @@ final class GeneratedConstraintsIntegrationTest extends TestCase
             $this->assertContainsOnlyInstancesOf($tagFqcn, $dto->getTags(), $label . ': DTO items');
             $this->assertContainsOnlyInstancesOf(
                 className: DateTimeImmutable::class,
-                haystack: $dto->getStampsAsDateTime(),
+                haystack: $dto->getStamps(),
                 message: $label . ': date-time items',
             );
             $this->assertContainsOnlyInstancesOf($tagFqcn, $dto->getMatrix()[0], $label . ': nested DTO items');

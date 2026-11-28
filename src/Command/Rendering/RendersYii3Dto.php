@@ -1065,6 +1065,13 @@ trait RendersYii3Dto
             // needs — without it a `date` array is written back as a list of date-times.
             $items = $constraints['items'] ?? $constraints['additionalProperties'] ?? null;
             $format = is_array($items) ? ($items['format'] ?? null) : null;
+            if (!is_string($format) && is_array($items)) {
+                // …and an item behind a composition names it in ITS branches — `items: {oneOf:
+                // [{format: date}]}` — not in the property's: read there, a date item was written
+                // back as a date-time, while the plain `items: {format: date}` kept its date.
+                $branchFormats = $this->yii3TemporalFormats($items);
+                $format = count($branchFormats) === 1 ? $branchFormats[0] : null;
+            }
         }
         if (!is_string($format)) {
             // A union names it in its branches — `oneOf: [{format: date}, {type: null}]` — and a date

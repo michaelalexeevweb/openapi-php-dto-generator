@@ -193,9 +193,9 @@ objects there and two deliver strings — and every mode's DECLARATION now says 
 
 | | holds | declares | reader |
 |---|---|---|---|
-| runtime | `DateTimeImmutable` | `array<DateTimeImmutable>` | `getX()` formats, `getXAsDateTime()` gives the objects |
+| runtime | `DateTimeImmutable` | `array<DateTimeImmutable>` | `getX()` gives the objects; `toArray()` writes the strings (3.0; before it `getX()` formatted and `getXAsDateTime()` gave the objects) |
 | symfony | `DateTimeImmutable` | `array<DateTimeImmutable>` | `getX()` gives the objects; a `#[Context]` callback writes the strings |
-| laravel | `DateTimeImmutable` | `array<DateTimeImmutable>` | same pair |
+| laravel | `DateTimeImmutable` | `array<DateTimeImmutable>` | `getX()` formats, `getXAsDateTime()` gives the objects |
 | laravel-data | `string` | `array<string>` | the public property |
 | yii3 | `string` | `array<string>` | `getX()` |
 
@@ -206,6 +206,13 @@ convenience, given that every mode already writes the right STRING to the wire.
 
 What does not differ: a `format: date` element leaves as a date and a `date-time` element keeps its
 offset, in all five. Only the type of the value you read off the object does.
+
+Since 3.0 an element spelled behind a composition — `items: {allOf: [{format: date}]}`, `{oneOf:
+[{format: date}]}`, `{anyOf: [{format: date}, {type: null}]}` — is held and declared exactly as the
+plain `items: {format: date}` row of its mode says; before it every mode held such an element as the
+wire string, and yii3 wrote a `oneOf` / `anyOf` date element back as a date-time. One exception: in
+symfony an element beside `null` (`{anyOf: [{format: date}, {type: null}]}`) is still held as the string,
+so its null stays accepted — the row "a `null` ITEM of a nullable list of dates" above.
 
 ### Containers inside containers
 

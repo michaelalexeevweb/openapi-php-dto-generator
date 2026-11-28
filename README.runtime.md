@@ -239,31 +239,27 @@ laravel and yii3 type it nullable, laravel-data types it `int|Optional`.
 
 ### Dates, and containers of dates
 
-`format: date` / `date-time` becomes a `DateTimeImmutable` property, and the reader gets two getters:
-the primary one formats the value the way the schema declares it, the `AsDateTime` twin hands back the
-object.
+`format: date` / `date-time` is a `DateTimeImmutable` — wherever it sits and however the document
+spells it: a plain property, `allOf: [{format: date}]`, a `oneOf` / `anyOf` branch, `type: [string,
+null]`, an item of a list or a value of a map. The getter hands back the object (since 3.0; before it the
+plain spelling's getter returned the formatted string and a `getXAsDateTime()` twin returned the object,
+while a wrapped spelling of the same schema already returned the object):
 
 ```php
-$dto->getOn();               // "2026-03-10"  — a `format: date` stays a date
-$dto->getAt();               // "2026-03-10T12:00:00.123456+03:00" — precision preserved
-$dto->getAtAsDateTime();     // the DateTimeImmutable
-```
+$dto->getOn();               // DateTimeImmutable — `format: date`
+$dto->getAt();               // DateTimeImmutable — `format: date-time`, sub-seconds kept
 
-A CONTAINER of dates gets the same pair, per item, and a map keeps its keys:
-
-```php
 // items: {type: string, format: date}
-$dto->getDates();            // ["2026-03-10", "2026-03-11"]
-$dto->getDatesAsDateTime();  // [DateTimeImmutable, DateTimeImmutable]
+$dto->getDates();            // [DateTimeImmutable, DateTimeImmutable]
 
 // additionalProperties: {type: string, format: date}
-$dto->getDatesByDay();       // ["mon" => "2026-03-09"]
-$dto->getDatesByDayAsDateTime();
+$dto->getDatesByDay();       // ["mon" => DateTimeImmutable]
 ```
 
-Serialization goes through the formatting getter, so `toArray()`, `toJson()` and `DtoNormalizer` all
-write what the schema asked for rather than the objects the property holds. Whether the items really
-are dates depends on the mode — see
+The wire form is the schema's: `toArray()`, `toJson()` and `DtoNormalizer` write `"2026-03-10"` for a
+`date` and `"2026-03-10T12:00:00.123456+03:00"` for a `date-time` (precision preserved), per item for a
+container, keys kept for a map. Reading stays as lenient as before. Whether the items of a container
+really are dates depends on the mode — see
 [Temporal container items](README.support-matrix.md#temporal-container-items).
 
 ### Containers inside containers

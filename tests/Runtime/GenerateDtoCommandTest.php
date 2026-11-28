@@ -5457,7 +5457,7 @@ final class GenerateDtoCommandTest extends TestCase
         $userContent = file_get_contents($userFile);
         $this->assertStringContainsString('use DateTimeImmutable;', $userContent);
         $this->assertStringContainsString('private readonly DateTimeImmutable $createdAt', $userContent);
-        $this->assertStringContainsString('public function getCreatedAt(): string', $userContent);
+        $this->assertStringContainsString('public function getCreatedAt(): DateTimeImmutable', $userContent);
         // date-time getter preserves sub-second precision when present, else plain 'c'.
         $this->assertStringContainsString('$this->createdAt->format(\'u\') === \'000000\'', $userContent);
         $this->assertStringContainsString('$this->createdAt->format(\'Y-m-d\TH:i:s.uP\')', $userContent);
@@ -5468,7 +5468,7 @@ final class GenerateDtoCommandTest extends TestCase
         $user2Content = file_get_contents($user2File);
         $this->assertStringContainsString('use DateTimeImmutable;', $user2Content);
         $this->assertStringContainsString('private readonly DateTimeImmutable $createdAt', $user2Content);
-        $this->assertStringContainsString('public function getCreatedAt(): string', $user2Content);
+        $this->assertStringContainsString('public function getCreatedAt(): DateTimeImmutable', $user2Content);
         $this->assertStringContainsString('return $this->createdAt->format(\'Y-m-d\');', $user2Content);
         $this->assertStringContainsString('Expected format: Y-m-d', $user2Content);
     }
@@ -5483,7 +5483,7 @@ final class GenerateDtoCommandTest extends TestCase
         $aliasContent = file_get_contents($aliasFile);
         $this->assertStringContainsString('use DateTimeImmutable;', $aliasContent);
         $this->assertStringContainsString('private readonly DateTimeImmutable $createdAt', $aliasContent);
-        $this->assertStringContainsString('public function getCreatedAt(): string', $aliasContent);
+        $this->assertStringContainsString('public function getCreatedAt(): DateTimeImmutable', $aliasContent);
         $this->assertStringContainsString('$this->createdAt->format(\'u\') === \'000000\'', $aliasContent);
         $this->assertStringContainsString('$this->createdAt->format(\'Y-m-d\TH:i:s.uP\')', $aliasContent);
         $this->assertStringContainsString('Expected format: yyyy-MM-dd HH:mm:ss', $aliasContent);

@@ -1,4 +1,4 @@
-# runtime mode — 80 files, 23852 lines
+# runtime mode — 80 files, 23844 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -7722,7 +7722,12 @@ final class ApiTestSerializationGetQueryParamsFilter implements GeneratedDtoInte
     /**
      * Expected format: Y-m-d
      */
-    public function getSince(): ?string
+    public function getSince(): ?DateTimeImmutable
+    {
+        return $this->since !== UnsetValue::UNSET ? $this->since : null;
+    }
+
+    private function wireFormOfSince(): ?string
     {
         if ($this->since === UnsetValue::UNSET) {
             return null;
@@ -7733,15 +7738,6 @@ final class ApiTestSerializationGetQueryParamsFilter implements GeneratedDtoInte
         }
 
         return $this->since->format('Y-m-d');
-    }
-
-    public function getSinceAsDateTime(): ?DateTimeImmutable
-    {
-        if ($this->since === UnsetValue::UNSET) {
-            return null;
-        }
-
-        return $this->since;
     }
 
     public function isSinceRequired(): bool
@@ -7781,7 +7777,7 @@ final class ApiTestSerializationGetQueryParamsFilter implements GeneratedDtoInte
     {
         $result = [];
         if ($this->sinceInRequest) {
-            $result['since'] = $this->getSince();
+            $result['since'] = $this->wireFormOfSince();
         }
 
         return $result;
@@ -7830,7 +7826,7 @@ final class ApiTestSerializationGetQueryParamsFilter implements GeneratedDtoInte
         $map = [];
         $map['since'] = [
             'getter' => 'getSince',
-            'type' => 'string',
+            'type' => 'DateTimeImmutable',
             'nullable' => true,
             'metadata' => [
                 'openApiName' => 'since',
@@ -13526,9 +13522,17 @@ final class Containers implements GeneratedDtoInterface, Stringable
 
     /**
      * Expected format: Y-m-d
-     * @return array<string>
+     * @return array<DateTimeImmutable>
      */
     public function getDates(): array
+    {
+        return $this->dates;
+    }
+
+    /**
+     * @return array<string>
+     */
+    private function wireFormOfDates(): array
     {
         return array_map(
             static fn (mixed $item): mixed => $item instanceof DateTimeImmutable
@@ -13536,14 +13540,6 @@ final class Containers implements GeneratedDtoInterface, Stringable
                 : $item,
             $this->dates,
         );
-    }
-
-    /**
-     * @return array<DateTimeImmutable>
-     */
-    public function getDatesAsDateTime(): array
-    {
-        return $this->dates;
     }
 
     public function isDatesRequired(): bool
@@ -13583,9 +13579,17 @@ final class Containers implements GeneratedDtoInterface, Stringable
 
     /**
      * Expected format: Y-m-d
-     * @return ?array<string, string>
+     * @return ?array<string, DateTimeImmutable>
      */
     public function getDatesByDay(): ?array
+    {
+        return $this->datesByDay;
+    }
+
+    /**
+     * @return ?array<string, string>
+     */
+    private function wireFormOfDatesByDay(): ?array
     {
         if ($this->datesByDay === null) {
             return null;
@@ -13597,14 +13601,6 @@ final class Containers implements GeneratedDtoInterface, Stringable
                 : $item,
             $this->datesByDay,
         );
-    }
-
-    /**
-     * @return ?array<string, DateTimeImmutable>
-     */
-    public function getDatesByDayAsDateTime(): ?array
-    {
-        return $this->datesByDay;
     }
 
     public function isDatesByDayRequired(): bool
@@ -13651,9 +13647,17 @@ final class Containers implements GeneratedDtoInterface, Stringable
 
     /**
      * Expected format: yyyy-MM-dd HH:mm:ss
-     * @return ?array<string>
+     * @return ?array<DateTimeImmutable>
      */
     public function getTimestamps(): ?array
+    {
+        return $this->timestamps;
+    }
+
+    /**
+     * @return ?array<string>
+     */
+    private function wireFormOfTimestamps(): ?array
     {
         if ($this->timestamps === null) {
             return null;
@@ -13665,14 +13669,6 @@ final class Containers implements GeneratedDtoInterface, Stringable
                 : $item,
             $this->timestamps,
         );
-    }
-
-    /**
-     * @return ?array<DateTimeImmutable>
-     */
-    public function getTimestampsAsDateTime(): ?array
-    {
-        return $this->timestamps;
     }
 
     public function isTimestampsRequired(): bool
@@ -13816,12 +13812,12 @@ final class Containers implements GeneratedDtoInterface, Stringable
     public function toArray(): array
     {
         $result = [];
-        $result['dates'] = array_values($this->getDates());
+        $result['dates'] = array_values($this->wireFormOfDates());
         if ($this->datesByDayInRequest) {
-            $result['datesByDay'] = $this->datesByDay === null ? null : (object)$this->getDatesByDay();
+            $result['datesByDay'] = $this->datesByDay === null ? null : (object)$this->wireFormOfDatesByDay();
         }
         if ($this->timestampsInRequest) {
-            $result['timestamps'] = $this->timestamps !== null ? array_values($this->getTimestamps()) : null;
+            $result['timestamps'] = $this->timestamps !== null ? array_values($this->wireFormOfTimestamps()) : null;
         }
         $result['shapes'] = array_values($this->shapes);
         if ($this->tagsByKeyInRequest) {
@@ -13888,7 +13884,7 @@ final class Containers implements GeneratedDtoInterface, Stringable
                 'writeOnly' => false,
                 'readOnly' => false,
                 'isParameter' => false,
-                'arrayItemType' => 'array<string>',
+                'arrayItemType' => 'array<DateTimeImmutable>',
             ],
         ];
         $map['datesByDay'] = [
@@ -13907,7 +13903,7 @@ final class Containers implements GeneratedDtoInterface, Stringable
                 'writeOnly' => false,
                 'readOnly' => false,
                 'isParameter' => false,
-                'arrayItemType' => '?array<string, string>',
+                'arrayItemType' => '?array<string, DateTimeImmutable>',
             ],
         ];
         $map['timestamps'] = [
@@ -13926,7 +13922,7 @@ final class Containers implements GeneratedDtoInterface, Stringable
                 'writeOnly' => false,
                 'readOnly' => false,
                 'isParameter' => false,
-                'arrayItemType' => '?array<string>',
+                'arrayItemType' => '?array<DateTimeImmutable>',
             ],
         ];
         $map['shapes'] = [
@@ -18400,7 +18396,12 @@ final class ReadOnlyFields implements GeneratedDtoInterface, Stringable
     /**
      * Expected format: yyyy-MM-dd HH:mm:ss
      */
-    public function getWrittenAt(): ?string
+    public function getWrittenAt(): ?DateTimeImmutable
+    {
+        return $this->writtenAt !== UnsetValue::UNSET ? $this->writtenAt : null;
+    }
+
+    private function wireFormOfWrittenAt(): ?string
     {
         if ($this->writtenAt === UnsetValue::UNSET) {
             return null;
@@ -18413,15 +18414,6 @@ final class ReadOnlyFields implements GeneratedDtoInterface, Stringable
         return $this->writtenAt->format('u') === '000000'
             ? $this->writtenAt->format('c')
             : $this->writtenAt->format('Y-m-d\TH:i:s.uP');
-    }
-
-    public function getWrittenAtAsDateTime(): ?DateTimeImmutable
-    {
-        if ($this->writtenAt === UnsetValue::UNSET) {
-            return null;
-        }
-
-        return $this->writtenAt;
     }
 
     public function isWrittenAtRequired(): bool
@@ -18498,7 +18490,7 @@ final class ReadOnlyFields implements GeneratedDtoInterface, Stringable
         $result['serverId'] = $this->getServerId();
         $result['title'] = $this->title;
         if ($this->writtenAtInRequest) {
-            $result['writtenAt'] = $this->getWrittenAt();
+            $result['writtenAt'] = $this->wireFormOfWrittenAt();
         }
 
         return $result;
@@ -18585,7 +18577,7 @@ final class ReadOnlyFields implements GeneratedDtoInterface, Stringable
         ];
         $map['writtenAt'] = [
             'getter' => 'getWrittenAt',
-            'type' => 'string',
+            'type' => 'DateTimeImmutable',
             'nullable' => true,
             'metadata' => [
                 'openApiName' => 'writtenAt',
@@ -22746,16 +22738,16 @@ final class User implements GeneratedDtoInterface, Stringable
     /**
      * Expected format: yyyy-MM-dd HH:mm:ss
      */
-    public function getCreatedAt(): string
+    public function getCreatedAt(): DateTimeImmutable
+    {
+        return $this->createdAt;
+    }
+
+    private function wireFormOfCreatedAt(): string
     {
         return $this->createdAt->format('u') === '000000'
             ? $this->createdAt->format('c')
             : $this->createdAt->format('Y-m-d\TH:i:s.uP');
-    }
-
-    public function getCreatedAtAsDateTime(): DateTimeImmutable
-    {
-        return $this->createdAt;
     }
 
     public function isCreatedAtRequired(): bool
@@ -22797,7 +22789,7 @@ final class User implements GeneratedDtoInterface, Stringable
         $result['id'] = $this->id;
         $result['name'] = $this->name;
         $result['pet'] = $this->pet;
-        $result['createdAt'] = $this->getCreatedAt();
+        $result['createdAt'] = $this->wireFormOfCreatedAt();
 
         return $result;
     }
@@ -22902,7 +22894,7 @@ final class User implements GeneratedDtoInterface, Stringable
         ];
         $map['createdAt'] = [
             'getter' => 'getCreatedAt',
-            'type' => 'string',
+            'type' => 'DateTimeImmutable',
             'nullable' => false,
             'metadata' => [
                 'openApiName' => 'createdAt',
@@ -23182,14 +23174,14 @@ final class User2 implements GeneratedDtoInterface, Stringable
     /**
      * Expected format: Y-m-d
      */
-    public function getCreatedAt(): string
-    {
-        return $this->createdAt->format('Y-m-d');
-    }
-
-    public function getCreatedAtAsDateTime(): DateTimeImmutable
+    public function getCreatedAt(): DateTimeImmutable
     {
         return $this->createdAt;
+    }
+
+    private function wireFormOfCreatedAt(): string
+    {
+        return $this->createdAt->format('Y-m-d');
     }
 
     public function isCreatedAtRequired(): bool
@@ -23231,7 +23223,7 @@ final class User2 implements GeneratedDtoInterface, Stringable
         $result['id'] = $this->id;
         $result['name'] = $this->name;
         $result['pet'] = $this->pet;
-        $result['createdAt'] = $this->getCreatedAt();
+        $result['createdAt'] = $this->wireFormOfCreatedAt();
 
         return $result;
     }
@@ -23336,7 +23328,7 @@ final class User2 implements GeneratedDtoInterface, Stringable
         ];
         $map['createdAt'] = [
             'getter' => 'getCreatedAt',
-            'type' => 'string',
+            'type' => 'DateTimeImmutable',
             'nullable' => false,
             'metadata' => [
                 'openApiName' => 'createdAt',

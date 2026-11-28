@@ -217,6 +217,21 @@ interface {{ className }}
 {% endif %}
     public function {{ property.methodName }}(): {{ property.returnType }}
     {
+{% if property.getterUsesSentinel %}
+        return $this->{{ property.name }} !== {{ unsetValueRef }}::UNSET ? $this->{{ property.name }} : null;
+{% else %}
+        return $this->{{ property.name }};
+{% endif %}
+    }
+{% if property.hasWireFormatter %}
+
+{% if property.wireDocReturnType is not null %}
+    /**
+     * @return {{ property.wireDocReturnType }}
+     */
+{% endif %}
+    private function {{ property.wireMethodName }}(): {{ property.wireReturnType }}
+    {
 {% if property.returnKind == 'temporal' %}
 {% if property.usesUnsetSentinel %}
         if ($this->{{ property.name }} === {{ unsetValueRef }}::UNSET) {
@@ -237,7 +252,7 @@ interface {{ className }}
 {% else %}
         return $this->{{ property.name }}->format('{{ property.phpDateFormat|php_string }}');
 {% endif %}
-{% elseif property.returnKind == 'temporalArray' %}
+{% else %}
 {% if property.temporalArrayNullable %}
         if ($this->{{ property.name }} === null) {
             return null;
@@ -259,30 +274,7 @@ interface {{ className }}
             $this->{{ property.name }},
         );
 {% endif %}
-{% else %}
-{% if property.getterUsesSentinel %}
-        return $this->{{ property.name }} !== {{ unsetValueRef }}::UNSET ? $this->{{ property.name }} : null;
-{% else %}
-        return $this->{{ property.name }};
 {% endif %}
-{% endif %}
-    }
-{% if property.hasObjectGetter %}
-
-{% if property.objectGetterDocReturnType is not null %}
-    /**
-     * @return {{ property.objectGetterDocReturnType }}
-     */
-{% endif %}
-    public function {{ property.objectGetterMethodName }}(): {{ property.objectGetterReturnType }}
-    {
-{% if property.getterUsesSentinel %}
-        if ($this->{{ property.name }} === {{ unsetValueRef }}::UNSET) {
-            return null;
-        }
-
-{% endif %}
-        return $this->{{ property.name }};
     }
 {% endif %}
 
@@ -435,18 +427,20 @@ interface {{ className }}
 {% for property in serializableProperties %}
 {% if property.requiredLiteral == 'true' %}
 {% if property.returnKind == 'temporalArray' and property.isMap %}
-        $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.methodName }}();
+        $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.wireMethodName }}();
 {% elseif property.returnKind == 'temporalArray' and property.temporalArrayNullable %}
-        $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} !== null ? array_values($this->{{ property.methodName }}()) : null;
+        $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} !== null ? array_values($this->{{ property.wireMethodName }}()) : null;
 {% elseif property.returnKind == 'temporalArray' %}
-        $result['{{ property.openApiName|php_string }}'] = array_values($this->{{ property.methodName }}());
+        $result['{{ property.openApiName|php_string }}'] = array_values($this->{{ property.wireMethodName }}());
 {% elseif property.returnKind == 'temporalUnion' %}
         $result['{{ property.openApiName|php_string }}'] = {{ property.temporalUnionOutput }};
 {% elseif property.arraysAreObjects %}
         $result['{{ property.openApiName|php_string }}'] = is_array($this->{{ property.name }}) ? (object)$this->{{ property.name }} : {% if property.getterUsesSentinel %}$this->{{ property.methodName }}(){% else %}$this->{{ property.name }}{% endif %};
 {% elseif property.mayHoldEmptyJsonObject %}
         $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === [] && array_key_exists('{{ property.name|php_string }}', {{ emptyJsonObjectFieldsRef }}::emptyJsonObjectsOf($this)) ? (object)[] : {% if property.getterUsesSentinel %}$this->{{ property.methodName }}(){% else %}$this->{{ property.name }}{% endif %};
-{% elseif property.returnKind == 'temporal' or property.getterUsesSentinel %}
+{% elseif property.returnKind == 'temporal' %}
+        $result['{{ property.openApiName|php_string }}'] = $this->{{ property.wireMethodName }}();
+{% elseif property.getterUsesSentinel %}
         $result['{{ property.openApiName|php_string }}'] = $this->{{ property.methodName }}();
 {% elseif property.isMap and property.valuesAreMaps %}
         $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : (object)array_map(static fn(?array $item): ?object => $item === null ? null : (object)$item, $this->{{ property.name }});
@@ -464,18 +458,20 @@ interface {{ className }}
 {% else %}
         if ($this->{{ property.inRequestFlagName }}) {
 {% if property.returnKind == 'temporalArray' and property.isMap %}
-            $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.methodName }}();
+            $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : (object)$this->{{ property.wireMethodName }}();
 {% elseif property.returnKind == 'temporalArray' and property.temporalArrayNullable %}
-            $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} !== null ? array_values($this->{{ property.methodName }}()) : null;
+            $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} !== null ? array_values($this->{{ property.wireMethodName }}()) : null;
 {% elseif property.returnKind == 'temporalArray' %}
-            $result['{{ property.openApiName|php_string }}'] = array_values($this->{{ property.methodName }}());
+            $result['{{ property.openApiName|php_string }}'] = array_values($this->{{ property.wireMethodName }}());
 {% elseif property.returnKind == 'temporalUnion' %}
             $result['{{ property.openApiName|php_string }}'] = {{ property.temporalUnionOutput }};
 {% elseif property.arraysAreObjects %}
             $result['{{ property.openApiName|php_string }}'] = is_array($this->{{ property.name }}) ? (object)$this->{{ property.name }} : {% if property.getterUsesSentinel %}$this->{{ property.methodName }}(){% else %}$this->{{ property.name }}{% endif %};
 {% elseif property.mayHoldEmptyJsonObject %}
             $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === [] && array_key_exists('{{ property.name|php_string }}', {{ emptyJsonObjectFieldsRef }}::emptyJsonObjectsOf($this)) ? (object)[] : {% if property.getterUsesSentinel %}$this->{{ property.methodName }}(){% else %}$this->{{ property.name }}{% endif %};
-{% elseif property.returnKind == 'temporal' or property.getterUsesSentinel %}
+{% elseif property.returnKind == 'temporal' %}
+            $result['{{ property.openApiName|php_string }}'] = $this->{{ property.wireMethodName }}();
+{% elseif property.getterUsesSentinel %}
             $result['{{ property.openApiName|php_string }}'] = $this->{{ property.methodName }}();
 {% elseif property.isMap and property.valuesAreMaps %}
             $result['{{ property.openApiName|php_string }}'] = $this->{{ property.name }} === null ? null : (object)array_map(static fn(?array $item): ?object => $item === null ? null : (object)$item, $this->{{ property.name }});

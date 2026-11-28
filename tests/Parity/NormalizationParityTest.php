@@ -395,6 +395,23 @@ final class NormalizationParityTest extends TestCase
                 'runtime' => ['on' => ['2026-03-10']],
                 'symfony' => ['on' => ['2026-03-10']],
             ],
+            // The same dates spelled behind a composition: an `items` / map value wrapped in a
+            // one-member `allOf` / `oneOf`, or paired with `null`. Each is the plain `format: date`
+            // item (3.0), and was a list of wire strings (every mode) or written back as
+            // date-times (yii3) before.
+            'a wrapped list of dates stays dates' => [
+                'schema' => self::object(
+                    properties: [
+                        'ant' => ['type' => 'array', 'items' => ['allOf' => [['type' => 'string', 'format' => 'date']]]],
+                        'bee' => ['type' => 'array', 'items' => ['oneOf' => [['type' => 'string', 'format' => 'date']]]],
+                        'cod' => ['type' => 'array', 'items' => ['anyOf' => [['type' => 'string', 'format' => 'date'], ['type' => 'null']]]],
+                    ],
+                    required: ['ant', 'bee', 'cod'],
+                ),
+                'json' => '{"ant":["2026-03-10"],"bee":["2026-03-11"],"cod":["2026-03-12"]}',
+                'runtime' => ['ant' => ['2026-03-10'], 'bee' => ['2026-03-11'], 'cod' => ['2026-03-12']],
+                'symfony' => ['ant' => ['2026-03-10'], 'bee' => ['2026-03-11'], 'cod' => ['2026-03-12']],
+            ],
             // Symfony built the list into an empty first class, its items lost.
             'a list beside two classes keeps its items' => [
                 'schema' => self::object(
@@ -639,6 +656,24 @@ final class NormalizationParityTest extends TestCase
                         'reason' => 'laravel-data keeps the PHP array for a map with keys, as Symfony '
                             . 'does — the same JSON; only an empty map is written as {}',
                     ],
+                ],
+            ],
+            // The map-value spelling of the wrapped dates above.
+            'a wrapped map of dates stays dates' => [
+                'schema' => self::object(
+                    properties: [
+                        'doe' => ['type' => 'object', 'additionalProperties' => ['oneOf' => [['type' => 'string', 'format' => 'date']]]],
+                        'eel' => ['type' => 'object', 'additionalProperties' => ['anyOf' => [['type' => 'string', 'format' => 'date'], ['type' => 'null']]]],
+                    ],
+                    required: ['doe', 'eel'],
+                ),
+                'json' => '{"doe":{"k":"2026-03-13"},"eel":{"k":"2026-03-14"}}',
+                'runtime' => ['doe' => ['#object' => ['k' => '2026-03-13']], 'eel' => ['#object' => ['k' => '2026-03-14']]],
+                'symfony' => ['doe' => ['k' => '2026-03-13'], 'eel' => ['k' => '2026-03-14']],
+                'reason' => 'the same stdClass-versus-array difference as "map of dates"',
+                'diverges' => [
+                    'yii3' => ['like' => 'symfony', 'reason' => 'a map with keys stays a PHP array, as in "map of dates"'],
+                    'laravel-data' => ['like' => 'symfony', 'reason' => 'a map with keys stays a PHP array, as in "map of dates"'],
                 ],
             ],
             'map of enums' => [
