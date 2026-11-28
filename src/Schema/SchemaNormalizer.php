@@ -16,7 +16,7 @@ namespace OpenapiPhpDtoGenerator\Schema;
  * name, an inheritance link, a discriminator match) — is left as written. The rules and what they must
  * not touch are listed in `.local/3.0-normalizer.md`.
  *
- * Applied bottom-up, each node to a fixpoint. Generation runs {@see GENERATION_RULES} only:
+ * Applied bottom-up, each node to a fixpoint. Generation runs every rule ({@see GENERATION_RULES}):
  *
  * 1. `{allOf|oneOf|anyOf: [M]}` — one member — is M merged with its siblings when those only annotate
  *    (or are a 3.0 `nullable`), the two sides do not disagree on a keyword and no keyword reads one on
@@ -116,14 +116,15 @@ final class SchemaNormalizer
     ];
 
     /**
-     * The rules generation runs today. The others are sound, but the generator still reads their canonical
-     * spelling differently from the one they replace — see `.local/3.0-normalizer.md`, "Wiring": each is
-     * a spelling-dependent class plan or check to settle before the rule can run in front of it.
+     * The rules generation runs: all of them. Kept apart from {@see ALL_RULES} so a rule added later can be
+     * proved on its own before the generator reads its canonical spelling.
      */
     public const array GENERATION_RULES = [
         self::RULE_SINGLE_MEMBER,
         self::RULE_SCALAR_FRAGMENTS,
         self::RULE_NULL_UNION,
+        self::RULE_NULLABLE_REFERENCE,
+        self::RULE_NULL_SPELLING,
         self::RULE_ALIAS_CHAINS,
     ];
 

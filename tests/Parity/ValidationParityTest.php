@@ -17398,7 +17398,9 @@ final class ValidationParityTest extends TestCase
                     '{"boxes":[{"lid":"a"},null]}' => false,
                     '{"bag":{"k":null}}' => false,
                     '{"many":[null]}' => false,
-                    '{"spelled":[null]}' => false,
+                    // 3.0 reads `{$ref, nullable}` as the `allOf` idiom, held decoded: its null is accepted.
+                    // In 3.1 `nullable` is no keyword, and the item is the plain reference again.
+                    ...($version === '3.1.0' ? ['{"spelled":[null]}' => false] : []),
                 ]],
             ];
         }
@@ -24560,6 +24562,13 @@ final class ValidationParityTest extends TestCase
             ],
             ['{"robin":"violet"}' => true, '{"robin":null}' => true, '{"robin":"red"}' => false],
         ];
+        // Its canonical spelling, the pair as an `anyOf`: symfony's `AtLeastOneOf` spelled the `const`
+        // branch as `Type('string')` and took `"red"` — now the callback reads the branch.
+        yield 'const fragment, the anyOf spelling inline' => [
+            '3.1.0',
+            ['Probe' => $probe(['robin' => ['anyOf' => [['type' => 'string', 'const' => 'violet'], ['type' => 'null']]]])],
+            ['{"robin":"violet"}' => true, '{"robin":null}' => true, '{"robin":"red"}' => false],
+        ];
         yield 'enum fragment union referenced' => [
             '3.1.0',
             ['Probe' => $probe(['stoat' => $ref('Crimson')]), 'Crimson' => $crimson],
@@ -25626,8 +25635,6 @@ final class ValidationParityTest extends TestCase
                 '3.0.3',
                 ['Probe' => $probe(['type' => 'array', 'items' => $wrap('Cat')]), 'Cat' => $cat],
                 $payloads(['[null]' => true, '[{"ear":1}]' => true, '[{"ear":"x"}]' => false, '[2]' => false]),
-                // `#[DataCollectionOf]` of the bare nullable reference refuses a null item (README.support-matrix).
-                $spelling === 'bare' ? ['laravel-data' => ['{"fox":[null]}' => false]] : [],
             ];
             yield 'an object map value, ' . $spelling => [
                 '3.0.3',

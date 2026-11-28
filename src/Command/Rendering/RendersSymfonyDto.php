@@ -4046,12 +4046,18 @@ PHP;
      * `anyOf: [{type: number, enum: [5]}, {type: string}]` took `6` as "a number". Such an `anyOf` is the
      * callback's, which reads the branch's `enum` the way every other mode does.
      *
+     * A `const` branch the same: no expression spells it, and `anyOf: [{type: string, const: violet},
+     * {type: null}]` — the canonical spelling of the `oneOf` pair — took `"red"` as "a string".
+     *
      * @param SchemaProperty $property
      * @param array<mixed> $branches
      */
     private function anyOfBranchCarriesUnspelledEnum(array $property, array $branches): bool
     {
         foreach ($branches as $branch) {
+            if (is_array($branch) && array_key_exists('const', $branch) && !is_string($branch['x-php-instanceof'] ?? null)) {
+                return true;
+            }
             if (!is_array($branch) || !is_array($branch['enum'] ?? null) || $branch['enum'] === []) {
                 continue;
             }

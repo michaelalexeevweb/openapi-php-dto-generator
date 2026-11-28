@@ -167,7 +167,21 @@ final class SchemaNormalizerTest extends TestCase
         ];
     }
 
-    public function testTheGenerationRulesCollapseFoldNullUnionsAndFollowAliasesOnly(): void
+    public function testGenerationRunsEveryRule(): void
+    {
+        $this->assertSame(SchemaNormalizer::ALL_RULES, SchemaNormalizer::GENERATION_RULES);
+        $property = ['type' => 'object', 'properties' => [
+            'nullableRef' => ['$ref' => self::REF . 'Teal', 'nullable' => true],
+            'nullableEnum' => ['type' => 'string', 'enum' => ['a'], 'nullable' => true],
+        ]];
+        $normalized = (new SchemaNormalizer(SchemaNormalizer::GENERATION_RULES))->normalize(self::document(openApi: '3.0.3', property: $property, components: ['Teal' => ['type' => 'object']]));
+        $properties = $normalized['components']['schemas']['Probe']['properties']['shade']['properties'];
+
+        $this->assertSame(['allOf' => [['$ref' => self::REF . 'Teal']], 'nullable' => true], $properties['nullableRef']);
+        $this->assertSame(['type' => 'string', 'enum' => ['a', null], 'nullable' => true], $properties['nullableEnum']);
+    }
+
+    public function testTheGenerationRulesCollapseFoldAndRespellNullUnionsAndFollowAliases(): void
     {
         $property = ['type' => 'object', 'properties' => [
             'wrapped' => ['allOf' => [['type' => 'string']]],
@@ -175,7 +189,7 @@ final class SchemaNormalizerTest extends TestCase
             'split' => ['allOf' => [['type' => 'string'], ['maxLength' => 3]]],
             'aliased' => ['$ref' => self::REF . 'Alias'],
             'nullPair' => ['oneOf' => [['type' => 'null'], ['type' => 'integer']]],
-            // Respelled only by the null-spelling rule, which generation does not run.
+            // A pair the fold leaves (a reference): null last, `anyOf` since the object cannot be null.
             'refNullPair' => ['oneOf' => [['type' => 'null'], ['$ref' => self::REF . 'Teal']]],
         ]];
         $components = ['Alias' => ['$ref' => self::REF . 'Teal'], 'Teal' => ['type' => 'object']];
@@ -187,7 +201,7 @@ final class SchemaNormalizerTest extends TestCase
         $this->assertSame(['type' => 'string', 'maxLength' => 3], $properties['split']);
         $this->assertSame(['$ref' => self::REF . 'Teal'], $properties['aliased']);
         $this->assertSame(['type' => ['integer', 'null']], $properties['nullPair']);
-        $this->assertSame($property['properties']['refNullPair'], $properties['refNullPair']);
+        $this->assertSame(['anyOf' => [['$ref' => self::REF . 'Teal'], ['type' => 'null']]], $properties['refNullPair']);
     }
 
     public function testAWrapperAtTheTopOfAComponentIsAClassOfItsOwn(): void
