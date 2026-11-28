@@ -3906,6 +3906,7 @@ final class GenerateDtoCommand extends Command
         // `anyOf: [{type: object, allOf: [{$ref: Base}]}]` — and a parent nobody listed was emitted
         // `final`, a fatal the moment the member class loads.
         $this->detectParentClasses();
+        $this->assertRequiredNamesAreDeclared();
 
         // Every schema is registered by now (including nested and external ones), which is what
         // makes the document-wide decision below reliable.
@@ -4867,7 +4868,6 @@ final class GenerateDtoCommand extends Command
             $this->assertLaravelPropertyNamesAreUnambiguous($schemaDefinition);
         }
         $this->warnAboutPcreOnlyEscapes($schemaDefinition, $className);
-        $this->warnAboutRequiredNamesWithoutProperty($schemaDefinition, $className);
         $this->warnAboutRequiredPropertiesWithDefault($schemaDefinition, $className);
 
         // Registries are keyed by generated class name. A different document is not the same
@@ -17853,98 +17853,127 @@ final class GenerateDtoCommand extends Command
     }
 
     /**
-     * A `required` name the schema declares no property for. The class is generated without it, so
-     * the requirement the document states is enforced nowhere — usually a leftover of a renamed or
-     * removed property. Only a closed, plain object is judged: composition or additionalProperties
-     * can supply the key from elsewhere.
+     * Refuses a class whose `required` names a property the class does not declare — its own list and
+     * those of the `allOf` members it is built from, against the properties all of them declare.
      *
-     * @param array<array-key, mixed> $schema
+     * The class is generated without such a key, so it can never hold it: `toArray()` / the payload
+     * view never writes it, and a response built from the class failed `field "x" is required` in every
+     * mode that checks the built object, while the modes that read the raw body demanded it of every
+     * request. Such a document is a mistake — usually a renamed or removed property — and generating
+     * from it produced classes that could not satisfy their own schema. Until 2.15.167 it was a warning.
+     *
+     * Only a CLASS's own requirement counts. A `required` inside a union branch, an `if` / `then` /
+     * `else` or a `dependentSchemas` subschema narrows which declared keys must be present; a union
+     * class judges itself branch by branch and is not asked here, and a member may require what its
+     * sibling members or the class around the union declare. An object that declares no property at
+     * all is held whole, and keeps every key it requires.
      */
-    private function warnAboutRequiredNamesWithoutProperty(array $schema, string $className): void
+    private function assertRequiredNamesAreDeclared(): void
     {
-        if (array_key_exists('$ref', $schema) || array_key_exists('allOf', $schema)) {
-            $this->warnAboutRequiredNamesBesideAReference($schema, $className);
+        $declaredBesideMember = [];
+        foreach ($this->dtoSchemas as $className => $schema) {
+            $this->collectNamesDeclaredBesideUnionMembers(node: $schema, ownerClass: $className, declared: $declaredBesideMember, depth: 0);
+        }
+        $problems = [];
+        foreach ($this->dtoSchemas as $className => $schema) {
+            // An object that declares no property at all — `{type: object, required: [kind]}` — holds the
+            // value whole, as a free-form object does, so the keys it requires are kept.
+            if ($this->requiredAndDeclaredNamesOfClass(schema: $schema, sourceClass: $className, depth: 0)['declared'] === []) {
+                continue;
+            }
+            $names = array_values(array_diff(
+                $this->undeclaredRequiredNamesOfClass(schema: $schema, sourceClass: $className),
+                $declaredBesideMember[$className] ?? [],
+                $declaredBesideMember[$this->requiredDeclaredSignature(schema: $schema, sourceClass: $className)] ?? [],
+            ));
+            if ($names === []) {
+                continue;
+            }
+            $problems[] = sprintf(
+                '- schema "%s" (class %s) in %s: %s',
+                $this->componentNames[$className] ?? $className,
+                $className,
+                $this->getSchemaSourceFile($className) ?? 'the in-memory document',
+                implode(', ', array_map(static fn(string $name): string => '"' . $name . '"', $names)),
+            );
+        }
+        if ($problems === []) {
+            return;
+        }
 
-            return;
-        }
-        $properties = $schema['properties'] ?? null;
-        $required = $schema['required'] ?? null;
-        if (!is_array($properties) || !is_array($required)) {
-            return;
-        }
-        foreach (['allOf', 'oneOf', 'anyOf', 'patternProperties', '$ref'] as $keyword) {
-            if (array_key_exists($keyword, $schema)) {
-                return;
-            }
-        }
-        $additional = $schema['additionalProperties'] ?? false;
-        if ($additional !== false) {
-            return;
-        }
-        foreach ($required as $name) {
-            if (is_string($name) && !array_key_exists($name, $properties)) {
-                $this->addGenerationWarning(sprintf(
-                    'Schema "%s" lists "%s" in `required`, but declares no such property. The class is '
-                    . 'generated without it, so the requirement is enforced nowhere — remove it from '
-                    . '`required` or declare the property.',
-                    $className,
-                    $name,
-                ));
-            }
-        }
+        throw new RuntimeException(sprintf(
+            'A schema lists in `required` a name that neither it nor the `allOf` members it is built from '
+            . 'declares in `properties`. The class would be generated without that key and could never '
+            . 'satisfy its own schema. Declare the property in `properties`, or remove the name from '
+            . "`required`:\n%s",
+            implode("\n", $problems),
+        ));
     }
 
     /**
-     * The same warning for a schema composed from references — `{$ref: Shape, required: [bee]}`, read
-     * as `allOf: [$ref Shape, {required: [bee]}]`: a name no member declares is held by no class, and
-     * only a mode that reads the raw body can tell whether it was sent.
+     * What a schema requires and declares, through its `allOf`, as one string: how an inline union
+     * branch is told apart from the class later registered for it.
      *
      * @param array<array-key, mixed> $schema
      */
-    private function warnAboutRequiredNamesBesideAReference(array $schema, string $className): void
+    private function requiredDeclaredSignature(array $schema, string $sourceClass): string
     {
-        $members = is_array($schema['allOf'] ?? null) ? $schema['allOf'] : [];
-        $members[] = $schema;
-        $declared = [];
-        $required = [];
-        foreach ($members as $member) {
-            if (!is_array($member)) {
+        $names = $this->requiredAndDeclaredNamesOfClass(schema: $schema, sourceClass: $sourceClass, depth: 0);
+        $required = array_values(array_unique($names['required']));
+        $declared = array_values(array_unique($names['declared']));
+        sort($required);
+        sort($declared);
+
+        return 'inline:' . json_encode([$required, $declared], JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * The names a union member may require without declaring them: those its sibling members declare,
+     * and those of the class the union sits in. `oneOf: [{properties: {a}}, {properties: {b}, required:
+     * [a]}]` names a key of the union, and an object with `properties: {a, b}` whose arms only say which
+     * one is required is one class — neither is a class requiring what nothing declares.
+     *
+     * @param array<array-key, mixed> $node
+     * @param array<string, list<string>> $declared member class, or an inline member's
+     *                                              `requiredDeclaredSignature()`, => names
+     */
+    private function collectNamesDeclaredBesideUnionMembers(array $node, string $ownerClass, array &$declared, int $depth): void
+    {
+        if ($depth > 32) {
+            return;
+        }
+        foreach (['oneOf', 'anyOf'] as $keyword) {
+            $branches = $node[$keyword] ?? null;
+            if (!is_array($branches)) {
                 continue;
             }
-            $ref = $member['$ref'] ?? null;
-            $resolved = is_string($ref) ? $this->resolveSchemaNodeByRef($ref, $this->getSchemaSourceFile($className)) : null;
-            $target = $resolved === null ? null : $resolved[0];
-            foreach ([$member, $target ?? []] as $part) {
-                foreach (['oneOf', 'anyOf', 'patternProperties', 'allOf'] as $keyword) {
-                    if ($part !== $schema && array_key_exists($keyword, $part)) {
-                        return;
-                    }
+            $names = is_array($node['properties'] ?? null) ? array_map('strval', array_keys($node['properties'])) : [];
+            $members = [];
+            foreach ($branches as $branch) {
+                if (!is_array($branch)) {
+                    continue;
                 }
-                if (($part['additionalProperties'] ?? false) !== false) {
-                    return;
-                }
-                foreach (is_array($part['properties'] ?? null) ? array_keys($part['properties']) : [] as $name) {
-                    $declared[] = (string)$name;
-                }
-                foreach (is_array($part['required'] ?? null) ? $part['required'] : [] as $name) {
-                    if (is_string($name)) {
-                        $required[] = $name;
-                    }
-                }
+                $ref = $branch['$ref'] ?? null;
+                $member = is_string($ref)
+                    ? $this->schemaRefToClassName(ref: $ref, currentSourceFile: $this->getSchemaSourceFile($ownerClass))
+                    : null;
+                $memberSchema = $member === null ? $branch : ($this->dtoSchemas[$member] ?? []);
+                $names = [
+                    ...$names,
+                    ...$this->requiredAndDeclaredNamesOfClass(schema: $memberSchema, sourceClass: $member ?? $ownerClass, depth: 0)['declared'],
+                ];
+                // An inline branch is registered as a class of its own, under a name this walk does not
+                // rebuild; it is known by what it requires and declares instead.
+                $members[] = $member ?? $this->requiredDeclaredSignature(schema: $branch, sourceClass: $ownerClass);
             }
-            if (is_string($ref) && $target === null) {
-                return;
+            foreach ($members as $member) {
+                $declared[$member] = array_values(array_unique([...($declared[$member] ?? []), ...$names]));
             }
         }
-        foreach (array_unique(array_diff($required, $declared)) as $name) {
-            $this->addGenerationWarning(sprintf(
-                'Schema "%s" lists "%s" in `required`, but neither it nor the schema it references declares '
-                . 'such a property. The class is generated without it, so only a mode that reads the raw '
-                . 'body (laravel, laravel-data, yii3) can tell whether it was sent — remove it from '
-                . '`required` or declare the property.',
-                $className,
-                $name,
-            ));
+        foreach ($node as $value) {
+            if (is_array($value)) {
+                $this->collectNamesDeclaredBesideUnionMembers(node: $value, ownerClass: $ownerClass, declared: $declared, depth: $depth + 1);
+            }
         }
     }
 

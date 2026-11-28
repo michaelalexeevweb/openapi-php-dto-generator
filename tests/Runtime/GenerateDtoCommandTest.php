@@ -640,10 +640,10 @@ final class GenerateDtoCommandTest extends TestCase
 
     /**
      * `{$ref: Shape, required: [bee]}` names a key neither the reference nor the keywords beside it
-     * declare, so the class is generated without it — warned about as a closed object's undeclared
-     * name is. A name the referenced schema does declare is no warning.
+     * declare, so its class could never hold it — generation stops (a warning until 2.15.168). A name
+     * the referenced schema does declare generates silently.
      */
-    public function testARequiredNameBesideAReferenceThatNoSchemaDeclaresIsWarnedAbout(): void
+    public function testARequiredNameBesideAReferenceThatNoSchemaDeclaresStopsGeneration(): void
     {
         $spec = static fn(string $required): array => [
             'openapi' => '3.1.0',
@@ -654,10 +654,13 @@ final class GenerateDtoCommandTest extends TestCase
             ]],
         ];
 
-        $this->generator->generateFromArray($spec('bee'), $this->outputDirectory, 'RequiredBesideRef');
-        $warnings = $this->generator->getGenerationWarnings();
-        $this->assertCount(1, $warnings);
-        $this->assertStringContainsString('lists "bee" in `required`', $warnings[0]);
+        try {
+            $this->generator->generateFromArray($spec('bee'), $this->outputDirectory, 'RequiredBesideRef');
+            $this->fail('A class requiring a name it does not declare was generated.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('"ProbeOwl"', $exception->getMessage());
+            $this->assertStringContainsString('"bee"', $exception->getMessage());
+        }
 
         $this->generator->generateFromArray($spec('ant'), $this->outputDirectory, 'RequiredBesideRefDeclared');
         $this->assertSame([], $this->generator->getGenerationWarnings());

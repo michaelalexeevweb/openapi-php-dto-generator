@@ -229,6 +229,16 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
 {{ interpreterConstsBlock|raw }}
 
 {% endif %}
+{% if tracksDefaultedPresence|default(false) %}
+    /**
+     * The properties with a schema `default` whose key the payload left out — they hold the default
+     * all the same. Empty for an instance built in code. Read by `is<Name>Provided()`.
+     *
+     * @var list<string>
+     */
+    private readonly array $openApiAbsentDefaults;
+
+{% endif %}
 {% if declaresProperties|default(false) %}
 {# Declared here, in the schema's order, because laravel-data writes `toArray()` in declaration order. #}
 {% for param in declaredParams|filter(param => param.promoted and not param.nullableWithDefault) %}
@@ -264,6 +274,9 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
         {{ param.parameterType }} ${{ param.name }}{{ param.defaultExpression is not null ? ' = ' ~ param.defaultExpression : '' }},
 {% endif %}
 {% endfor %}
+{% if tracksDefaultedPresence|default(false) %}
+        ?array $openApiAbsentDefaults = null,
+{% endif %}
     ) {
 {% if parentArguments is not empty %}
         parent::__construct({% for argument in parentArguments %}${{ argument }}{{ loop.last ? '' : ', ' }}{% endfor %});
@@ -271,6 +284,9 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
 {% for param in params|filter(param => param.promoted and not param.nullableWithDefault) %}
         $this->{{ param.name }} = {{ param.assignment ?? ('$' ~ param.name) }};
 {% endfor %}
+{% if tracksDefaultedPresence|default(false) %}
+        $this->openApiAbsentDefaults = $openApiAbsentDefaults ?? [];
+{% endif %}
     }
 {% else %}
 {% set docParams = params|filter(param => param.docType is not null or param.docDescription is not null) %}
@@ -308,15 +324,35 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
         {{ param.declaredType }} ${{ param.name }}{{ param.defaultExpression is not null ? ' = ' ~ param.defaultExpression : '' }},
 {% endif %}
 {% endfor %}
+{% if tracksDefaultedPresence|default(false) %}
+        ?array $openApiAbsentDefaults = null,
+{% endif %}
 {% if parentArguments is not empty %}
     ) {
         parent::__construct({% for argument in parentArguments %}${{ argument }}{{ loop.last ? '' : ', ' }}{% endfor %});
+    }
+{% elseif tracksDefaultedPresence|default(false) %}
+    ) {
+        $this->openApiAbsentDefaults = $openApiAbsentDefaults ?? [];
     }
 {% else %}
     ) {
     }
 {% endif %}
 {% endif %}
+{% endif %}
+{% if tracksDefaultedPresence|default(false) %}
+{% for defaulted in untypedAbsence.defaultedProperties %}
+
+    /**
+     * Whether the payload carried `{{ defaulted.name }}`. Absent, the property holds its schema default all the
+     * same, which is what it is for; this tells the two apart. An instance built in code has it provided.
+     */
+    public function {{ defaulted.method }}(): bool
+    {
+        return !in_array('{{ defaulted.name|php_string }}', $this->openApiAbsentDefaults, true);
+    }
+{% endfor %}
 {% endif %}
 {% if parameterReads|default([]) is not empty %}
 
@@ -332,27 +368,68 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
     {
 {% include 'laravel.parameters.php.twig' with {parameterVariable: 'properties'} %}
 {% endif %}
-{% if temporalUnionCast|default(null) is not null %}
+{% if temporalUnionCast|default(null) is not null or untypedAbsence|default(null) is not null %}
 
     /**
+{% if temporalUnionCast|default(null) is not null %}
      * laravel-data's own pipeline, with its cast pipe narrowed.
-{% if temporalUnionCast.namesLiteral is not null %}
+{% else %}
+     * laravel-data's own pipeline.
+{% endif %}
+{% if temporalUnionCast|default(null) is not null and temporalUnionCast.namesLiteral is not null %}
      *
      * A property typed a date beside another scalar (`int|DateTimeImmutable`) is cast only when a string
      * arrives — and beside a string enum, only a string that is no case of it. Its date cast is otherwise
      * handed every value — `true`, `-27` and the enum's `red` included — and throws on each, a 500 for a
      * payload the rules accepted.
 {% endif %}
-{% if temporalUnionCast.uncastLiteral is not null %}
+{% if temporalUnionCast|default(null) is not null and temporalUnionCast.uncastLiteral is not null %}
      *
      * A property typed a union of classes, or one class beside a plain `array`, is not cast at all:
      * the constructor builds the member the value matches. The pipe built the FIRST class from every
      * value, and that class's own casts threw on the other member's fields.
 {% endif %}
+{% if untypedAbsence|default(null) is not null and untypedAbsence.namesLiteral is not null %}
+     *
+     * An optional property with no type is `mixed`, and laravel-data fills its missing key with `null`:
+     * the key it was never sent then went out of `toArray()` as `"x": null`. Absent is `Optional`, as
+     * for every typed optional property, so the key stays out.
+{% endif %}
+{% if untypedAbsence|default(null) is not null and untypedAbsence.defaultedLiteral is not null %}
+     *
+     * A property with a schema `default` holds the default when its key was not sent; the names the
+     * payload left out are handed to the constructor, for `is<Name>Provided()`.
+{% endif %}
      */
-    public static function pipeline(): {{ temporalUnionCast.pipelineRef }}
+    public static function pipeline(): {{ (temporalUnionCast ?? untypedAbsence).pipelineRef }}
     {
+{% if temporalUnionCast|default(null) is null %}
         return parent::pipeline()->replace(
+            pipe: {{ untypedAbsence.defaultsPipeRef }}::class,
+            replacement: new class extends {{ untypedAbsence.defaultsPipeRef }} {
+                public function handle(mixed $payload, {{ untypedAbsence.classRef }} $class, array $properties, {{ untypedAbsence.contextRef }} $creationContext): array
+                {
+{% if untypedAbsence.namesLiteral is not null %}
+                    foreach ({{ untypedAbsence.namesLiteral|raw }} as $name) {
+                        if (!array_key_exists($name, $properties)) {
+                            $properties[$name] = {{ untypedAbsence.optionalRef }}::create();
+                        }
+                    }
+
+{% endif %}
+{% if untypedAbsence.defaultedLiteral is not null %}
+                    $absentDefaults = array_values(array_diff({{ untypedAbsence.defaultedLiteral|raw }}, array_keys($properties)));
+
+                    return [...parent::handle($payload, $class, $properties, $creationContext), 'openApiAbsentDefaults' => $absentDefaults];
+{% else %}
+                    return parent::handle($payload, $class, $properties, $creationContext);
+{% endif %}
+                }
+            },
+        );
+    }
+{% else %}
+        {{ untypedAbsence|default(null) is null ? 'return' : '$pipeline =' }} parent::pipeline()->replace(
             pipe: {{ temporalUnionCast.castPipeRef }}::class,
             replacement: new class({{ temporalUnionCast.containerRef }}::getInstance()->make({{ temporalUnionCast.configRef }}::class)) extends {{ temporalUnionCast.castPipeRef }} {
                 protected function shouldBeCasted({{ temporalUnionCast.propertyRef }} $property, mixed $value): bool
@@ -380,7 +457,34 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
                 }
             },
         );
+{% if untypedAbsence|default(null) is not null %}
+
+        return $pipeline->replace(
+            pipe: {{ untypedAbsence.defaultsPipeRef }}::class,
+            replacement: new class extends {{ untypedAbsence.defaultsPipeRef }} {
+                public function handle(mixed $payload, {{ untypedAbsence.classRef }} $class, array $properties, {{ untypedAbsence.contextRef }} $creationContext): array
+                {
+{% if untypedAbsence.namesLiteral is not null %}
+                    foreach ({{ untypedAbsence.namesLiteral|raw }} as $name) {
+                        if (!array_key_exists($name, $properties)) {
+                            $properties[$name] = {{ untypedAbsence.optionalRef }}::create();
+                        }
+                    }
+
+{% endif %}
+{% if untypedAbsence.defaultedLiteral is not null %}
+                    $absentDefaults = array_values(array_diff({{ untypedAbsence.defaultedLiteral|raw }}, array_keys($properties)));
+
+                    return [...parent::handle($payload, $class, $properties, $creationContext), 'openApiAbsentDefaults' => $absentDefaults];
+{% else %}
+                    return parent::handle($payload, $class, $properties, $creationContext);
+{% endif %}
+                }
+            },
+        );
+{% endif %}
     }
+{% endif %}
 {% endif %}
 {% if wireNameRestore|default(null) is not null %}
 
@@ -619,6 +723,8 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
 
 {% include 'laravel.blank-strings.php.twig' %}
 
+{% elseif nestedValidation is not null %}
+
 {% endif %}
 {% include 'laravel.nested-validation.php.twig' %}
 {% if objectShapePaths is not empty %}
@@ -845,7 +951,11 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
      * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
      * this same method while a request is bound, and its body says nothing about their data: a request
      * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
-     * input, which is the body merged with the query, so every key of the body is there unchanged.
+     * input, which is the body merged with the query (and the route parameters), so every key of the body
+     * is there unchanged, and every other key is a query or route parameter. Asked only the first half, an
+     * empty body `{}` — or one whose keys a response echoed — passed for the response's own data, and its
+     * nested objects were judged as JSON arrays: `author expects object, got array`, `does not match any
+     * oneOf branch (expected object or null, got object)`.
      */
     private static function rawRequestBody({{ validatorRef }} $validator): ?string
     {
@@ -870,6 +980,13 @@ final class {{ className }} extends {{ extends }}{% if implementedInterfaces is 
         $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
         foreach ($body as $key => $value) {
             if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+        $route = $request->route();
+        $parameters = [...$request->query->all(), ...(is_object($route) && method_exists($route, 'parameters') ? $route->parameters() : [])];
+        foreach (array_keys($data) as $key) {
+            if (!array_key_exists($key, $body) && !array_key_exists($key, $parameters)) {
                 return null;
             }
         }

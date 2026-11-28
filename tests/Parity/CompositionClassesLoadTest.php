@@ -127,13 +127,13 @@ final class CompositionClassesLoadTest extends TestCase
         // A list, a date and a union component of free-form objects: symfony typed the docblock
         // `array|DateTimeImmutable|array<string, mixed>|Olive` and its native type kept both `array`s.
         yield 'list, date and an object union component' => ['list, date and an object union component', [
-            // Each member requires a name it does not declare, so symfony holds the value decoded.
+            // Each member requires a name only the other one declares, so symfony holds the value decoded.
             'Olive' => ['anyOf' => [
-                ['type' => 'object', 'properties' => ['okapi' => ['type' => 'integer', 'multipleOf' => 5]], 'required' => ['stoat', 'okapi']],
+                ['type' => 'object', 'properties' => ['okapi' => ['type' => 'integer', 'multipleOf' => 5]], 'required' => ['ocelot', 'okapi']],
                 [
                     'type' => 'object',
                     'properties' => ['ocelot' => ['type' => 'string']],
-                    'required' => ['gecko', 'egret'],
+                    'required' => ['okapi'],
                     'additionalProperties' => ['type' => 'string', 'format' => 'uuid'],
                 ],
             ]],

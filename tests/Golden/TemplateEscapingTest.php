@@ -78,6 +78,8 @@ final class TemplateEscapingTest extends TestCase
             'temporalUnionCast.enumsLiteral|raw' => 'property name (phpStringLiteral()) => list of generated enum class references (`Name::class`) as a PHP array literal',
             'temporalUnionCast.namesLiteral|raw' => 'sanitized PHP property names as an array literal, each via phpStringLiteral()',
             'temporalUnionCast.uncastLiteral|raw' => 'sanitized PHP property names as an array literal, each via phpStringLiteral()',
+            'untypedAbsence.namesLiteral|raw' => 'sanitized PHP property names as an array literal, each via phpStringLiteral()',
+            'untypedAbsence.defaultedLiteral|raw' => 'sanitized PHP property names as an array literal, each via phpStringLiteral()',
             'emptyObjectWrite.nestedLiteral|raw' => 'PHP property name => wire name as an array literal from renderPhpArrayLiteral()',
             'emptyObjectWrite.itemsLiteral|raw' => 'PHP property name => wire name as an array literal from renderPhpArrayLiteral()',
             'emptyObjectWrite.shapesLiteral|raw' => 'wire name => empty-object shape as an array literal from renderPhpArrayLiteral()',

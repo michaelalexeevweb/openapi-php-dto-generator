@@ -1,4 +1,4 @@
-# laravel mode — 106 files, 31585 lines
+# laravel mode — 106 files, 33183 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -282,6 +282,30 @@ final class Animal2AnyOf4 implements Animal2, JsonSerializable
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.test2' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
+
+    /**
      * Keeps every container `validated()` returns whole, in the order it was sent.
      *
      * Hook it up once, in the FormRequest:
@@ -462,6 +486,30 @@ final class AnimalOneOf3 implements Animal, JsonSerializable
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.test' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
     }
 
     /**
@@ -667,6 +715,30 @@ final class ApiTest2403 implements JsonSerializable
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.message' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
     }
 
     /**
@@ -889,6 +961,32 @@ final class ApiTest2PatchRequest implements JsonSerializable
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.idPatchTest2' => self::withBlankStringValidation(['integer']),
+                $prefix . '.namePatchTest2' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.idPatchTest2' => 'integer',
+            ],
+        ];
     }
 
     /**
@@ -1291,6 +1389,33 @@ final class ApiTest2PostRequest implements JsonSerializable
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.idPostTest2' => self::withBlankStringValidation(['integer']),
+                $prefix . '.namePostTest2' => self::withBlankStringValidation(['string']),
+                $prefix . '.surnamePostTest2' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.idPostTest2' => 'integer',
+            ],
+        ];
     }
 
     /**
@@ -1705,6 +1830,30 @@ final class ApiTest403 implements JsonSerializable
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.message' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
+
+    /**
      * Keeps every container `validated()` returns whole, in the order it was sent.
      *
      * Hook it up once, in the FormRequest:
@@ -1946,6 +2095,36 @@ final class ApiTestCatsActionsGetQueryParams implements JsonSerializable
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.id' => self::withBlankStringValidation(['string', 'uuid']),
+                $prefix . '.actionId' => self::withBlankStringValidation(['integer']),
+                $prefix . '.page' => self::withBlankStringValidation(['integer', 'min:1']),
+                $prefix . '.limit' => self::withBlankStringValidation(['integer', 'min:1', 'max:100']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.actionId' => 'integer',
+                $prefix . '.page' => 'integer',
+                $prefix . '.limit' => 'integer',
+            ],
+        ];
     }
 
     /**
@@ -2334,6 +2513,36 @@ final class ApiTestCatsActionsPostQueryParams implements JsonSerializable
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.id' => self::withBlankStringValidation(['string', 'uuid']),
+                $prefix . '.actionId' => self::withBlankStringValidation(['integer']),
+                $prefix . '.page' => self::withBlankStringValidation(['integer', 'min:1']),
+                $prefix . '.limit' => self::withBlankStringValidation(['integer', 'min:1', 'max:100']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.actionId' => 'integer',
+                $prefix . '.page' => 'integer',
+                $prefix . '.limit' => 'integer',
+            ],
+        ];
+    }
+
+    /**
      * Keeps every container `validated()` returns whole, in the order it was sent.
      *
      * Hook it up once, in the FormRequest:
@@ -2716,6 +2925,36 @@ final class ApiTestDogsTagsGetQueryParams implements JsonSerializable
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.id' => self::withBlankStringValidation(['string', 'uuid']),
+                $prefix . '.tagId' => self::withBlankStringValidation(['integer']),
+                $prefix . '.page' => self::withBlankStringValidation(['integer', 'min:1']),
+                $prefix . '.limit' => self::withBlankStringValidation(['integer', 'min:1', 'max:100']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.tagId' => 'integer',
+                $prefix . '.page' => 'integer',
+                $prefix . '.limit' => 'integer',
+            ],
+        ];
     }
 
     /**
@@ -3104,6 +3343,36 @@ final class ApiTestDogsTagsPatchQueryParams implements JsonSerializable
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.id' => self::withBlankStringValidation(['string', 'uuid']),
+                $prefix . '.tagId' => self::withBlankStringValidation(['integer']),
+                $prefix . '.page' => self::withBlankStringValidation(['integer', 'min:1']),
+                $prefix . '.limit' => self::withBlankStringValidation(['integer', 'min:1', 'max:100']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.tagId' => 'integer',
+                $prefix . '.page' => 'integer',
+                $prefix . '.limit' => 'integer',
+            ],
+        ];
+    }
+
+    /**
      * Keeps every container `validated()` returns whole, in the order it was sent.
      *
      * Hook it up once, in the FormRequest:
@@ -3454,6 +3723,30 @@ final class ApiTestFileDeleteQueryParams implements JsonSerializable
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.id' => self::withBlankStringValidation(['string', 'uuid']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
+
+    /**
      * Keeps every container `validated()` returns whole, in the order it was sent.
      *
      * Hook it up once, in the FormRequest:
@@ -3717,6 +4010,30 @@ final class ApiTestFilePatchQueryParams implements JsonSerializable
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.id' => self::withBlankStringValidation(['string', 'uuid']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
     }
 
     /**
@@ -3988,6 +4305,30 @@ final class ApiTestFilePostRequest implements JsonSerializable
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.file' => self::withBlankStringValidation(['file']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
+
+    /**
      * Keeps every container `validated()` returns whole, in the order it was sent.
      *
      * Hook it up once, in the FormRequest:
@@ -4253,6 +4594,31 @@ final class ApiTestJobs200 implements JsonSerializable
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.accepted' => self::withBlankStringValidation(['boolean']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.accepted' => 'boolean',
+            ],
+        ];
     }
 
     /**
@@ -4540,6 +4906,30 @@ final class ApiTestJobs404 implements JsonSerializable
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.reason' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
+
+    /**
      * Keeps every container `validated()` returns whole, in the order it was sent.
      *
      * Hook it up once, in the FormRequest:
@@ -4722,6 +5112,30 @@ final class ApiTestJobsDefault implements JsonSerializable
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.message' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
     }
 
     /**
@@ -4911,6 +5325,30 @@ final class ApiTestJobsPostRequest implements JsonSerializable
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.callbackUrl' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
     }
 
     /**
@@ -5179,6 +5617,31 @@ final class ApiTestLegacy200 implements JsonSerializable
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.ok' => self::withBlankStringValidation(['boolean']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.ok' => 'boolean',
+            ],
+        ];
     }
 
     /**
@@ -5555,6 +6018,31 @@ final class ApiTestLegacyPostQueryParams implements JsonSerializable
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.legacyFlag' => self::withBlankStringValidation(['boolean']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.legacyFlag' => 'boolean',
+            ],
+        ];
+    }
+
+    /**
      * Keeps every container `validated()` returns whole, in the order it was sent.
      *
      * Hook it up once, in the FormRequest:
@@ -5847,6 +6335,30 @@ final class ApiTestLegacyPostRequest implements JsonSerializable
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.payload' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
+
+    /**
      * Keeps every container `validated()` returns whole, in the order it was sent.
      *
      * Hook it up once, in the FormRequest:
@@ -6112,6 +6624,31 @@ final class ApiTestRepresentations200 implements JsonSerializable
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.ok' => self::withBlankStringValidation(['boolean']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.ok' => 'boolean',
+            ],
+        ];
     }
 
     /**
@@ -6399,6 +6936,30 @@ final class ApiTestRepresentations200Csv implements JsonSerializable
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.row' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
+
+    /**
      * Keeps every container `validated()` returns whole, in the order it was sent.
      *
      * Hook it up once, in the FormRequest:
@@ -6585,6 +7146,30 @@ final class ApiTestRepresentationsPostRequest implements JsonSerializable
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.payload' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
     }
 
     /**
@@ -6786,6 +7371,30 @@ final class ApiTestRepresentationsPostRequestForm implements JsonSerializable
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.field' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
     }
 
     /**
@@ -7110,6 +7719,30 @@ final class ApiTestRepresentationsPostRequestXml implements JsonSerializable
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.element' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
+
+    /**
      * Keeps every container `validated()` returns whole, in the order it was sent.
      *
      * Hook it up once, in the FormRequest:
@@ -7378,6 +8011,34 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams implements Jso
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.matrixIds' => self::withBlankStringValidation(['list']),
+                $prefix . '.matrixIds.*' => self::withBlankStringValidation(['integer']),
+                $prefix . '.labelIds' => self::withBlankStringValidation(['list']),
+                $prefix . '.labelIds.*' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.matrixIds.*' => 'integer',
+            ],
+        ];
     }
 
     /**
@@ -7882,6 +8543,64 @@ final class ApiTestSerializationGetQueryParams implements JsonSerializable
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        if (in_array(self::class, $visited, true)) {
+            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
+        }
+        $visited[] = self::class;
+
+        $parts = [
+            [
+                'rules' => [
+                    $prefix . '.exploded' => self::withBlankStringValidation(['list']),
+                    $prefix . '.exploded.*' => self::withBlankStringValidation(['integer']),
+                    $prefix . '.joined' => self::withBlankStringValidation(['list']),
+                    $prefix . '.joined.*' => self::withBlankStringValidation(['string']),
+                    $prefix . '.spaced' => self::withBlankStringValidation(['list']),
+                    $prefix . '.spaced.*' => self::withBlankStringValidation(['integer']),
+                    $prefix . '.piped' => self::withBlankStringValidation(['list']),
+                    $prefix . '.piped.*' => self::withBlankStringValidation(['string']),
+                    $prefix . '.nested' => self::withBlankStringValidation(['array']),
+                    $prefix . '.nested.*' => self::withBlankStringValidation(['string']),
+                    $prefix . '.flag' => self::withBlankStringValidation(['boolean']),
+                    $prefix . '.strict' => self::withBlankStringValidation(['string']),
+                    $prefix . '.raw' => self::withBlankStringValidation(['string']),
+                    $prefix . '.X-Codes' => self::withBlankStringValidation(['list']),
+                    $prefix . '.X-Codes.*' => self::withBlankStringValidation(['string']),
+                    $prefix . '.session' => self::withBlankStringValidation(['string']),
+                    $prefix . '.filter' => self::withBlankStringValidation(['array']),
+                ],
+                'objectPaths' => [
+                    $prefix . '.nested',
+                    $prefix . '.filter',
+                ],
+                'scalarPaths' => [
+                    $prefix . '.exploded.*' => 'integer',
+                    $prefix . '.spaced.*' => 'integer',
+                    $prefix . '.flag' => 'boolean',
+                ],
+            ],
+            ApiTestSerializationGetQueryParamsFilter::openApiNestedValidation($prefix . '.filter', $visited),
+        ];
+
+        return [
+            'rules' => array_merge(...array_column($parts, 'rules')),
+            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
+            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+        ];
+    }
+
+    /**
      * Paths whose schema is `type: object`. A `*` segment matches every index of an array.
      *
      * @var array<int, string>
@@ -8279,9 +8998,7 @@ use Illuminate\Validation\Validator;
 use JsonSerializable;
 use LogicException;
 
-use function array_column;
 use function array_keys;
-use function array_merge;
 use function array_unique;
 use function array_values;
 use function in_array;
@@ -8427,27 +9144,15 @@ final class ApiTestSerializationGetQueryParamsFilter implements JsonSerializable
      */
     public static function openApiNestedValidation(string $prefix, array $visited): array
     {
-        if (in_array(self::class, $visited, true)) {
-            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
-        }
-        $visited[] = self::class;
-
-        $parts = [
-            [
-                'rules' => [
-                    $prefix . '.since' => self::withBlankStringValidation(['date_format:Y-m-d']),
-                ],
-                'objectPaths' => [
-                ],
-                'scalarPaths' => [
-                ],
-            ],
-        ];
-
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
         return [
-            'rules' => array_merge(...array_column($parts, 'rules')),
-            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
-            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+            'rules' => [
+                $prefix . '.since' => self::withBlankStringValidation(['date_format:Y-m-d']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
         ];
     }
 
@@ -8773,6 +9478,30 @@ final class ApiTestSharedPathGetQueryParams implements JsonSerializable
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.cursor' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
+
+    /**
      * Keeps every container `validated()` returns whole, in the order it was sent.
      *
      * Hook it up once, in the FormRequest:
@@ -9069,6 +9798,33 @@ final class ApiTestTenantsDeleteQueryParams implements JsonSerializable
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.tenant' => self::withBlankStringValidation(['integer']),
+                $prefix . '.region' => self::withBlankStringValidation(['string']),
+                $prefix . '.tenant' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.tenant' => 'integer',
+            ],
+        ];
     }
 
     /**
@@ -9509,6 +10265,36 @@ final class ApiTestTenantsGetQueryParams implements JsonSerializable
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.tenant' => self::withBlankStringValidation(['integer']),
+                $prefix . '.region' => self::withBlankStringValidation(['integer']),
+                $prefix . '.tenant' => self::withBlankStringValidation(['string']),
+                $prefix . '.verbose' => self::withBlankStringValidation(['boolean']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.tenant' => 'integer',
+                $prefix . '.region' => 'integer',
+                $prefix . '.verbose' => 'boolean',
+            ],
+        ];
     }
 
     /**
@@ -10193,6 +10979,60 @@ final class ApplicatorRefs implements JsonSerializable
             ApplicatorRefsPoisonedKey::openApiNestedValidation('poisonedKey', [self::class]),
             ApplicatorRefsConditional::openApiNestedValidation('conditional', [self::class]),
             ApplicatorRefsKeyed::openApiNestedValidation('keyed', [self::class]),
+        ];
+
+        return [
+            'rules' => array_merge(...array_column($parts, 'rules')),
+            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
+            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+        ];
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        if (in_array(self::class, $visited, true)) {
+            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
+        }
+        $visited[] = self::class;
+
+        $parts = [
+            [
+                'rules' => [
+                    $prefix . '.mustContain' => self::withBlankStringValidation(['list']),
+                    $prefix . '.mustContain.*' => self::withBlankStringValidation(['array']),
+                    $prefix . '.positions' => self::withBlankStringValidation(['list']),
+                    $prefix . '.rest' => self::withBlankStringValidation(['list']),
+                    $prefix . '.closedPair' => self::withBlankStringValidation(['list']),
+                    $prefix . '.vacuous' => self::withBlankStringValidation(['string', 'min:3']),
+                    $prefix . '.имя' => self::withBlankStringValidation(['string']),
+                    $prefix . '.名前' => self::withBlankStringValidation(['string']),
+                    $prefix . '.closedFirstSlot' => self::withBlankStringValidation(['list']),
+                    $prefix . '.poisonedKey' => self::withBlankStringValidation(['array']),
+                    $prefix . '.conditional' => self::withBlankStringValidation(['array']),
+                    $prefix . '.keyed' => self::withBlankStringValidation(['array']),
+                ],
+                'objectPaths' => [
+                    $prefix . '.mustContain.*',
+                    $prefix . '.poisonedKey',
+                    $prefix . '.conditional',
+                    $prefix . '.keyed',
+                ],
+                'scalarPaths' => [
+                ],
+            ],
+            ApplicatorRefsPoisonedKey::openApiNestedValidation($prefix . '.poisonedKey', $visited),
+            ApplicatorRefsConditional::openApiNestedValidation($prefix . '.conditional', $visited),
+            ApplicatorRefsKeyed::openApiNestedValidation($prefix . '.keyed', $visited),
         ];
 
         return [
@@ -11212,12 +12052,10 @@ use JsonSerializable;
 use LogicException;
 use OverflowException;
 
-use function array_column;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
 use function array_map;
-use function array_merge;
 use function array_slice;
 use function array_unique;
 use function array_values;
@@ -11402,27 +12240,15 @@ final class ApplicatorRefsConditional implements JsonSerializable
      */
     public static function openApiNestedValidation(string $prefix, array $visited): array
     {
-        if (in_array(self::class, $visited, true)) {
-            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
-        }
-        $visited[] = self::class;
-
-        $parts = [
-            [
-                'rules' => [
-                    $prefix . '.label' => self::withBlankStringValidation(['string']),
-                ],
-                'objectPaths' => [
-                ],
-                'scalarPaths' => [
-                ],
-            ],
-        ];
-
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
         return [
-            'rules' => array_merge(...array_column($parts, 'rules')),
-            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
-            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+            'rules' => [
+                $prefix . '.label' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
         ];
     }
 
@@ -11797,12 +12623,10 @@ use JsonSerializable;
 use LogicException;
 use OverflowException;
 
-use function array_column;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
 use function array_map;
-use function array_merge;
 use function array_slice;
 use function array_unique;
 use function array_values;
@@ -11984,27 +12808,15 @@ final class ApplicatorRefsKeyed implements JsonSerializable
      */
     public static function openApiNestedValidation(string $prefix, array $visited): array
     {
-        if (in_array(self::class, $visited, true)) {
-            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
-        }
-        $visited[] = self::class;
-
-        $parts = [
-            [
-                'rules' => [
-                    $prefix . '.trigger' => self::withBlankStringValidation(['string']),
-                ],
-                'objectPaths' => [
-                ],
-                'scalarPaths' => [
-                ],
-            ],
-        ];
-
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
         return [
-            'rules' => array_merge(...array_column($parts, 'rules')),
-            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
-            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+            'rules' => [
+                $prefix . '.trigger' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
         ];
     }
 
@@ -12367,12 +13179,10 @@ use JsonSerializable;
 use LogicException;
 use OverflowException;
 
-use function array_column;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
 use function array_map;
-use function array_merge;
 use function array_slice;
 use function array_unique;
 use function array_values;
@@ -12541,27 +13351,15 @@ final class ApplicatorRefsPoisonedKey implements JsonSerializable
      */
     public static function openApiNestedValidation(string $prefix, array $visited): array
     {
-        if (in_array(self::class, $visited, true)) {
-            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
-        }
-        $visited[] = self::class;
-
-        $parts = [
-            [
-                'rules' => [
-                    $prefix . '.trigger' => self::withBlankStringValidation(['string']),
-                ],
-                'objectPaths' => [
-                ],
-                'scalarPaths' => [
-                ],
-            ],
-        ];
-
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
         return [
-            'rules' => array_merge(...array_column($parts, 'rules')),
-            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
-            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+            'rules' => [
+                $prefix . '.trigger' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
         ];
     }
 
@@ -13022,6 +13820,34 @@ final class AwkwardNames implements JsonSerializable
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.plain' => self::withBlankStringValidation(['string']),
+                $prefix . '.it\'s' => self::withBlankStringValidation(['string', 'min:2']),
+                $prefix . '.back\slash' => self::withBlankStringValidation(['string']),
+                $prefix . '.both\\\'s' => self::withBlankStringValidation(['integer', 'min:1']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.both\\\'s' => 'integer',
+            ],
+        ];
+    }
+
+    /**
      * Paths whose schema is `integer`, `number` or `boolean`, with that type. Laravel's rules for them
      * accept `"5"` and, for a boolean, `0`/`1`/`"0"`/`"1"`; the raw JSON body is checked to refuse those
      * the way the schema does. A `*` segment matches every index of an array.
@@ -13381,6 +14207,30 @@ final class CallbackJobDonePostRequest implements JsonSerializable
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.state' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
+
+    /**
      * Keeps every container `validated()` returns whole, in the order it was sent.
      *
      * Hook it up once, in the FormRequest:
@@ -13642,6 +14492,30 @@ final class CallbackJobFailedPostRequest implements JsonSerializable
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.failure' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
+
+    /**
      * Keeps every container `validated()` returns whole, in the order it was sent.
      *
      * Hook it up once, in the FormRequest:
@@ -13896,6 +14770,31 @@ final class Cat implements Animal, Animal2, JsonSerializable
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.name' => self::withBlankStringValidation(['string']),
+                $prefix . '.meow' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
     }
 
     /**
@@ -14617,7 +15516,7 @@ final class ChainLink implements JsonSerializable
         $result['code'] = $this->code;
 
         if ($this->isTagsProvided()) {
-            $result['tags'] = $this->tags === null ? null : array_map(static fn(ChainTag $item): array|object => $item->toArray() ?: (object)[], array_values($this->tags));
+            $result['tags'] = $this->tags === null ? null : array_map(static fn(JsonSerializable $item): mixed => $item->jsonSerialize(), array_values($this->tags));
         }
 
         return $result;
@@ -15267,7 +16166,7 @@ final class ChainMiddle implements JsonSerializable
     public function toArray(): array
     {
         $result = [];
-        $result['links'] = array_map(static fn(ChainLink $item): array|object => $item->toArray() ?: (object)[], array_values($this->links));
+        $result['links'] = array_map(static fn(JsonSerializable $item): mixed => $item->jsonSerialize(), array_values($this->links));
 
         return $result;
     }
@@ -15298,9 +16197,6 @@ use Illuminate\Validation\Validator;
 use JsonSerializable;
 use LogicException;
 
-use function array_column;
-use function array_merge;
-use function in_array;
 use function is_string;
 use function trim;
 
@@ -15422,27 +16318,15 @@ final class ChainTag implements JsonSerializable
      */
     public static function openApiNestedValidation(string $prefix, array $visited): array
     {
-        if (in_array(self::class, $visited, true)) {
-            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
-        }
-        $visited[] = self::class;
-
-        $parts = [
-            [
-                'rules' => [
-                    $prefix . '.label' => self::withBlankStringValidation(['string', 'min:2']),
-                ],
-                'objectPaths' => [
-                ],
-                'scalarPaths' => [
-                ],
-            ],
-        ];
-
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
         return [
-            'rules' => array_merge(...array_column($parts, 'rules')),
-            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
-            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+            'rules' => [
+                $prefix . '.label' => self::withBlankStringValidation(['string', 'min:2']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
         ];
     }
 
@@ -15641,6 +16525,32 @@ final class Circle implements Shape, JsonSerializable
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.kind' => self::withBlankStringValidation(['string']),
+                $prefix . '.radius' => self::withBlankStringValidation(['integer']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.radius' => 'integer',
+            ],
+        ];
     }
 
     /**
@@ -16015,6 +16925,43 @@ final class ContainerAliases implements JsonSerializable
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.listOfLists' => self::withBlankStringValidation(['list']),
+                $prefix . '.listOfLists.*' => self::withBlankStringValidation(['list']),
+                $prefix . '.listOfLists.*.*' => self::withBlankStringValidation(['string', 'min:2']),
+                $prefix . '.listOfMaps' => self::withBlankStringValidation(['list']),
+                $prefix . '.listOfMaps.*' => self::withBlankStringValidation(['array']),
+                $prefix . '.listOfMaps.*.*' => self::withBlankStringValidation(['integer', 'min:0']),
+                $prefix . '.mapOfLists' => self::withBlankStringValidation(['array']),
+                $prefix . '.mapOfLists.*' => self::withBlankStringValidation(['list']),
+                $prefix . '.mapOfLists.*.*' => self::withBlankStringValidation(['string', 'min:2']),
+                $prefix . '.plain' => self::withBlankStringValidation(['list']),
+                $prefix . '.plain.*' => self::withBlankStringValidation(['string', 'min:2']),
+            ],
+            'objectPaths' => [
+                $prefix . '.listOfMaps.*',
+                $prefix . '.mapOfLists',
+            ],
+            'scalarPaths' => [
+                $prefix . '.listOfMaps.*.*' => 'integer',
+            ],
+        ];
     }
 
     /**
@@ -16674,6 +17621,56 @@ final class Containers implements JsonSerializable
     {
         $parts = [
             Tag::openApiNestedValidation('tagsByKey.*', [self::class]),
+        ];
+
+        return [
+            'rules' => array_merge(...array_column($parts, 'rules')),
+            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
+            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+        ];
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        if (in_array(self::class, $visited, true)) {
+            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
+        }
+        $visited[] = self::class;
+
+        $parts = [
+            [
+                'rules' => [
+                    $prefix . '.dates' => self::withBlankStringValidation(['list']),
+                    $prefix . '.dates.*' => self::withBlankStringValidation(['string', 'date_format:Y-m-d']),
+                    $prefix . '.datesByDay' => self::withBlankStringValidation(['array']),
+                    $prefix . '.datesByDay.*' => self::withBlankStringValidation(['string', 'date_format:Y-m-d']),
+                    $prefix . '.timestamps' => self::withBlankStringValidation(['list']),
+                    $prefix . '.timestamps.*' => self::withBlankStringValidation(['string', static function (string $attribute, mixed $value, Closure $fail): void { if (is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}((\.\d+)?(Z|z|[+-]([01]\d|2[0-3]):[0-5]\d))?| \d{2}:\d{2}:\d{2})$/D', $value) === 1) { foreach (['Y-m-d\TH:i:sp', 'Y-m-d\TH:i:s.up', 'Y-m-d H:i:s', 'Y-m-d\TH:i:s'] as $format) { if (DateTimeImmutable::createFromFormat($format, $value) !== false && DateTimeImmutable::getLastErrors() === false) { return; } } } $fail('validation.date_format')->translate(['format' => 'Y-m-d\TH:i:sP']); }]),
+                    $prefix . '.shapes' => self::withBlankStringValidation(['list']),
+                    $prefix . '.shapes.*' => self::withBlankStringValidation(['array']),
+                    $prefix . '.tagsByKey' => self::withBlankStringValidation(['array']),
+                    $prefix . '.tagsByKey.*' => self::withBlankStringValidation(['array']),
+                ],
+                'objectPaths' => [
+                    $prefix . '.datesByDay',
+                    $prefix . '.shapes.*',
+                    $prefix . '.tagsByKey',
+                    $prefix . '.tagsByKey.*',
+                ],
+                'scalarPaths' => [
+                ],
+            ],
+            Tag::openApiNestedValidation($prefix . '.tagsByKey.*', $visited),
         ];
 
         return [
@@ -17414,10 +18411,10 @@ final class Containers implements JsonSerializable
             $result['timestamps'] = $this->getTimestamps();
         }
 
-        $result['shapes'] = array_map(static fn(Shape $item): array|object => $item->toArray() ?: (object)[], array_values($this->shapes));
+        $result['shapes'] = array_map(static fn(JsonSerializable $item): mixed => $item->jsonSerialize(), array_values($this->shapes));
 
         if ($this->isTagsByKeyProvided()) {
-            $result['tagsByKey'] = $this->tagsByKey === null ? null : self::toJsonObjects(array_map(static fn(Tag $item): array|object => $item->toArray() ?: (object)[], $this->tagsByKey));
+            $result['tagsByKey'] = $this->tagsByKey === null ? null : self::toJsonObjects(array_map(static fn(JsonSerializable $item): mixed => $item->jsonSerialize(), $this->tagsByKey));
         }
 
         return $result;
@@ -17514,6 +18511,29 @@ final class CountMap implements JsonSerializable
     public static function rules(): array
     {
         return [
+        ];
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
         ];
     }
 
@@ -18023,6 +19043,33 @@ final class Discriminator1 implements Discriminator, JsonSerializable
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.type' => self::withBlankStringValidation([Rule::enum(DiscriminatorType::class)]),
+                $prefix . '.name' => self::withBlankStringValidation(['nullable', 'string']),
+                $prefix . '.id' => self::withBlankStringValidation(['integer']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.id' => 'integer',
+            ],
+        ];
+    }
+
+    /**
      * Paths whose schema is `integer`, `number` or `boolean`, with that type. Laravel's rules for them
      * accept `"5"` and, for a boolean, `0`/`1`/`"0"`/`"1"`; the raw JSON body is checked to refuse those
      * the way the schema does. A `*` segment matches every index of an array.
@@ -18356,6 +19403,34 @@ final class Discriminator2 implements Discriminator, JsonSerializable
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.type' => self::withBlankStringValidation([Rule::enum(DiscriminatorType::class)]),
+                $prefix . '.name' => self::withBlankStringValidation(['nullable', 'string']),
+                $prefix . '.id' => self::withBlankStringValidation(['integer']),
+                $prefix . '.NAme' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.id' => 'integer',
+            ],
+        ];
     }
 
     /**
@@ -18704,6 +19779,31 @@ final class Dog implements Animal, Animal2, JsonSerializable
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.name' => self::withBlankStringValidation(['string']),
+                $prefix . '.bark' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
+
+    /**
      * Keeps every container `validated()` returns whole, in the order it was sent.
      *
      * Hook it up once, in the FormRequest:
@@ -18893,6 +19993,31 @@ final class Dog2 implements Animal2, JsonSerializable
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.name' => self::withBlankStringValidation(['string']),
+                $prefix . '.bark' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
     }
 
     /**
@@ -19092,6 +20217,32 @@ final class FileRequest implements JsonSerializable
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.file' => self::withBlankStringValidation(['file']),
+                $prefix . '.name' => self::withBlankStringValidation(['string']),
+                $prefix . '.surname' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
     }
 
     /**
@@ -19441,6 +20592,38 @@ final class ItemBounds implements JsonSerializable
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.scores' => self::withBlankStringValidation(['list']),
+                $prefix . '.scores.*' => self::withBlankStringValidation(['integer', 'min:5']),
+                $prefix . '.scoresByKey' => self::withBlankStringValidation(['array']),
+                $prefix . '.scoresByKey.*' => self::withBlankStringValidation(['integer', 'min:5']),
+                $prefix . '.codes' => self::withBlankStringValidation(['list']),
+                $prefix . '.codes.*' => self::withBlankStringValidation(['string', 'min:2']),
+            ],
+            'objectPaths' => [
+                $prefix . '.scoresByKey',
+            ],
+            'scalarPaths' => [
+                $prefix . '.scores.*' => 'integer',
+                $prefix . '.scoresByKey.*' => 'integer',
+            ],
+        ];
     }
 
     /**
@@ -20284,6 +21467,63 @@ final class NestedContainers implements JsonSerializable
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.matrix' => self::withBlankStringValidation(['list']),
+                $prefix . '.matrix.*' => self::withBlankStringValidation(['list']),
+                $prefix . '.matrix.*.*' => self::withBlankStringValidation(['integer', 'min:0']),
+                $prefix . '.rowsOfMaps' => self::withBlankStringValidation(['list']),
+                $prefix . '.rowsOfMaps.*' => self::withBlankStringValidation(['array']),
+                $prefix . '.rowsOfMaps.*.*' => self::withBlankStringValidation(['string']),
+                $prefix . '.listsByKey' => self::withBlankStringValidation(['array']),
+                $prefix . '.listsByKey.*' => self::withBlankStringValidation(['list']),
+                $prefix . '.listsByKey.*.*' => self::withBlankStringValidation(['string']),
+                $prefix . '.mapsByKey' => self::withBlankStringValidation(['array']),
+                $prefix . '.mapsByKey.*' => self::withBlankStringValidation(['array']),
+                $prefix . '.mapsByKey.*.*' => self::withBlankStringValidation(['integer']),
+                $prefix . '.dateRows' => self::withBlankStringValidation(['list']),
+                $prefix . '.dateRows.*' => self::withBlankStringValidation(['list']),
+                $prefix . '.dateRows.*.*' => self::withBlankStringValidation(['string', 'date_format:Y-m-d']),
+                $prefix . '.numRows' => self::withBlankStringValidation(['list']),
+                $prefix . '.numRows.*' => self::withBlankStringValidation(['list']),
+                $prefix . '.numRows.*.*' => self::withBlankStringValidation(['numeric']),
+                $prefix . '.enumRows' => self::withBlankStringValidation(['list']),
+                $prefix . '.enumRows.*' => self::withBlankStringValidation(['list']),
+                $prefix . '.enumRows.*.*' => self::withBlankStringValidation(['string']),
+                $prefix . '.tagRows' => self::withBlankStringValidation(['list']),
+                $prefix . '.tagRows.*' => self::withBlankStringValidation(['list']),
+                $prefix . '.tagRows.*.*' => self::withBlankStringValidation(['array']),
+                $prefix . '.tagRows.*.*.id' => self::withBlankStringValidation(['integer']),
+                $prefix . '.tagRows.*.*.name' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+                $prefix . '.rowsOfMaps.*',
+                $prefix . '.listsByKey',
+                $prefix . '.mapsByKey',
+                $prefix . '.mapsByKey.*',
+                $prefix . '.tagRows.*.*',
+            ],
+            'scalarPaths' => [
+                $prefix . '.matrix.*.*' => 'integer',
+                $prefix . '.mapsByKey.*.*' => 'integer',
+                $prefix . '.numRows.*.*' => 'number',
+            ],
+        ];
+    }
+
+    /**
      * Paths whose schema is `type: object`. A `*` segment matches every index of an array.
      *
      * @var array<int, string>
@@ -20897,7 +22137,7 @@ final class NestedContainers implements JsonSerializable
         }
 
         if ($this->isTagRowsProvided()) {
-            $result['tagRows'] = $this->tagRows === null ? null : array_map(static fn(array $row): array|object => array_map(static fn(Tag $item): array|object => $item->toArray() ?: (object)[], array_values($row)), array_values($this->tagRows));
+            $result['tagRows'] = $this->tagRows === null ? null : array_map(static fn(array $row): array|object => array_map(static fn(JsonSerializable $item): mixed => $item->jsonSerialize(), array_values($row)), array_values($this->tagRows));
         }
 
         return $result;
@@ -21099,6 +22339,41 @@ final class NullableContainerValues implements JsonSerializable
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.listOfNullable' => self::withBlankStringValidation(['list']),
+                $prefix . '.listOfNullable.*' => self::withBlankStringValidation(['nullable', 'string', 'min:2']),
+                $prefix . '.mapOfNullable' => self::withBlankStringValidation(['array']),
+                $prefix . '.mapOfNullable.*' => self::withBlankStringValidation(['nullable', 'integer', 'min:5']),
+                $prefix . '.listOfNullable31' => self::withBlankStringValidation(['list']),
+                $prefix . '.listOfNullable31.*' => self::withBlankStringValidation(['nullable', 'string']),
+                $prefix . '.mapOfNullable31' => self::withBlankStringValidation(['array']),
+                $prefix . '.mapOfNullable31.*' => self::withBlankStringValidation(['nullable', 'integer']),
+            ],
+            'objectPaths' => [
+                $prefix . '.mapOfNullable',
+                $prefix . '.mapOfNullable31',
+            ],
+            'scalarPaths' => [
+                $prefix . '.mapOfNullable.*' => 'integer',
+                $prefix . '.mapOfNullable31.*' => 'integer',
+            ],
+        ];
     }
 
     /**
@@ -21645,6 +22920,32 @@ final class ObjectWideRules implements JsonSerializable
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.kind' => self::withBlankStringValidation(['string']),
+                $prefix . '.code' => self::withBlankStringValidation(['string']),
+                $prefix . '.extra' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
     }
 
     /**
@@ -22221,6 +23522,30 @@ final class Pet implements JsonSerializable
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.name' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
+
+    /**
      * Keeps every container `validated()` returns whole, in the order it was sent.
      *
      * Hook it up once, in the FormRequest:
@@ -22475,6 +23800,34 @@ final class ReadOnlyFields implements JsonSerializable
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.serverId' => self::withBlankStringValidation(['integer']),
+                $prefix . '.title' => self::withBlankStringValidation(['string']),
+                $prefix . '.writtenAt' => self::withBlankStringValidation([static function (string $attribute, mixed $value, Closure $fail): void { if (is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}((\.\d+)?(Z|z|[+-]([01]\d|2[0-3]):[0-5]\d))?| \d{2}:\d{2}:\d{2})$/D', $value) === 1) { foreach (['Y-m-d\TH:i:sp', 'Y-m-d\TH:i:s.up', 'Y-m-d H:i:s', 'Y-m-d\TH:i:s'] as $format) { if (DateTimeImmutable::createFromFormat($format, $value) !== false && DateTimeImmutable::getLastErrors() === false) { return; } } } $fail('validation.date_format')->translate(['format' => 'Y-m-d\TH:i:sP']); }]),
+                $prefix . '.secret' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.serverId' => 'integer',
+            ],
+        ];
     }
 
     /**
@@ -22975,6 +24328,31 @@ final class RetiredShape implements JsonSerializable
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.legacyId' => self::withBlankStringValidation(['integer']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.legacyId' => 'integer',
+            ],
+        ];
+    }
+
+    /**
      * Paths whose schema is `integer`, `number` or `boolean`, with that type. Laravel's rules for them
      * accept `"5"` and, for a boolean, `0`/`1`/`"0"`/`"1"`; the raw JSON body is checked to refuse those
      * the way the schema does. A `*` segment matches every index of an array.
@@ -23330,6 +24708,32 @@ final class Square implements Shape, JsonSerializable
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.kind' => self::withBlankStringValidation(['string']),
+                $prefix . '.side' => self::withBlankStringValidation(['integer']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.side' => 'integer',
+            ],
+        ];
+    }
+
+    /**
      * Paths whose schema is `integer`, `number` or `boolean`, with that type. Laravel's rules for them
      * accept `"5"` and, for a boolean, `0`/`1`/`"0"`/`"1"`; the raw JSON body is checked to refuse those
      * the way the schema does. A `*` segment matches every index of an array.
@@ -23531,14 +24935,11 @@ use JsonSerializable;
 use LogicException;
 use stdClass;
 
-use function array_column;
-use function array_merge;
 use function array_shift;
 use function explode;
 use function filter_var;
 use function floor;
 use function get_object_vars;
-use function in_array;
 use function is_array;
 use function is_bool;
 use function is_finite;
@@ -23668,29 +25069,17 @@ final class Tag implements JsonSerializable
      */
     public static function openApiNestedValidation(string $prefix, array $visited): array
     {
-        if (in_array(self::class, $visited, true)) {
-            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
-        }
-        $visited[] = self::class;
-
-        $parts = [
-            [
-                'rules' => [
-                    $prefix . '.id' => self::withBlankStringValidation(['integer']),
-                    $prefix . '.name' => self::withBlankStringValidation(['string']),
-                ],
-                'objectPaths' => [
-                ],
-                'scalarPaths' => [
-                    $prefix . '.id' => 'integer',
-                ],
-            ],
-        ];
-
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
         return [
-            'rules' => array_merge(...array_column($parts, 'rules')),
-            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
-            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+            'rules' => [
+                $prefix . '.id' => self::withBlankStringValidation(['integer']),
+                $prefix . '.name' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.id' => 'integer',
+            ],
         ];
     }
 
@@ -24014,6 +25403,31 @@ final class Test implements JsonSerializable
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.id' => self::withBlankStringValidation(['integer']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.id' => 'integer',
+            ],
+        ];
     }
 
     /**
@@ -24553,6 +25967,55 @@ final class Test2 implements JsonSerializable
             Tag::openApiNestedValidation('tags.*', [self::class]),
             User::openApiNestedValidation('user', [self::class]),
             Test2UserType::openApiNestedValidation('userType', [self::class]),
+        ];
+
+        return [
+            'rules' => array_merge(...array_column($parts, 'rules')),
+            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
+            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+        ];
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        if (in_array(self::class, $visited, true)) {
+            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
+        }
+        $visited[] = self::class;
+
+        $parts = [
+            [
+                'rules' => [
+                    $prefix . '.id' => self::withBlankStringValidation(['integer']),
+                    $prefix . '.name' => self::withBlankStringValidation(['string']),
+                    $prefix . '.tags' => self::withBlankStringValidation(['list']),
+                    $prefix . '.tags.*' => self::withBlankStringValidation(['array']),
+                    $prefix . '.user' => self::withBlankStringValidation(['array']),
+                    $prefix . '.userType' => self::withBlankStringValidation(['array']),
+                    $prefix . '.types' => self::withBlankStringValidation([Rule::enum(Test2Types::class)]),
+                ],
+                'objectPaths' => [
+                    $prefix . '.tags.*',
+                    $prefix . '.user',
+                    $prefix . '.userType',
+                ],
+                'scalarPaths' => [
+                    $prefix . '.id' => 'integer',
+                ],
+            ],
+            Tag::openApiNestedValidation($prefix . '.tags.*', $visited),
+            User::openApiNestedValidation($prefix . '.user', $visited),
+            Test2UserType::openApiNestedValidation($prefix . '.userType', $visited),
         ];
 
         return [
@@ -25211,7 +26674,7 @@ final class Test2 implements JsonSerializable
         }
 
         $result['name'] = $this->name;
-        $result['tags'] = array_map(static fn(Tag $item): array|object => $item->toArray() ?: (object)[], array_values($this->tags));
+        $result['tags'] = array_map(static fn(JsonSerializable $item): mixed => $item->jsonSerialize(), array_values($this->tags));
 
         if ($this->isUserProvided()) {
             $result['user'] = $this->user === null ? null : ($this->user->toArray() ?: (object)[]);
@@ -25271,9 +26734,7 @@ use Illuminate\Validation\Validator;
 use JsonSerializable;
 use LogicException;
 
-use function array_column;
 use function array_keys;
-use function array_merge;
 use function array_unique;
 use function array_values;
 use function in_array;
@@ -25417,27 +26878,15 @@ final class Test2UserType implements JsonSerializable
      */
     public static function openApiNestedValidation(string $prefix, array $visited): array
     {
-        if (in_array(self::class, $visited, true)) {
-            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
-        }
-        $visited[] = self::class;
-
-        $parts = [
-            [
-                'rules' => [
-                    $prefix . '.region' => self::withBlankStringValidation(['string']),
-                ],
-                'objectPaths' => [
-                ],
-                'scalarPaths' => [
-                ],
-            ],
-        ];
-
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
         return [
-            'rules' => array_merge(...array_column($parts, 'rules')),
-            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
-            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+            'rules' => [
+                $prefix . '.region' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
         ];
     }
 
@@ -25661,6 +27110,33 @@ final class TestPatchRequest implements JsonSerializable
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.id' => self::withBlankStringValidation(['integer']),
+                $prefix . '.name' => self::withBlankStringValidation(['string']),
+                $prefix . '.surname' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.id' => 'integer',
+            ],
+        ];
     }
 
     /**
@@ -26142,6 +27618,34 @@ final class TestPostRequest implements JsonSerializable
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.id' => self::withBlankStringValidation(['integer']),
+                $prefix . '.name' => self::withBlankStringValidation(['string']),
+                $prefix . '.homepage' => self::withBlankStringValidation(['string']),
+                $prefix . '.endpoint' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.id' => 'integer',
+            ],
+        ];
     }
 
     /**
@@ -26876,12 +28380,10 @@ use LogicException;
 use OverflowException;
 use stdClass;
 
-use function array_column;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
 use function array_map;
-use function array_merge;
 use function array_pop;
 use function array_shift;
 use function array_slice;
@@ -27238,30 +28740,18 @@ final class TreeNode implements JsonSerializable
      */
     public static function openApiNestedValidation(string $prefix, array $visited): array
     {
-        if (in_array(self::class, $visited, true)) {
-            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
-        }
-        $visited[] = self::class;
-
-        $parts = [
-            [
-                'rules' => [
-                    $prefix . '.label' => self::withBlankStringValidation(['string', 'min:1']),
-                    $prefix . '.children' => self::withBlankStringValidation(['array']),
-                ],
-                'objectPaths' => [
-                    $prefix . '.children',
-                    $prefix . '.children.*',
-                ],
-                'scalarPaths' => [
-                ],
-            ],
-        ];
-
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
         return [
-            'rules' => array_merge(...array_column($parts, 'rules')),
-            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
-            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+            'rules' => [
+                $prefix . '.label' => self::withBlankStringValidation(['string', 'min:1']),
+                $prefix . '.children' => self::withBlankStringValidation(['array']),
+            ],
+            'objectPaths' => [
+                $prefix . '.children',
+                $prefix . '.children.*',
+            ],
+            'scalarPaths' => [
+            ],
         ];
     }
 
@@ -28440,6 +29930,52 @@ final class UnionUnderContainer implements JsonSerializable
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        if (in_array(self::class, $visited, true)) {
+            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
+        }
+        $visited[] = self::class;
+
+        $parts = [
+            [
+                'rules' => [
+                    $prefix . '.chain' => self::withBlankStringValidation(['list']),
+                    $prefix . '.chainAllOf' => self::withBlankStringValidation(['list']),
+                    $prefix . '.chainAllOf.*' => self::withBlankStringValidation(['array']),
+                    $prefix . '.tree' => self::withBlankStringValidation(['array']),
+                    $prefix . '.listOfUnions' => self::withBlankStringValidation(['list']),
+                ],
+                'objectPaths' => [
+                    $prefix . '.chain.*',
+                    $prefix . '.chainAllOf.*',
+                    $prefix . '.tree',
+                    $prefix . '.listOfUnions.*',
+                ],
+                'scalarPaths' => [
+                ],
+            ],
+            ChainMiddle::openApiNestedValidation($prefix . '.chainAllOf.*', $visited),
+            TreeNode::openApiNestedValidation($prefix . '.tree', $visited),
+        ];
+
+        return [
+            'rules' => array_merge(...array_column($parts, 'rules')),
+            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
+            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+        ];
+    }
+
+    /**
      * Paths whose schema is `type: object`. A `*` segment matches every index of an array.
      *
      * @var array<int, string>
@@ -29288,7 +30824,7 @@ final class UnionUnderContainer implements JsonSerializable
         }
 
         if ($this->isChainAllOfProvided()) {
-            $result['chainAllOf'] = $this->chainAllOf === null ? null : array_map(static fn(ChainMiddle $item): array|object => $item->toArray() ?: (object)[], array_values($this->chainAllOf));
+            $result['chainAllOf'] = $this->chainAllOf === null ? null : array_map(static fn(JsonSerializable $item): mixed => $item->jsonSerialize(), array_values($this->chainAllOf));
         }
 
         $result['tree'] = $this->tree->toArray() ?: (object)[];
@@ -29477,6 +31013,31 @@ final class UniqueScalars implements JsonSerializable
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.tags' => self::withBlankStringValidation(['list']),
+                $prefix . '.tags.*' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
     }
 
     /**
@@ -29875,12 +31436,10 @@ use LogicException;
 use OverflowException;
 use stdClass;
 
-use function array_column;
 use function array_diff_key;
 use function array_is_list;
 use function array_key_exists;
 use function array_map;
-use function array_merge;
 use function array_pop;
 use function array_shift;
 use function array_slice;
@@ -30207,32 +31766,20 @@ final class User implements JsonSerializable
      */
     public static function openApiNestedValidation(string $prefix, array $visited): array
     {
-        if (in_array(self::class, $visited, true)) {
-            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
-        }
-        $visited[] = self::class;
-
-        $parts = [
-            [
-                'rules' => [
-                    $prefix . '.id' => self::withBlankStringValidation(['integer']),
-                    $prefix . '.name' => self::withBlankStringValidation(['string']),
-                    $prefix . '.pet' => self::withBlankStringValidation(['nullable']),
-                    $prefix . '.createdAt' => self::withBlankStringValidation([static function (string $attribute, mixed $value, Closure $fail): void { if (is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}((\.\d+)?(Z|z|[+-]([01]\d|2[0-3]):[0-5]\d))?| \d{2}:\d{2}:\d{2})$/D', $value) === 1) { foreach (['Y-m-d\TH:i:sp', 'Y-m-d\TH:i:s.up', 'Y-m-d H:i:s', 'Y-m-d\TH:i:s'] as $format) { if (DateTimeImmutable::createFromFormat($format, $value) !== false && DateTimeImmutable::getLastErrors() === false) { return; } } } $fail('validation.date_format')->translate(['format' => 'Y-m-d\TH:i:sP']); }]),
-                ],
-                'objectPaths' => [
-                    $prefix . '.pet',
-                ],
-                'scalarPaths' => [
-                    $prefix . '.id' => 'integer',
-                ],
-            ],
-        ];
-
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
         return [
-            'rules' => array_merge(...array_column($parts, 'rules')),
-            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
-            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+            'rules' => [
+                $prefix . '.id' => self::withBlankStringValidation(['integer']),
+                $prefix . '.name' => self::withBlankStringValidation(['string']),
+                $prefix . '.pet' => self::withBlankStringValidation(['nullable']),
+                $prefix . '.createdAt' => self::withBlankStringValidation([static function (string $attribute, mixed $value, Closure $fail): void { if (is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}((\.\d+)?(Z|z|[+-]([01]\d|2[0-3]):[0-5]\d))?| \d{2}:\d{2}:\d{2})$/D', $value) === 1) { foreach (['Y-m-d\TH:i:sp', 'Y-m-d\TH:i:s.up', 'Y-m-d H:i:s', 'Y-m-d\TH:i:s'] as $format) { if (DateTimeImmutable::createFromFormat($format, $value) !== false && DateTimeImmutable::getLastErrors() === false) { return; } } } $fail('validation.date_format')->translate(['format' => 'Y-m-d\TH:i:sP']); }]),
+            ],
+            'objectPaths' => [
+                $prefix . '.pet',
+            ],
+            'scalarPaths' => [
+                $prefix . '.id' => 'integer',
+            ],
         ];
     }
 
@@ -30992,6 +32539,48 @@ final class User2 implements JsonSerializable
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        if (in_array(self::class, $visited, true)) {
+            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
+        }
+        $visited[] = self::class;
+
+        $parts = [
+            [
+                'rules' => [
+                    $prefix . '.id' => self::withBlankStringValidation(['integer']),
+                    $prefix . '.name' => self::withBlankStringValidation(['string']),
+                    $prefix . '.pet' => self::withBlankStringValidation(['nullable', 'array']),
+                    $prefix . '.createdAt' => self::withBlankStringValidation(['date_format:Y-m-d']),
+                ],
+                'objectPaths' => [
+                    $prefix . '.pet',
+                ],
+                'scalarPaths' => [
+                    $prefix . '.id' => 'integer',
+                ],
+            ],
+            User2Pet::openApiNestedValidation($prefix . '.pet', $visited),
+        ];
+
+        return [
+            'rules' => array_merge(...array_column($parts, 'rules')),
+            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
+            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+        ];
+    }
+
+    /**
      * Paths whose schema is `type: object`. A `*` segment matches every index of an array.
      *
      * @var array<int, string>
@@ -31405,9 +32994,6 @@ use Illuminate\Validation\Validator;
 use JsonSerializable;
 use LogicException;
 
-use function array_column;
-use function array_merge;
-use function in_array;
 use function is_string;
 use function trim;
 
@@ -31536,30 +33122,18 @@ final class User2Pet implements JsonSerializable
      */
     public static function openApiNestedValidation(string $prefix, array $visited): array
     {
-        if (in_array(self::class, $visited, true)) {
-            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
-        }
-        $visited[] = self::class;
-
-        $parts = [
-            [
-                'rules' => [
-                    $prefix . '.name' => self::withBlankStringValidation(['string']),
-                    $prefix . '.meow' => self::withBlankStringValidation(['string']),
-                    $prefix . '.bark' => self::withBlankStringValidation(['string']),
-                    $prefix . '.test' => self::withBlankStringValidation(['string']),
-                ],
-                'objectPaths' => [
-                ],
-                'scalarPaths' => [
-                ],
-            ],
-        ];
-
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
         return [
-            'rules' => array_merge(...array_column($parts, 'rules')),
-            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
-            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+            'rules' => [
+                $prefix . '.name' => self::withBlankStringValidation(['string']),
+                $prefix . '.meow' => self::withBlankStringValidation(['string']),
+                $prefix . '.bark' => self::withBlankStringValidation(['string']),
+                $prefix . '.test' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
         ];
     }
 
@@ -31771,6 +33345,30 @@ final class WebhookOrderPlacedPostRequest implements JsonSerializable
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.orderId' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
     }
 
     /**

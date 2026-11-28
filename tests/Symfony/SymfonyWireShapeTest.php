@@ -614,7 +614,7 @@ final class SymfonyWireShapeTest extends TestCase
                 'schemas' => [
                     'Rating' => [
                         'type' => 'object',
-                        'required' => ['score', 'phantom'],
+                        'required' => ['score'],
                         'properties' => [
                             'score' => ['type' => ['integer', 'null']],
                             'note' => ['type' => 'string'],
@@ -625,10 +625,6 @@ final class SymfonyWireShapeTest extends TestCase
         ];
         $generator = new GenerateDtoCommand();
         $generator->generateFromArray($spec, $target, 'WireNull', 'symfony');
-        $this->assertCount(1, array_filter(
-            array: $generator->getGenerationWarnings(),
-            callback: static fn(string $warning): bool => str_contains($warning, '"Rating" lists "phantom" in `required`'),
-        ));
         require_once $target . '/Rating.php';
         require_once $target . '/RatingsGetQueryParams.php';
 

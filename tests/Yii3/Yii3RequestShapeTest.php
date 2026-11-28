@@ -1114,24 +1114,6 @@ final class Yii3RequestShapeTest extends TestCase
         self::assertSame(['kinds' => ['square']], $built::create(kinds: [$kind::from('square')])->getData());
     }
 
-    public function testARequiredNameWithoutAPropertyIsNotDemanded(): void
-    {
-        // The generator warns that such a requirement is enforced nowhere, as the other modes do; this
-        // one demanded it of every object, which can never carry it — a correct response failed.
-        $namespace = $this->generate([
-            'Probe' => [
-                'type' => 'object',
-                'required' => ['header', 'scores'],
-                'properties' => ['header' => ['type' => 'string']],
-            ],
-        ]);
-
-        $container = new Yii3Container();
-
-        self::assertTrue($container->validate($container->hydrate($namespace . '\Probe', ['header' => 'h']))->isValid());
-        self::assertArrayHasKey('header', $this->messages($container->validate($container->hydrate($namespace . '\Probe', []))));
-    }
-
     public function testAnEmptyValueStillBreaksABoundThatForbidsIt(): void
     {
         $namespace = $this->generate([

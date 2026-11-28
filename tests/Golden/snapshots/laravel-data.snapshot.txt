@@ -1,4 +1,4 @@
-# laravel-data mode — 80 files, 24581 lines
+# laravel-data mode — 80 files, 26727 lines
 # spec: OpenApiExamples/test.yaml, namespace: GoldenCorpus
 #
 # Animal.php
@@ -232,6 +232,30 @@ final class Animal2AnyOf4 extends Data implements Animal2
 
         return $rules;
     }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.test2' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
 }
 
 ===== AnimalOneOf3.php =====
@@ -354,6 +378,30 @@ final class AnimalOneOf3 extends Data implements Animal
 
         return $rules;
     }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.test' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
 }
 
 ===== ApiTest2403.php =====
@@ -370,8 +418,17 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
+use Spatie\LaravelData\DataPipeline;
+use Spatie\LaravelData\DataPipes\DefaultValuesDataPipe;
+use Spatie\LaravelData\Optional;
+use Spatie\LaravelData\Support\Creation\CreationContext;
+use Spatie\LaravelData\Support\DataClass;
 use stdClass;
 
+use function array_diff;
+use function array_keys;
+use function array_values;
+use function in_array;
 use function is_string;
 use function json_encode;
 use function trim;
@@ -392,9 +449,49 @@ use function trim;
  */
 final class ApiTest2403 extends Data
 {
+    /**
+     * The properties with a schema `default` whose key the payload left out — they hold the default
+     * all the same. Empty for an instance built in code. Read by `is<Name>Provided()`.
+     *
+     * @var list<string>
+     */
+    private readonly array $openApiAbsentDefaults;
+
     public function __construct(
         public readonly string $message = 'Access Denied.',
+        ?array $openApiAbsentDefaults = null,
     ) {
+        $this->openApiAbsentDefaults = $openApiAbsentDefaults ?? [];
+    }
+
+    /**
+     * Whether the payload carried `message`. Absent, the property holds its schema default all the
+     * same, which is what it is for; this tells the two apart. An instance built in code has it provided.
+     */
+    public function isMessageProvided(): bool
+    {
+        return !in_array('message', $this->openApiAbsentDefaults, true);
+    }
+
+    /**
+     * laravel-data's own pipeline.
+     *
+     * A property with a schema `default` holds the default when its key was not sent; the names the
+     * payload left out are handed to the constructor, for `is<Name>Provided()`.
+     */
+    public static function pipeline(): DataPipeline
+    {
+        return parent::pipeline()->replace(
+            pipe: DefaultValuesDataPipe::class,
+            replacement: new class extends DefaultValuesDataPipe {
+                public function handle(mixed $payload, DataClass $class, array $properties, CreationContext $creationContext): array
+                {
+                    $absentDefaults = array_values(array_diff(['message'], array_keys($properties)));
+
+                    return [...parent::handle($payload, $class, $properties, $creationContext), 'openApiAbsentDefaults' => $absentDefaults];
+                }
+            },
+        );
     }
 
     /**
@@ -510,6 +607,30 @@ final class ApiTest2403 extends Data
 
         return $rules;
     }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.message' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
 }
 
 ===== ApiTest2PatchRequest.php =====
@@ -535,9 +656,11 @@ use function is_array;
 use function is_bool;
 use function is_finite;
 use function is_float;
+use function is_object;
 use function is_string;
 use function json_decode;
 use function ltrim;
+use function method_exists;
 use function preg_split;
 use function str_replace;
 use function str_starts_with;
@@ -652,6 +775,32 @@ final class ApiTest2PatchRequest extends Data
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.idPatchTest2' => self::withBlankStringValidation(['integer']),
+                $prefix . '.namePatchTest2' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.idPatchTest2' => 'integer',
+            ],
+        ];
+    }
+
+    /**
      * Paths whose schema is `integer` or `number`, with that type. A `*` segment matches every index of
      * an array and every key of a map.
      *
@@ -690,7 +839,11 @@ final class ApiTest2PatchRequest extends Data
      * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
      * this same method while a request is bound, and its body says nothing about their data: a request
      * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
-     * input, which is the body merged with the query, so every key of the body is there unchanged.
+     * input, which is the body merged with the query (and the route parameters), so every key of the body
+     * is there unchanged, and every other key is a query or route parameter. Asked only the first half, an
+     * empty body `{}` — or one whose keys a response echoed — passed for the response's own data, and its
+     * nested objects were judged as JSON arrays: `author expects object, got array`, `does not match any
+     * oneOf branch (expected object or null, got object)`.
      */
     private static function rawRequestBody(Validator $validator): ?string
     {
@@ -715,6 +868,13 @@ final class ApiTest2PatchRequest extends Data
         $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
         foreach ($body as $key => $value) {
             if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+        $route = $request->route();
+        $parameters = [...$request->query->all(), ...(is_object($route) && method_exists($route, 'parameters') ? $route->parameters() : [])];
+        foreach (array_keys($data) as $key) {
+            if (!array_key_exists($key, $body) && !array_key_exists($key, $parameters)) {
                 return null;
             }
         }
@@ -805,9 +965,11 @@ use function is_array;
 use function is_bool;
 use function is_finite;
 use function is_float;
+use function is_object;
 use function is_string;
 use function json_decode;
 use function ltrim;
+use function method_exists;
 use function preg_split;
 use function str_replace;
 use function str_starts_with;
@@ -924,6 +1086,33 @@ final class ApiTest2PostRequest extends Data
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.idPostTest2' => self::withBlankStringValidation(['integer']),
+                $prefix . '.namePostTest2' => self::withBlankStringValidation(['string']),
+                $prefix . '.surnamePostTest2' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.idPostTest2' => 'integer',
+            ],
+        ];
+    }
+
+    /**
      * Paths whose schema is `integer` or `number`, with that type. A `*` segment matches every index of
      * an array and every key of a map.
      *
@@ -962,7 +1151,11 @@ final class ApiTest2PostRequest extends Data
      * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
      * this same method while a request is bound, and its body says nothing about their data: a request
      * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
-     * input, which is the body merged with the query, so every key of the body is there unchanged.
+     * input, which is the body merged with the query (and the route parameters), so every key of the body
+     * is there unchanged, and every other key is a query or route parameter. Asked only the first half, an
+     * empty body `{}` — or one whose keys a response echoed — passed for the response's own data, and its
+     * nested objects were judged as JSON arrays: `author expects object, got array`, `does not match any
+     * oneOf branch (expected object or null, got object)`.
      */
     private static function rawRequestBody(Validator $validator): ?string
     {
@@ -987,6 +1180,13 @@ final class ApiTest2PostRequest extends Data
         $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
         foreach ($body as $key => $value) {
             if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+        $route = $request->route();
+        $parameters = [...$request->query->all(), ...(is_object($route) && method_exists($route, 'parameters') ? $route->parameters() : [])];
+        foreach (array_keys($data) as $key) {
+            if (!array_key_exists($key, $body) && !array_key_exists($key, $parameters)) {
                 return null;
             }
         }
@@ -1068,8 +1268,17 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
+use Spatie\LaravelData\DataPipeline;
+use Spatie\LaravelData\DataPipes\DefaultValuesDataPipe;
+use Spatie\LaravelData\Optional;
+use Spatie\LaravelData\Support\Creation\CreationContext;
+use Spatie\LaravelData\Support\DataClass;
 use stdClass;
 
+use function array_diff;
+use function array_keys;
+use function array_values;
+use function in_array;
 use function is_string;
 use function json_encode;
 use function trim;
@@ -1090,9 +1299,49 @@ use function trim;
  */
 final class ApiTest403 extends Data
 {
+    /**
+     * The properties with a schema `default` whose key the payload left out — they hold the default
+     * all the same. Empty for an instance built in code. Read by `is<Name>Provided()`.
+     *
+     * @var list<string>
+     */
+    private readonly array $openApiAbsentDefaults;
+
     public function __construct(
         public readonly string $message = 'Access Denied.',
+        ?array $openApiAbsentDefaults = null,
     ) {
+        $this->openApiAbsentDefaults = $openApiAbsentDefaults ?? [];
+    }
+
+    /**
+     * Whether the payload carried `message`. Absent, the property holds its schema default all the
+     * same, which is what it is for; this tells the two apart. An instance built in code has it provided.
+     */
+    public function isMessageProvided(): bool
+    {
+        return !in_array('message', $this->openApiAbsentDefaults, true);
+    }
+
+    /**
+     * laravel-data's own pipeline.
+     *
+     * A property with a schema `default` holds the default when its key was not sent; the names the
+     * payload left out are handed to the constructor, for `is<Name>Provided()`.
+     */
+    public static function pipeline(): DataPipeline
+    {
+        return parent::pipeline()->replace(
+            pipe: DefaultValuesDataPipe::class,
+            replacement: new class extends DefaultValuesDataPipe {
+                public function handle(mixed $payload, DataClass $class, array $properties, CreationContext $creationContext): array
+                {
+                    $absentDefaults = array_values(array_diff(['message'], array_keys($properties)));
+
+                    return [...parent::handle($payload, $class, $properties, $creationContext), 'openApiAbsentDefaults' => $absentDefaults];
+                }
+            },
+        );
     }
 
     /**
@@ -1207,6 +1456,30 @@ final class ApiTest403 extends Data
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.message' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
     }
 }
 
@@ -1351,6 +1624,36 @@ final class ApiTestCatsActionsGetQueryParams extends Data
 
         return $rules;
     }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.id' => self::withBlankStringValidation(['string', 'uuid']),
+                $prefix . '.actionId' => self::withBlankStringValidation(['integer']),
+                $prefix . '.page' => self::withBlankStringValidation(['integer', 'min:1']),
+                $prefix . '.limit' => self::withBlankStringValidation(['integer', 'min:1', 'max:100']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.actionId' => 'integer',
+                $prefix . '.page' => 'integer',
+                $prefix . '.limit' => 'integer',
+            ],
+        ];
+    }
 }
 
 ===== ApiTestCatsActionsPostQueryParams.php =====
@@ -1493,6 +1796,36 @@ final class ApiTestCatsActionsPostQueryParams extends Data
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.id' => self::withBlankStringValidation(['string', 'uuid']),
+                $prefix . '.actionId' => self::withBlankStringValidation(['integer']),
+                $prefix . '.page' => self::withBlankStringValidation(['integer', 'min:1']),
+                $prefix . '.limit' => self::withBlankStringValidation(['integer', 'min:1', 'max:100']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.actionId' => 'integer',
+                $prefix . '.page' => 'integer',
+                $prefix . '.limit' => 'integer',
+            ],
+        ];
     }
 }
 
@@ -1637,6 +1970,36 @@ final class ApiTestDogsTagsGetQueryParams extends Data
 
         return $rules;
     }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.id' => self::withBlankStringValidation(['string', 'uuid']),
+                $prefix . '.tagId' => self::withBlankStringValidation(['integer']),
+                $prefix . '.page' => self::withBlankStringValidation(['integer', 'min:1']),
+                $prefix . '.limit' => self::withBlankStringValidation(['integer', 'min:1', 'max:100']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.tagId' => 'integer',
+                $prefix . '.page' => 'integer',
+                $prefix . '.limit' => 'integer',
+            ],
+        ];
+    }
 }
 
 ===== ApiTestDogsTagsPatchQueryParams.php =====
@@ -1780,6 +2143,36 @@ final class ApiTestDogsTagsPatchQueryParams extends Data
 
         return $rules;
     }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.id' => self::withBlankStringValidation(['string', 'uuid']),
+                $prefix . '.tagId' => self::withBlankStringValidation(['integer']),
+                $prefix . '.page' => self::withBlankStringValidation(['integer', 'min:1']),
+                $prefix . '.limit' => self::withBlankStringValidation(['integer', 'min:1', 'max:100']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.tagId' => 'integer',
+                $prefix . '.page' => 'integer',
+                $prefix . '.limit' => 'integer',
+            ],
+        ];
+    }
 }
 
 ===== ApiTestFileDeleteQueryParams.php =====
@@ -1908,6 +2301,30 @@ final class ApiTestFileDeleteQueryParams extends Data
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.id' => self::withBlankStringValidation(['string', 'uuid']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
     }
 }
 
@@ -2038,6 +2455,30 @@ final class ApiTestFilePatchQueryParams extends Data
 
         return $rules;
     }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.id' => self::withBlankStringValidation(['string', 'uuid']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
 }
 
 ===== ApiTestFilePostRequest.php =====
@@ -2058,10 +2499,13 @@ use Spatie\LaravelData\Data;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 use function array_key_exists;
+use function array_keys;
 use function is_array;
+use function is_object;
 use function is_string;
 use function json_decode;
 use function ltrim;
+use function method_exists;
 use function str_starts_with;
 use function trim;
 
@@ -2172,6 +2616,30 @@ final class ApiTestFilePostRequest extends Data
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.file' => self::withBlankStringValidation(['file']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
+
+    /**
      * The one shape Laravel's rules cannot check: a JSON array sent for the object this body is.
      *
      * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
@@ -2198,7 +2666,11 @@ final class ApiTestFilePostRequest extends Data
      * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
      * this same method while a request is bound, and its body says nothing about their data: a request
      * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
-     * input, which is the body merged with the query, so every key of the body is there unchanged.
+     * input, which is the body merged with the query (and the route parameters), so every key of the body
+     * is there unchanged, and every other key is a query or route parameter. Asked only the first half, an
+     * empty body `{}` — or one whose keys a response echoed — passed for the response's own data, and its
+     * nested objects were judged as JSON arrays: `author expects object, got array`, `does not match any
+     * oneOf branch (expected object or null, got object)`.
      */
     private static function rawRequestBody(Validator $validator): ?string
     {
@@ -2223,6 +2695,13 @@ final class ApiTestFilePostRequest extends Data
         $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
         foreach ($body as $key => $value) {
             if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+        $route = $request->route();
+        $parameters = [...$request->query->all(), ...(is_object($route) && method_exists($route, 'parameters') ? $route->parameters() : [])];
+        foreach (array_keys($data) as $key) {
+            if (!array_key_exists($key, $body) && !array_key_exists($key, $parameters)) {
                 return null;
             }
         }
@@ -2353,6 +2832,31 @@ final class ApiTestJobs200 extends Data
 
         return $rules;
     }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.accepted' => self::withBlankStringValidation(['boolean']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.accepted' => 'boolean',
+            ],
+        ];
+    }
 }
 
 ===== ApiTestJobs404.php =====
@@ -2476,6 +2980,30 @@ final class ApiTestJobs404 extends Data
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.reason' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
     }
 }
 
@@ -2601,6 +3129,30 @@ final class ApiTestJobsDefault extends Data
 
         return $rules;
     }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.message' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
 }
 
 ===== ApiTestJobsPostRequest.php =====
@@ -2620,10 +3172,13 @@ use LogicException;
 use Spatie\LaravelData\Data;
 
 use function array_key_exists;
+use function array_keys;
 use function is_array;
+use function is_object;
 use function is_string;
 use function json_decode;
 use function ltrim;
+use function method_exists;
 use function str_starts_with;
 use function trim;
 
@@ -2734,6 +3289,30 @@ final class ApiTestJobsPostRequest extends Data
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.callbackUrl' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
+
+    /**
      * The one shape Laravel's rules cannot check: a JSON array sent for the object this body is.
      *
      * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
@@ -2760,7 +3339,11 @@ final class ApiTestJobsPostRequest extends Data
      * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
      * this same method while a request is bound, and its body says nothing about their data: a request
      * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
-     * input, which is the body merged with the query, so every key of the body is there unchanged.
+     * input, which is the body merged with the query (and the route parameters), so every key of the body
+     * is there unchanged, and every other key is a query or route parameter. Asked only the first half, an
+     * empty body `{}` — or one whose keys a response echoed — passed for the response's own data, and its
+     * nested objects were judged as JSON arrays: `author expects object, got array`, `does not match any
+     * oneOf branch (expected object or null, got object)`.
      */
     private static function rawRequestBody(Validator $validator): ?string
     {
@@ -2785,6 +3368,13 @@ final class ApiTestJobsPostRequest extends Data
         $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
         foreach ($body as $key => $value) {
             if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+        $route = $request->route();
+        $parameters = [...$request->query->all(), ...(is_object($route) && method_exists($route, 'parameters') ? $route->parameters() : [])];
+        foreach (array_keys($data) as $key) {
+            if (!array_key_exists($key, $body) && !array_key_exists($key, $parameters)) {
                 return null;
             }
         }
@@ -2916,6 +3506,31 @@ final class ApiTestLegacy200 extends Data
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.ok' => self::withBlankStringValidation(['boolean']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.ok' => 'boolean',
+            ],
+        ];
     }
 }
 
@@ -3148,6 +3763,31 @@ final class ApiTestLegacyPostQueryParams extends Data
 
         return $rules;
     }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.legacyFlag' => self::withBlankStringValidation(['boolean']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.legacyFlag' => 'boolean',
+            ],
+        ];
+    }
 }
 
 ===== ApiTestLegacyPostRequest.php =====
@@ -3167,10 +3807,13 @@ use LogicException;
 use Spatie\LaravelData\Data;
 
 use function array_key_exists;
+use function array_keys;
 use function is_array;
+use function is_object;
 use function is_string;
 use function json_decode;
 use function ltrim;
+use function method_exists;
 use function str_starts_with;
 use function trim;
 
@@ -3283,6 +3926,30 @@ final class ApiTestLegacyPostRequest extends Data
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.payload' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
+
+    /**
      * The one shape Laravel's rules cannot check: a JSON array sent for the object this body is.
      *
      * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
@@ -3309,7 +3976,11 @@ final class ApiTestLegacyPostRequest extends Data
      * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
      * this same method while a request is bound, and its body says nothing about their data: a request
      * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
-     * input, which is the body merged with the query, so every key of the body is there unchanged.
+     * input, which is the body merged with the query (and the route parameters), so every key of the body
+     * is there unchanged, and every other key is a query or route parameter. Asked only the first half, an
+     * empty body `{}` — or one whose keys a response echoed — passed for the response's own data, and its
+     * nested objects were judged as JSON arrays: `author expects object, got array`, `does not match any
+     * oneOf branch (expected object or null, got object)`.
      */
     private static function rawRequestBody(Validator $validator): ?string
     {
@@ -3334,6 +4005,13 @@ final class ApiTestLegacyPostRequest extends Data
         $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
         foreach ($body as $key => $value) {
             if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+        $route = $request->route();
+        $parameters = [...$request->query->all(), ...(is_object($route) && method_exists($route, 'parameters') ? $route->parameters() : [])];
+        foreach (array_keys($data) as $key) {
+            if (!array_key_exists($key, $body) && !array_key_exists($key, $parameters)) {
                 return null;
             }
         }
@@ -3464,6 +4142,31 @@ final class ApiTestRepresentations200 extends Data
 
         return $rules;
     }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.ok' => self::withBlankStringValidation(['boolean']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.ok' => 'boolean',
+            ],
+        ];
+    }
 }
 
 ===== ApiTestRepresentations200Csv.php =====
@@ -3588,6 +4291,30 @@ final class ApiTestRepresentations200Csv extends Data
 
         return $rules;
     }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.row' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
 }
 
 ===== ApiTestRepresentationsPostRequest.php =====
@@ -3607,10 +4334,13 @@ use LogicException;
 use Spatie\LaravelData\Data;
 
 use function array_key_exists;
+use function array_keys;
 use function is_array;
+use function is_object;
 use function is_string;
 use function json_decode;
 use function ltrim;
+use function method_exists;
 use function str_starts_with;
 use function trim;
 
@@ -3721,6 +4451,30 @@ final class ApiTestRepresentationsPostRequest extends Data
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.payload' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
+
+    /**
      * The one shape Laravel's rules cannot check: a JSON array sent for the object this body is.
      *
      * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
@@ -3747,7 +4501,11 @@ final class ApiTestRepresentationsPostRequest extends Data
      * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
      * this same method while a request is bound, and its body says nothing about their data: a request
      * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
-     * input, which is the body merged with the query, so every key of the body is there unchanged.
+     * input, which is the body merged with the query (and the route parameters), so every key of the body
+     * is there unchanged, and every other key is a query or route parameter. Asked only the first half, an
+     * empty body `{}` — or one whose keys a response echoed — passed for the response's own data, and its
+     * nested objects were judged as JSON arrays: `author expects object, got array`, `does not match any
+     * oneOf branch (expected object or null, got object)`.
      */
     private static function rawRequestBody(Validator $validator): ?string
     {
@@ -3775,6 +4533,13 @@ final class ApiTestRepresentationsPostRequest extends Data
                 return null;
             }
         }
+        $route = $request->route();
+        $parameters = [...$request->query->all(), ...(is_object($route) && method_exists($route, 'parameters') ? $route->parameters() : [])];
+        foreach (array_keys($data) as $key) {
+            if (!array_key_exists($key, $body) && !array_key_exists($key, $parameters)) {
+                return null;
+            }
+        }
 
         return $content;
     }
@@ -3797,10 +4562,13 @@ use LogicException;
 use Spatie\LaravelData\Data;
 
 use function array_key_exists;
+use function array_keys;
 use function is_array;
+use function is_object;
 use function is_string;
 use function json_decode;
 use function ltrim;
+use function method_exists;
 use function str_starts_with;
 use function trim;
 
@@ -3911,6 +4679,30 @@ final class ApiTestRepresentationsPostRequestForm extends Data
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.field' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
+
+    /**
      * The one shape Laravel's rules cannot check: a JSON array sent for the object this body is.
      *
      * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
@@ -3937,7 +4729,11 @@ final class ApiTestRepresentationsPostRequestForm extends Data
      * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
      * this same method while a request is bound, and its body says nothing about their data: a request
      * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
-     * input, which is the body merged with the query, so every key of the body is there unchanged.
+     * input, which is the body merged with the query (and the route parameters), so every key of the body
+     * is there unchanged, and every other key is a query or route parameter. Asked only the first half, an
+     * empty body `{}` — or one whose keys a response echoed — passed for the response's own data, and its
+     * nested objects were judged as JSON arrays: `author expects object, got array`, `does not match any
+     * oneOf branch (expected object or null, got object)`.
      */
     private static function rawRequestBody(Validator $validator): ?string
     {
@@ -3965,6 +4761,13 @@ final class ApiTestRepresentationsPostRequestForm extends Data
                 return null;
             }
         }
+        $route = $request->route();
+        $parameters = [...$request->query->all(), ...(is_object($route) && method_exists($route, 'parameters') ? $route->parameters() : [])];
+        foreach (array_keys($data) as $key) {
+            if (!array_key_exists($key, $body) && !array_key_exists($key, $parameters)) {
+                return null;
+            }
+        }
 
         return $content;
     }
@@ -3987,10 +4790,13 @@ use LogicException;
 use Spatie\LaravelData\Data;
 
 use function array_key_exists;
+use function array_keys;
 use function is_array;
+use function is_object;
 use function is_string;
 use function json_decode;
 use function ltrim;
+use function method_exists;
 use function str_starts_with;
 use function trim;
 
@@ -4101,6 +4907,30 @@ final class ApiTestRepresentationsPostRequestXml extends Data
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.element' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
+
+    /**
      * The one shape Laravel's rules cannot check: a JSON array sent for the object this body is.
      *
      * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
@@ -4127,7 +4957,11 @@ final class ApiTestRepresentationsPostRequestXml extends Data
      * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
      * this same method while a request is bound, and its body says nothing about their data: a request
      * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
-     * input, which is the body merged with the query, so every key of the body is there unchanged.
+     * input, which is the body merged with the query (and the route parameters), so every key of the body
+     * is there unchanged, and every other key is a query or route parameter. Asked only the first half, an
+     * empty body `{}` — or one whose keys a response echoed — passed for the response's own data, and its
+     * nested objects were judged as JSON arrays: `author expects object, got array`, `does not match any
+     * oneOf branch (expected object or null, got object)`.
      */
     private static function rawRequestBody(Validator $validator): ?string
     {
@@ -4152,6 +4986,13 @@ final class ApiTestRepresentationsPostRequestXml extends Data
         $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
         foreach ($body as $key => $value) {
             if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+        $route = $request->route();
+        $parameters = [...$request->query->all(), ...(is_object($route) && method_exists($route, 'parameters') ? $route->parameters() : [])];
+        foreach (array_keys($data) as $key) {
+            if (!array_key_exists($key, $body) && !array_key_exists($key, $parameters)) {
                 return null;
             }
         }
@@ -4293,6 +5134,34 @@ final class ApiTestSerializationByMatrixIdsLabelIdsGetQueryParams extends Data
 
         return $rules;
     }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.matrixIds' => self::withBlankStringValidation(['list']),
+                $prefix . '.matrixIds.*' => self::withBlankStringValidation(['integer']),
+                $prefix . '.labelIds' => self::withBlankStringValidation(['list']),
+                $prefix . '.labelIds.*' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.matrixIds.*' => 'integer',
+            ],
+        ];
+    }
 }
 
 ===== ApiTestSerializationGetQueryParams.php =====
@@ -4321,17 +5190,21 @@ use stdClass;
 
 use function array_column;
 use function array_key_exists;
+use function array_keys;
 use function array_map;
 use function array_merge;
 use function array_shift;
 use function explode;
 use function filter_var;
 use function get_object_vars;
+use function in_array;
 use function is_array;
 use function is_numeric;
+use function is_object;
 use function is_string;
 use function json_decode;
 use function json_encode;
+use function method_exists;
 use function property_exists;
 use function sprintf;
 use function str_starts_with;
@@ -4667,6 +5540,64 @@ final class ApiTestSerializationGetQueryParams extends Data
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        if (in_array(self::class, $visited, true)) {
+            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
+        }
+        $visited[] = self::class;
+
+        $parts = [
+            [
+                'rules' => [
+                    $prefix . '.exploded' => self::withBlankStringValidation(['list']),
+                    $prefix . '.exploded.*' => self::withBlankStringValidation(['integer']),
+                    $prefix . '.joined' => self::withBlankStringValidation(['list']),
+                    $prefix . '.joined.*' => self::withBlankStringValidation(['string']),
+                    $prefix . '.spaced' => self::withBlankStringValidation(['list']),
+                    $prefix . '.spaced.*' => self::withBlankStringValidation(['integer']),
+                    $prefix . '.piped' => self::withBlankStringValidation(['list']),
+                    $prefix . '.piped.*' => self::withBlankStringValidation(['string']),
+                    $prefix . '.nested' => self::withBlankStringValidation(['array']),
+                    $prefix . '.nested.*' => self::withBlankStringValidation(['string']),
+                    $prefix . '.flag' => self::withBlankStringValidation(['boolean']),
+                    $prefix . '.strict' => self::withBlankStringValidation(['string']),
+                    $prefix . '.raw' => self::withBlankStringValidation(['string']),
+                    $prefix . '.X-Codes' => self::withBlankStringValidation(['list']),
+                    $prefix . '.X-Codes.*' => self::withBlankStringValidation(['string']),
+                    $prefix . '.session' => self::withBlankStringValidation(['string']),
+                    $prefix . '.filter' => self::withBlankStringValidation(['array']),
+                ],
+                'objectPaths' => [
+                    $prefix . '.nested',
+                    $prefix . '.filter',
+                ],
+                'scalarPaths' => [
+                    $prefix . '.exploded.*' => 'integer',
+                    $prefix . '.spaced.*' => 'integer',
+                    $prefix . '.flag' => 'boolean',
+                ],
+            ],
+            ApiTestSerializationGetQueryParamsFilter::openApiNestedValidation($prefix . '.filter', $visited),
+        ];
+
+        return [
+            'rules' => array_merge(...array_column($parts, 'rules')),
+            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
+            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+        ];
+    }
+
+    /**
      * Paths whose schema is `type: object`. A `*` segment matches every index of an array.
      *
      * @var array<int, string>
@@ -4702,7 +5633,11 @@ final class ApiTestSerializationGetQueryParams extends Data
      * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
      * this same method while a request is bound, and its body says nothing about their data: a request
      * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
-     * input, which is the body merged with the query, so every key of the body is there unchanged.
+     * input, which is the body merged with the query (and the route parameters), so every key of the body
+     * is there unchanged, and every other key is a query or route parameter. Asked only the first half, an
+     * empty body `{}` — or one whose keys a response echoed — passed for the response's own data, and its
+     * nested objects were judged as JSON arrays: `author expects object, got array`, `does not match any
+     * oneOf branch (expected object or null, got object)`.
      */
     private static function rawRequestBody(Validator $validator): ?string
     {
@@ -4727,6 +5662,13 @@ final class ApiTestSerializationGetQueryParams extends Data
         $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
         foreach ($body as $key => $value) {
             if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+        $route = $request->route();
+        $parameters = [...$request->query->all(), ...(is_object($route) && method_exists($route, 'parameters') ? $route->parameters() : [])];
+        foreach (array_keys($data) as $key) {
+            if (!array_key_exists($key, $body) && !array_key_exists($key, $parameters)) {
                 return null;
             }
         }
@@ -4819,9 +5761,6 @@ use Spatie\LaravelData\Optional;
 use Spatie\LaravelData\Transformers\DateTimeInterfaceTransformer;
 use stdClass;
 
-use function array_column;
-use function array_merge;
-use function in_array;
 use function is_string;
 use function json_encode;
 use function trim;
@@ -4982,27 +5921,15 @@ final class ApiTestSerializationGetQueryParamsFilter extends Data
      */
     public static function openApiNestedValidation(string $prefix, array $visited): array
     {
-        if (in_array(self::class, $visited, true)) {
-            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
-        }
-        $visited[] = self::class;
-
-        $parts = [
-            [
-                'rules' => [
-                    $prefix . '.since' => self::withBlankStringValidation(['date_format:Y-m-d']),
-                ],
-                'objectPaths' => [
-                ],
-                'scalarPaths' => [
-                ],
-            ],
-        ];
-
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
         return [
-            'rules' => array_merge(...array_column($parts, 'rules')),
-            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
-            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+            'rules' => [
+                $prefix . '.since' => self::withBlankStringValidation(['date_format:Y-m-d']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
         ];
     }
 }
@@ -5168,6 +6095,30 @@ final class ApiTestSharedPathGetQueryParams extends Data
 
         return $rules;
     }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.cursor' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
 }
 
 ===== ApiTestTenantsDeleteQueryParams.php =====
@@ -5306,6 +6257,33 @@ final class ApiTestTenantsDeleteQueryParams extends Data
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.tenant' => self::withBlankStringValidation(['integer']),
+                $prefix . '.region' => self::withBlankStringValidation(['string']),
+                $prefix . '.tenant' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.tenant' => 'integer',
+            ],
+        ];
     }
 }
 
@@ -5514,6 +6492,36 @@ final class ApiTestTenantsGetQueryParams extends Data
 
         return $rules;
     }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.tenant' => self::withBlankStringValidation(['integer']),
+                $prefix . '.region' => self::withBlankStringValidation(['integer']),
+                $prefix . '.tenant' => self::withBlankStringValidation(['string']),
+                $prefix . '.verbose' => self::withBlankStringValidation(['boolean']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.tenant' => 'integer',
+                $prefix . '.region' => 'integer',
+                $prefix . '.verbose' => 'boolean',
+            ],
+        ];
+    }
 }
 
 ===== ApplicatorRefs.php =====
@@ -5534,7 +6542,11 @@ use OverflowException;
 use Spatie\LaravelData\Attributes\WithoutValidation;
 use Spatie\LaravelData\Contracts\BaseData;
 use Spatie\LaravelData\Data;
+use Spatie\LaravelData\DataPipeline;
+use Spatie\LaravelData\DataPipes\DefaultValuesDataPipe;
 use Spatie\LaravelData\Optional;
+use Spatie\LaravelData\Support\Creation\CreationContext;
+use Spatie\LaravelData\Support\DataClass;
 use Spatie\LaravelData\Support\Transformation\TransformationContext;
 use Spatie\LaravelData\Support\Transformation\TransformationContextFactory;
 use stdClass;
@@ -5563,6 +6575,7 @@ use function is_object;
 use function is_string;
 use function json_decode;
 use function mb_strlen;
+use function method_exists;
 use function preg_match;
 use function preg_match_all;
 use function property_exists;
@@ -5788,12 +6801,12 @@ final class ApplicatorRefs extends Data
         public readonly array|Optional $positions = new Optional(),
         public readonly array|Optional $rest = new Optional(),
         public readonly array|Optional $closedPair = new Optional(),
-        public readonly mixed $impossible = null,
+        public readonly mixed $impossible = new Optional(),
         public readonly string|Optional $vacuous = new Optional(),
         public readonly string|Optional $имя = new Optional(),
         public readonly string|Optional $名前 = new Optional(),
-        public readonly mixed $forbiddenKey = null,
-        public readonly mixed $neverMatches = null,
+        public readonly mixed $forbiddenKey = new Optional(),
+        public readonly mixed $neverMatches = new Optional(),
         public readonly array|Optional $closedFirstSlot = new Optional(),
         #[WithoutValidation]
         public readonly ApplicatorRefsPoisonedKey|Optional $poisonedKey = new Optional(),
@@ -5802,6 +6815,32 @@ final class ApplicatorRefs extends Data
         #[WithoutValidation]
         public readonly ApplicatorRefsKeyed|Optional $keyed = new Optional(),
     ) {
+    }
+
+    /**
+     * laravel-data's own pipeline.
+     *
+     * An optional property with no type is `mixed`, and laravel-data fills its missing key with `null`:
+     * the key it was never sent then went out of `toArray()` as `"x": null`. Absent is `Optional`, as
+     * for every typed optional property, so the key stays out.
+     */
+    public static function pipeline(): DataPipeline
+    {
+        return parent::pipeline()->replace(
+            pipe: DefaultValuesDataPipe::class,
+            replacement: new class extends DefaultValuesDataPipe {
+                public function handle(mixed $payload, DataClass $class, array $properties, CreationContext $creationContext): array
+                {
+                    foreach (['impossible', 'forbiddenKey', 'neverMatches'] as $name) {
+                        if (!array_key_exists($name, $properties)) {
+                            $properties[$name] = Optional::create();
+                        }
+                    }
+
+                    return parent::handle($payload, $class, $properties, $creationContext);
+                }
+            },
+        );
     }
 
     /**
@@ -5983,6 +7022,60 @@ final class ApplicatorRefs extends Data
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        if (in_array(self::class, $visited, true)) {
+            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
+        }
+        $visited[] = self::class;
+
+        $parts = [
+            [
+                'rules' => [
+                    $prefix . '.mustContain' => self::withBlankStringValidation(['list']),
+                    $prefix . '.mustContain.*' => self::withBlankStringValidation(['array']),
+                    $prefix . '.positions' => self::withBlankStringValidation(['list']),
+                    $prefix . '.rest' => self::withBlankStringValidation(['list']),
+                    $prefix . '.closedPair' => self::withBlankStringValidation(['list']),
+                    $prefix . '.vacuous' => self::withBlankStringValidation(['string', 'min:3']),
+                    $prefix . '.имя' => self::withBlankStringValidation(['string']),
+                    $prefix . '.名前' => self::withBlankStringValidation(['string']),
+                    $prefix . '.closedFirstSlot' => self::withBlankStringValidation(['list']),
+                    $prefix . '.poisonedKey' => self::withBlankStringValidation(['array']),
+                    $prefix . '.conditional' => self::withBlankStringValidation(['array']),
+                    $prefix . '.keyed' => self::withBlankStringValidation(['array']),
+                ],
+                'objectPaths' => [
+                    $prefix . '.mustContain.*',
+                    $prefix . '.poisonedKey',
+                    $prefix . '.conditional',
+                    $prefix . '.keyed',
+                ],
+                'scalarPaths' => [
+                ],
+            ],
+            ApplicatorRefsPoisonedKey::openApiNestedValidation($prefix . '.poisonedKey', $visited),
+            ApplicatorRefsConditional::openApiNestedValidation($prefix . '.conditional', $visited),
+            ApplicatorRefsKeyed::openApiNestedValidation($prefix . '.keyed', $visited),
+        ];
+
+        return [
+            'rules' => array_merge(...array_column($parts, 'rules')),
+            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
+            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+        ];
+    }
+
+    /**
      * Paths whose schema is `type: object`. A `*` segment matches every index of an array.
      *
      * @var array<int, string>
@@ -6100,7 +7193,11 @@ final class ApplicatorRefs extends Data
      * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
      * this same method while a request is bound, and its body says nothing about their data: a request
      * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
-     * input, which is the body merged with the query, so every key of the body is there unchanged.
+     * input, which is the body merged with the query (and the route parameters), so every key of the body
+     * is there unchanged, and every other key is a query or route parameter. Asked only the first half, an
+     * empty body `{}` — or one whose keys a response echoed — passed for the response's own data, and its
+     * nested objects were judged as JSON arrays: `author expects object, got array`, `does not match any
+     * oneOf branch (expected object or null, got object)`.
      */
     private static function rawRequestBody(Validator $validator): ?string
     {
@@ -6125,6 +7222,13 @@ final class ApplicatorRefs extends Data
         $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
         foreach ($body as $key => $value) {
             if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+        $route = $request->route();
+        $parameters = [...$request->query->all(), ...(is_object($route) && method_exists($route, 'parameters') ? $route->parameters() : [])];
+        foreach (array_keys($data) as $key) {
+            if (!array_key_exists($key, $body) && !array_key_exists($key, $parameters)) {
                 return null;
             }
         }
@@ -6649,11 +7753,9 @@ use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 use stdClass;
 
-use function array_column;
 use function array_is_list;
 use function array_key_exists;
 use function array_map;
-use function array_merge;
 use function array_slice;
 use function floor;
 use function get_object_vars;
@@ -6852,27 +7954,15 @@ final class ApplicatorRefsConditional extends Data
      */
     public static function openApiNestedValidation(string $prefix, array $visited): array
     {
-        if (in_array(self::class, $visited, true)) {
-            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
-        }
-        $visited[] = self::class;
-
-        $parts = [
-            [
-                'rules' => [
-                    $prefix . '.label' => self::withBlankStringValidation(['string']),
-                ],
-                'objectPaths' => [
-                ],
-                'scalarPaths' => [
-                ],
-            ],
-        ];
-
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
         return [
-            'rules' => array_merge(...array_column($parts, 'rules')),
-            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
-            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+            'rules' => [
+                $prefix . '.label' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
         ];
     }
 
@@ -7185,11 +8275,9 @@ use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 use stdClass;
 
-use function array_column;
 use function array_is_list;
 use function array_key_exists;
 use function array_map;
-use function array_merge;
 use function array_slice;
 use function floor;
 use function get_object_vars;
@@ -7385,27 +8473,15 @@ final class ApplicatorRefsKeyed extends Data
      */
     public static function openApiNestedValidation(string $prefix, array $visited): array
     {
-        if (in_array(self::class, $visited, true)) {
-            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
-        }
-        $visited[] = self::class;
-
-        $parts = [
-            [
-                'rules' => [
-                    $prefix . '.trigger' => self::withBlankStringValidation(['string']),
-                ],
-                'objectPaths' => [
-                ],
-                'scalarPaths' => [
-                ],
-            ],
-        ];
-
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
         return [
-            'rules' => array_merge(...array_column($parts, 'rules')),
-            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
-            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+            'rules' => [
+                $prefix . '.trigger' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
         ];
     }
 
@@ -7706,11 +8782,9 @@ use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 use stdClass;
 
-use function array_column;
 use function array_is_list;
 use function array_key_exists;
 use function array_map;
-use function array_merge;
 use function array_slice;
 use function get_object_vars;
 use function implode;
@@ -7893,27 +8967,15 @@ final class ApplicatorRefsPoisonedKey extends Data
      */
     public static function openApiNestedValidation(string $prefix, array $visited): array
     {
-        if (in_array(self::class, $visited, true)) {
-            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
-        }
-        $visited[] = self::class;
-
-        $parts = [
-            [
-                'rules' => [
-                    $prefix . '.trigger' => self::withBlankStringValidation(['string']),
-                ],
-                'objectPaths' => [
-                ],
-                'scalarPaths' => [
-                ],
-            ],
-        ];
-
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
         return [
-            'rules' => array_merge(...array_column($parts, 'rules')),
-            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
-            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+            'rules' => [
+                $prefix . '.trigger' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
         ];
     }
 
@@ -8290,6 +9352,34 @@ final class AwkwardNames extends Data
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.plain' => self::withBlankStringValidation(['string']),
+                $prefix . '.it\'s' => self::withBlankStringValidation(['string', 'min:2']),
+                $prefix . '.back\slash' => self::withBlankStringValidation(['string']),
+                $prefix . '.both\\\'s' => self::withBlankStringValidation(['integer', 'min:1']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.both\\\'s' => 'integer',
+            ],
+        ];
+    }
+
+    /**
      * Paths whose schema is `integer` or `number`, with that type. A `*` segment matches every index of
      * an array and every key of a map.
      *
@@ -8389,10 +9479,13 @@ use LogicException;
 use Spatie\LaravelData\Data;
 
 use function array_key_exists;
+use function array_keys;
 use function is_array;
+use function is_object;
 use function is_string;
 use function json_decode;
 use function ltrim;
+use function method_exists;
 use function str_starts_with;
 use function trim;
 
@@ -8503,6 +9596,30 @@ final class CallbackJobDonePostRequest extends Data
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.state' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
+
+    /**
      * The one shape Laravel's rules cannot check: a JSON array sent for the object this body is.
      *
      * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
@@ -8529,7 +9646,11 @@ final class CallbackJobDonePostRequest extends Data
      * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
      * this same method while a request is bound, and its body says nothing about their data: a request
      * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
-     * input, which is the body merged with the query, so every key of the body is there unchanged.
+     * input, which is the body merged with the query (and the route parameters), so every key of the body
+     * is there unchanged, and every other key is a query or route parameter. Asked only the first half, an
+     * empty body `{}` — or one whose keys a response echoed — passed for the response's own data, and its
+     * nested objects were judged as JSON arrays: `author expects object, got array`, `does not match any
+     * oneOf branch (expected object or null, got object)`.
      */
     private static function rawRequestBody(Validator $validator): ?string
     {
@@ -8557,6 +9678,13 @@ final class CallbackJobDonePostRequest extends Data
                 return null;
             }
         }
+        $route = $request->route();
+        $parameters = [...$request->query->all(), ...(is_object($route) && method_exists($route, 'parameters') ? $route->parameters() : [])];
+        foreach (array_keys($data) as $key) {
+            if (!array_key_exists($key, $body) && !array_key_exists($key, $parameters)) {
+                return null;
+            }
+        }
 
         return $content;
     }
@@ -8579,10 +9707,13 @@ use LogicException;
 use Spatie\LaravelData\Data;
 
 use function array_key_exists;
+use function array_keys;
 use function is_array;
+use function is_object;
 use function is_string;
 use function json_decode;
 use function ltrim;
+use function method_exists;
 use function str_starts_with;
 use function trim;
 
@@ -8693,6 +9824,30 @@ final class CallbackJobFailedPostRequest extends Data
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.failure' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
+
+    /**
      * The one shape Laravel's rules cannot check: a JSON array sent for the object this body is.
      *
      * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
@@ -8719,7 +9874,11 @@ final class CallbackJobFailedPostRequest extends Data
      * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
      * this same method while a request is bound, and its body says nothing about their data: a request
      * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
-     * input, which is the body merged with the query, so every key of the body is there unchanged.
+     * input, which is the body merged with the query (and the route parameters), so every key of the body
+     * is there unchanged, and every other key is a query or route parameter. Asked only the first half, an
+     * empty body `{}` — or one whose keys a response echoed — passed for the response's own data, and its
+     * nested objects were judged as JSON arrays: `author expects object, got array`, `does not match any
+     * oneOf branch (expected object or null, got object)`.
      */
     private static function rawRequestBody(Validator $validator): ?string
     {
@@ -8744,6 +9903,13 @@ final class CallbackJobFailedPostRequest extends Data
         $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
         foreach ($body as $key => $value) {
             if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+        $route = $request->route();
+        $parameters = [...$request->query->all(), ...(is_object($route) && method_exists($route, 'parameters') ? $route->parameters() : [])];
+        foreach (array_keys($data) as $key) {
+            if (!array_key_exists($key, $body) && !array_key_exists($key, $parameters)) {
                 return null;
             }
         }
@@ -8874,6 +10040,31 @@ final class Cat extends Data implements Animal, Animal2
 
         return $rules;
     }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.name' => self::withBlankStringValidation(['string']),
+                $prefix . '.meow' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
 }
 
 ===== ChainLink.php =====
@@ -8918,6 +10109,7 @@ use function is_iterable;
 use function is_object;
 use function is_string;
 use function json_decode;
+use function method_exists;
 use function preg_match;
 use function preg_match_all;
 use function property_exists;
@@ -9273,7 +10465,11 @@ final class ChainLink extends Data
      * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
      * this same method while a request is bound, and its body says nothing about their data: a request
      * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
-     * input, which is the body merged with the query, so every key of the body is there unchanged.
+     * input, which is the body merged with the query (and the route parameters), so every key of the body
+     * is there unchanged, and every other key is a query or route parameter. Asked only the first half, an
+     * empty body `{}` — or one whose keys a response echoed — passed for the response's own data, and its
+     * nested objects were judged as JSON arrays: `author expects object, got array`, `does not match any
+     * oneOf branch (expected object or null, got object)`.
      */
     private static function rawRequestBody(Validator $validator): ?string
     {
@@ -9298,6 +10494,13 @@ final class ChainLink extends Data
         $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
         foreach ($body as $key => $value) {
             if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+        $route = $request->route();
+        $parameters = [...$request->query->all(), ...(is_object($route) && method_exists($route, 'parameters') ? $route->parameters() : [])];
+        foreach (array_keys($data) as $key) {
+            if (!array_key_exists($key, $body) && !array_key_exists($key, $parameters)) {
                 return null;
             }
         }
@@ -9572,6 +10775,7 @@ use function is_iterable;
 use function is_object;
 use function is_string;
 use function json_decode;
+use function method_exists;
 use function preg_match;
 use function preg_match_all;
 use function property_exists;
@@ -9930,7 +11134,11 @@ final class ChainMiddle extends Data
      * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
      * this same method while a request is bound, and its body says nothing about their data: a request
      * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
-     * input, which is the body merged with the query, so every key of the body is there unchanged.
+     * input, which is the body merged with the query (and the route parameters), so every key of the body
+     * is there unchanged, and every other key is a query or route parameter. Asked only the first half, an
+     * empty body `{}` — or one whose keys a response echoed — passed for the response's own data, and its
+     * nested objects were judged as JSON arrays: `author expects object, got array`, `does not match any
+     * oneOf branch (expected object or null, got object)`.
      */
     private static function rawRequestBody(Validator $validator): ?string
     {
@@ -9955,6 +11163,13 @@ final class ChainMiddle extends Data
         $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
         foreach ($body as $key => $value) {
             if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+        $route = $request->route();
+        $parameters = [...$request->query->all(), ...(is_object($route) && method_exists($route, 'parameters') ? $route->parameters() : [])];
+        foreach (array_keys($data) as $key) {
+            if (!array_key_exists($key, $body) && !array_key_exists($key, $parameters)) {
                 return null;
             }
         }
@@ -10219,9 +11434,6 @@ use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 
-use function array_column;
-use function array_merge;
-use function in_array;
 use function is_string;
 use function trim;
 
@@ -10341,27 +11553,15 @@ final class ChainTag extends Data
      */
     public static function openApiNestedValidation(string $prefix, array $visited): array
     {
-        if (in_array(self::class, $visited, true)) {
-            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
-        }
-        $visited[] = self::class;
-
-        $parts = [
-            [
-                'rules' => [
-                    $prefix . '.label' => self::withBlankStringValidation(['string', 'min:2']),
-                ],
-                'objectPaths' => [
-                ],
-                'scalarPaths' => [
-                ],
-            ],
-        ];
-
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
         return [
-            'rules' => array_merge(...array_column($parts, 'rules')),
-            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
-            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+            'rules' => [
+                $prefix . '.label' => self::withBlankStringValidation(['string', 'min:2']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
         ];
     }
 }
@@ -10499,6 +11699,32 @@ final class Circle extends Shape
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.kind' => self::withBlankStringValidation(['string']),
+                $prefix . '.radius' => self::withBlankStringValidation(['integer']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.radius' => 'integer',
+            ],
+        ];
+    }
+
+    /**
      * Paths whose schema is `integer` or `number`, with that type. A `*` segment matches every index of
      * an array and every key of a map.
      *
@@ -10612,8 +11838,10 @@ use function is_array;
 use function is_bool;
 use function is_finite;
 use function is_float;
+use function is_object;
 use function is_string;
 use function json_decode;
+use function method_exists;
 use function preg_split;
 use function property_exists;
 use function sprintf;
@@ -10799,6 +12027,43 @@ final class ContainerAliases extends Data
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.listOfLists' => self::withBlankStringValidation(['list']),
+                $prefix . '.listOfLists.*' => self::withBlankStringValidation(['list']),
+                $prefix . '.listOfLists.*.*' => self::withBlankStringValidation(['string', 'min:2']),
+                $prefix . '.listOfMaps' => self::withBlankStringValidation(['list']),
+                $prefix . '.listOfMaps.*' => self::withBlankStringValidation(['array']),
+                $prefix . '.listOfMaps.*.*' => self::withBlankStringValidation(['integer', 'min:0']),
+                $prefix . '.mapOfLists' => self::withBlankStringValidation(['array']),
+                $prefix . '.mapOfLists.*' => self::withBlankStringValidation(['list']),
+                $prefix . '.mapOfLists.*.*' => self::withBlankStringValidation(['string', 'min:2']),
+                $prefix . '.plain' => self::withBlankStringValidation(['list']),
+                $prefix . '.plain.*' => self::withBlankStringValidation(['string', 'min:2']),
+            ],
+            'objectPaths' => [
+                $prefix . '.listOfMaps.*',
+                $prefix . '.mapOfLists',
+            ],
+            'scalarPaths' => [
+                $prefix . '.listOfMaps.*.*' => 'integer',
+            ],
+        ];
+    }
+
+    /**
      * Paths whose schema is `type: object`. A `*` segment matches every index of an array.
      *
      * @var array<int, string>
@@ -10900,7 +12165,11 @@ final class ContainerAliases extends Data
      * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
      * this same method while a request is bound, and its body says nothing about their data: a request
      * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
-     * input, which is the body merged with the query, so every key of the body is there unchanged.
+     * input, which is the body merged with the query (and the route parameters), so every key of the body
+     * is there unchanged, and every other key is a query or route parameter. Asked only the first half, an
+     * empty body `{}` — or one whose keys a response echoed — passed for the response's own data, and its
+     * nested objects were judged as JSON arrays: `author expects object, got array`, `does not match any
+     * oneOf branch (expected object or null, got object)`.
      */
     private static function rawRequestBody(Validator $validator): ?string
     {
@@ -10925,6 +12194,13 @@ final class ContainerAliases extends Data
         $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
         foreach ($body as $key => $value) {
             if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+        $route = $request->route();
+        $parameters = [...$request->query->all(), ...(is_object($route) && method_exists($route, 'parameters') ? $route->parameters() : [])];
+        foreach (array_keys($data) as $key) {
+            if (!array_key_exists($key, $body) && !array_key_exists($key, $parameters)) {
                 return null;
             }
         }
@@ -11108,6 +12384,7 @@ use function is_string;
 use function json_decode;
 use function json_encode;
 use function ksort;
+use function method_exists;
 use function pack;
 use function preg_match;
 use function preg_match_all;
@@ -11515,6 +12792,56 @@ final class Containers extends Data
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        if (in_array(self::class, $visited, true)) {
+            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
+        }
+        $visited[] = self::class;
+
+        $parts = [
+            [
+                'rules' => [
+                    $prefix . '.dates' => self::withBlankStringValidation(['list']),
+                    $prefix . '.dates.*' => self::withBlankStringValidation(['string', 'date_format:Y-m-d']),
+                    $prefix . '.datesByDay' => self::withBlankStringValidation(['array']),
+                    $prefix . '.datesByDay.*' => self::withBlankStringValidation(['string', 'date_format:Y-m-d']),
+                    $prefix . '.timestamps' => self::withBlankStringValidation(['list']),
+                    $prefix . '.timestamps.*' => self::withBlankStringValidation(['string', static function (string $attribute, mixed $value, Closure $fail): void { if (is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}((\.\d+)?(Z|z|[+-]([01]\d|2[0-3]):[0-5]\d))?| \d{2}:\d{2}:\d{2})$/D', $value) === 1) { foreach (['Y-m-d\TH:i:sp', 'Y-m-d\TH:i:s.up', 'Y-m-d H:i:s', 'Y-m-d\TH:i:s'] as $format) { if (DateTimeImmutable::createFromFormat($format, $value) !== false && DateTimeImmutable::getLastErrors() === false) { return; } } } $fail('validation.date_format')->translate(['format' => 'Y-m-d\TH:i:sP']); }]),
+                    $prefix . '.shapes' => self::withBlankStringValidation(['list']),
+                    $prefix . '.shapes.*' => self::withBlankStringValidation(['array']),
+                    $prefix . '.tagsByKey' => self::withBlankStringValidation(['array']),
+                    $prefix . '.tagsByKey.*' => self::withBlankStringValidation(['array']),
+                ],
+                'objectPaths' => [
+                    $prefix . '.datesByDay',
+                    $prefix . '.shapes.*',
+                    $prefix . '.tagsByKey',
+                    $prefix . '.tagsByKey.*',
+                ],
+                'scalarPaths' => [
+                ],
+            ],
+            Tag::openApiNestedValidation($prefix . '.tagsByKey.*', $visited),
+        ];
+
+        return [
+            'rules' => array_merge(...array_column($parts, 'rules')),
+            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
+            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+        ];
+    }
+
+    /**
      * Paths whose schema is `type: object`. A `*` segment matches every index of an array.
      *
      * @var array<int, string>
@@ -11634,7 +12961,11 @@ final class Containers extends Data
      * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
      * this same method while a request is bound, and its body says nothing about their data: a request
      * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
-     * input, which is the body merged with the query, so every key of the body is there unchanged.
+     * input, which is the body merged with the query (and the route parameters), so every key of the body
+     * is there unchanged, and every other key is a query or route parameter. Asked only the first half, an
+     * empty body `{}` — or one whose keys a response echoed — passed for the response's own data, and its
+     * nested objects were judged as JSON arrays: `author expects object, got array`, `does not match any
+     * oneOf branch (expected object or null, got object)`.
      */
     private static function rawRequestBody(Validator $validator): ?string
     {
@@ -11659,6 +12990,13 @@ final class Containers extends Data
         $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
         foreach ($body as $key => $value) {
             if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+        $route = $request->route();
+        $parameters = [...$request->query->all(), ...(is_object($route) && method_exists($route, 'parameters') ? $route->parameters() : [])];
+        foreach (array_keys($data) as $key) {
+            if (!array_key_exists($key, $body) && !array_key_exists($key, $parameters)) {
                 return null;
             }
         }
@@ -12258,6 +13596,29 @@ final class CountMap extends Data
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
+
+    /**
      * The half of the schema Laravel's rule vocabulary cannot express — composition, conditionals,
      * `contains`, `unevaluated*`, `content*`, `propertyNames`, `discriminator` — checked against the
      * raw payload the validator already holds.
@@ -12830,6 +14191,33 @@ final class Discriminator1 extends Discriminator
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.type' => self::withBlankStringValidation([Rule::enum(DiscriminatorType::class)]),
+                $prefix . '.name' => self::withBlankStringValidation(['nullable', 'string']),
+                $prefix . '.id' => self::withBlankStringValidation(['integer']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.id' => 'integer',
+            ],
+        ];
+    }
+
+    /**
      * Paths whose schema is `integer` or `number`, with that type. A `*` segment matches every index of
      * an array and every key of a map.
      *
@@ -13048,6 +14436,34 @@ final class Discriminator2 extends Discriminator
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.type' => self::withBlankStringValidation([Rule::enum(DiscriminatorType::class)]),
+                $prefix . '.name' => self::withBlankStringValidation(['nullable', 'string']),
+                $prefix . '.id' => self::withBlankStringValidation(['integer']),
+                $prefix . '.NAme' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.id' => 'integer',
+            ],
+        ];
     }
 
     /**
@@ -13274,6 +14690,31 @@ final class Dog extends Data implements Animal, Animal2
 
         return $rules;
     }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.name' => self::withBlankStringValidation(['string']),
+                $prefix . '.bark' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
 }
 
 ===== Dog2.php =====
@@ -13398,6 +14839,31 @@ final class Dog2 extends Data implements Animal2
 
         return $rules;
     }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.name' => self::withBlankStringValidation(['string']),
+                $prefix . '.bark' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
 }
 
 ===== FileRequest.php =====
@@ -13418,10 +14884,13 @@ use Spatie\LaravelData\Data;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 use function array_key_exists;
+use function array_keys;
 use function is_array;
+use function is_object;
 use function is_string;
 use function json_decode;
 use function ltrim;
+use function method_exists;
 use function str_starts_with;
 use function trim;
 
@@ -13534,6 +15003,32 @@ final class FileRequest extends Data
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.file' => self::withBlankStringValidation(['file']),
+                $prefix . '.name' => self::withBlankStringValidation(['string']),
+                $prefix . '.surname' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
+
+    /**
      * The one shape Laravel's rules cannot check: a JSON array sent for the object this body is.
      *
      * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
@@ -13560,7 +15055,11 @@ final class FileRequest extends Data
      * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
      * this same method while a request is bound, and its body says nothing about their data: a request
      * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
-     * input, which is the body merged with the query, so every key of the body is there unchanged.
+     * input, which is the body merged with the query (and the route parameters), so every key of the body
+     * is there unchanged, and every other key is a query or route parameter. Asked only the first half, an
+     * empty body `{}` — or one whose keys a response echoed — passed for the response's own data, and its
+     * nested objects were judged as JSON arrays: `author expects object, got array`, `does not match any
+     * oneOf branch (expected object or null, got object)`.
      */
     private static function rawRequestBody(Validator $validator): ?string
     {
@@ -13585,6 +15084,13 @@ final class FileRequest extends Data
         $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
         foreach ($body as $key => $value) {
             if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+        $route = $request->route();
+        $parameters = [...$request->query->all(), ...(is_object($route) && method_exists($route, 'parameters') ? $route->parameters() : [])];
+        foreach (array_keys($data) as $key) {
+            if (!array_key_exists($key, $body) && !array_key_exists($key, $parameters)) {
                 return null;
             }
         }
@@ -13631,6 +15137,7 @@ use function is_float;
 use function is_object;
 use function is_string;
 use function json_decode;
+use function method_exists;
 use function preg_last_error;
 use function preg_match;
 use function preg_match_all;
@@ -13828,6 +15335,38 @@ final class ItemBounds extends Data
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.scores' => self::withBlankStringValidation(['list']),
+                $prefix . '.scores.*' => self::withBlankStringValidation(['integer', 'min:5']),
+                $prefix . '.scoresByKey' => self::withBlankStringValidation(['array']),
+                $prefix . '.scoresByKey.*' => self::withBlankStringValidation(['integer', 'min:5']),
+                $prefix . '.codes' => self::withBlankStringValidation(['list']),
+                $prefix . '.codes.*' => self::withBlankStringValidation(['string', 'min:2']),
+            ],
+            'objectPaths' => [
+                $prefix . '.scoresByKey',
+            ],
+            'scalarPaths' => [
+                $prefix . '.scores.*' => 'integer',
+                $prefix . '.scoresByKey.*' => 'integer',
+            ],
+        ];
+    }
+
+    /**
      * Paths whose schema is `type: object`. A `*` segment matches every index of an array.
      *
      * @var array<int, string>
@@ -13949,7 +15488,11 @@ final class ItemBounds extends Data
      * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
      * this same method while a request is bound, and its body says nothing about their data: a request
      * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
-     * input, which is the body merged with the query, so every key of the body is there unchanged.
+     * input, which is the body merged with the query (and the route parameters), so every key of the body
+     * is there unchanged, and every other key is a query or route parameter. Asked only the first half, an
+     * empty body `{}` — or one whose keys a response echoed — passed for the response's own data, and its
+     * nested objects were judged as JSON arrays: `author expects object, got array`, `does not match any
+     * oneOf branch (expected object or null, got object)`.
      */
     private static function rawRequestBody(Validator $validator): ?string
     {
@@ -13974,6 +15517,13 @@ final class ItemBounds extends Data
         $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
         foreach ($body as $key => $value) {
             if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+        $route = $request->route();
+        $parameters = [...$request->query->all(), ...(is_object($route) && method_exists($route, 'parameters') ? $route->parameters() : [])];
+        foreach (array_keys($data) as $key) {
+            if (!array_key_exists($key, $body) && !array_key_exists($key, $parameters)) {
                 return null;
             }
         }
@@ -14386,6 +15936,7 @@ use function is_string;
 use function json_decode;
 use function json_encode;
 use function ksort;
+use function method_exists;
 use function pack;
 use function preg_match;
 use function preg_match_all;
@@ -14631,6 +16182,63 @@ final class NestedContainers extends Data
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.matrix' => self::withBlankStringValidation(['list']),
+                $prefix . '.matrix.*' => self::withBlankStringValidation(['list']),
+                $prefix . '.matrix.*.*' => self::withBlankStringValidation(['integer', 'min:0']),
+                $prefix . '.rowsOfMaps' => self::withBlankStringValidation(['list']),
+                $prefix . '.rowsOfMaps.*' => self::withBlankStringValidation(['array']),
+                $prefix . '.rowsOfMaps.*.*' => self::withBlankStringValidation(['string']),
+                $prefix . '.listsByKey' => self::withBlankStringValidation(['array']),
+                $prefix . '.listsByKey.*' => self::withBlankStringValidation(['list']),
+                $prefix . '.listsByKey.*.*' => self::withBlankStringValidation(['string']),
+                $prefix . '.mapsByKey' => self::withBlankStringValidation(['array']),
+                $prefix . '.mapsByKey.*' => self::withBlankStringValidation(['array']),
+                $prefix . '.mapsByKey.*.*' => self::withBlankStringValidation(['integer']),
+                $prefix . '.dateRows' => self::withBlankStringValidation(['list']),
+                $prefix . '.dateRows.*' => self::withBlankStringValidation(['list']),
+                $prefix . '.dateRows.*.*' => self::withBlankStringValidation(['string', 'date_format:Y-m-d']),
+                $prefix . '.numRows' => self::withBlankStringValidation(['list']),
+                $prefix . '.numRows.*' => self::withBlankStringValidation(['list']),
+                $prefix . '.numRows.*.*' => self::withBlankStringValidation(['numeric']),
+                $prefix . '.enumRows' => self::withBlankStringValidation(['list']),
+                $prefix . '.enumRows.*' => self::withBlankStringValidation(['list']),
+                $prefix . '.enumRows.*.*' => self::withBlankStringValidation(['string']),
+                $prefix . '.tagRows' => self::withBlankStringValidation(['list']),
+                $prefix . '.tagRows.*' => self::withBlankStringValidation(['list']),
+                $prefix . '.tagRows.*.*' => self::withBlankStringValidation(['array']),
+                $prefix . '.tagRows.*.*.id' => self::withBlankStringValidation(['integer']),
+                $prefix . '.tagRows.*.*.name' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+                $prefix . '.rowsOfMaps.*',
+                $prefix . '.listsByKey',
+                $prefix . '.mapsByKey',
+                $prefix . '.mapsByKey.*',
+                $prefix . '.tagRows.*.*',
+            ],
+            'scalarPaths' => [
+                $prefix . '.matrix.*.*' => 'integer',
+                $prefix . '.mapsByKey.*.*' => 'integer',
+                $prefix . '.numRows.*.*' => 'number',
+            ],
+        ];
+    }
+
+    /**
      * Paths whose schema is `type: object`. A `*` segment matches every index of an array.
      *
      * @var array<int, string>
@@ -14757,7 +16365,11 @@ final class NestedContainers extends Data
      * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
      * this same method while a request is bound, and its body says nothing about their data: a request
      * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
-     * input, which is the body merged with the query, so every key of the body is there unchanged.
+     * input, which is the body merged with the query (and the route parameters), so every key of the body
+     * is there unchanged, and every other key is a query or route parameter. Asked only the first half, an
+     * empty body `{}` — or one whose keys a response echoed — passed for the response's own data, and its
+     * nested objects were judged as JSON arrays: `author expects object, got array`, `does not match any
+     * oneOf branch (expected object or null, got object)`.
      */
     private static function rawRequestBody(Validator $validator): ?string
     {
@@ -14782,6 +16394,13 @@ final class NestedContainers extends Data
         $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
         foreach ($body as $key => $value) {
             if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+        $route = $request->route();
+        $parameters = [...$request->query->all(), ...(is_object($route) && method_exists($route, 'parameters') ? $route->parameters() : [])];
+        foreach (array_keys($data) as $key) {
+            if (!array_key_exists($key, $body) && !array_key_exists($key, $parameters)) {
                 return null;
             }
         }
@@ -15169,8 +16788,10 @@ use function is_array;
 use function is_bool;
 use function is_finite;
 use function is_float;
+use function is_object;
 use function is_string;
 use function json_decode;
+use function method_exists;
 use function preg_split;
 use function property_exists;
 use function sprintf;
@@ -15353,6 +16974,41 @@ final class NullableContainerValues extends Data
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.listOfNullable' => self::withBlankStringValidation(['list']),
+                $prefix . '.listOfNullable.*' => self::withBlankStringValidation(['nullable', 'string', 'min:2']),
+                $prefix . '.mapOfNullable' => self::withBlankStringValidation(['array']),
+                $prefix . '.mapOfNullable.*' => self::withBlankStringValidation(['nullable', 'integer', 'min:5']),
+                $prefix . '.listOfNullable31' => self::withBlankStringValidation(['list']),
+                $prefix . '.listOfNullable31.*' => self::withBlankStringValidation(['nullable', 'string']),
+                $prefix . '.mapOfNullable31' => self::withBlankStringValidation(['array']),
+                $prefix . '.mapOfNullable31.*' => self::withBlankStringValidation(['nullable', 'integer']),
+            ],
+            'objectPaths' => [
+                $prefix . '.mapOfNullable',
+                $prefix . '.mapOfNullable31',
+            ],
+            'scalarPaths' => [
+                $prefix . '.mapOfNullable.*' => 'integer',
+                $prefix . '.mapOfNullable31.*' => 'integer',
+            ],
+        ];
+    }
+
+    /**
      * Paths whose schema is `type: object`. A `*` segment matches every index of an array.
      *
      * @var array<int, string>
@@ -15455,7 +17111,11 @@ final class NullableContainerValues extends Data
      * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
      * this same method while a request is bound, and its body says nothing about their data: a request
      * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
-     * input, which is the body merged with the query, so every key of the body is there unchanged.
+     * input, which is the body merged with the query (and the route parameters), so every key of the body
+     * is there unchanged, and every other key is a query or route parameter. Asked only the first half, an
+     * empty body `{}` — or one whose keys a response echoed — passed for the response's own data, and its
+     * nested objects were judged as JSON arrays: `author expects object, got array`, `does not match any
+     * oneOf branch (expected object or null, got object)`.
      */
     private static function rawRequestBody(Validator $validator): ?string
     {
@@ -15480,6 +17140,13 @@ final class NullableContainerValues extends Data
         $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
         foreach ($body as $key => $value) {
             if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+        $route = $request->route();
+        $parameters = [...$request->query->all(), ...(is_object($route) && method_exists($route, 'parameters') ? $route->parameters() : [])];
+        foreach (array_keys($data) as $key) {
+            if (!array_key_exists($key, $body) && !array_key_exists($key, $parameters)) {
                 return null;
             }
         }
@@ -15793,6 +17460,32 @@ final class ObjectWideRules extends Data
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.kind' => self::withBlankStringValidation(['string']),
+                $prefix . '.code' => self::withBlankStringValidation(['string']),
+                $prefix . '.extra' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
     }
 
     /**
@@ -16278,6 +17971,30 @@ final class Pet extends Data
 
         return $rules;
     }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.name' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
 }
 
 ===== ReadOnlyFields.php =====
@@ -16465,6 +18182,34 @@ final class ReadOnlyFields extends Data
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.serverId' => self::withBlankStringValidation(['integer']),
+                $prefix . '.title' => self::withBlankStringValidation(['string']),
+                $prefix . '.writtenAt' => self::withBlankStringValidation([static function (string $attribute, mixed $value, Closure $fail): void { if (is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}((\.\d+)?(Z|z|[+-]([01]\d|2[0-3]):[0-5]\d))?| \d{2}:\d{2}:\d{2})$/D', $value) === 1) { foreach (['Y-m-d\TH:i:sp', 'Y-m-d\TH:i:s.up', 'Y-m-d H:i:s', 'Y-m-d\TH:i:s'] as $format) { if (DateTimeImmutable::createFromFormat($format, $value) !== false && DateTimeImmutable::getLastErrors() === false) { return; } } } $fail('validation.date_format')->translate(['format' => 'Y-m-d\TH:i:sP']); }]),
+                $prefix . '.secret' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.serverId' => 'integer',
+            ],
+        ];
     }
 
     /**
@@ -16802,6 +18547,31 @@ final class RetiredShape extends Data
         };
 
         return $rules;
+    }
+
+    /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.legacyId' => self::withBlankStringValidation(['integer']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.legacyId' => 'integer',
+            ],
+        ];
     }
 
     /**
@@ -17169,6 +18939,32 @@ final class Square extends Shape
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.kind' => self::withBlankStringValidation(['string']),
+                $prefix . '.side' => self::withBlankStringValidation(['integer']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.side' => 'integer',
+            ],
+        ];
+    }
+
+    /**
      * Paths whose schema is `integer` or `number`, with that type. A `*` segment matches every index of
      * an array and every key of a map.
      *
@@ -17265,12 +19061,9 @@ use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 
-use function array_column;
 use function array_key_exists;
 use function array_keys;
-use function array_merge;
 use function array_shift;
-use function in_array;
 use function is_array;
 use function is_bool;
 use function is_finite;
@@ -17398,29 +19191,17 @@ final class Tag extends Data
      */
     public static function openApiNestedValidation(string $prefix, array $visited): array
     {
-        if (in_array(self::class, $visited, true)) {
-            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
-        }
-        $visited[] = self::class;
-
-        $parts = [
-            [
-                'rules' => [
-                    $prefix . '.id' => self::withBlankStringValidation(['integer']),
-                    $prefix . '.name' => self::withBlankStringValidation(['string']),
-                ],
-                'objectPaths' => [
-                ],
-                'scalarPaths' => [
-                    $prefix . '.id' => 'integer',
-                ],
-            ],
-        ];
-
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
         return [
-            'rules' => array_merge(...array_column($parts, 'rules')),
-            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
-            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+            'rules' => [
+                $prefix . '.id' => self::withBlankStringValidation(['integer']),
+                $prefix . '.name' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.id' => 'integer',
+            ],
         ];
     }
 
@@ -17638,6 +19419,31 @@ final class Test extends Data
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.id' => self::withBlankStringValidation(['integer']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.id' => 'integer',
+            ],
+        ];
+    }
+
+    /**
      * Paths whose schema is `integer` or `number`, with that type. A `*` segment matches every index of
      * an array and every key of a map.
      *
@@ -17740,12 +19546,17 @@ use Spatie\LaravelData\Attributes\DataCollectionOf;
 use Spatie\LaravelData\Attributes\WithoutValidation;
 use Spatie\LaravelData\Contracts\BaseData;
 use Spatie\LaravelData\Data;
+use Spatie\LaravelData\DataPipeline;
+use Spatie\LaravelData\DataPipes\DefaultValuesDataPipe;
 use Spatie\LaravelData\Optional;
+use Spatie\LaravelData\Support\Creation\CreationContext;
+use Spatie\LaravelData\Support\DataClass;
 use Spatie\LaravelData\Support\Transformation\TransformationContext;
 use Spatie\LaravelData\Support\Transformation\TransformationContextFactory;
 use stdClass;
 
 use function array_column;
+use function array_diff;
 use function array_diff_key;
 use function array_is_list;
 use function array_key_exists;
@@ -17771,6 +19582,7 @@ use function is_iterable;
 use function is_object;
 use function is_string;
 use function json_decode;
+use function method_exists;
 use function preg_match;
 use function preg_match_all;
 use function preg_split;
@@ -17949,6 +19761,14 @@ final class Test2 extends Data
 
     private const int OPENAPI_MAX_VALIDATION_DEPTH = 256;
 
+    /**
+     * The properties with a schema `default` whose key the payload left out — they hold the default
+     * all the same. Empty for an instance built in code. Read by `is<Name>Provided()`.
+     *
+     * @var list<string>
+     */
+    private readonly array $openApiAbsentDefaults;
+
     public readonly int $id;
 
     public readonly string $name;
@@ -17978,6 +19798,7 @@ final class Test2 extends Data
         int $id = 1,
         User|Optional $user = new Optional(),
         Test2UserType|Optional $userType = new Optional(),
+        ?array $openApiAbsentDefaults = null,
     ) {
         $this->id = $id;
         $this->name = $name;
@@ -17985,6 +19806,37 @@ final class Test2 extends Data
         $this->types = $types;
         $this->user = $user;
         $this->userType = $userType;
+        $this->openApiAbsentDefaults = $openApiAbsentDefaults ?? [];
+    }
+
+    /**
+     * Whether the payload carried `id`. Absent, the property holds its schema default all the
+     * same, which is what it is for; this tells the two apart. An instance built in code has it provided.
+     */
+    public function isIdProvided(): bool
+    {
+        return !in_array('id', $this->openApiAbsentDefaults, true);
+    }
+
+    /**
+     * laravel-data's own pipeline.
+     *
+     * A property with a schema `default` holds the default when its key was not sent; the names the
+     * payload left out are handed to the constructor, for `is<Name>Provided()`.
+     */
+    public static function pipeline(): DataPipeline
+    {
+        return parent::pipeline()->replace(
+            pipe: DefaultValuesDataPipe::class,
+            replacement: new class extends DefaultValuesDataPipe {
+                public function handle(mixed $payload, DataClass $class, array $properties, CreationContext $creationContext): array
+                {
+                    $absentDefaults = array_values(array_diff(['id'], array_keys($properties)));
+
+                    return [...parent::handle($payload, $class, $properties, $creationContext), 'openApiAbsentDefaults' => $absentDefaults];
+                }
+            },
+        );
     }
 
     /**
@@ -18139,6 +19991,55 @@ final class Test2 extends Data
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        if (in_array(self::class, $visited, true)) {
+            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
+        }
+        $visited[] = self::class;
+
+        $parts = [
+            [
+                'rules' => [
+                    $prefix . '.id' => self::withBlankStringValidation(['integer']),
+                    $prefix . '.name' => self::withBlankStringValidation(['string']),
+                    $prefix . '.tags' => self::withBlankStringValidation(['list']),
+                    $prefix . '.tags.*' => self::withBlankStringValidation(['array']),
+                    $prefix . '.user' => self::withBlankStringValidation(['array']),
+                    $prefix . '.userType' => self::withBlankStringValidation(['array']),
+                    $prefix . '.types' => self::withBlankStringValidation([Rule::enum(Test2Types::class)]),
+                ],
+                'objectPaths' => [
+                    $prefix . '.tags.*',
+                    $prefix . '.user',
+                    $prefix . '.userType',
+                ],
+                'scalarPaths' => [
+                    $prefix . '.id' => 'integer',
+                ],
+            ],
+            Tag::openApiNestedValidation($prefix . '.tags.*', $visited),
+            User::openApiNestedValidation($prefix . '.user', $visited),
+            Test2UserType::openApiNestedValidation($prefix . '.userType', $visited),
+        ];
+
+        return [
+            'rules' => array_merge(...array_column($parts, 'rules')),
+            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
+            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+        ];
+    }
+
+    /**
      * Paths whose schema is `type: object`. A `*` segment matches every index of an array.
      *
      * @var array<int, string>
@@ -18267,7 +20168,11 @@ final class Test2 extends Data
      * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
      * this same method while a request is bound, and its body says nothing about their data: a request
      * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
-     * input, which is the body merged with the query, so every key of the body is there unchanged.
+     * input, which is the body merged with the query (and the route parameters), so every key of the body
+     * is there unchanged, and every other key is a query or route parameter. Asked only the first half, an
+     * empty body `{}` — or one whose keys a response echoed — passed for the response's own data, and its
+     * nested objects were judged as JSON arrays: `author expects object, got array`, `does not match any
+     * oneOf branch (expected object or null, got object)`.
      */
     private static function rawRequestBody(Validator $validator): ?string
     {
@@ -18292,6 +20197,13 @@ final class Test2 extends Data
         $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
         foreach ($body as $key => $value) {
             if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+        $route = $request->route();
+        $parameters = [...$request->query->all(), ...(is_object($route) && method_exists($route, 'parameters') ? $route->parameters() : [])];
+        foreach (array_keys($data) as $key) {
+            if (!array_key_exists($key, $body) && !array_key_exists($key, $parameters)) {
                 return null;
             }
         }
@@ -18776,9 +20688,6 @@ use Spatie\LaravelData\Data;
 use Spatie\LaravelData\Optional;
 use stdClass;
 
-use function array_column;
-use function array_merge;
-use function in_array;
 use function is_string;
 use function json_encode;
 use function trim;
@@ -18935,27 +20844,15 @@ final class Test2UserType extends Data
      */
     public static function openApiNestedValidation(string $prefix, array $visited): array
     {
-        if (in_array(self::class, $visited, true)) {
-            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
-        }
-        $visited[] = self::class;
-
-        $parts = [
-            [
-                'rules' => [
-                    $prefix . '.region' => self::withBlankStringValidation(['string']),
-                ],
-                'objectPaths' => [
-                ],
-                'scalarPaths' => [
-                ],
-            ],
-        ];
-
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
         return [
-            'rules' => array_merge(...array_column($parts, 'rules')),
-            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
-            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+            'rules' => [
+                $prefix . '.region' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
         ];
     }
 }
@@ -18983,9 +20880,11 @@ use function is_array;
 use function is_bool;
 use function is_finite;
 use function is_float;
+use function is_object;
 use function is_string;
 use function json_decode;
 use function ltrim;
+use function method_exists;
 use function preg_split;
 use function str_replace;
 use function str_starts_with;
@@ -19100,6 +20999,33 @@ final class TestPatchRequest extends Data
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.id' => self::withBlankStringValidation(['integer']),
+                $prefix . '.name' => self::withBlankStringValidation(['string']),
+                $prefix . '.surname' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.id' => 'integer',
+            ],
+        ];
+    }
+
+    /**
      * Paths whose schema is `integer` or `number`, with that type. A `*` segment matches every index of
      * an array and every key of a map.
      *
@@ -19138,7 +21064,11 @@ final class TestPatchRequest extends Data
      * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
      * this same method while a request is bound, and its body says nothing about their data: a request
      * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
-     * input, which is the body merged with the query, so every key of the body is there unchanged.
+     * input, which is the body merged with the query (and the route parameters), so every key of the body
+     * is there unchanged, and every other key is a query or route parameter. Asked only the first half, an
+     * empty body `{}` — or one whose keys a response echoed — passed for the response's own data, and its
+     * nested objects were judged as JSON arrays: `author expects object, got array`, `does not match any
+     * oneOf branch (expected object or null, got object)`.
      */
     private static function rawRequestBody(Validator $validator): ?string
     {
@@ -19163,6 +21093,13 @@ final class TestPatchRequest extends Data
         $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
         foreach ($body as $key => $value) {
             if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+        $route = $request->route();
+        $parameters = [...$request->query->all(), ...(is_object($route) && method_exists($route, 'parameters') ? $route->parameters() : [])];
+        foreach (array_keys($data) as $key) {
+            if (!array_key_exists($key, $body) && !array_key_exists($key, $parameters)) {
                 return null;
             }
         }
@@ -19274,6 +21211,7 @@ use function is_string;
 use function json_decode;
 use function json_encode;
 use function ltrim;
+use function method_exists;
 use function preg_match;
 use function preg_match_all;
 use function preg_replace;
@@ -19433,6 +21371,34 @@ final class TestPostRequest extends Data
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.id' => self::withBlankStringValidation(['integer']),
+                $prefix . '.name' => self::withBlankStringValidation(['string']),
+                $prefix . '.homepage' => self::withBlankStringValidation(['string']),
+                $prefix . '.endpoint' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+                $prefix . '.id' => 'integer',
+            ],
+        ];
+    }
+
+    /**
      * Paths whose schema is `integer` or `number`, with that type. A `*` segment matches every index of
      * an array and every key of a map.
      *
@@ -19489,7 +21455,11 @@ final class TestPostRequest extends Data
      * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
      * this same method while a request is bound, and its body says nothing about their data: a request
      * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
-     * input, which is the body merged with the query, so every key of the body is there unchanged.
+     * input, which is the body merged with the query (and the route parameters), so every key of the body
+     * is there unchanged, and every other key is a query or route parameter. Asked only the first half, an
+     * empty body `{}` — or one whose keys a response echoed — passed for the response's own data, and its
+     * nested objects were judged as JSON arrays: `author expects object, got array`, `does not match any
+     * oneOf branch (expected object or null, got object)`.
      */
     private static function rawRequestBody(Validator $validator): ?string
     {
@@ -19514,6 +21484,13 @@ final class TestPostRequest extends Data
         $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
         foreach ($body as $key => $value) {
             if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+        $route = $request->route();
+        $parameters = [...$request->query->all(), ...(is_object($route) && method_exists($route, 'parameters') ? $route->parameters() : [])];
+        foreach (array_keys($data) as $key) {
+            if (!array_key_exists($key, $body) && !array_key_exists($key, $parameters)) {
                 return null;
             }
         }
@@ -19999,12 +21976,10 @@ use Spatie\LaravelData\Support\Transformation\TransformationContext;
 use Spatie\LaravelData\Support\Transformation\TransformationContextFactory;
 use stdClass;
 
-use function array_column;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
 use function array_map;
-use function array_merge;
 use function array_pop;
 use function array_shift;
 use function array_slice;
@@ -20026,6 +22001,7 @@ use function is_string;
 use function json_decode;
 use function ltrim;
 use function mb_strlen;
+use function method_exists;
 use function preg_match;
 use function preg_match_all;
 use function property_exists;
@@ -20404,30 +22380,18 @@ final class TreeNode extends Data
      */
     public static function openApiNestedValidation(string $prefix, array $visited): array
     {
-        if (in_array(self::class, $visited, true)) {
-            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
-        }
-        $visited[] = self::class;
-
-        $parts = [
-            [
-                'rules' => [
-                    $prefix . '.label' => self::withBlankStringValidation(['string', 'min:1']),
-                    $prefix . '.children' => self::withBlankStringValidation(['array']),
-                ],
-                'objectPaths' => [
-                    $prefix . '.children',
-                    $prefix . '.children.*',
-                ],
-                'scalarPaths' => [
-                ],
-            ],
-        ];
-
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
         return [
-            'rules' => array_merge(...array_column($parts, 'rules')),
-            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
-            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+            'rules' => [
+                $prefix . '.label' => self::withBlankStringValidation(['string', 'min:1']),
+                $prefix . '.children' => self::withBlankStringValidation(['array']),
+            ],
+            'objectPaths' => [
+                $prefix . '.children',
+                $prefix . '.children.*',
+            ],
+            'scalarPaths' => [
+            ],
         ];
     }
 
@@ -20485,7 +22449,11 @@ final class TreeNode extends Data
      * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
      * this same method while a request is bound, and its body says nothing about their data: a request
      * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
-     * input, which is the body merged with the query, so every key of the body is there unchanged.
+     * input, which is the body merged with the query (and the route parameters), so every key of the body
+     * is there unchanged, and every other key is a query or route parameter. Asked only the first half, an
+     * empty body `{}` — or one whose keys a response echoed — passed for the response's own data, and its
+     * nested objects were judged as JSON arrays: `author expects object, got array`, `does not match any
+     * oneOf branch (expected object or null, got object)`.
      */
     private static function rawRequestBody(Validator $validator): ?string
     {
@@ -20510,6 +22478,13 @@ final class TreeNode extends Data
         $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
         foreach ($body as $key => $value) {
             if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+        $route = $request->route();
+        $parameters = [...$request->query->all(), ...(is_object($route) && method_exists($route, 'parameters') ? $route->parameters() : [])];
+        foreach (array_keys($data) as $key) {
+            if (!array_key_exists($key, $body) && !array_key_exists($key, $parameters)) {
                 return null;
             }
         }
@@ -21053,6 +23028,7 @@ use function is_string;
 use function json_decode;
 use function ltrim;
 use function mb_strlen;
+use function method_exists;
 use function preg_match;
 use function preg_match_all;
 use function property_exists;
@@ -21583,6 +23559,52 @@ final class UnionUnderContainer extends Data
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        if (in_array(self::class, $visited, true)) {
+            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
+        }
+        $visited[] = self::class;
+
+        $parts = [
+            [
+                'rules' => [
+                    $prefix . '.chain' => self::withBlankStringValidation(['list']),
+                    $prefix . '.chainAllOf' => self::withBlankStringValidation(['list']),
+                    $prefix . '.chainAllOf.*' => self::withBlankStringValidation(['array']),
+                    $prefix . '.tree' => self::withBlankStringValidation(['array']),
+                    $prefix . '.listOfUnions' => self::withBlankStringValidation(['list']),
+                ],
+                'objectPaths' => [
+                    $prefix . '.chain.*',
+                    $prefix . '.chainAllOf.*',
+                    $prefix . '.tree',
+                    $prefix . '.listOfUnions.*',
+                ],
+                'scalarPaths' => [
+                ],
+            ],
+            ChainMiddle::openApiNestedValidation($prefix . '.chainAllOf.*', $visited),
+            TreeNode::openApiNestedValidation($prefix . '.tree', $visited),
+        ];
+
+        return [
+            'rules' => array_merge(...array_column($parts, 'rules')),
+            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
+            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+        ];
+    }
+
+    /**
      * Paths whose schema is `type: object`. A `*` segment matches every index of an array.
      *
      * @var array<int, string>
@@ -21700,7 +23722,11 @@ final class UnionUnderContainer extends Data
      * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
      * this same method while a request is bound, and its body says nothing about their data: a request
      * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
-     * input, which is the body merged with the query, so every key of the body is there unchanged.
+     * input, which is the body merged with the query (and the route parameters), so every key of the body
+     * is there unchanged, and every other key is a query or route parameter. Asked only the first half, an
+     * empty body `{}` — or one whose keys a response echoed — passed for the response's own data, and its
+     * nested objects were judged as JSON arrays: `author expects object, got array`, `does not match any
+     * oneOf branch (expected object or null, got object)`.
      */
     private static function rawRequestBody(Validator $validator): ?string
     {
@@ -21725,6 +23751,13 @@ final class UnionUnderContainer extends Data
         $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
         foreach ($body as $key => $value) {
             if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+        $route = $request->route();
+        $parameters = [...$request->query->all(), ...(is_object($route) && method_exists($route, 'parameters') ? $route->parameters() : [])];
+        foreach (array_keys($data) as $key) {
+            if (!array_key_exists($key, $body) && !array_key_exists($key, $parameters)) {
                 return null;
             }
         }
@@ -22357,6 +24390,7 @@ use stdClass;
 
 use function array_is_list;
 use function array_key_exists;
+use function array_keys;
 use function array_map;
 use function array_slice;
 use function bin2hex;
@@ -22373,6 +24407,7 @@ use function is_object;
 use function is_string;
 use function json_decode;
 use function ksort;
+use function method_exists;
 use function pack;
 use function preg_match;
 use function preg_match_all;
@@ -22504,6 +24539,31 @@ final class UniqueScalars extends Data
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.tags' => self::withBlankStringValidation(['list']),
+                $prefix . '.tags.*' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
+
+    /**
      * The half of the schema Laravel's rule vocabulary cannot express — composition, conditionals,
      * `contains`, `unevaluated*`, `content*`, `propertyNames`, `discriminator` — checked against the
      * raw payload the validator already holds.
@@ -22594,7 +24654,11 @@ final class UniqueScalars extends Data
      * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
      * this same method while a request is bound, and its body says nothing about their data: a request
      * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
-     * input, which is the body merged with the query, so every key of the body is there unchanged.
+     * input, which is the body merged with the query (and the route parameters), so every key of the body
+     * is there unchanged, and every other key is a query or route parameter. Asked only the first half, an
+     * empty body `{}` — or one whose keys a response echoed — passed for the response's own data, and its
+     * nested objects were judged as JSON arrays: `author expects object, got array`, `does not match any
+     * oneOf branch (expected object or null, got object)`.
      */
     private static function rawRequestBody(Validator $validator): ?string
     {
@@ -22619,6 +24683,13 @@ final class UniqueScalars extends Data
         $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
         foreach ($body as $key => $value) {
             if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+        $route = $request->route();
+        $parameters = [...$request->query->all(), ...(is_object($route) && method_exists($route, 'parameters') ? $route->parameters() : [])];
+        foreach (array_keys($data) as $key) {
+            if (!array_key_exists($key, $body) && !array_key_exists($key, $parameters)) {
                 return null;
             }
         }
@@ -22901,13 +24972,11 @@ use Spatie\LaravelData\Support\Transformation\TransformationContextFactory;
 use UnitEnum;
 use stdClass;
 
-use function array_column;
 use function array_diff_key;
 use function array_is_list;
 use function array_key_exists;
 use function array_keys;
 use function array_map;
-use function array_merge;
 use function array_pop;
 use function array_shift;
 use function array_slice;
@@ -22925,6 +24994,7 @@ use function is_int;
 use function is_object;
 use function is_string;
 use function json_decode;
+use function method_exists;
 use function preg_match;
 use function preg_match_all;
 use function preg_split;
@@ -23294,32 +25364,20 @@ final class User extends Data
      */
     public static function openApiNestedValidation(string $prefix, array $visited): array
     {
-        if (in_array(self::class, $visited, true)) {
-            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
-        }
-        $visited[] = self::class;
-
-        $parts = [
-            [
-                'rules' => [
-                    $prefix . '.id' => self::withBlankStringValidation(['integer']),
-                    $prefix . '.name' => self::withBlankStringValidation(['string']),
-                    $prefix . '.pet' => self::withBlankStringValidation(['nullable']),
-                    $prefix . '.createdAt' => self::withBlankStringValidation([static function (string $attribute, mixed $value, Closure $fail): void { if (is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}((\.\d+)?(Z|z|[+-]([01]\d|2[0-3]):[0-5]\d))?| \d{2}:\d{2}:\d{2})$/D', $value) === 1) { foreach (['Y-m-d\TH:i:sp', 'Y-m-d\TH:i:s.up', 'Y-m-d H:i:s', 'Y-m-d\TH:i:s'] as $format) { if (DateTimeImmutable::createFromFormat($format, $value) !== false && DateTimeImmutable::getLastErrors() === false) { return; } } } $fail('validation.date_format')->translate(['format' => 'Y-m-d\TH:i:sP']); }]),
-                ],
-                'objectPaths' => [
-                    $prefix . '.pet',
-                ],
-                'scalarPaths' => [
-                    $prefix . '.id' => 'integer',
-                ],
-            ],
-        ];
-
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
         return [
-            'rules' => array_merge(...array_column($parts, 'rules')),
-            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
-            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+            'rules' => [
+                $prefix . '.id' => self::withBlankStringValidation(['integer']),
+                $prefix . '.name' => self::withBlankStringValidation(['string']),
+                $prefix . '.pet' => self::withBlankStringValidation(['nullable']),
+                $prefix . '.createdAt' => self::withBlankStringValidation([static function (string $attribute, mixed $value, Closure $fail): void { if (is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}((\.\d+)?(Z|z|[+-]([01]\d|2[0-3]):[0-5]\d))?| \d{2}:\d{2}:\d{2})$/D', $value) === 1) { foreach (['Y-m-d\TH:i:sp', 'Y-m-d\TH:i:s.up', 'Y-m-d H:i:s', 'Y-m-d\TH:i:s'] as $format) { if (DateTimeImmutable::createFromFormat($format, $value) !== false && DateTimeImmutable::getLastErrors() === false) { return; } } } $fail('validation.date_format')->translate(['format' => 'Y-m-d\TH:i:sP']); }]),
+            ],
+            'objectPaths' => [
+                $prefix . '.pet',
+            ],
+            'scalarPaths' => [
+                $prefix . '.id' => 'integer',
+            ],
         ];
     }
 
@@ -23388,7 +25446,11 @@ final class User extends Data
      * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
      * this same method while a request is bound, and its body says nothing about their data: a request
      * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
-     * input, which is the body merged with the query, so every key of the body is there unchanged.
+     * input, which is the body merged with the query (and the route parameters), so every key of the body
+     * is there unchanged, and every other key is a query or route parameter. Asked only the first half, an
+     * empty body `{}` — or one whose keys a response echoed — passed for the response's own data, and its
+     * nested objects were judged as JSON arrays: `author expects object, got array`, `does not match any
+     * oneOf branch (expected object or null, got object)`.
      */
     private static function rawRequestBody(Validator $validator): ?string
     {
@@ -23413,6 +25475,13 @@ final class User extends Data
         $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
         foreach ($body as $key => $value) {
             if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+        $route = $request->route();
+        $parameters = [...$request->query->all(), ...(is_object($route) && method_exists($route, 'parameters') ? $route->parameters() : [])];
+        foreach (array_keys($data) as $key) {
+            if (!array_key_exists($key, $body) && !array_key_exists($key, $parameters)) {
                 return null;
             }
         }
@@ -23876,6 +25945,7 @@ use function is_float;
 use function is_object;
 use function is_string;
 use function json_decode;
+use function method_exists;
 use function preg_match;
 use function preg_match_all;
 use function preg_split;
@@ -24088,6 +26158,48 @@ final class User2 extends Data
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        if (in_array(self::class, $visited, true)) {
+            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
+        }
+        $visited[] = self::class;
+
+        $parts = [
+            [
+                'rules' => [
+                    $prefix . '.id' => self::withBlankStringValidation(['integer']),
+                    $prefix . '.name' => self::withBlankStringValidation(['string']),
+                    $prefix . '.pet' => self::withBlankStringValidation(['nullable', 'array']),
+                    $prefix . '.createdAt' => self::withBlankStringValidation(['date_format:Y-m-d']),
+                ],
+                'objectPaths' => [
+                    $prefix . '.pet',
+                ],
+                'scalarPaths' => [
+                    $prefix . '.id' => 'integer',
+                ],
+            ],
+            User2Pet::openApiNestedValidation($prefix . '.pet', $visited),
+        ];
+
+        return [
+            'rules' => array_merge(...array_column($parts, 'rules')),
+            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
+            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+        ];
+    }
+
+    /**
      * Paths whose schema is `type: object`. A `*` segment matches every index of an array.
      *
      * @var array<int, string>
@@ -24152,7 +26264,11 @@ final class User2 extends Data
      * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
      * this same method while a request is bound, and its body says nothing about their data: a request
      * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
-     * input, which is the body merged with the query, so every key of the body is there unchanged.
+     * input, which is the body merged with the query (and the route parameters), so every key of the body
+     * is there unchanged, and every other key is a query or route parameter. Asked only the first half, an
+     * empty body `{}` — or one whose keys a response echoed — passed for the response's own data, and its
+     * nested objects were judged as JSON arrays: `author expects object, got array`, `does not match any
+     * oneOf branch (expected object or null, got object)`.
      */
     private static function rawRequestBody(Validator $validator): ?string
     {
@@ -24177,6 +26293,13 @@ final class User2 extends Data
         $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
         foreach ($body as $key => $value) {
             if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+        $route = $request->route();
+        $parameters = [...$request->query->all(), ...(is_object($route) && method_exists($route, 'parameters') ? $route->parameters() : [])];
+        foreach (array_keys($data) as $key) {
+            if (!array_key_exists($key, $body) && !array_key_exists($key, $parameters)) {
                 return null;
             }
         }
@@ -24476,9 +26599,6 @@ use Illuminate\Validation\Validator;
 use LogicException;
 use Spatie\LaravelData\Data;
 
-use function array_column;
-use function array_merge;
-use function in_array;
 use function is_string;
 use function trim;
 
@@ -24605,30 +26725,18 @@ final class User2Pet extends Data
      */
     public static function openApiNestedValidation(string $prefix, array $visited): array
     {
-        if (in_array(self::class, $visited, true)) {
-            return ['rules' => [], 'objectPaths' => [], 'scalarPaths' => []];
-        }
-        $visited[] = self::class;
-
-        $parts = [
-            [
-                'rules' => [
-                    $prefix . '.name' => self::withBlankStringValidation(['string']),
-                    $prefix . '.meow' => self::withBlankStringValidation(['string']),
-                    $prefix . '.bark' => self::withBlankStringValidation(['string']),
-                    $prefix . '.test' => self::withBlankStringValidation(['string']),
-                ],
-                'objectPaths' => [
-                ],
-                'scalarPaths' => [
-                ],
-            ],
-        ];
-
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
         return [
-            'rules' => array_merge(...array_column($parts, 'rules')),
-            'objectPaths' => array_merge(...array_column($parts, 'objectPaths')),
-            'scalarPaths' => array_merge(...array_column($parts, 'scalarPaths')),
+            'rules' => [
+                $prefix . '.name' => self::withBlankStringValidation(['string']),
+                $prefix . '.meow' => self::withBlankStringValidation(['string']),
+                $prefix . '.bark' => self::withBlankStringValidation(['string']),
+                $prefix . '.test' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
         ];
     }
 }
@@ -24650,10 +26758,13 @@ use LogicException;
 use Spatie\LaravelData\Data;
 
 use function array_key_exists;
+use function array_keys;
 use function is_array;
+use function is_object;
 use function is_string;
 use function json_decode;
 use function ltrim;
+use function method_exists;
 use function str_starts_with;
 use function trim;
 
@@ -24764,6 +26875,30 @@ final class WebhookOrderPlacedPostRequest extends Data
     }
 
     /**
+     * What this class adds to the validation of a payload that holds it at `$prefix`: its dotted rules —
+     * presence left out, no rule can say "required only if the parent has a value" — and the paths whose
+     * wire shape is checked against the raw body. A parent asks for it instead of repeating it under
+     * every path that reaches this class.
+     *
+     * @internal called by the generated classes that hold this one
+     * @param array<int, string> $visited the classes above this one; one already among them adds nothing
+     * @return array{rules: array<string, array<int, mixed>>, objectPaths: array<int, string>, scalarPaths: array<string, string>}
+     */
+    public static function openApiNestedValidation(string $prefix, array $visited): array
+    {
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+                $prefix . '.orderId' => self::withBlankStringValidation(['string']),
+            ],
+            'objectPaths' => [
+            ],
+            'scalarPaths' => [
+            ],
+        ];
+    }
+
+    /**
      * The one shape Laravel's rules cannot check: a JSON array sent for the object this body is.
      *
      * laravel-data calls this itself, and only on the ROOT object: a nested `Data` class never gets its
@@ -24790,7 +26925,11 @@ final class WebhookOrderPlacedPostRequest extends Data
      * not that body. `validate($array)` on a response and `validateAndCreate()` on one item of a list run
      * this same method while a request is bound, and its body says nothing about their data: a request
      * `{"meta":[1]}` made a response with an object `meta` fail. `from($request)` validates the request's
-     * input, which is the body merged with the query, so every key of the body is there unchanged.
+     * input, which is the body merged with the query (and the route parameters), so every key of the body
+     * is there unchanged, and every other key is a query or route parameter. Asked only the first half, an
+     * empty body `{}` — or one whose keys a response echoed — passed for the response's own data, and its
+     * nested objects were judged as JSON arrays: `author expects object, got array`, `does not match any
+     * oneOf branch (expected object or null, got object)`.
      */
     private static function rawRequestBody(Validator $validator): ?string
     {
@@ -24815,6 +26954,13 @@ final class WebhookOrderPlacedPostRequest extends Data
         $data = (fn(): array => $this->replacePlaceholders($this->getData()))->call($validator);
         foreach ($body as $key => $value) {
             if (!array_key_exists($key, $data) || $data[$key] != $value) {
+                return null;
+            }
+        }
+        $route = $request->route();
+        $parameters = [...$request->query->all(), ...(is_object($route) && method_exists($route, 'parameters') ? $route->parameters() : [])];
+        foreach (array_keys($data) as $key) {
+            if (!array_key_exists($key, $body) && !array_key_exists($key, $parameters)) {
                 return null;
             }
         }

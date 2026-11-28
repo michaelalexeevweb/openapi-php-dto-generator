@@ -123,6 +123,11 @@ trait RendersLaravelDataDto
                 // The default follows the type: an untyped tag (`kind: {}`) the member does not require
                 // defaulted to `null`, which its own `mixed` takes and the base's `string|Optional`
                 // does not — a deprecation on every load and a TypeError on `new Circle(radius: 3)`.
+                // The base declares the property, so an untyped tag is not this class's to make `Optional`.
+                if ($param['absentAsOptional']) {
+                    $param['absentAsOptional'] = false;
+                    $param['defaultExpression'] = 'null';
+                }
                 if ($param['defaultExpression'] === 'null' && $param['declaredType'] !== self::LARAVEL_DATA_UNTYPED) {
                     // Already imported by the type above wherever it names `Optional`.
                     $optionalRef = $this->libraryClassRef('Spatie\LaravelData\Optional', $namespace, $useStatements);
@@ -311,6 +316,49 @@ trait RendersLaravelDataDto
             ];
         }
 
+        // laravel-data fills a missing key of a `mixed` property with null before the constructor sees it
+        // — `mixed` admits null, and its `Optional` default is not a default to it — so the absent
+        // untyped optional is put back to `Optional` first, which `toArray()` then leaves out.
+        $untypedAbsentNames = array_column(
+            array_filter($params, static fn(array $param): bool => $param['absentAsOptional']),
+            'name',
+        );
+        // A property with a schema `default` holds that default when its key was not sent, so the value
+        // alone cannot say whether it was: the pipe notes the names the payload left out, and
+        // `is<Name>Provided()` reads them — as Laravel and yii3 mode answer. A class built in code has
+        // every such property provided, as there. Not on a morph member: its constructor is the base's.
+        $defaultedNames = $morphBase === null && !in_array('openApiAbsentDefaults', array_column($params, 'name'), true)
+            ? array_column(array_filter($params, static fn(array $param): bool => $param['schemaDefaulted']), 'name')
+            : [];
+        $untypedAbsence = null;
+        if ($untypedAbsentNames !== [] || $defaultedNames !== []) {
+            $untypedAbsence = [
+                'namesLiteral' => $untypedAbsentNames === []
+                    ? null
+                    : '[' . implode(', ', array_map($this->phpStringLiteral(...), $untypedAbsentNames)) . ']',
+                'defaultedLiteral' => $defaultedNames === []
+                    ? null
+                    : '[' . implode(', ', array_map($this->phpStringLiteral(...), $defaultedNames)) . ']',
+                'defaultedProperties' => array_map(
+                    callback: static fn(string $name): array => ['name' => $name, 'method' => 'is' . ucfirst($name) . 'Provided'],
+                    array: $defaultedNames,
+                ),
+                'pipelineRef' => $this->libraryClassRef('Spatie\LaravelData\DataPipeline', $namespace, $useStatements),
+                'defaultsPipeRef' => $this->libraryClassRef(
+                    fqcn: 'Spatie\LaravelData\DataPipes\DefaultValuesDataPipe',
+                    namespace: $namespace,
+                    useStatements: $useStatements,
+                ),
+                'classRef' => $this->libraryClassRef('Spatie\LaravelData\Support\DataClass', $namespace, $useStatements),
+                'contextRef' => $this->libraryClassRef(
+                    fqcn: 'Spatie\LaravelData\Support\Creation\CreationContext',
+                    namespace: $namespace,
+                    useStatements: $useStatements,
+                ),
+                'optionalRef' => $this->libraryClassRef('Spatie\LaravelData\Optional', $namespace, $useStatements),
+            ];
+        }
+
         // laravel-data writes `toArray()` in the order the PROPERTIES are declared, and a promoted property
         // is declared where its parameter is — required ones first, as PHP needs. Where that differs from
         // the schema's order, the properties are declared above the constructor in the schema's order
@@ -398,6 +446,8 @@ trait RendersLaravelDataDto
             'wireNameRestore' => $wireNameRestore,
             'emptyObjectWrite' => $emptyObjectWrite,
             'temporalUnionCast' => $temporalUnionCast,
+            'untypedAbsence' => $untypedAbsence,
+            'tracksDefaultedPresence' => $defaultedNames !== [],
             'parameterReads' => $this->laravelParameterReads($properties),
             'rulesKeyType' => $this->laravelRulesKeyType(array_column($rules, 'path')),
             'morphBase' => null,
@@ -978,7 +1028,7 @@ trait RendersLaravelDataDto
      * @return array{declaredType: string, propertyType: string, assignment: ?string, docType: ?string,
      *     name: string, required: bool, openApiName: string, docDescription: ?string, attributes: array<int, string>,
      *     attributeImports: array<int, string>, tracksPresence: bool, nullableWithDefault: bool,
-     *     defaultExpression: ?string, promoted: bool}
+     *     defaultExpression: ?string, absentAsOptional: bool, schemaDefaulted: bool, promoted: bool}
      */
     private function resolveLaravelDataParam(array $property, string $namespace): array
     {
@@ -1114,6 +1164,12 @@ trait RendersLaravelDataDto
         $optionalRef = $typedAsRequired
             ? 'Optional'
             : $this->libraryClassRef('Spatie\LaravelData\Optional', $namespace, $attributeImports);
+
+        // An optional property with no type is `mixed`, which takes an `Optional` instance as it is: absent
+        // is that instance, as for every typed optional, so `toArray()` leaves the key out. It defaulted to
+        // `null`, and an unsent key went out as `"x": null`. laravel-data itself fills a missing `mixed`
+        // key with null, which `pipeline()` turns back into `Optional` — see `untypedAbsence`.
+        $absentAsOptional = !$requiredOnInput && $phpType === self::LARAVEL_DATA_UNTYPED;
 
         [$declaredType, $tracksPresence] = $this->laravelDataDeclaredType(
             phpType: $phpType,
@@ -1271,10 +1327,12 @@ trait RendersLaravelDataDto
             'nullableWithDefault' => $schemaDefault !== null && $nullable,
             'defaultExpression' => match (true) {
                 $schemaDefault !== null => $schemaDefault,
-                $tracksPresence => sprintf('new %s()', $optionalRef),
+                $tracksPresence, $absentAsOptional => sprintf('new %s()', $optionalRef),
                 !$requiredOnInput => 'null',
                 default => null,
             },
+            'absentAsOptional' => $absentAsOptional,
+            'schemaDefaulted' => $schemaDefault !== null,
             // A promoted property unless the class inherits it from a morph base, where redeclaring a
             // readonly property would be a fatal.
             'promoted' => true,
