@@ -10941,8 +10941,8 @@ final class ValidationParityTest extends TestCase
      * both was accepted and a branch key was not written back. Pinned beside it: the classic discriminator
      * `allOf: [$ref base, …]` variant and the single-`$ref` child.
      *
-     * A branch's key the payload leaves out is echoed as `null` by laravel-data: the class holds it
-     * untyped, and an untyped optional property has no `|Optional` (README.support-matrix.md).
+     * A branch's key the payload leaves out stays out in laravel-data too: the class holds it untyped,
+     * and an untyped optional property is `Optional` when absent since 2.15.168 — it was echoed as `null`.
      *
      * @param array<string, array<string, mixed>> $components
      * @param array<string, bool|null> $payloads JSON payload => accepted
@@ -11009,15 +11009,15 @@ final class ValidationParityTest extends TestCase
         ];
         $tail = ['type' => 'object', 'properties' => ['tail' => ['type' => 'string']]];
         $tailWrittenBack = [
-            '{"lynx":{"paw":"x","tail":"t"}}' => '{"lynx":{"paw":"x","tail":"t","bark":null}}',
-            '{"lynx":{"bark":1}}' => '{"lynx":{"paw":null,"bark":1}}',
+            '{"lynx":{"paw":"x","tail":"t"}}' => null,
+            '{"lynx":{"bark":1}}' => null,
         ];
 
         // Cause: one `$ref` to a union — runtime extended the interface.
         yield 'one reference to a union' => [
             $plum + ['Sepia' => ['allOf' => [$ref('Plum')], 'description' => 'x']],
             $unionOnly,
-            ['{"lynx":{"paw":"x"}}' => '{"lynx":{"paw":"x","bark":null}}', '{"lynx":{"bark":1}}' => '{"lynx":{"paw":null,"bark":1}}'],
+            ['{"lynx":{"paw":"x"}}' => null, '{"lynx":{"bark":1}}' => null],
         ];
         // Cause: a union reference beside an object member — runtime extended the interface, laravel
         // and laravel-data dropped the union.
@@ -11047,8 +11047,8 @@ final class ValidationParityTest extends TestCase
                 '{"lynx":{"kind":"Cat","paw":"x","tail":5}}' => false,
             ],
             [
-                '{"lynx":{"kind":"Cat","paw":"x","tail":"t"}}' => '{"lynx":{"kind":"Cat","paw":"x","tail":"t","bark":null}}',
-                '{"lynx":{"kind":"Dog","bark":1}}' => '{"lynx":{"kind":"Dog","paw":null,"bark":1}}',
+                '{"lynx":{"kind":"Cat","paw":"x","tail":"t"}}' => null,
+                '{"lynx":{"kind":"Dog","bark":1}}' => null,
             ],
         ];
         // Pinned: the same union written beside the `allOf`.
@@ -13606,14 +13606,14 @@ final class ValidationParityTest extends TestCase
                 // `[1]` and `{"0":1}` are one PHP value.
                 ['symfony' => ['{"fox":[1]}' => true], 'yii3' => ['{"fox":[1]}' => true]],
             ],
-            // Symfony dropped the branch's `required` name it does not declare, and pruned the
-            // property's `anyOf` as if the branch class covered it.
-            'an object branch requiring an undeclared name beside a list' => [
+            // Symfony dropped the branch's `required`, and pruned the property's `anyOf` as if the branch
+            // class covered it. (The name was undeclared until 2.15.168, which refuses such a class.)
+            'an object branch requiring a name beside a list' => [
                 '3.0.3',
                 $probe([
                     'fox' => ['anyOf' => [
                         ['type' => 'array', 'items' => ['type' => 'integer']],
-                        ['type' => 'object', 'properties' => ['tail' => ['type' => 'string']], 'required' => ['ear']],
+                        ['type' => 'object', 'properties' => ['tail' => ['type' => 'string'], 'ear' => ['type' => 'integer']], 'required' => ['ear']],
                     ]],
                 ]),
                 [
@@ -14597,7 +14597,7 @@ final class ValidationParityTest extends TestCase
             'union object member is validated' => [
                 '3.1.0',
                 $probe([
-                    'elk' => ['oneOf' => [['type' => 'object', 'properties' => ['cat' => ['type' => 'string', 'maxLength' => 1]], 'required' => ['dog']], ['type' => 'string', 'enum' => ['blue']]]],
+                    'elk' => ['oneOf' => [['type' => 'object', 'properties' => ['cat' => ['type' => 'string', 'maxLength' => 1], 'dog' => ['type' => 'integer']], 'required' => ['dog']], ['type' => 'string', 'enum' => ['blue']]]],
                     'yak' => ['anyOf' => [['type' => 'string', 'format' => 'date'], ['type' => 'object', 'properties' => ['tern' => ['type' => 'integer']], 'required' => ['tern']]]],
                 ]),
                 [
@@ -14612,10 +14612,8 @@ final class ValidationParityTest extends TestCase
                     '{"yak":{}}' => false,
                 ],
                 [
-                    // README.support-matrix "a `required` name no property declares": the class holds no
-                    // such key, so the requirement is never met where only the built object is checked,
-                    // and "a scalar for a property typed as a generated class".
-                    'symfony' => ['{"elk":{"cat":"g","dog":1}}' => false, '{"elk":"blue"}' => null],
+                    // README.support-matrix "a scalar for a property typed as a generated class".
+                    'symfony' => ['{"elk":"blue"}' => null],
                 ],
             ],
             // Y7: a list of lists and a map of lists refuse a scalar.
@@ -14639,88 +14637,6 @@ final class ValidationParityTest extends TestCase
                 '3.1.0',
                 $probe(['yak' => ['type' => 'array', 'items' => ['type' => 'object', 'properties' => ['ant' => ['type' => 'string']]]]]),
                 ['{}' => true, '{"yak":[{"ant":"x"}]}' => true, '{"yak":{"zz":1}}' => false, '{"yak":{"zz":{"ant":"x"}}}' => false],
-            ],
-            // Y11a: a `required` beside a `$ref` holds for an open target.
-            'required beside a ref' => [
-                '3.1.0',
-                ['Shape' => ['type' => 'object', 'properties' => ['ant' => ['type' => 'boolean']]]]
-                + $probe(['owl' => ['$ref' => '#/components/schemas/Shape', 'required' => ['bee']]]),
-                ['{}' => true, '{"owl":{"ant":false,"bee":1}}' => true, '{"owl":{"ant":false}}' => false],
-                // README.support-matrix "a `required` name no property declares".
-                ['symfony' => ['{"owl":{"ant":false,"bee":1}}' => false]],
-            ],
-            // A `required` name the inline object does not declare, as a union branch and as the
-            // property itself: the sent key satisfies it, the missing one does not.
-            'required name an inline union branch does not declare' => [
-                '3.1.0',
-                ['Shelf' => ['type' => 'object', 'properties' => ['fox' => ['anyOf' => [
-                    ['type' => 'array', 'items' => ['type' => 'integer']],
-                    ['type' => 'object', 'properties' => ['tail' => ['type' => 'string']], 'required' => ['ear']],
-                ]]]]] + $probe(['owl' => $ref('Shelf')]),
-                ['{}' => true, '{"owl":{"fox":{"ear":1,"tail":"x"}}}' => true, '{"owl":{"fox":{"ear":1}}}' => true, '{"owl":{"fox":{"tail":"x"}}}' => false, '{"owl":{"fox":[1]}}' => true, '{"owl":{"fox":["x"]}}' => false],
-            ],
-            'required name an inline object does not declare' => [
-                '3.1.0',
-                ['Shelf' => ['type' => 'object', 'properties' => ['fox' => ['type' => 'object', 'properties' => ['tail' => ['type' => 'string']], 'required' => ['ear']]]]]
-                + $probe(['owl' => $ref('Shelf'), 'fox' => ['type' => 'object', 'properties' => ['tail' => ['type' => 'string']], 'required' => ['ear']]]),
-                [
-                    '{}' => true,
-                    '{"fox":{"ear":1,"tail":"x"}}' => true,
-                    '{"fox":{"tail":"x"}}' => false,
-                    '{"fox":{"tail":5,"ear":1}}' => false,
-                    '{"owl":{"fox":{"ear":1,"tail":"x"}}}' => true,
-                    '{"owl":{"fox":{"tail":"x"}}}' => false,
-                ],
-                // README.support-matrix "a `required` name no property declares": Symfony refuses the
-                // sent key. Both Laravel modes emitted nothing for a name the nested class lacks, and
-                // accepted the payload without it.
-                [
-                    'symfony' => ['{"fox":{"ear":1,"tail":"x"}}' => false, '{"owl":{"fox":{"ear":1,"tail":"x"}}}' => false],
-                ],
-            ],
-            // The same name on a referenced component's own `required`, on the ROOT class's and on a
-            // component reached through `allOf` beside a `required` of the property's own.
-            'required name a component does not declare' => [
-                '3.1.0',
-                ['Shape' => ['type' => 'object', 'properties' => ['tail' => ['type' => 'string']], 'required' => ['ear']]]
-                + $probe(['owl' => $ref('Shape')]),
-                [
-                    '{}' => true,
-                    '{"owl":{"ear":1,"tail":"x"}}' => true,
-                    '{"owl":{"ear":null}}' => true,
-                    '{"owl":{"tail":"x"}}' => false,
-                    '{"owl":{}}' => false,
-                ],
-                // README.support-matrix "a `required` name no property declares": Symfony judges the
-                // built object, which the undeclared key never reaches. The runtime asks the raw body
-                // (since 2.15.156).
-                [
-                    'symfony' => ['{"owl":{"tail":"x"}}' => true, '{"owl":{}}' => true],
-                ],
-            ],
-            'required name the root class does not declare' => [
-                '3.1.0',
-                ['Shape' => ['type' => 'object', 'properties' => ['tail' => ['type' => 'string']], 'required' => ['ear']]]
-                + ['Probe' => ['type' => 'object', 'required' => ['zed'], 'properties' => [
-                    'fox' => ['type' => 'string'],
-                    'owl' => ['allOf' => [$ref('Shape')], 'required' => ['paw']],
-                ]]],
-                [
-                    '{"zed":1}' => true,
-                    '{"zed":1,"fox":"a"}' => true,
-                    '{"fox":"a"}' => false,
-                    '{}' => false,
-                    '{"zed":1,"owl":{"tail":"x","paw":1,"ear":1}}' => true,
-                    '{"zed":1,"owl":{"tail":"x","paw":1}}' => false,
-                    '{"zed":1,"owl":{"tail":"x","ear":1}}' => false,
-                ],
-                // README.support-matrix "a `required` name no property declares": Symfony and yii3 judge
-                // the built object at the root; Symfony also refuses the sent nested key. The runtime asks
-                // the raw body (since 2.15.156).
-                [
-                    'symfony' => ['{"fox":"a"}' => true, '{}' => true, '{"zed":1,"owl":{"tail":"x","paw":1,"ear":1}}' => false],
-                    'yii3' => ['{"fox":"a"}' => true, '{}' => true],
-                ],
             ],
             // A `required` beside a `$ref` naming what a CLOSED class does not declare can never be met.
             'required name a closed referenced class does not declare' => [
@@ -16577,9 +16493,9 @@ final class ValidationParityTest extends TestCase
                 '{"fox":[1]}' => true,
             ],
         ];
-        yield 'an inline object requiring a name it does not declare, beside an array member' => [
+        yield 'an inline object requiring a name, beside an array member' => [
             ['Probe' => $probe(['anyOf' => [
-                ['type' => 'object', 'properties' => ['cat' => ['type' => 'string', 'maxLength' => 1]], 'required' => ['dog']],
+                ['type' => 'object', 'properties' => ['cat' => ['type' => 'string', 'maxLength' => 1], 'dog' => ['type' => 'integer']], 'required' => ['dog']],
                 ['type' => 'array'],
             ]])],
             ['{"fox":{"cat":"g","dog":1}}' => true, '{"fox":{"cat":"g"}}' => false, '{"fox":{"cat":"ga","dog":1}}' => false, '{"fox":[1]}' => true],
@@ -17318,10 +17234,9 @@ final class ValidationParityTest extends TestCase
                     'bison' => ['oneOf' => [['type' => 'object', 'properties' => ['egret' => ['type' => 'integer', 'enum' => [-18]]]], $ref('Crate')]],
                     'lynx' => ['anyOf' => [$ref('Crate'), ['type' => 'object', 'properties' => ['yak' => $ref('Teal')]]]],
                     'heron' => ['oneOf' => [['type' => 'object', 'properties' => ['egret' => ['type' => 'integer', 'enum' => [-18]]]], ['type' => 'array']]],
-                    // Requiring a name it does not declare, the branch stays spelled out in runtime:
-                    // the spelling keeps the enums of its properties.
+                    // A branch with a `required` of its own keeps the enums of its properties.
                     'okapi' => ['anyOf' => [
-                        ['type' => 'object', 'required' => ['zz'], 'properties' => ['egret' => ['type' => 'integer', 'enum' => [-18]], 'yak' => $ref('Teal')]],
+                        ['type' => 'object', 'required' => ['zz'], 'properties' => ['egret' => ['type' => 'integer', 'enum' => [-18]], 'yak' => $ref('Teal'), 'zz' => ['type' => 'integer']]],
                         $ref('Crate'),
                     ]],
                 ]),
@@ -18093,9 +18008,8 @@ final class ValidationParityTest extends TestCase
      * properties of its own, or `type: array` — refuses an object neither member takes. The runtime kept
      * the payload as the `array` member once the class could not be built from it, and the validator
      * then counted the class branch as undecided about a raw object and accepted with no branch matched:
-     * `{"kiwi":{"vole":7}}` went through although `vole` must be a string, and so did `{"kiwi":{"vole":
-     * "x"}}` against a class that requires `panda`. The raw object is now judged against the class's own
-     * `required` and property rules. An object the class does take still is, and one both members take
+     * `{"kiwi":{"vole":7}}` went through although `vole` must be a string. The raw object is now judged
+     * against the class's own `required` and property rules. An object the class does take still is, and one both members take
      * is still more than one.
      */
     public function testARawObjectIsJudgedAgainstTheClassBesideAnArrayMember(): void
@@ -18119,14 +18033,6 @@ final class ValidationParityTest extends TestCase
                     '{"kiwi":{}}' => true,
                     '{"kiwi":{"hyena":1}}' => false,
                     '{"kiwi":{"hyena":1,"vole":7}}' => true,
-                ],
-            ],
-            'raw object beside a required-only member, class with required' => [
-                $spec($requiredOnly, ['required' => ['panda'], 'properties' => ['vole' => ['type' => 'string']]]),
-                [
-                    '{"kiwi":{"vole":"x"}}' => false,
-                    '{"kiwi":{"panda":1,"vole":"x"}}' => true,
-                    '{"kiwi":{"hyena":1}}' => true,
                 ],
             ],
             'raw object in a nested union beside a list member' => [
@@ -18156,16 +18062,6 @@ final class ValidationParityTest extends TestCase
             }
         }
         $this->assertSame(expected: [], actual: $misses);
-
-        // The name the class requires without declaring it is asked of the raw body only: built by
-        // hand, the class has no slot for it and still normalizes.
-        $key = 'raw object beside a required-only member, class with required';
-        $fqcn = $this->generate($cases[$key][0], $this->namespaceFor(GenerationMode::Runtime, $key), 'runtime');
-        $umber = substr($fqcn, 0, (int)strrpos($fqcn, '\\')) . '\Umber';
-        $this->assertSame(
-            expected: '{"vole":"x"}',
-            actual: (new DtoNormalizer())->validateAndNormalizeToJson(new $umber(vole: 'x')),
-        );
     }
 
     /**
@@ -20389,92 +20285,6 @@ final class ValidationParityTest extends TestCase
         yield 'property allOf' => [
             ['allOf' => [$crane]],
             ['{"fox":{"crane":"a"}}' => true, '{"fox":[1,2]}' => false, '{"fox":{"crane":1}}' => false],
-        ];
-    }
-
-    /**
-     * A union member whose `required` names a key it does not declare — `{$ref: Teal, required:
-     * [zebu]}`, an inline object with `required: [zebu]` and no `zebu` property — matches only a
-     * payload that carries that key. The member's class has no slot for it, and the runtime counted
-     * the member as matched once the class was built: `{"marten": 1}` matched `$ref Teal` without
-     * `zebu`, so an `anyOf` let it through and a `oneOf` refused it as matching two members. Such a
-     * member of a union COMPONENT got no class at all.
-     *
-     * @param array<string, mixed> $plum
-     * @param array<string, bool> $payloads
-     */
-    #[DataProvider('unionMemberUndeclaredRequiredProvider')]
-    public function testAUnionMemberRequiresTheKeysItDoesNotDeclare(array $plum, array $payloads): void
-    {
-        $spec = self::probeSpec(['type' => 'object']);
-        $spec['components']['schemas'] = [
-            'Teal' => ['type' => 'object', 'properties' => ['marten' => ['type' => 'integer']]],
-            'Shade' => ['oneOf' => [
-                ['type' => 'object', 'properties' => ['stoat' => ['type' => 'integer']]],
-                ['$ref' => '#/components/schemas/Teal', 'required' => ['zebu']],
-            ]],
-            'Probe' => ['type' => 'object', 'properties' => ['plum' => $plum]],
-        ];
-        $key = 'union member undeclared required ' . md5((string)json_encode($plum));
-
-        foreach ($payloads as $json => $accepted) {
-            $this->assertSame(
-                expected: $accepted,
-                actual: !str_starts_with($this->runtimeRoundTrip($spec, $key, $json), 'refused'),
-                message: $json . ': ' . $this->runtimeRoundTrip($spec, $key, $json),
-            );
-        }
-    }
-
-    /**
-     * @return iterable<string, array{array<string, mixed>, array<string, bool>}>
-     */
-    public static function unionMemberUndeclaredRequiredProvider(): iterable
-    {
-        $teal = ['$ref' => '#/components/schemas/Teal', 'required' => ['zebu']];
-        $stoat = ['type' => 'object', 'properties' => ['stoat' => ['type' => 'integer']]];
-
-        // Cause: the member is a `$ref` with `required` beside it, or an inline object.
-        yield 'anyOf string or ref' => [
-            ['anyOf' => [['type' => 'string'], $teal]],
-            ['{"plum":{"marten":1}}' => false, '{"plum":{"marten":1,"zebu":2}}' => true, '{"plum":"a"}' => true],
-        ];
-        yield 'oneOf object or ref' => [
-            ['oneOf' => [$stoat, $teal]],
-            [
-                '{"plum":{"marten":1}}' => true,
-                '{"plum":{"stoat":1}}' => true,
-                // Both members match.
-                '{"plum":{"marten":1,"zebu":2}}' => false,
-            ],
-        ];
-        yield 'oneOf required object or ref' => [
-            ['oneOf' => [$stoat + ['required' => ['stoat']], $teal]],
-            ['{"plum":{"stoat":1}}' => true, '{"plum":{"marten":1}}' => false, '{"plum":{"marten":1,"zebu":2}}' => true],
-        ];
-        yield 'oneOf of two inline objects' => [
-            ['oneOf' => [
-                $stoat + ['required' => ['stoat']],
-                ['type' => 'object', 'properties' => ['marten' => ['type' => 'integer']], 'required' => ['zebu']],
-            ]],
-            ['{"plum":{"stoat":1}}' => true, '{"plum":{"marten":1}}' => false, '{"plum":{"marten":1,"zebu":2}}' => true],
-        ];
-        // The union as a component: its member was not even a class, and every payload was refused
-        // as "Unsupported type".
-        $shade = ['$ref' => '#/components/schemas/Shade'];
-        yield 'component oneOf' => [
-            $shade,
-            ['{"plum":{"marten":1}}' => true, '{"plum":{"stoat":1}}' => true, '{"plum":{"marten":1,"zebu":2}}' => false],
-        ];
-        yield 'list of a component oneOf' => [
-            ['type' => 'array', 'items' => $shade],
-            ['{"plum":[{"marten":1}]}' => true, '{"plum":[{"stoat":1}]}' => true, '{"plum":[{"marten":1,"zebu":2}]}' => false],
-        ];
-        // Neighbours: the same `required` beside a `$ref` outside a union, and on an inline member.
-        yield 'ref outside a union' => [$teal, ['{"plum":{"marten":1}}' => false, '{"plum":{"marten":1,"zebu":2}}' => true]];
-        yield 'anyOf string or inline object' => [
-            ['anyOf' => [['type' => 'string'], ['type' => 'object', 'properties' => ['marten' => ['type' => 'integer']], 'required' => ['zebu']]]],
-            ['{"plum":{"marten":1}}' => false, '{"plum":{"marten":1,"zebu":2}}' => true],
         ];
     }
 

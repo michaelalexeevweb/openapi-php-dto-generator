@@ -177,6 +177,38 @@
      */
     public static function openApiNestedValidation(string $prefix, array $visited): array
     {
+{% if nestedValidation.children is empty %}
+        // Nothing below this class: the classes above it (`$visited`) cannot meet it again here.
+        return [
+            'rules' => [
+{% for rule in nestedValidation.rules %}
+                $prefix . '.{{ rule.suffix|php_string }}' => {{ rule.rules|raw }},
+{% endfor %}
+            ],
+            'objectPaths' => [
+{% for objectPath in nestedValidation.objectPaths %}
+                $prefix . '.{{ objectPath|php_string }}',
+{% endfor %}
+            ],
+            'scalarPaths' => [
+{% for scalarPath, scalarType in nestedValidation.scalarPaths %}
+                $prefix . '.{{ scalarPath|php_string }}' => '{{ scalarType|php_string }}',
+{% endfor %}
+            ],
+{% if reachesRecursion %}
+            'recursions' => [],
+{% endif %}
+{% if reachesRecursion and collectsFreeFormPaths|default(false) %}
+            'freeFormPaths' => [
+{% for freeFormPath in nestedValidation.freeFormPaths %}
+                $prefix . '.{{ freeFormPath|php_string }}',
+{% endfor %}
+            ],
+{% endif %}
+        ];
+    }
+
+{% else %}
 {% if selfReachable %}
         // The schema holds itself below this point. The rules cannot be written out to every depth, so
         // the level here is checked as the data reaches it: with this class's own rules, which do the
@@ -248,4 +280,5 @@
         ];
     }
 
+{% endif %}
 {% endif %}

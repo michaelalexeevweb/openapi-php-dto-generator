@@ -3884,7 +3884,14 @@ trait RendersLaravelValidation
     }
 
     /**
-     * The classes some property hands its validation to; each of them carries `openApiNestedValidation()`.
+     * The classes that carry `openApiNestedValidation()`: every class a property could hand its
+     * validation to, whether or not a property of THIS document does.
+     *
+     * A class is read by documents other than its own — a `--ref`ed component file is written by every
+     * run that references it, and by its own — so which classes some property composes is not knowable
+     * from one run. Emitted only for this document's targets, the method came and went with whichever
+     * run wrote the shared file last, and a class of the other document called it: "Call to undefined
+     * method …::openApiNestedValidation()".
      *
      * @return array<string, true>
      */
@@ -3895,12 +3902,9 @@ trait RendersLaravelValidation
         }
 
         $targets = [];
-        foreach (array_keys($this->dtoSchemas) as $owner) {
-            foreach ($this->getSchemaProperties($owner) as $property) {
-                $child = $this->laravelComposedChild($property);
-                if ($child !== null) {
-                    $targets[$child['class']] = true;
-                }
+        foreach (array_keys($this->dtoSchemas) as $className) {
+            if ($this->laravelComposesNested($className)) {
+                $targets[$className] = true;
             }
         }
 

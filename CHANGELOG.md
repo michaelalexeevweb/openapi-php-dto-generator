@@ -3,6 +3,42 @@
 This file starts at 2.9.0. Notes for every earlier tag are the
 [GitHub releases](https://github.com/michaelalexeevweb/openapi-php-dto-generator/releases).
 
+## 2.15.168 — 2026-11-28
+
+- undeclared required name fails generation
+- laravel: allOf variant collections serialized
+- laravel(-data): shared --ref class keeps nestedValidation
+- laravel-data: response validation ignores request body
+- laravel-data: untyped optional stays absent
+- laravel-data: defaulted property presence readable
+- symfony 8.2: union-list enums checked
+
+**Breaking for invalid specs:** a class whose `required` names a property none of its `properties` (nor its
+`allOf` members) declares now stops generation with an error naming the document, the schema and the name —
+it used to be a warning, and the generated class could never satisfy its own `required`, so every response built
+from it failed validation. Declare the property, or remove the name from `required`. A `required` inside a union
+branch, an `if`/`then`/`else` arm or `dependentSchemas` that names a key the enclosing class declares is not
+affected, nor an object that declares no property at all.
+
+**Regenerate after upgrading** (laravel, laravel-data).
+
+- laravel: `toArray()` of a list or map whose items are an `allOf` base wrote each item through a closure typed
+  with the base, but the flat `allOf` variants do not extend it — a TypeError on every response holding a variant.
+  Items are now written through `JsonSerializable`; the output is the same;
+- laravel / laravel-data: a class written by a `--ref` placement keeps `openApiNestedValidation()` whichever
+  document's run writes the shared file last — the caller in the other document crashed with "Call to undefined
+  method"; a class with no nested object returns its rules directly (no unused cycle guard);
+- laravel-data: `validate()` of a RESPONSE inside an HTTP request borrowed the request's raw body when its keys
+  happened to fit (an empty body, or one the response echoes), and then read every other nested object as a JSON
+  array — valid responses failed with "expects object, got array" or "does not match any oneOf branch (expected
+  object or null, got object)". The raw body is used only when the validated data is exactly body + query + route;
+- laravel-data: an optional property with no `type` stays absent when not sent (it went out as `"x": null`); a
+  property with a schema `default` keeps the default and gains `isXProvided()`, so a sent value equal to the
+  default can be told from an absent one;
+- symfony: Symfony 8.2 now builds the members of a list or map of a union (`array<Foo|Bar>`) through the
+  discriminator, so their tag became a backed enum the emitted check compared with the string — valid items
+  failed with "must be one of". The check now unwraps enums of discriminated members on every Symfony version.
+
 ## 2.15.167 — 2026-11-28
 
 - nested allOf wrappers peeled

@@ -422,8 +422,11 @@ final class DataShapeTest extends TestCase
         $built = new $widget(code: 'a');
 
         $this->assertInstanceOf(Optional::class, $built->note);
-        $this->assertSame(['code' => 'a', 'extra' => null], $built->toArray());
-        $this->assertSame(['code' => 'a', 'note' => null, 'extra' => null], (new $widget(code: 'a', note: null))->toArray());
+        // An untyped one too, since 2.15.168: `mixed` takes the `Optional` it defaults to.
+        $this->assertInstanceOf(Optional::class, $built->extra);
+        $this->assertSame(['code' => 'a'], $built->toArray());
+        $this->assertSame(['code' => 'a', 'note' => null], (new $widget(code: 'a', note: null))->toArray());
+        $this->assertSame(['code' => 'a', 'extra' => null], (new $widget(code: 'a', extra: null))->toArray());
     }
 
     /**

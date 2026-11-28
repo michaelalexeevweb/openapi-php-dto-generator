@@ -1216,12 +1216,15 @@ trait RendersLaravelDto
                 : sprintf('static fn(%s $item): int|string => $item->value', $short);
         }
 
-        // Same reason as the scalar embed: an ITEM that is a `type: object` with nothing to write is
-        // `{}`. `toJsonObjects()` leaves a non-array alone, so a cast item survives the map cast that
-        // follows it.
+        // A DTO item goes out as its `jsonSerialize()` — `toArray()`, with an object that has nothing to
+        // write as `{}` — typed by the interface every Laravel DTO implements rather than by the item
+        // class. Laravel mode flattens `allOf`, so a variant `allOf: [$ref Base, {…}]` does NOT extend
+        // `Base`, yet the schema admits it wherever `Base` is: typed `Base $item`, a map of variants was
+        // a TypeError in `toArray()`. `toJsonObjects()` leaves a non-array alone, so a cast item survives
+        // the map cast that follows it.
         return $itemNullable
-            ? sprintf('static fn(?%s $item): array|object|null => $item === null ? null : ($item->toArray() ?: (object)[])', $short)
-            : sprintf('static fn(%s $item): array|object => $item->toArray() ?: (object)[]', $short);
+            ? 'static fn(?JsonSerializable $item): mixed => $item?->jsonSerialize()'
+            : 'static fn(JsonSerializable $item): mixed => $item->jsonSerialize()';
     }
 
     /**

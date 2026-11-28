@@ -84,9 +84,11 @@ then emitted a matching `nullable`, which accepted an explicit `null` the schema
 absence has its own type, so `nullable` follows the document alone: `['sometimes', 'string']` refuses an
 explicit null while still allowing the key to be missing.
 
-`mixed` is the one exception. It cannot take part in a union type, so a free-form property is plain
-`mixed` and its presence is not observable — narrowing it to something `Optional` fits into would refuse
-payloads the schema allows.
+A free-form property (no `type`) is plain `mixed`, which cannot take part in a union type — but it takes
+an `Optional` instance as it is. Since 2.15.168 an absent one IS `Optional`, as for every typed optional
+property, and `toArray()` leaves the key out: laravel-data fills a missing `mixed` key with `null`, so the
+class's `pipeline()` puts `Optional` back before the constructor runs. Before, an unsent key went out as
+`"x": null`.
 
 An optional argument defaults to `new Optional()`, so code that builds a DTO — a response — passes only
 what it has: `new UserResponse(firstName: 'Ada')` leaves the rest absent, exactly as a payload without
@@ -98,6 +100,18 @@ rather than `Optional` — what the other modes' getters answer. Its type has no
 `toArray()` writes it. A property both `required` and with a `default` is the same: the key may be left
 out (`sometimes`), as in runtime, Symfony and Laravel mode. Before 2.15.94 the default was ignored, and
 a `required` one demanded the key.
+
+Whether such a key was SENT is `is<Name>Provided()` (since 2.15.168), as in Laravel and yii3 mode:
+
+```php
+$dto = Filter::from(['status' => 'unassigned']);
+$dto->status;               // Status::Unassigned
+$dto->isStatusProvided();   // true — `Filter::from([])` holds the same default and answers false
+```
+
+The class's `pipeline()` hands the constructor the names the payload left out, in a trailing
+`?array $openApiAbsentDefaults = null` parameter that code building the class never passes; an instance
+built in code has every such property provided.
 
 A `readOnly` property listed under `required` is `Optional` too, for the same reason: OpenAPI puts that
 requirement on the response alone, so a request may omit it. Until 2.15.36 it was emitted as plainly
@@ -159,10 +173,13 @@ Two consequences of laravel-data's hook signature:
   ```
 
   The body is used only when it IS the data being validated — every key of it in the validator's data,
-  unchanged, as `from($request)` gives it. `validate($array)` on a response or `validateAndCreate()` on
-  one item of a list runs while a request is bound, and before 2.15.103 that request's body was checked in
-  their place. Without a request, or with a different body, that single check is skipped and everything
-  else still runs.
+  unchanged, and every other key of the data a query or route parameter, as `from($request)` gives it.
+  `validate($array)` on a response or `validateAndCreate()` on one item of a list runs while a request is
+  bound, and before 2.15.103 that request's body was checked in their place. Until 2.15.168 only the first
+  half was asked, so an empty request body `{}`, or one whose keys the response echoed, was taken for the
+  response's own: its nested objects were then judged as JSON arrays (`logs.0.author expects object, got
+  array`, `does not match any oneOf branch (expected object or null, got object)`). Without a request, or
+  with a different body, that single check is skipped and everything else still runs.
 
 A message is keyed by the field it is about, as in Laravel mode: a wrong `value` deep in a union lands on
 `edge.value`, a list item on `levels.0`. A claim a Laravel rule also makes — a missing key, a wrong type,

@@ -479,17 +479,8 @@ final class NormalizationParityTest extends TestCase
                 'runtime' => ['s' => 'a'],
                 'symfony' => ['s' => 'a', 'any' => null],
                 'reason' => 'an untyped property admits null, so Symfony mode cannot drop a null from it '
-                    . 'as "never set" the way it does for a typed optional property — the same limit '
-                    . 'laravel-data has below',
-                'diverges' => [
-                    'laravel-data' => [
-                        'expected' => ['s' => 'a', 'any' => null],
-                        'reason' => 'an untyped property is plain `mixed`, and `mixed` cannot take part in a '
-                            . 'union type — so this is the only property shape with no `|Optional` to mark '
-                            . 'absence with. laravel-data fills the missing key with null and echoes it, the '
-                            . 'same limitation Symfony mode has for every optional property.',
-                    ],
-                ],
+                    . 'as "never set" the way it does for a typed optional property. laravel-data holds '
+                    . '`Optional` in its `mixed` for the missing key (since 2.15.168) and leaves it out',
             ],
             // The same untyped shape when its schema refuses null: there a null CAN only mean "never set",
             // and writing it produced `"pin": null` — a response its own `const` refuses on the way back
@@ -499,13 +490,6 @@ final class NormalizationParityTest extends TestCase
                 'json' => '{"s":"a"}',
                 'runtime' => ['s' => 'a'],
                 'symfony' => ['s' => 'a'],
-                'diverges' => [
-                    'laravel-data' => [
-                        'expected' => ['s' => 'a', 'pin' => null],
-                        'reason' => 'untyped is plain `mixed`, which has no `|Optional` to mark absence with — '
-                            . 'see "untyped optional property missing"',
-                    ],
-                ],
             ],
             // An object with properties of its own whose `anyOf` arms only narrow a property is ONE object,
             // the arms a check on it. Read as a union, laravel and laravel-data built the arm class that
@@ -533,13 +517,6 @@ final class NormalizationParityTest extends TestCase
                 'symfony' => ['s' => 'a', 'pin' => null],
                 'reason' => 'a null const admits null, so Symfony mode cannot drop it as "never set" — '
                     . 'the untyped case above',
-                'diverges' => [
-                    'laravel-data' => [
-                        'expected' => ['s' => 'a', 'pin' => null],
-                        'reason' => 'untyped is plain `mixed`, which has no `|Optional` to mark absence with — '
-                            . 'see "untyped optional property missing"',
-                    ],
-                ],
             ],
             // A `default` is what the SERVER may assume, not something the wire said. Runtime, Laravel
             // and yii3 report the key as absent while the getter answers the default; Symfony and

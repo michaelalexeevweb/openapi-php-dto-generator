@@ -78,13 +78,13 @@ final class EmissionEdgeCasesTest extends TestCase
     }
 
     /**
-     * And the consequence, stated rather than discovered: with no `Optional` in the type, laravel-data
-     * fills an absent key with `null`, so presence is NOT observable for such a property and an
-     * unprovided one is echoed as `null`. Every other mode omits it. The divergence is declared in
-     * `NormalizationParityTest`; what is asserted here is that it does not CRASH, and that a provided
-     * value survives intact.
+     * An untyped optional property is `mixed`, which has no `|Optional` in its type but takes the
+     * instance all the same: absent, it is `Optional` and left out of `toArray()`, as every typed
+     * optional property is (since 2.15.168 — laravel-data filled the missing key with `null`, and an
+     * unprovided one was echoed as `null`). Sent as `null` it is `null`, and a provided value survives
+     * intact.
      */
-    public function testAnUntypedPropertyHydratesWithoutPresenceTracking(): void
+    public function testAnUntypedPropertyTracksPresence(): void
     {
         $namespace = $this->generate([
             'Probe' => [
@@ -100,8 +100,15 @@ final class EmissionEdgeCasesTest extends TestCase
             json: '{"keep":"x"}',
             work: static fn(Request $request): object => $fqcn::from($request),
         );
-        $this->assertNull($absent->any);
-        $this->assertNotInstanceOf(Optional::class, $absent->any, 'mixed cannot carry Optional');
+        $this->assertInstanceOf(Optional::class, $absent->any);
+        $this->assertSame(['keep' => 'x'], $absent->toArray());
+
+        $sentNull = LaravelDataContainer::withRequest(
+            json: '{"keep":"x","any":null}',
+            work: static fn(Request $request): object => $fqcn::from($request),
+        );
+        $this->assertNull($sentNull->any);
+        $this->assertSame(['keep' => 'x', 'any' => null], $sentNull->toArray());
 
         $provided = LaravelDataContainer::withRequest(
             json: '{"keep":"x","any":{"k":[1,2]}}',

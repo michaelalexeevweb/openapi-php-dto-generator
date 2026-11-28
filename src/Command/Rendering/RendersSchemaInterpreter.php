@@ -2998,6 +2998,13 @@ PHP;
                 foreach ($this->interpreterPropertyTypes[$short] as $nestedType) {
                     $queue[] = $nestedType;
                 }
+                // A discriminated class or interface arrives as whichever member its map names — the
+                // serializer builds the member, even one that does not extend it (a member of another
+                // document). Symfony 8.2 builds it inside a union collection too, `array<array|Teal|null>`,
+                // where 8.1 left the item an array: the member's enums then reached this callback.
+                foreach ($this->discriminatorSchemas[$short]['mapping'] ?? [] as $memberClass) {
+                    $queue[] = $memberClass;
+                }
             }
             if ($kinds['enum'] && $kinds['temporal']) {
                 break;
