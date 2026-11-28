@@ -303,16 +303,6 @@ final class GenerateDtoCommand extends Command
     private const array DATA_VALUED_KEYWORDS = ['enum', 'const', 'default', 'example', 'examples'];
 
     /**
-     * Keywords an inner `allOf` wrapper may carry and still be peeled into the outer one — see
-     * `peeledAllOfWrapper()`: annotations and the 3.0 `nullable`, nothing that asserts.
-     *
-     * @var list<string>
-     */
-    private const array PEELABLE_WRAPPER_KEYWORDS = [
-        'description', 'title', 'example', 'examples', 'deprecated', 'externalDocs', 'nullable', '$comment',
-    ];
-
-    /**
      * Keywords (and OpenAPI containers) whose value maps NAMES to schemas or objects — see
      * `rewriteDefsRefs()`. `responses` is among them for its `default` response.
      *
@@ -2046,7 +2036,7 @@ final class GenerateDtoCommand extends Command
      * component hoisted, the canonical spelling (`normalizedDocument()`), and only THEN an inline
      * discriminated union made a component of its own — it has to be found in the canonical spelling, or
      * the same union behind a one-member wrapper (`{allOf: [{anyOf: [<discriminated oneOf>]}]}`) stays
-     * inline and loses its discriminator. Nested `allOf` wrappers are peeled last.
+     * inline and loses its discriminator.
      *
      * @param array<array-key, mixed> $document
      * @return array<array-key, mixed>
@@ -2055,7 +2045,7 @@ final class GenerateDtoCommand extends Command
     {
         $canonical = $this->normalizedDocument($this->hoistComponentSubschemas($this->foldJsonSchemaDefs($document)));
 
-        return $this->withNestedAllOfWrappersPeeled($this->hoistInlineDiscriminatedUnions($this->flattenNullableDiscriminatedUnions($canonical)));
+        return $this->hoistInlineDiscriminatedUnions($this->flattenNullableDiscriminatedUnions($canonical));
     }
 
     /**
@@ -2070,80 +2060,6 @@ final class GenerateDtoCommand extends Command
     private function normalizedDocument(array $document): array
     {
         return (new SchemaNormalizer(SchemaNormalizer::GENERATION_RULES))->normalize(document: $document, assumedVersion: $this->rootOpenApiVersion);
-    }
-
-    /**
-     * A document with every nested `allOf` wrapper peeled to one layer: `{allOf: [{allOf: [X],
-     * nullable: true}]}` — the 3.0 idiom `{allOf: [X], nullable: true}` wrapped once more — is that idiom,
-     * and the inner wrapper's annotations and `nullable` move out beside the outer `allOf`
-     * (`peeledAllOfWrapper()`). Every reader of a wrapper — a reference, a list alias, an item class,
-     * a union member — unwraps one layer, so the second one hid X from all of them: a list alias was
-     * typed by its class, which is never written, and an object item lost its `null`.
-     *
-     * The walk follows `rewriteDefsRefs()`: a data value is left as written, and below a map of names a
-     * key spelled `allOf` is a property name.
-     */
-    private function withNestedAllOfWrappersPeeled(mixed $node, bool $namesKeys = false): mixed
-    {
-        if (!is_array($node)) {
-            return $node;
-        }
-        $result = [];
-        foreach ($node as $key => $value) {
-            $result[$key] = !$namesKeys && in_array($key, self::DATA_VALUED_KEYWORDS, true)
-                ? $value
-                : $this->withNestedAllOfWrappersPeeled(
-                    node: $value,
-                    namesKeys: !$namesKeys && in_array($key, self::NAME_KEYED_KEYWORDS, true),
-                );
-        }
-        if ($namesKeys) {
-            return $result;
-        }
-        while (($peeled = $this->peeledAllOfWrapper($result)) !== null) {
-            $result = $peeled;
-        }
-
-        return $result;
-    }
-
-    /**
-     * `{allOf: [{allOf: [X], <inner>}], <outer>}` as `{allOf: [X], <outer>, <inner>}`, when the inner
-     * wrapper says nothing but annotations and `nullable` (`PEELABLE_WRAPPER_KEYWORDS`, `x-`
-     * extensions) and the two sides share no keyword with different values; null otherwise. An `allOf`
-     * of one member holds what that member holds, so the inner layer's keywords hold beside the outer
-     * `allOf` as well — its `nullable: true` too: `allOf: [S]` with S admitting null is S.
-     *
-     * @param array<mixed> $schema
-     * @return array<mixed>|null
-     */
-    private function peeledAllOfWrapper(array $schema): ?array
-    {
-        $outer = $schema['allOf'] ?? null;
-        if (!is_array($outer) || count($outer) !== 1 || !array_is_list($outer) || !is_array($outer[0])) {
-            return null;
-        }
-        $inner = $outer[0];
-        $innerAllOf = $inner['allOf'] ?? null;
-        if (!is_array($innerAllOf) || count($innerAllOf) !== 1 || !array_is_list($innerAllOf)) {
-            return null;
-        }
-        $peeled = $schema;
-        $peeled['allOf'] = $innerAllOf;
-        foreach ($inner as $keyword => $value) {
-            if ($keyword === 'allOf') {
-                continue;
-            }
-            if (!in_array($keyword, self::PEELABLE_WRAPPER_KEYWORDS, true) && !str_starts_with((string)$keyword, 'x-')) {
-                return null;
-            }
-            if (array_key_exists($keyword, $peeled) && $peeled[$keyword] !== $value) {
-                return null;
-            }
-            $peeled[$keyword] = $value;
-        }
-
-        return $peeled;
     }
 
     /**
@@ -7544,8 +7460,6 @@ final class GenerateDtoCommand extends Command
      */
     private function unionAdmitsNonListShape(array $propertySchema): bool
     {
-        $propertySchema = $this->unwrapSingleUnionAllOf($propertySchema);
-
         foreach (['oneOf', 'anyOf'] as $keyword) {
             $variants = $propertySchema[$keyword] ?? null;
             if (!is_array($variants)) {
@@ -7576,8 +7490,6 @@ final class GenerateDtoCommand extends Command
      */
     private function unionBranchIsList(array $branch, array $visitedRefs): bool
     {
-        $branch = $this->unwrapSingleUnionAllOf($branch);
-
         $isNestedUnion = false;
         foreach (['oneOf', 'anyOf'] as $keyword) {
             $variants = $branch[$keyword] ?? null;
@@ -7648,28 +7560,6 @@ final class GenerateDtoCommand extends Command
         }
 
         return ($variant['nullable'] ?? false) === true && $this->isNullOnlyBranch($variant);
-    }
-
-    /**
-     * `allOf: [{oneOf: [...]}]` is the union itself, wrapped — the same unwrapping
-     * `resolvePropertyType()` does before it resolves the composed type.
-     *
-     * @param array<string, mixed> $schema
-     * @return array<string, mixed>
-     */
-    private function unwrapSingleUnionAllOf(array $schema): array
-    {
-        $allOf = $schema['allOf'] ?? null;
-        if (!is_array($allOf) || count($allOf) !== 1 || !is_array($allOf[0] ?? null)) {
-            return $schema;
-        }
-
-        $only = $allOf[0];
-        if (is_array($only['oneOf'] ?? null) || is_array($only['anyOf'] ?? null)) {
-            return $only;
-        }
-
-        return $schema;
     }
 
     /**
@@ -8938,34 +8828,12 @@ final class GenerateDtoCommand extends Command
      */
     private function unionRefTarget(string $ref): array
     {
-        // A branch naming an alias (`Alias: {$ref: Hen}`) is the class the alias names: the alias gets
-        // no class of its own, and a marker naming it refused every payload (symfony).
-        $target = $this->unionRefTargetChecks($this->pureAliasEndRef($ref));
-        if (
-            $target === []
-            || (
-                !$this->componentAdmitsNull($this->localComponentDefinition($ref) ?? [])
-                && !$this->componentAdmitsNull($this->localComponentDefinition($this->pureAliasEndRef($ref)) ?? [])
-            )
-        ) {
+        $target = $this->unionRefTargetChecks($ref);
+        if ($target === [] || !$this->componentAdmitsNull($this->localComponentDefinition($ref) ?? [])) {
             return $target;
         }
 
         return [...$target, 'nullable' => true];
-    }
-
-    /**
-     * The `$ref` a local alias component's chain ends at (`redirectPureAliasReferences()`); any other
-     * `$ref` as it is.
-     */
-    private function pureAliasEndRef(string $ref): string
-    {
-        $prefix = '#/components/schemas/';
-        if (!str_starts_with($ref, $prefix)) {
-            return $ref;
-        }
-
-        return $this->pureAliasClasses[$this->schemaClassName(substr($ref, strlen($prefix)))] ?? $ref;
     }
 
     /**
@@ -11456,13 +11324,9 @@ final class GenerateDtoCommand extends Command
         if (!is_string($schema['$ref'] ?? null) && !$this->isSingleRefAllOf($schema)) {
             // A bare `oneOf` / `anyOf` one level down — a union inside a union, a union as a map value
             // — names its aliases one level further down still: `anyOf: [{oneOf: [$ref Word, bool]},
-            // null]` was typed `Word|bool|null`, `additionalProperties: {anyOf: [$ref Count]}` was
-            // `array<string, Count>`, and neither class is ever written.
+            // null]` was typed `Word|bool|null`, and its class is never written.
             if ($this->isBareUnionSchema($schema)) {
-                return $this->unwrapSingleBranchUnion(
-                    inlined: $this->inlineScalarAliasBranches(propertySchema: $schema, ownerClassName: $ownerClassName, depth: $depth + 1),
-                    original: $schema,
-                );
+                return $this->inlineScalarAliasBranches(propertySchema: $schema, ownerClassName: $ownerClassName, depth: $depth + 1);
             }
 
             // A list one level down names its items' alias the way the property's own list does
@@ -11537,35 +11401,6 @@ final class GenerateDtoCommand extends Command
             && !array_key_exists('additionalProperties', $schema)
             && !array_key_exists('items', $schema)
             && !array_key_exists('type', $schema);
-    }
-
-    /**
-     * `anyOf: [$ref Count]` with nothing beside it is the reference spelled longer. Once the alias is
-     * inlined the one branch IS the value schema, and a map typed by it reads `array<string, int>` the
-     * way `additionalProperties: {$ref: Count}` always did.
-     *
-     * @param array<mixed> $inlined
-     * @param array<mixed> $original
-     * @return array<mixed>
-     */
-    private function unwrapSingleBranchUnion(array $inlined, array $original): array
-    {
-        foreach (['oneOf', 'anyOf'] as $keyword) {
-            $branches = $original[$keyword] ?? null;
-            if (
-                array_keys($original) === [$keyword]
-                && is_array($branches)
-                && count($branches) === 1
-                && is_array($branches[0] ?? null)
-                && is_string($branches[0]['$ref'] ?? null)
-                && is_array($inlined[$keyword][0] ?? null)
-                && !array_key_exists('$ref', $inlined[$keyword][0])
-            ) {
-                return $inlined[$keyword][0];
-            }
-        }
-
-        return $inlined;
     }
 
     /**
